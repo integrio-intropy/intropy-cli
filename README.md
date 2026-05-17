@@ -1,0 +1,248 @@
+# intropy CLI
+
+`intropy` is the command-line interface for working with Intropy integrations and
+agent skills. It does two things:
+
+- **Scaffolds integrations** from the official Intropy blueprint library hosted at
+  [`integrio-intropy/blueprints`](https://github.com/integrio-intropy/blueprints).
+- **Manages agent skills** as OCI artifacts — adding, listing, updating, and
+  publishing skills (individually or as curated collections) against any OCI
+  registry. The skills subsystem implements the
+  [Agent Skills OCI Artifacts Spec](https://github.com/ThomasVitale/agents-skills-oci-artifacts-spec),
+  so artifacts published with `intropy skills publish` interoperate with any
+  other spec-compliant tooling.
+
+## Install
+
+### From source
+
+Requires Go 1.26+.
+
+```sh
+git clone https://github.com/intropy/intropy-cli.git
+cd intropy-cli
+go build -o bin/intropy ./cmd/intropy
+```
+
+Add `bin/` to your `PATH`, or move the binary somewhere on your `PATH`.
+
+### Version stamping
+
+Version, commit, and build date are injected via `-ldflags` at release time:
+
+```sh
+go build -ldflags "\
+  -X main.version=$(git describe --tags --always) \
+  -X main.commit=$(git rev-parse --short HEAD) \
+  -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  -o bin/intropy ./cmd/intropy
+```
+
+Check what you have with:
+
+```sh
+intropy version
+```
+
+## Command overview
+
+```
+intropy
+├── int                    Manage integrations
+│   ├── create <blueprint>     Scaffold a new integration from a blueprint
+│   └── describe <blueprint>   Print a blueprint's manifest and parameter schema
+├── skills                 Manage Intropy skills
+│   ├── add [ref]              Add and install a skill from an OCI registry
+│   ├── list                   List installed skills
+│   ├── update [name]          Reconcile an installed skill against its collection
+│   ├── publish                Publish a skill directory to an OCI registry
+│   └── collection             Manage registered skill collections
+│       ├── add                    Register a collection in skills.json
+│       ├── update <alias>         Refresh or bump a registered collection
+│       └── publish <spec> <ref>   Publish a collection as an OCI Image Index
+└── version                Print version information
+```
+
+Run any command with `--help` for full flag documentation.
+
+## Integrations (`intropy int`)
+
+### Describe a blueprint
+
+Inspect what parameters a blueprint accepts before scaffolding it:
+
+```sh
+intropy int describe hello-world
+intropy int describe hello-world --version v1.2.0
+intropy int describe hello-world --json   # machine-readable; same schema Backstage renders
+```
+
+Without `--version`, the latest GitHub release is used.
+
+### Create an integration
+
+```sh
+intropy int create hello-world --output ./my-integration
+```
+
+Provide parameter values inline, from files, or interactively:
+
+```sh
+# inline
+intropy int create hello-world -o ./out --set name=orders --set owner=team-x
+
+# from a values file (repeatable; use - for stdin)
+intropy int create hello-world -o ./out -f values.yaml
+
+# disable interactive prompts (fail fast on missing required values)
+intropy int create hello-world -o ./out --no-input -f values.yaml
+
+# write a machine-readable result document (consumed by chained scaffolders)
+intropy int create hello-world -o ./out --output-json result.json
+```
+
+Use `--force` to render into a non-empty directory.
+
+## Skills (`intropy skills`)
+
+Skills are stored as OCI artifacts following the
+[Agent Skills OCI Artifacts Spec](https://github.com/ThomasVitale/agents-skills-oci-artifacts-spec)
+— config schema, layer layout, and annotations all conform to it, so anything
+the CLI publishes can be consumed by other spec-compliant clients (and
+vice-versa). The CLI maintains two files at the project root:
+
+- `skills.json` — declares registered collections and installed skills (committed).
+- `skills.lock.json` — pins resolved digests and install paths (committed).
+
+Skills install into `.agents/skills/<name>/` (the canonical layout from §9 of
+the spec). Additional install locations can be configured per skill via
+`--also-install-to`.
+
+### Add a skill
+
+By full OCI reference:
+
+```sh
+intropy skills add ghcr.io/example/skills/pr-review:1.2.0
+```
+
+By name, resolved through a registered collection:
+
+```sh
+intropy skills add --name pr-review
+intropy skills add --name pr-review --collection example-skills  # disambiguate
+```
+
+If no `skills.json` exists in the working directory or any parent, an empty one
+is created in the current directory.
+
+### List installed skills
+
+```sh
+intropy skills list
+```
+
+### Update a skill
+
+`update` reconciles an installed skill against the ref currently pinned by its
+collection's cached index. If the collection upstream has been republished, run
+`intropy skills collection update <alias>` first to refresh the cache.
+
+```sh
+intropy skills update pr-review
+intropy skills update --all
+```
+
+### Publish a skill
+
+Package a skill directory as an OCI artifact and push it:
+
+```sh
+intropy skills publish \
+  --path ./skills/pr-review \
+  --ref ghcr.io/example/skills/pr-review \
+  --tag 1.2.0
+```
+
+Use `--force` to overwrite an existing tag, and `--sign` to sign the artifact
+with `cosign` after publishing (requires `cosign` on `PATH`).
+
+## Collections
+
+A collection is an OCI Image Index that pins a curated set of skills by digest.
+Registering a collection lets you install its skills by name.
+
+### Register a collection
+
+```sh
+intropy skills collection add \
+  --name example-skills \
+  --ref ghcr.io/example/skills/index:2026.05
+```
+
+The collection's index is fetched and cached under
+`.intropy/collections/<alias>.json` for offline name lookups.
+
+### Refresh or bump a collection
+
+Re-pull in place (useful when the upstream tag is moving, e.g. `:latest`):
+
+```sh
+intropy skills collection update example-skills
+```
+
+Replace the registered ref with a new value (e.g. bump to a new release tag):
+
+```sh
+intropy skills collection update example-skills --ref ghcr.io/example/skills/index:2026.06
+```
+
+### Publish a collection
+
+Write a YAML spec listing the skills to include, then publish:
+
+```yaml
+# example-skills.yaml
+name: example-skills
+description: Curated example skills
+skills:
+  - ref: ghcr.io/example/skills/pr-review:1.2.0
+  - ref: ghcr.io/example/skills/upgrade-spring:2.1.0
+```
+
+```sh
+intropy skills collection publish example-skills.yaml ghcr.io/example/skills/index:2026.05
+```
+
+Each referenced skill is resolved to its current digest at publish time, so the
+collection pins exact content even if upstream tags later move.
+
+## Authentication
+
+OCI operations use the standard Docker credential chain — log in once with
+`docker login`, `gh auth login` (for `ghcr.io`), or your registry-specific
+tooling, and the CLI will pick up the credentials transparently.
+
+## Project layout
+
+```
+cmd/intropy/         Cobra command wiring (one file per command)
+internal/blueprint/  Blueprint download, validation, describe, render
+internal/skill/      skills.json/lockfile, install/update/add, collection cache
+internal/skill/oci/  OCI client wrappers, pack/push/pull, references
+```
+
+## Exit codes
+
+- `0` — success
+- `1` — runtime error
+- `2` — usage error (unknown command, missing required flag, bad argument)
+
+## References
+
+- [Agent Skills OCI Artifacts Spec](https://github.com/ThomasVitale/agents-skills-oci-artifacts-spec)
+  — the packaging, distribution, signing, and tracking spec the `skills`
+  subsystem implements.
+- [`integrio-intropy/blueprints`](https://github.com/integrio-intropy/blueprints)
+  — the blueprint library `intropy int create` and `intropy int describe`
+  download from by default.
