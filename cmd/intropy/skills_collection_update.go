@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -11,7 +12,8 @@ import (
 )
 
 type skillsCollectionUpdateFlags struct {
-	ref string
+	ref    string
+	output string
 }
 
 var skillsCollectionUpdateOpts skillsCollectionUpdateFlags
@@ -32,6 +34,9 @@ version tag to another.`,
 	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: completeRegisteredCollections,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := validateOutputFlag(skillsCollectionUpdateOpts.output, "json", "plain"); err != nil {
+			return err
+		}
 		alias := args[0]
 
 		project, err := skill.FindProject(".")
@@ -92,6 +97,15 @@ version tag to another.`,
 			}
 		}
 
+		if skillsCollectionUpdateOpts.output == "json" {
+			enc := json.NewEncoder(cmd.OutOrStdout())
+			enc.SetIndent("", "  ")
+			return enc.Encode(map[string]any{
+				"alias":        alias,
+				"ref":          ref,
+				"cachedSkills": len(index.Manifests),
+			})
+		}
 		fmt.Fprintf(cmd.ErrOrStderr(), "Refreshed collection %q from %s\n", alias, ref)
 		fmt.Fprintf(cmd.ErrOrStderr(), "  cached %d skill(s)\n", len(index.Manifests))
 		return nil
@@ -103,6 +117,7 @@ func init() {
 		&skillsCollectionUpdateOpts.ref, "ref", "",
 		"Replace the registered ref with this OCI reference before refreshing",
 	)
+	skillsCollectionUpdateCmd.Flags().StringVarP(&skillsCollectionUpdateOpts.output, "output", "o", "plain", "output format: plain or json")
 	_ = skillsCollectionUpdateCmd.RegisterFlagCompletionFunc("ref", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	})

@@ -77,11 +77,11 @@ func resetSkillsCollectionAddState(t *testing.T, stdout, stderr *bytes.Buffer) {
 	t.Helper()
 	rootCmd.SetOut(stdout)
 	rootCmd.SetErr(stderr)
-	skillsCollectionAddOpts = skillsCollectionAddFlags{}
+	skillsCollectionAddOpts = skillsCollectionAddFlags{output: "plain"}
 	t.Cleanup(func() {
 		rootCmd.SetOut(nil)
 		rootCmd.SetErr(nil)
 		rootCmd.SetArgs(nil)
-		skillsCollectionAddOpts = skillsCollectionAddFlags{}
+		skillsCollectionAddOpts = skillsCollectionAddFlags{output: "plain"}
 	})
 }

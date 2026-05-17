@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"text/tabwriter"
@@ -9,11 +10,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
+type skillsListFlags struct {
+	output string
+}
+
+var skillsListOpts skillsListFlags
+
 var skillsListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List installed skills",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := validateOutputFlag(skillsListOpts.output, "json", "plain"); err != nil {
+			return err
+		}
+
 		project, err := skill.FindProject(".")
 		if err != nil {
 			if errors.Is(err, skill.ErrProjectNotFound) {
@@ -32,6 +43,12 @@ var skillsListCmd = &cobra.Command{
 			fmt.Fprintln(cmd.ErrOrStderr(), "No skills installed.")
 			fmt.Fprintln(cmd.ErrOrStderr(), "Use `intropy skills add <ref>` to add one.")
 			return nil
+		}
+
+		if skillsListOpts.output == "json" {
+			enc := json.NewEncoder(cmd.OutOrStdout())
+			enc.SetIndent("", "  ")
+			return enc.Encode(lockfile.Skills)
 		}
 
 		tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
@@ -59,5 +76,7 @@ func shortDigest(d string) string {
 }
 
 func init() {
+	f := skillsListCmd.Flags()
+	f.StringVarP(&skillsListOpts.output, "output", "o", "plain", "output format: plain or json")
 	skillsCmd.AddCommand(skillsListCmd)
 }

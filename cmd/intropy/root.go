@@ -29,6 +29,17 @@ func Execute() error {
 	return nil
 }
 
+// validateOutputFlag returns a usageError if the given format is not in the
+// allowed set. Use this for --output flags that accept a fixed list of formats.
+func validateOutputFlag(format string, allowed ...string) error {
+	for _, a := range allowed {
+		if format == a {
+			return nil
+		}
+	}
+	return newUsageErrorf("invalid output format %q (allowed: %v)", format, allowed)
+}
+
 func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verboseFlag, "verbose", "v", false, "enable verbose output")
 	rootCmd.PersistentFlags().BoolVarP(&quietFlag, "quiet", "q", false, "suppress non-error output")

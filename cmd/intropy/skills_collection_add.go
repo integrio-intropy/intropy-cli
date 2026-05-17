@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -11,8 +12,9 @@ import (
 )
 
 type skillsCollectionAddFlags struct {
-	name string
-	ref  string
+	name   string
+	ref    string
+	output string
 }
 
 var skillsCollectionAddOpts skillsCollectionAddFlags
@@ -26,6 +28,9 @@ published to an OCI registry. After registration, skills can be installed by
 name via 'intropy skills add --name <skill-name>'.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := validateOutputFlag(skillsCollectionAddOpts.output, "json", "plain"); err != nil {
+			return err
+		}
 		if skillsCollectionAddOpts.name == "" {
 			return fmt.Errorf("collection add: --name is required")
 		}
@@ -86,6 +91,15 @@ name via 'intropy skills add --name <skill-name>'.`,
 		if err := project.SaveManifest(manifest); err != nil {
 			return fmt.Errorf("collection add: %w", err)
 		}
+		if skillsCollectionAddOpts.output == "json" {
+			enc := json.NewEncoder(cmd.OutOrStdout())
+			enc.SetIndent("", "  ")
+			return enc.Encode(map[string]any{
+				"name":         skillsCollectionAddOpts.name,
+				"ref":          skillsCollectionAddOpts.ref,
+				"cachedSkills": len(index.Manifests),
+			})
+		}
 		fmt.Fprintf(cmd.ErrOrStderr(), "Registered collection %q -> %s\n", skillsCollectionAddOpts.name, skillsCollectionAddOpts.ref)
 		fmt.Fprintf(cmd.ErrOrStderr(), "  cached %d skill(s)\n", len(index.Manifests))
 		return nil
@@ -101,5 +115,6 @@ func init() {
 		&skillsCollectionAddOpts.ref, "ref", "",
 		"OCI reference of the collection",
 	)
+	skillsCollectionAddCmd.Flags().StringVarP(&skillsCollectionAddOpts.output, "output", "o", "plain", "output format: plain or json")
 	skillsCollectionCmd.AddCommand(skillsCollectionAddCmd)
 }

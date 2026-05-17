@@ -36,11 +36,11 @@ func resetSkillsCollectionUpdateState(t *testing.T, stdout, stderr *bytes.Buffer
 	t.Helper()
 	rootCmd.SetOut(stdout)
 	rootCmd.SetErr(stderr)
-	skillsCollectionUpdateOpts = skillsCollectionUpdateFlags{}
+	skillsCollectionUpdateOpts = skillsCollectionUpdateFlags{output: "plain"}
 	t.Cleanup(func() {
 		rootCmd.SetOut(nil)
 		rootCmd.SetErr(nil)
 		rootCmd.SetArgs(nil)
-		skillsCollectionUpdateOpts = skillsCollectionUpdateFlags{}
+		skillsCollectionUpdateOpts = skillsCollectionUpdateFlags{output: "plain"}
 	})
 }

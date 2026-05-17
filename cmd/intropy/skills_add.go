@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -17,6 +18,7 @@ type skillsAddFlags struct {
 	additionalBasePaths []string
 	name                string
 	collection          string
+	output              string
 }
 
 var skillsAddOpts skillsAddFlags
@@ -36,6 +38,9 @@ If no skills.json exists in the current directory or any parent, an empty one
 is created in the current directory.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := validateOutputFlag(skillsAddOpts.output, "json", "plain"); err != nil {
+			return err
+		}
 		if len(args) == 0 && skillsAddOpts.name == "" {
 			return newUsageErrorf("requires either a ref argument or --name")
 		}
@@ -83,6 +88,11 @@ is created in the current directory.`,
 			return fmt.Errorf("add: %w", err)
 		}
 
+		if skillsAddOpts.output == "json" {
+			enc := json.NewEncoder(cmd.OutOrStdout())
+			enc.SetIndent("", "  ")
+			return enc.Encode(entry)
+		}
 		fmt.Fprintf(cmd.ErrOrStderr(), "Added %s @ %s\n", entry.Name, entry.Source.Tag)
 		fmt.Fprintf(cmd.ErrOrStderr(), "  digest: %s\n", entry.Source.Digest)
 		fmt.Fprintf(cmd.ErrOrStderr(), "  path:   %s\n", entry.Path)
@@ -130,6 +140,7 @@ func init() {
 		"collection", "",
 		"Restrict --name lookup to a single registered collection",
 	)
+	skillsAddCmd.Flags().StringVarP(&skillsAddOpts.output, "output", "o", "plain", "output format: plain or json")
 	_ = skillsAddCmd.RegisterFlagCompletionFunc("collection", completeRegisteredCollections)
 	skillsCmd.AddCommand(skillsAddCmd)
 }

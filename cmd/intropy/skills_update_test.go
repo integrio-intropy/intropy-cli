@@ -60,11 +60,11 @@ func resetSkillsUpdateState(t *testing.T, stdout, stderr *bytes.Buffer) {
 	t.Helper()
 	rootCmd.SetOut(stdout)
 	rootCmd.SetErr(stderr)
-	skillsUpdateOpts = skillsUpdateFlags{}
+	skillsUpdateOpts = skillsUpdateFlags{output: "plain"}
 	t.Cleanup(func() {
 		rootCmd.SetOut(nil)
 		rootCmd.SetErr(nil)
 		rootCmd.SetArgs(nil)
-		skillsUpdateOpts = skillsUpdateFlags{}
+		skillsUpdateOpts = skillsUpdateFlags{output: "plain"}
 	})
 }

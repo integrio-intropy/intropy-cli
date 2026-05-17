@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -12,7 +13,8 @@ import (
 )
 
 type skillsUpdateFlags struct {
-	all bool
+	all    bool
+	output string
 }
 
 var skillsUpdateOpts skillsUpdateFlags
@@ -32,6 +34,9 @@ Pass --all to reconcile every installed skill at once.`,
 	Args:              cobra.MaximumNArgs(1),
 	ValidArgsFunction: completeInstalledSkills,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := validateOutputFlag(skillsUpdateOpts.output, "json", "plain"); err != nil {
+			return err
+		}
 		if len(args) == 0 && !skillsUpdateOpts.all {
 			return newUsageErrorf("requires a skill name or --all")
 		}
@@ -72,20 +77,34 @@ Pass --all to reconcile every installed skill at once.`,
 			names = []string{args[0]}
 		}
 
-		changed := 0
+		var results []skill.UpdateResult
 		for _, name := range names {
 			result, err := updater.Update(ctx, name)
 			if err != nil {
 				return fmt.Errorf("update: %w", err)
 			}
-			if result.Changed {
-				fmt.Fprintf(cmd.ErrOrStderr(), "Updated %s: %s -> %s\n", name, result.OldVersion, result.NewVersion)
-				changed++
-			} else {
-				fmt.Fprintf(cmd.ErrOrStderr(), "%s already at %s\n", name, result.OldVersion)
+			results = append(results, result)
+			if skillsUpdateOpts.output == "plain" {
+				if result.Changed {
+					fmt.Fprintf(cmd.ErrOrStderr(), "Updated %s: %s -> %s\n", name, result.OldVersion, result.NewVersion)
+				} else {
+					fmt.Fprintf(cmd.ErrOrStderr(), "%s already at %s\n", name, result.OldVersion)
+				}
 			}
 		}
 
+		if skillsUpdateOpts.output == "json" {
+			enc := json.NewEncoder(cmd.OutOrStdout())
+			enc.SetIndent("", "  ")
+			return enc.Encode(results)
+		}
+
+		changed := 0
+		for _, r := range results {
+			if r.Changed {
+				changed++
+			}
+		}
 		if changed == 0 {
 			fmt.Fprintln(cmd.ErrOrStderr(), "Nothing to update.")
 		}
@@ -99,5 +118,6 @@ func init() {
 		&skillsUpdateOpts.all, "all", false,
 		"Update every installed skill",
 	)
+	skillsUpdateCmd.Flags().StringVarP(&skillsUpdateOpts.output, "output", "o", "plain", "output format: plain or json")
 	skillsCmd.AddCommand(skillsUpdateCmd)
 }

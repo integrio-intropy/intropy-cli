@@ -105,7 +105,7 @@ Inspect what parameters a blueprint accepts before scaffolding it:
 ```sh
 intropy int describe hello-world
 intropy int describe hello-world --version v1.2.0
-intropy int describe hello-world --json   # machine-readable; same schema Backstage renders
+intropy int describe hello-world -o json   # machine-readable; same schema Backstage renders
 ```
 
 Without `--version`, the latest GitHub release is used.
@@ -171,6 +171,7 @@ is created in the current directory.
 
 ```sh
 intropy skills list
+intropy skills list -o json   # machine-readable output
 ```
 
 ### Update a skill
@@ -182,6 +183,7 @@ collection's cached index. If the collection upstream has been republished, run
 ```sh
 intropy skills update pr-review
 intropy skills update --all
+intropy skills update --all -o json   # machine-readable results
 ```
 
 ### Publish a skill
@@ -209,6 +211,11 @@ Registering a collection lets you install its skills by name.
 intropy skills collection add \
   --name example-skills \
   --ref ghcr.io/example/skills/index:2026.05
+
+intropy skills collection add \
+  --name example-skills \
+  --ref ghcr.io/example/skills/index:2026.05 \
+  -o json   # machine-readable confirmation
 ```
 
 The collection's index is fetched and cached under
