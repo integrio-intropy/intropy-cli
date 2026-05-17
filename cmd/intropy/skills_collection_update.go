@@ -91,8 +91,8 @@ version tag to another.`,
 			}
 		}
 
-		cmd.Printf("Refreshed collection %q from %s\n", alias, ref)
-		cmd.Printf("  cached %d skill(s)\n", len(index.Manifests))
+		fmt.Fprintf(cmd.ErrOrStderr(), "Refreshed collection %q from %s\n", alias, ref)
+		fmt.Fprintf(cmd.ErrOrStderr(), "  cached %d skill(s)\n", len(index.Manifests))
 		return nil
 	},
 }

@@ -32,10 +32,10 @@ Pass --all to reconcile every installed skill at once.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 && !skillsUpdateOpts.all {
-			return fmt.Errorf("requires a skill name or --all")
+			return newUsageErrorf("requires a skill name or --all")
 		}
 		if len(args) == 1 && skillsUpdateOpts.all {
-			return fmt.Errorf("pass either a skill name or --all, not both")
+			return newUsageErrorf("pass either a skill name or --all, not both")
 		}
 
 		project, err := skill.FindProject(".")
@@ -61,7 +61,7 @@ Pass --all to reconcile every installed skill at once.`,
 				return fmt.Errorf("update: %w", err)
 			}
 			if len(manifest.Skills) == 0 {
-				cmd.Println("No skills installed.")
+				fmt.Fprintln(cmd.ErrOrStderr(), "No skills installed.")
 				return nil
 			}
 			for _, e := range manifest.Skills {
@@ -86,7 +86,7 @@ Pass --all to reconcile every installed skill at once.`,
 		}
 
 		if changed == 0 {
-			cmd.Println("Nothing to update.")
+			fmt.Fprintln(cmd.ErrOrStderr(), "Nothing to update.")
 		}
 
 		return nil

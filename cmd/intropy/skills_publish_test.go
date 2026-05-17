@@ -16,9 +16,9 @@ func TestSkillsPublishMissingFlags(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing required flags, got nil")
 	}
-	// cobra emits "required flag(s) ..." which isUsageError matches to exit 2.
-	if !strings.HasPrefix(err.Error(), "required flag(s)") {
-		t.Errorf("error %q does not look like a required-flag usage error", err.Error())
+	// Cobra's missing-required-flag error maps to exit code 2 via isCobraUsageError.
+	if !isCobraUsageError(err) {
+		t.Errorf("error %q is not a recognized usage error", err.Error())
 	}
 }
 

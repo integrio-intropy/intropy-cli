@@ -86,8 +86,8 @@ name via 'intropy skills add --name <skill-name>'.`,
 		if err := project.SaveManifest(manifest); err != nil {
 			return fmt.Errorf("collection add: %w", err)
 		}
-		cmd.Printf("Registered collection %q -> %s\n", skillsCollectionAddOpts.name, skillsCollectionAddOpts.ref)
-		cmd.Printf("  cached %d skill(s)\n", len(index.Manifests))
+		fmt.Fprintf(cmd.ErrOrStderr(), "Registered collection %q -> %s\n", skillsCollectionAddOpts.name, skillsCollectionAddOpts.ref)
+		fmt.Fprintf(cmd.ErrOrStderr(), "  cached %d skill(s)\n", len(index.Manifests))
 		return nil
 	},
 }

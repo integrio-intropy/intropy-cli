@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,11 +18,10 @@ func TestSkillsAddNoArgs(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing positional arg, got nil")
 	}
-	// The "requires either a ref argument or --name" message starts with
-	// "requires " — cmd/intropy/main.go:isUsageError matches that prefix and
-	// maps to exit code 2.
-	if !strings.HasPrefix(err.Error(), "requires ") {
-		t.Errorf("error %q does not look like a usage error", err.Error())
+	// The error should be a usageError (maps to exit code 2).
+	var ue *usageError
+	if !errors.As(err, &ue) {
+		t.Errorf("error %q is not a usageError", err.Error())
 	}
 }
 

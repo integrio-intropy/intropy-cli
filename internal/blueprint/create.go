@@ -56,12 +56,6 @@ func (o *CreateOptions) applyDefaults() {
 	if o.Stdin == nil {
 		o.Stdin = os.Stdin
 	}
-	if o.Stdout == nil {
-		o.Stdout = os.Stdout
-	}
-	if o.Stderr == nil {
-		o.Stderr = os.Stderr
-	}
 	if o.UserAgent == "" {
 		o.UserAgent = "intropy-cli"
 	}

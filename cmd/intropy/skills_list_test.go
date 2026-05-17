@@ -19,8 +19,8 @@ func TestSkillsListProjectNotFound(t *testing.T) {
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("expected no error on empty tempdir, got %v", err)
 	}
-	if !strings.Contains(stdout.String(), "No skills installed.") {
-		t.Errorf("expected 'No skills installed.' on stdout, got %q", stdout.String())
+	if !strings.Contains(stderr.String(), "No skills installed.") {
+		t.Errorf("expected 'No skills installed.' on stderr, got %q", stderr.String())
 	}
 }
 
@@ -36,8 +36,8 @@ func TestSkillsListEmptyLockfile(t *testing.T) {
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "No skills installed.") {
-		t.Errorf("expected 'No skills installed.' on stdout, got %q", stdout.String())
+	if !strings.Contains(stderr.String(), "No skills installed.") {
+		t.Errorf("expected 'No skills installed.' on stderr, got %q", stderr.String())
 	}
 }
 

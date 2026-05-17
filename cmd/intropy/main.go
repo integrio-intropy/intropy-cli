@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"strings"
 )
@@ -11,21 +12,33 @@ func main() {
 	}
 }
 
-// exitCode maps Cobra/user errors to Unix-style exit codes.
-// Cobra does not expose one usage-error type, so common flag and argument
-// errors are classified by message prefix.
+// exitCode maps errors to Unix-style exit codes.
+//
+//	0 — success
+//	1 — runtime error
+//	2 — usage error (invalid flags, arguments, or missing required input)
 func exitCode(err error) int {
 	if err == nil {
 		return 0
 	}
-	if isUsageError(err.Error()) {
+	var ue *usageError
+	if errors.As(err, &ue) {
+		return 2
+	}
+	// Cobra's built-in flag/argument errors don't wrap a typed error,
+	// so we fall back to message prefix detection for those.
+	if isCobraUsageError(err) {
 		return 2
 	}
 	return 1
 }
 
-func isUsageError(msg string) bool {
-	usagePrefixes := []string{
+// isCobraUsageError detects Cobra-generated flag and argument errors
+// that should map to exit code 2. These are errors from Cobra itself,
+// not from our RunE functions (which should use usageError).
+func isCobraUsageError(err error) bool {
+	msg := err.Error()
+	prefixes := []string{
 		"unknown command",
 		"unknown flag",
 		"invalid argument",
@@ -33,8 +46,8 @@ func isUsageError(msg string) bool {
 		"requires ",
 		"required flag(s)",
 	}
-	for _, prefix := range usagePrefixes {
-		if strings.HasPrefix(msg, prefix) {
+	for _, p := range prefixes {
+		if strings.HasPrefix(msg, p) {
 			return true
 		}
 	}

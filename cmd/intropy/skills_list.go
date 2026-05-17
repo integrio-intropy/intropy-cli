@@ -17,7 +17,7 @@ var skillsListCmd = &cobra.Command{
 		project, err := skill.FindProject(".")
 		if err != nil {
 			if errors.Is(err, skill.ErrProjectNotFound) {
-				cmd.Println("No skills installed.")
+				fmt.Fprintln(cmd.ErrOrStderr(), "No skills installed.")
 				return nil
 			}
 			return fmt.Errorf("list: %w", err)
@@ -29,8 +29,8 @@ var skillsListCmd = &cobra.Command{
 		}
 
 		if len(lockfile.Skills) == 0 {
-			cmd.Println("No skills installed.")
-			cmd.Println("Use `intropy skills add <ref>` to add one.")
+			fmt.Fprintln(cmd.ErrOrStderr(), "No skills installed.")
+			fmt.Fprintln(cmd.ErrOrStderr(), "Use `intropy skills add <ref>` to add one.")
 			return nil
 		}
 

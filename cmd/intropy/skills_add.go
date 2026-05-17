@@ -37,13 +37,13 @@ is created in the current directory.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 && skillsAddOpts.name == "" {
-			return fmt.Errorf("requires either a ref argument or --name")
+			return newUsageErrorf("requires either a ref argument or --name")
 		}
 		if len(args) == 1 && skillsAddOpts.name != "" {
-			return fmt.Errorf("pass either a ref argument or --name, not both")
+			return newUsageErrorf("pass either a ref argument or --name, not both")
 		}
 		if len(args) == 0 && skillsAddOpts.collection != "" && skillsAddOpts.name == "" {
-			return fmt.Errorf("--collection only applies with --name")
+			return newUsageErrorf("--collection only applies with --name")
 		}
 
 		project, err := resolveOrBootstrapProject(".")
