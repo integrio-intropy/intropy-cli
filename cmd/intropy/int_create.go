@@ -22,10 +22,10 @@ type createFlags struct {
 var intCreateFlags createFlags
 
 var intCreateCmd = &cobra.Command{
-	Use:   "create <blueprint>",
-	Short: "Create a new integration",
-	Long:  "Scaffold a new integration from the official Intropy blueprints library. The positional argument selects which blueprint subdirectory to render (e.g. 'hello-world').",
-	Args:             cobra.ExactArgs(1),
+	Use:               "create <blueprint>",
+	Short:             "Create a new integration",
+	Long:              "Scaffold a new integration from the official Intropy blueprints library. The positional argument selects which blueprint subdirectory to render (e.g. 'hello-world').",
+	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: completeBlueprints,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sets, err := blueprint.ParseSets(intCreateFlags.sets)

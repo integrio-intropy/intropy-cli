@@ -29,7 +29,7 @@ republished under the same tag).
 With --ref, the stored ref is replaced with the new value and the cache is
 refreshed from it — use this to bump a registered collection from one
 version tag to another.`,
-	Args:             cobra.ExactArgs(1),
+	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: completeRegisteredCollections,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		alias := args[0]
