@@ -21,6 +21,12 @@ Requires Go 1.26+.
 ```sh
 git clone https://github.com/intropy/intropy-cli.git
 cd intropy-cli
+make build
+```
+
+Or manually:
+
+```sh
 go build -o bin/intropy ./cmd/intropy
 ```
 
@@ -237,6 +243,11 @@ internal/skill/oci/  OCI client wrappers, pack/push/pull, references
 - `0` — success
 - `1` — runtime error
 - `2` — usage error (unknown command, missing required flag, bad argument)
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions, code standards,
+and the pull request workflow.
 
 ## References
 
