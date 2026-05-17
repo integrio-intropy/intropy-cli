@@ -14,6 +14,13 @@ agent skills. It does two things:
 
 ## Install
 
+### Homebrew (macOS / Linux)
+
+```sh
+brew tap intropy/tap
+brew install intropy
+```
+
 ### Quick install (macOS / Linux)
 
 ```sh

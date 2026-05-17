@@ -84,6 +84,30 @@ changelog:
     - title: Other Changes
       order: 999
 
+brews:
+  - name: intropy
+    repository:
+      owner: intropy
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/intropy/intropy-cli"
+    description: "CLI for Intropy integrations and agent skills"
+    license: "MIT"
+    test: |
+      system "#{bin}/intropy", "version"
+    install: |
+      bin.install "intropy"
+      output = Utils.safe_popen_read(bin/"intropy", "completion", "bash")
+      (bash_completion/"intropy").write output
+      output = Utils.safe_popen_read(bin/"intropy", "completion", "zsh")
+      (zsh_completion/"_intropy").write output
+      output = Utils.safe_popen_read(bin/"intropy", "completion", "fish")
+      (fish_completion/"intropy.fish").write output
+    dependencies:
+      - name: cosign
+        type: optional
+
 release:
   github:
     owner: intropy
