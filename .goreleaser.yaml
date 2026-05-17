@@ -1,0 +1,85 @@
+# GoReleaser configuration for intropy CLI
+# https://goreleaser.com/
+#
+# Usage:
+#   goreleaser release --clean        # full release (requires GITHUB_TOKEN)
+#   goreleaser release --snapshot     # test build without publishing
+
+version: 2
+
+project_name: intropy
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: intropy
+    main: ./cmd/intropy
+    binary: intropy
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+    flags:
+      - -trimpath
+
+archives:
+  - format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    files:
+      - README.md
+      - LICENSE
+      - CONTRIBUTING.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-rc"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))?!?:.*$'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^.*?fix(\(.+\))?!?:.*$'
+      order: 1
+    - title: Other Changes
+      order: 999
+
+release:
+  github:
+    owner: intropy
+    name: intropy-cli
+  draft: true
+  prerelease: auto
