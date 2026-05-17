@@ -46,6 +46,16 @@ archives:
       - LICENSE
       - CONTRIBUTING.md
 
+signs:
+  - cmd: cosign
+    certificate: '${artifact}.pem'
+    args:
+      - sign-blob
+      - '--output-certificate=${certificate}'
+      - '--output-signature=${signature}'
+      - '${artifact}'
+    artifacts: all
+
 checksum:
   name_template: checksums.txt
   algorithm: sha256

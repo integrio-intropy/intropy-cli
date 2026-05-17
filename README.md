@@ -32,6 +32,22 @@ go build -o bin/intropy ./cmd/intropy
 
 Add `bin/` to your `PATH`, or move the binary somewhere on your `PATH`.
 
+### Verifying signatures
+
+Release binaries are signed with [cosign](https://sigstore.dev/) using
+keyless signing via GitHub Actions OIDC. Each release includes `.sig` and
+`.pem` files for every archive.
+
+```sh
+# Download the archive, its .sig, and its .pem from the GitHub release
+cosign verify-blob \
+  --certificate intropy_Darwin_arm64.tar.gz.pem \
+  --signature intropy_Darwin_arm64.tar.gz.sig \
+  --certificate-identity-regexp="https://github.com/intropy/intropy-cli" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+  intropy_Darwin_arm64.tar.gz
+```
+
 ### Windows
 
 Windows is not a supported native target. Install and run `intropy` inside
