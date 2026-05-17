@@ -130,5 +130,6 @@ func init() {
 		"collection", "",
 		"Restrict --name lookup to a single registered collection",
 	)
+	_ = skillsAddCmd.RegisterFlagCompletionFunc("collection", completeRegisteredCollections)
 	skillsCmd.AddCommand(skillsAddCmd)
 }

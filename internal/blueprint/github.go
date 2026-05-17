@@ -38,12 +38,17 @@ func newGitHub(client *http.Client, userAgent string) *GitHub {
 	}
 }
 
-func newConfiguredGitHub(client *http.Client, userAgent, baseURL string) *GitHub {
+// NewGitHubClient creates a configured GitHub client for external callers.
+func NewGitHubClient(client *http.Client, userAgent, baseURL string) *GitHub {
 	gh := newGitHub(client, userAgent)
 	if baseURL != "" {
 		gh.BaseURL = baseURL
 	}
 	return gh
+}
+
+func newConfiguredGitHub(client *http.Client, userAgent, baseURL string) *GitHub {
+	return NewGitHubClient(client, userAgent, baseURL)
 }
 
 func resolveReleaseTag(ctx context.Context, gh *GitHub, owner, repo, requestedTag string) (string, error) {
@@ -130,6 +135,50 @@ func (g *GitHub) Tarball(ctx context.Context, owner, repo, tag string) (io.ReadC
 		return nil, fmt.Errorf("download tarball: %s: %s", resp.Status, string(body))
 	}
 	return resp.Body, nil
+}
+
+// ListBlueprints returns the names of blueprint directories at the root of
+// the blueprints repository. On any error an empty slice is returned.
+func (g *GitHub) ListBlueprints(ctx context.Context, owner, repo string) ([]string, error) {
+	if owner == "" {
+		owner = defaultBlueprintOwner
+	}
+	if repo == "" {
+		repo = defaultBlueprintRepo
+	}
+	u := fmt.Sprintf("%s/repos/%s/%s/contents/", g.BaseURL, owner, repo)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	g.addCommonHeaders(req)
+
+	resp, err := g.HTTP.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("list contents: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("list contents: %s: %s", resp.Status, string(body))
+	}
+
+	var entries []struct {
+		Name string `json:"name"`
+		Type string `json:"type"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
+		return nil, fmt.Errorf("decode contents: %w", err)
+	}
+
+	var dirs []string
+	for _, e := range entries {
+		if e.Type == "dir" {
+			dirs = append(dirs, e.Name)
+		}
+	}
+	return dirs, nil
 }
 
 func (g *GitHub) addCommonHeaders(req *http.Request) {

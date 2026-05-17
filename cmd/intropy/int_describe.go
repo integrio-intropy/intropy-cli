@@ -22,7 +22,8 @@ var intDescribeCmd = &cobra.Command{
 	Short: "Describe an Intropy blueprint",
 	Long: "Print the blueprint manifest — metadata and parameter schema — for the requested release. " +
 		"Use --json to emit a stable, machine-readable document (the same schema Backstage's frontend renders).",
-	Args: cobra.ExactArgs(1),
+	Args:             cobra.ExactArgs(1),
+	ValidArgsFunction: completeBlueprints,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
