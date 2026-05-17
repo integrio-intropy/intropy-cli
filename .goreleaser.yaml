@@ -45,6 +45,7 @@ archives:
       - README.md
       - LICENSE
       - CONTRIBUTING.md
+      - install.sh
 
 signs:
   - cmd: cosign
@@ -89,3 +90,5 @@ release:
     name: intropy-cli
   draft: true
   prerelease: auto
+  extra_files:
+    - glob: ./install.sh

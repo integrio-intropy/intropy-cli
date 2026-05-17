@@ -14,6 +14,26 @@ agent skills. It does two things:
 
 ## Install
 
+### Quick install (macOS / Linux)
+
+```sh
+curl -fsSL https://get.intropy.example/install.sh | sh
+```
+
+With options:
+
+```sh
+# Install to a custom prefix
+curl -fsSL https://get.intropy.example/install.sh | sh -s -- --prefix ~/.local
+
+# Install a specific version
+curl -fsSL https://get.intropy.example/install.sh | sh -s -- --version v0.1.0
+```
+
+The script detects your OS and architecture, downloads the matching release
+archive, verifies the SHA256 checksum, optionally verifies the cosign signature,
+and installs the binary and shell completions.
+
 ### From source
 
 Requires Go 1.26+.
