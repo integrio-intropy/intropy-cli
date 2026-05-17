@@ -50,6 +50,31 @@ Check what you have with:
 intropy version
 ```
 
+## Quickstart
+
+### Scaffold your first integration
+
+```sh
+# Inspect a blueprint before you scaffold it
+intropy int describe hello-world
+
+# Render it into a new directory
+intropy int create hello-world -o ./my-integration
+```
+
+### Install a skill from a collection
+
+```sh
+# Register a collection (one-time)
+intropy skills collection add --name intropy --ref ghcr.io/intropy/skills/index:latest
+
+# Install a skill by name
+intropy skills add --name pr-review
+
+# List what you have installed
+intropy skills list
+```
+
 ## Command overview
 
 ```
@@ -243,6 +268,17 @@ internal/skill/oci/  OCI client wrappers, pack/push/pull, references
 - `0` — success
 - `1` — runtime error
 - `2` — usage error (unknown command, missing required flag, bad argument)
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `intropy int create` fails with "blueprint not found" | The blueprint name is misspelled or does not exist in the library. | Run `intropy int describe <name>` to verify the blueprint exists. Check spelling and case. |
+| `intropy skills add` fails with "unauthorized" | Missing or expired registry credentials. | Run `docker login <registry>` or `gh auth login` (for `ghcr.io`) and retry. |
+| `intropy skills add --name <skill>` fails with "not found" | The skill name is not in any registered collection, or the collection cache is stale. | Run `intropy skills collection update <alias>` to refresh the cache, or install by full OCI ref. |
+| `skills.json` merge conflicts | Multiple contributors edited `skills.json` or `skills.lock.json` simultaneously. | Resolve the conflict manually (both files are plain JSON), then run `intropy skills list` to verify. |
+
+For issues not listed here, run the failing command with `--help` to verify flag usage, or open an issue with the output of `intropy version` and the exact command you ran.
 
 ## Contributing
 
