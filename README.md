@@ -32,6 +32,13 @@ go build -o bin/intropy ./cmd/intropy
 
 Add `bin/` to your `PATH`, or move the binary somewhere on your `PATH`.
 
+### Windows
+
+Windows is not a supported native target. Install and run `intropy` inside
+[WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install) using the Linux
+instructions above. The CLI relies on Unix path conventions and signal handling
+that are not tested on Windows.
+
 ### Version stamping
 
 Version, commit, and build date are injected via `-ldflags` at release time:
@@ -284,6 +291,7 @@ internal/skill/oci/  OCI client wrappers, pack/push/pull, references
 | `intropy skills add` fails with "unauthorized" | Missing or expired registry credentials. | Run `docker login <registry>` or `gh auth login` (for `ghcr.io`) and retry. |
 | `intropy skills add --name <skill>` fails with "not found" | The skill name is not in any registered collection, or the collection cache is stale. | Run `intropy skills collection update <alias>` to refresh the cache, or install by full OCI ref. |
 | `skills.json` merge conflicts | Multiple contributors edited `skills.json` or `skills.lock.json` simultaneously. | Resolve the conflict manually (both files are plain JSON), then run `intropy skills list` to verify. |
+| Windows native errors | Running the Linux binary directly on Windows without WSL. | Use WSL 2 — native Windows is not supported. |
 
 For issues not listed here, run the failing command with `--help` to verify flag usage, or open an issue with the output of `intropy version` and the exact command you ran.
 

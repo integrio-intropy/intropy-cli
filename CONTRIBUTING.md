@@ -21,6 +21,7 @@ standards, and conventions we follow.
 ### Prerequisites
 
 - [Go 1.26+](https://go.dev/dl/)
+- macOS or Linux (Windows developers: use [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install))
 - A working Go module cache (`go env GOPATH`)
 
 ### Clone and build
