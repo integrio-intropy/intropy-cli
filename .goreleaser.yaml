@@ -1,0 +1,121 @@
+# GoReleaser configuration for intropy CLI
+# https://goreleaser.com/
+#
+# Usage:
+#   goreleaser release --clean        # full release (requires GITHUB_TOKEN)
+#   goreleaser release --snapshot     # test build without publishing
+
+version: 2
+
+project_name: intropy
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: intropy
+    main: ./cmd/intropy
+    binary: intropy
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+    flags:
+      - -trimpath
+
+archives:
+  - formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    files:
+      - README.md
+      - LICENSE
+      - CONTRIBUTING.md
+      - install.sh
+
+signs:
+  - cmd: cosign
+    certificate: '${artifact}.pem'
+    args:
+      - sign-blob
+      - '--output-certificate=${certificate}'
+      - '--output-signature=${signature}'
+      - '${artifact}'
+      - '--yes'   # non-interactive: skip the tlog confirmation prompt (no TTY in CI)
+    artifacts: all
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-rc"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))?!?:.*$'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^.*?fix(\(.+\))?!?:.*$'
+      order: 1
+    - title: Other Changes
+      order: 999
+
+homebrew_casks:
+  - name: intropy
+    repository:
+      owner: integrio-intropy
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    directory: Casks
+    homepage: "https://github.com/integrio-intropy/intropy-cli"
+    description: "CLI for Intropy integrations"
+    generate_completions_from_executable:
+      executable: intropy
+      args:
+        - completion
+      shells:
+        - bash
+        - zsh
+        - fish
+    # The binary is signed with cosign (sigstore), not Apple-notarized, so macOS
+    # Gatekeeper would quarantine it. Strip the quarantine attribute on install.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/intropy"]
+          end
+
+release:
+  github:
+    owner: integrio-intropy
+    name: intropy-cli
+  draft: true
+  prerelease: auto
+  extra_files:
+    - glob: ./install.sh
