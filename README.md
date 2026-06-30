@@ -11,8 +11,14 @@ It **scaffolds integrations** from the official Intropy blueprint library hosted
 Distributed as a Homebrew cask (macOS only):
 
 ```sh
-brew install integrio-intropy/tap/intropy
+brew tap integrio-intropy/tap
+brew trust --tap integrio-intropy/tap
+brew install intropy
 ```
+
+The `brew trust` step is required when `HOMEBREW_REQUIRE_TAP_TRUST` is set —
+the default on current Homebrew (6.x+). On older versions without that
+requirement you can skip it.
 
 On Linux, use the quick install script below or download a binary from the
 [releases page](https://github.com/integrio-intropy/intropy-cli/releases).
