@@ -26,17 +26,17 @@ On Linux, use the quick install script below or download a binary from the
 ### Quick install (macOS / Linux)
 
 ```sh
-curl -fsSL https://get.intropy.example/install.sh | sh
+curl -fsSL https://github.com/integrio-intropy/intropy-cli/releases/latest/download/install.sh | sh
 ```
 
 With options:
 
 ```sh
 # Install to a custom prefix
-curl -fsSL https://get.intropy.example/install.sh | sh -s -- --prefix ~/.local
+curl -fsSL https://github.com/integrio-intropy/intropy-cli/releases/latest/download/install.sh | sh -s -- --prefix ~/.local
 
 # Install a specific version
-curl -fsSL https://get.intropy.example/install.sh | sh -s -- --version v0.1.0
+curl -fsSL https://github.com/integrio-intropy/intropy-cli/releases/latest/download/install.sh | sh -s -- --version v1.0.0
 ```
 
 The script detects your OS and architecture, downloads the matching release

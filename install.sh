@@ -2,9 +2,9 @@
 # install.sh — install intropy from GitHub Releases
 #
 # Usage:
-#   curl -fsSL https://get.intropy.example/install.sh | sh
-#   curl -fsSL https://get.intropy.example/install.sh | sh -s -- --version v0.1.0
-#   curl -fsSL https://get.intropy.example/install.sh | sh -s -- --prefix ~/.local
+#   curl -fsSL https://github.com/integrio-intropy/intropy-cli/releases/latest/download/install.sh | sh
+#   curl -fsSL https://github.com/integrio-intropy/intropy-cli/releases/latest/download/install.sh | sh -s -- --version v1.0.0
+#   curl -fsSL https://github.com/integrio-intropy/intropy-cli/releases/latest/download/install.sh | sh -s -- --prefix ~/.local
 
 set -e
 
@@ -46,8 +46,8 @@ done
 # --- detect OS ---
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 case "$OS" in
-	linux) OS="Linux" ;;
-	darwin) OS="Darwin" ;;
+	linux) OS="linux" ;;
+	darwin) OS="darwin" ;;
 	*)
 		echo "Unsupported operating system: $OS"
 		echo "Supported: Linux, Darwin (macOS)"
@@ -69,14 +69,21 @@ esac
 
 # --- resolve version ---
 if [ -z "$VERSION" ]; then
-	# Fetch the latest release tag from GitHub API
+	# Fetch the latest release tag from the GitHub API (tag_name only exists in
+	# the JSON, not the /releases/latest HTML page).
 	echo "==> Resolving latest version..."
-	VERSION=$(curl -fsSL "${GITHUB}/releases/latest" | sed -n 's/.*tag_name":"\([^"]*\)".*/\1/p')
+	VERSION=$(curl -fsSL "https://api.github.com/repos/${OWNER}/${REPO}/releases/latest" | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p')
 	if [ -z "$VERSION" ]; then
 		echo "Failed to determine latest version"
 		exit 1
 	fi
 fi
+
+# The release tag carries a leading 'v' (e.g. v1.0.0), but GoReleaser archives
+# omit it (intropy_1.0.0_linux_amd64.tar.gz). Track the tag and the bare number
+# separately and normalize whichever form the user passed via --version.
+TAG="v${VERSION#v}"
+VERSION="${VERSION#v}"
 
 echo "==> Installing ${BINARY} ${VERSION} for ${OS}/${ARCH}..."
 
@@ -105,7 +112,7 @@ ARTIFACT="${BINARY}_${VERSION}_${OS}_${ARCH}.tar.gz"
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
-BASE_URL="${GITHUB}/releases/download/${VERSION}"
+BASE_URL="${GITHUB}/releases/download/${TAG}"
 
 echo "==> Downloading ${ARTIFACT}..."
 curl -fsSL "${BASE_URL}/${ARTIFACT}" -o "${TMPDIR}/${ARTIFACT}"
