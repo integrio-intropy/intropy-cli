@@ -28,7 +28,7 @@ type CreateOptions struct {
 	UserAgent  string
 
 	// Test overrides. Production callers leave these zero-valued; the CLI
-	// always targets the official blueprint library at integrio-intropy/blueprints.
+	// always targets the official blueprint library at integrio-intropy/intropy-blueprints.
 	Owner         string
 	Repo          string
 	GitHubBaseURL string

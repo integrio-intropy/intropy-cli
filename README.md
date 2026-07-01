@@ -2,7 +2,7 @@
 
 `intropy` is the command-line interface for working with Intropy integrations.
 It **scaffolds integrations** from the official Intropy blueprint library hosted at
-[`integrio-intropy/blueprints`](https://github.com/integrio-intropy/blueprints).
+[`integrio-intropy/intropy-blueprints`](https://github.com/integrio-intropy/intropy-blueprints).
 
 ## Install
 
@@ -193,6 +193,6 @@ and the pull request workflow.
 
 ## References
 
-- [`integrio-intropy/blueprints`](https://github.com/integrio-intropy/blueprints)
+- [`integrio-intropy/intropy-blueprints`](https://github.com/integrio-intropy/intropy-blueprints)
   — the blueprint library `intropy int create` and `intropy int describe`
   download from by default.

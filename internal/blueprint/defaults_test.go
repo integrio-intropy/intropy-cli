@@ -10,7 +10,7 @@ func TestProductionDefaults(t *testing.T) {
 	if defaultBlueprintOwner != "integrio-intropy" {
 		t.Errorf("defaultBlueprintOwner = %q, want %q", defaultBlueprintOwner, "integrio-intropy")
 	}
-	if defaultBlueprintRepo != "blueprints" {
-		t.Errorf("defaultBlueprintRepo = %q, want %q", defaultBlueprintRepo, "blueprints")
+	if defaultBlueprintRepo != "intropy-blueprints" {
+		t.Errorf("defaultBlueprintRepo = %q, want %q", defaultBlueprintRepo, "intropy-blueprints")
 	}
 }

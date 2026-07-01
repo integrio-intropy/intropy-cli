@@ -12,7 +12,7 @@ import (
 
 const (
 	defaultBlueprintOwner = "integrio-intropy"
-	defaultBlueprintRepo  = "blueprints"
+	defaultBlueprintRepo  = "intropy-blueprints"
 	templateManifestName  = "template.yaml"
 	blueprintSkeletonDir  = "skeleton"
 	githubAPIBaseURL      = "https://api.github.com"
