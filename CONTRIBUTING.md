@@ -90,7 +90,7 @@ automated changelog generation.
 
 **Types:** `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
 
-**Scopes (common):** `int`, `blueprint`, `cli`, `deps`
+**Scopes (common):** `int`, `skills`, `oci`, `blueprint`, `cli`, `deps`
 
 **Examples:**
 
@@ -178,7 +178,7 @@ go test -race ./...
 
 - Test commands by executing them programmatically and capturing output.
 - Use `cmd.SetOut(buf)` and `cmd.SetErr(errBuf)` so tests can inspect output.
-- Mock HTTP transports (e.g. the GitHub blueprint client) — do not hit the network in tests.
+- Mock OCI registry calls and HTTP transports (e.g. the GitHub blueprint client) — do not hit the network or real registries in tests.
 - Each `_test.go` file lives alongside the code it tests.
 
 ### Adding tests
@@ -194,6 +194,8 @@ go test -race ./...
 ```
 cmd/intropy/         Cobra commands — one file per command + tests
 internal/blueprint/  Blueprint download, validation, describe, render
+internal/skill/      skills.json/lockfile, install/update/add, collection cache
+internal/skill/oci/  OCI client wrappers, pack/push/pull, references
 ```
 
 ### Version stamping
@@ -207,6 +209,14 @@ go build -ldflags "\
   -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   -o bin/intropy ./cmd/intropy
 ```
+
+### OCI and skills compliance
+
+The `skills` subsystem implements the
+[Agent Skills OCI Artifacts Spec](https://github.com/ThomasVitale/agents-skills-oci-artifacts-spec).
+When modifying OCI packaging, pulling, or metadata, ensure conformance with the
+spec. Changes that affect wire format or artifact structure should be discussed
+in an issue first.
 
 ## Reporting Issues
 

@@ -15,7 +15,7 @@ var (
 var rootCmd = &cobra.Command{
 	Use:           "intropy",
 	Short:         "Intropy CLI",
-	Long:          "intropy is the command-line interface for working with Intropy integrations.",
+	Long:          "intropy is the command-line interface for working with Intropy skills and integrations.",
 	Version:       version,
 	SilenceUsage:  true,
 	SilenceErrors: true,
