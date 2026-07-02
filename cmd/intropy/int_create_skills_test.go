@@ -101,7 +101,7 @@ func TestSkillProjectAtKeepsExisting(t *testing.T) {
 func TestMaybeInstallSkillsSkips(t *testing.T) {
 	t.Run("no-input", func(t *testing.T) {
 		errW := &bytes.Buffer{}
-		if err := maybeInstallSkills(context.Background(), os.Stdin, errW, false, true, t.TempDir()); err != nil {
+		if err := maybeInstallSkills(context.Background(), os.Stdin, errW, false, false, true, t.TempDir()); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if !strings.Contains(errW.String(), "skills not installed") {
@@ -110,11 +110,20 @@ func TestMaybeInstallSkillsSkips(t *testing.T) {
 	})
 	t.Run("non-terminal stdin", func(t *testing.T) {
 		errW := &bytes.Buffer{}
-		if err := maybeInstallSkills(context.Background(), strings.NewReader("y\n"), errW, false, false, t.TempDir()); err != nil {
+		if err := maybeInstallSkills(context.Background(), strings.NewReader("y\n"), errW, false, false, false, t.TempDir()); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if !strings.Contains(errW.String(), "intropy skills collection add") {
 			t.Errorf("expected the install-later hint, got %q", errW.String())
+		}
+	})
+	t.Run("explicit skip is silent", func(t *testing.T) {
+		errW := &bytes.Buffer{}
+		if err := maybeInstallSkills(context.Background(), os.Stdin, errW, false, true, false, t.TempDir()); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if errW.Len() != 0 {
+			t.Errorf("explicit --skip-install-skills should print nothing, got %q", errW.String())
 		}
 	})
 }
@@ -124,18 +133,21 @@ func TestDecideInstallSkills(t *testing.T) {
 	cases := []struct {
 		name    string
 		force   bool
+		skip    bool
 		noInput bool
 		in      io.Reader
 		want    bool
 	}{
-		{"force wins over no-input", true, true, strings.NewReader(""), true},
-		{"force wins over non-terminal stdin", true, false, strings.NewReader(""), true},
-		{"no-input skips", false, true, os.Stdin, false},
-		{"non-terminal stdin skips", false, false, strings.NewReader("y\n"), false},
+		{"force wins over no-input", true, false, true, strings.NewReader(""), true},
+		{"force wins over non-terminal stdin", true, false, false, strings.NewReader(""), true},
+		{"skip wins over force", true, true, false, strings.NewReader("y\n"), false},
+		{"skip skips", false, true, false, os.Stdin, false},
+		{"no-input skips", false, false, true, os.Stdin, false},
+		{"non-terminal stdin skips", false, false, false, strings.NewReader("y\n"), false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := decideInstallSkills(tc.force, tc.noInput, tc.in, errW)
+			got, err := decideInstallSkills(tc.force, tc.skip, tc.noInput, tc.in, errW)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}

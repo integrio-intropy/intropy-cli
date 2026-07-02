@@ -28,10 +28,13 @@ func skillsCollectionRef() string {
 }
 
 // decideInstallSkills is the pure gating logic for the post-scaffold skills
-// install: --install-skills forces a yes without prompting; otherwise
-// --no-input and non-terminal stdin skip, and an interactive session gets a
-// [Y/n] prompt (default yes).
-func decideInstallSkills(force, noInput bool, in io.Reader, errW io.Writer) (bool, error) {
+// install: --skip-install-skills forces a no and --install-skills forces a
+// yes, both without prompting; otherwise --no-input and non-terminal stdin
+// skip, and an interactive session gets a [Y/n] prompt (default yes).
+func decideInstallSkills(force, skip, noInput bool, in io.Reader, errW io.Writer) (bool, error) {
+	if skip {
+		return false, nil
+	}
 	if force {
 		return true, nil
 	}
@@ -47,16 +50,19 @@ func decideInstallSkills(force, noInput bool, in io.Reader, errW io.Writer) (boo
 
 // maybeInstallSkills applies decideInstallSkills and, on yes, does the
 // equivalent of `skills collection add` plus `skills add` for every skill in
-// the collection. On no, it prints how to install later.
-func maybeInstallSkills(ctx context.Context, in io.Reader, errW io.Writer, force, noInput bool, outputDir string) error {
-	install, err := decideInstallSkills(force, noInput, in, errW)
+// the collection. On no, it prints how to install later — unless the skip
+// was the explicit --skip-install-skills, where a hint would just be noise.
+func maybeInstallSkills(ctx context.Context, in io.Reader, errW io.Writer, force, skip, noInput bool, outputDir string) error {
+	install, err := decideInstallSkills(force, skip, noInput, in, errW)
 	if err != nil {
 		return err
 	}
 	ref := skillsCollectionRef()
 	if !install {
-		fmt.Fprintf(errW, "skills not installed — run 'intropy skills collection add --name %s --ref %s' in the integration later\n",
-			defaultSkillsCollectionAlias, ref)
+		if !skip {
+			fmt.Fprintf(errW, "skills not installed — run 'intropy skills collection add --name %s --ref %s' in the integration later\n",
+				defaultSkillsCollectionAlias, ref)
+		}
 		return nil
 	}
 

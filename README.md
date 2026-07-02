@@ -210,10 +210,12 @@ After scaffolding, `int create` offers to install the Intropy agent skills
 collection (`harbor.intropy.io/skills/index:latest`) into the new
 integration's `.agents/skills/` — a `[Y/n]` prompt in interactive sessions,
 skipped under `--no-input` or when stdin is not a terminal. For CI and other
-non-interactive runs, `--install-skills` installs without prompting:
+non-interactive runs, `--install-skills` installs without prompting;
+`--skip-install-skills` suppresses the prompt and the install entirely:
 
 ```sh
 intropy int create hello-world -n orders --no-input --install-skills -f values.yaml
+intropy int create hello-world -n orders --skip-install-skills
 ```
 
 Set `INTROPY_SKILLS_COLLECTION` to point the install at a different
