@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2"
@@ -93,8 +94,19 @@ func (c *Client) repository(ref Reference) (*remote.Repository, error) {
 	}
 
 	repo.Client = c.auth
+	// Same convention as docker and the oras CLI: local registries speak
+	// plain HTTP without an explicit opt-in.
+	repo.PlainHTTP = isLocalRegistry(ref.Registry)
 
 	return repo, nil
+}
+
+func isLocalRegistry(registry string) bool {
+	host := registry
+	if h, _, err := net.SplitHostPort(registry); err == nil {
+		host = h
+	}
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
 }
 
 func mapError(err error, ref string) error {
