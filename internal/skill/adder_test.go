@@ -13,17 +13,30 @@ import (
 type mockRegistry struct {
 	pullArtifact oci.Artifact
 	pullErr      error
+	pullByRef    map[string]oci.Artifact
+	pullIndex    oci.Index
+	pullIndexErr error
 }
 
 func (m *mockRegistry) Pull(ctx context.Context, ref string) (oci.Artifact, error) {
 	if m.pullErr != nil {
 		return oci.Artifact{}, m.pullErr
 	}
+	if m.pullByRef != nil {
+		a, ok := m.pullByRef[ref]
+		if !ok {
+			return oci.Artifact{}, fmt.Errorf("no artifact for %s", ref)
+		}
+		return a, nil
+	}
 	return m.pullArtifact, nil
 }
 
 func (m *mockRegistry) PullIndex(ctx context.Context, ref string) (oci.Index, error) {
-	return oci.Index{}, fmt.Errorf("not implemented")
+	if m.pullIndexErr != nil {
+		return oci.Index{}, m.pullIndexErr
+	}
+	return m.pullIndex, nil
 }
 
 func (m *mockRegistry) Resolve(ctx context.Context, ref string) (oci.Descriptor, error) {
