@@ -45,6 +45,7 @@ func isCobraUsageError(err error) bool {
 		"accepts ",
 		"requires ",
 		"required flag(s)",
+		"at least one of the flags",
 	}
 	for _, p := range prefixes {
 		if strings.HasPrefix(msg, p) {

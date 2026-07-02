@@ -146,6 +146,18 @@ Without `--version`, the latest GitHub release is used.
 intropy int create hello-world --output ./my-integration
 ```
 
+Name the integration and scaffold it in one step. `-n/--name` sets the blueprint's
+`name` parameter (so you're not prompted for it) and, unless `-o` is given, becomes
+the output directory:
+
+```sh
+# scaffolds into ./orders and sets name=orders
+intropy int create hello-world -n orders
+
+# -o still overrides the output directory
+intropy int create hello-world -n orders -o ./my-integration
+```
+
 Provide parameter values inline, from files, or interactively:
 
 ```sh
