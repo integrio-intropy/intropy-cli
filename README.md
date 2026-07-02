@@ -126,7 +126,7 @@ intropy int create hello-world -o ./my-integration
 
 ```sh
 # Register a collection (one-time)
-intropy skills collection add --name intropy --ref harbor.intropy.io/skills:index
+intropy skills collection add --name intropy --ref harbor.intropy.io/skills/index:latest
 
 # Install a skill by name
 intropy skills add --name intropy-getting-started
@@ -282,11 +282,11 @@ Registering a collection lets you install its skills by name.
 ```sh
 intropy skills collection add \
   --name intropy \
-  --ref harbor.intropy.io/skills:index
+  --ref harbor.intropy.io/skills/index:latest
 
 intropy skills collection add \
   --name intropy \
-  --ref harbor.intropy.io/skills:index \
+  --ref harbor.intropy.io/skills/index:latest \
   -o json   # machine-readable confirmation
 ```
 
@@ -304,7 +304,7 @@ intropy skills collection update intropy
 Replace the registered ref with a new value (e.g. bump to a new release tag):
 
 ```sh
-intropy skills collection update intropy --ref harbor.intropy.io/skills:index-2026.07
+intropy skills collection update intropy --ref harbor.intropy.io/skills/index:2026.07
 ```
 
 ### Publish a collection
@@ -321,7 +321,7 @@ skills:
 ```
 
 ```sh
-intropy skills collection publish intropy-skills.yaml harbor.intropy.io/skills:index
+intropy skills collection publish intropy-skills.yaml harbor.intropy.io/skills/index:latest
 ```
 
 Each referenced skill is resolved to its current digest at publish time, so the
