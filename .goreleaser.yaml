@@ -47,6 +47,38 @@ archives:
       - CONTRIBUTING.md
       - install.sh
 
+# Multi-arch image assembled from the binaries built above (no in-image compile).
+# Requires a buildx docker-container builder (set up in the release workflow).
+dockers_v2:
+  - id: intropy-docker
+    ids: [intropy]
+    dockerfile: Dockerfile
+    images:
+      - ghcr.io/integrio-intropy/intropy-cli
+    tags:
+      - '{{ .Version }}'
+      - '{{ if not .Prerelease }}latest{{ end }}'
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      org.opencontainers.image.title: '{{ .ProjectName }}'
+      org.opencontainers.image.description: CLI for Intropy integrations
+      org.opencontainers.image.source: https://github.com/integrio-intropy/intropy-cli
+      org.opencontainers.image.version: '{{ .Version }}'
+      org.opencontainers.image.revision: '{{ .FullCommit }}'
+      org.opencontainers.image.created: '{{ .Date }}'
+      org.opencontainers.image.licenses: MIT
+
+# Keyless (OIDC) image signing, same sigstore flow as the blob signing below.
+# Default artifacts selector targets the dockers_v2 images.
+docker_signs:
+  - cmd: cosign
+    args:
+      - sign
+      - '${artifact}@${digest}'
+      - '--yes'
+
 signs:
   - cmd: cosign
     certificate: '${artifact}.pem'

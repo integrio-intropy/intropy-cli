@@ -51,6 +51,30 @@ The script detects your OS and architecture, downloads the matching release
 archive, verifies the SHA256 checksum, optionally verifies the cosign signature,
 and installs the binary and shell completions.
 
+### Docker
+
+Multi-arch images (linux/amd64, linux/arm64) are published to GHCR on every
+release, built on `distroless/static` and running as a non-root user.
+
+```sh
+docker pull ghcr.io/integrio-intropy/intropy-cli:latest
+
+# Scaffolding writes into the working directory: mount your project at /work
+# and match your uid so files aren't owned by the container user
+docker run --rm -v "$PWD:/work" --user "$(id -u):$(id -g)" \
+  ghcr.io/integrio-intropy/intropy-cli int create hello-world --name Orders
+```
+
+The image contains no shell — the binary is the entrypoint. Images are signed
+with cosign; verify with:
+
+```sh
+cosign verify \
+  --certificate-identity-regexp="https://github.com/integrio-intropy/intropy-cli" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+  ghcr.io/integrio-intropy/intropy-cli:latest
+```
+
 ### From source
 
 Requires Go 1.26+.
