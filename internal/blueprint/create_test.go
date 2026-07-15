@@ -130,8 +130,8 @@ func TestCreateWritesScaffoldFile(t *testing.T) {
 	if got.SchemaVersion != ScaffoldSchemaVersion {
 		t.Errorf("SchemaVersion = %d", got.SchemaVersion)
 	}
-	if got.Blueprint != "test-blueprint" || got.Owner != "o" || got.Repo != "r" || got.Version != "v2.0.0" {
-		t.Errorf("scaffold identity = %q %q/%q@%q", got.Blueprint, got.Owner, got.Repo, got.Version)
+	if got.Template != "test-blueprint" || got.Owner != "o" || got.Repo != "r" || got.Version != "v2.0.0" {
+		t.Errorf("scaffold identity = %q %q/%q@%q", got.Template, got.Owner, got.Repo, got.Version)
 	}
 	if got.Values["integrationName"] != "orders" || got.Values["namespace"] != "default" {
 		t.Errorf("Values = %v", got.Values)

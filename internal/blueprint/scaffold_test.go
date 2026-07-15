@@ -11,7 +11,7 @@ import (
 func testScaffold() Scaffold {
 	return Scaffold{
 		SchemaVersion: ScaffoldSchemaVersion,
-		Blueprint:     "test-blueprint",
+		Template:      "test-blueprint",
 		Owner:         "o",
 		Repo:          "r",
 		Version:       "v1.2.3",
@@ -49,8 +49,8 @@ func TestFindScaffoldWalksUp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FindScaffold: %v", err)
 	}
-	if got.Blueprint != "test-blueprint" {
-		t.Errorf("Blueprint = %q", got.Blueprint)
+	if got.Template != "test-blueprint" {
+		t.Errorf("Template = %q", got.Template)
 	}
 	// t.TempDir may sit behind a symlink (macOS /tmp); compare resolved paths.
 	wantRoot, _ := filepath.EvalSymlinks(root)

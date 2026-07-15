@@ -92,11 +92,11 @@ func Create(ctx context.Context, opts CreateOptions) error {
 	}
 	fmt.Fprintf(opts.Stderr, "created %s from %s/%s@%s (template %s)\n", opts.OutputDir, opts.Owner, opts.Repo, tag, opts.Blueprint)
 
-	// The blueprint field is the repo directory name (opts.Blueprint), not
+	// The template field is the repo directory name (opts.Blueprint), not
 	// tmpl.Metadata.Name — it is what a later re-fetch needs.
 	if err := WriteScaffold(opts.OutputDir, Scaffold{
 		SchemaVersion: ScaffoldSchemaVersion,
-		Blueprint:     opts.Blueprint,
+		Template:      opts.Blueprint,
 		Owner:         opts.Owner,
 		Repo:          opts.Repo,
 		Version:       tag,

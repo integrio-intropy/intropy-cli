@@ -23,10 +23,10 @@ var ErrScaffoldNotFound = errors.New("no " + ScaffoldRelPath + " found in curren
 // Scaffold is the committed record of what `int create` rendered. Unlike
 // CreateResult it carries no outputDir — the file's location is the project
 // root — and it is written into the project so later commands (e.g.
-// `manifests create`) can re-fetch the exact blueprint version.
+// `manifests create`) can re-fetch the exact template version.
 type Scaffold struct {
 	SchemaVersion int            `json:"schemaVersion"`
-	Blueprint     string         `json:"blueprint"` // directory name in the blueprints repo
+	Template      string         `json:"template"` // directory name in the template library repo
 	Owner         string         `json:"owner"`
 	Repo          string         `json:"repo"`
 	Version       string         `json:"version"`

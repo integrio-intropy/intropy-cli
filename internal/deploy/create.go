@@ -1,7 +1,7 @@
 // Package deploy generates Kubernetes deployment manifests (a kustomize
 // base + overlays tree) for a previously scaffolded integration. It reads
 // the committed .intropy/scaffold.json record, re-fetches the exact
-// blueprint version it pins, and renders the blueprint's manifests/
+// template version it pins, and renders the template's manifests/
 // directory with the blueprint package's template machinery.
 package deploy
 
@@ -19,9 +19,9 @@ import (
 )
 
 const (
-	// manifestDirName is the directory inside a blueprint (next to
+	// manifestDirName is the directory inside a template (next to
 	// skeleton/) that holds the deployment manifest template:
-	// <blueprint>/manifests/template.yaml + <blueprint>/manifests/skeleton/.
+	// <template>/manifests/template.yaml + <template>/manifests/skeleton/.
 	manifestDirName = "manifests"
 
 	templateManifestName = "template.yaml"
@@ -39,7 +39,7 @@ const (
 type CreateOptions struct {
 	StartDir   string // directory to begin the scaffold.json walk-up from; default "."
 	OutputDir  string // default <projectRoot>/deploy
-	Version    string // blueprint release tag; default: the tag pinned in scaffold.json
+	Version    string // template release tag; default: the tag pinned in scaffold.json
 	SetValues  map[string]any
 	Files      []string
 	Force      bool
@@ -52,7 +52,7 @@ type CreateOptions struct {
 	UserAgent  string
 
 	// Test overrides. Production callers leave these zero-valued; the
-	// blueprint is fetched from the owner/repo recorded in scaffold.json.
+	// template is fetched from the owner/repo recorded in scaffold.json.
 	Owner         string
 	Repo          string
 	GitHubBaseURL string
@@ -61,7 +61,7 @@ type CreateOptions struct {
 // CreateResult is the machine-readable summary written when --output-json is
 // set. Field names are stable and additive-only.
 type CreateResult struct {
-	Blueprint string         `json:"blueprint"`
+	Template  string         `json:"template"`
 	Owner     string         `json:"owner"`
 	Repo      string         `json:"repo"`
 	Version   string         `json:"version"`
@@ -82,7 +82,7 @@ func (o *CreateOptions) applyDefaults() {
 }
 
 // Create generates the deployment manifests: locate scaffold.json, download
-// the pinned blueprint, load manifests/template.yaml, resolve values (seeded
+// the pinned template, load manifests/template.yaml, resolve values (seeded
 // from the scaffold record, with optional interactive prompting), render
 // manifests/skeleton into the output directory.
 func Create(ctx context.Context, opts CreateOptions) error {
@@ -91,7 +91,7 @@ func Create(ctx context.Context, opts CreateOptions) error {
 	scaffold, projectRoot, err := blueprint.FindScaffold(opts.StartDir)
 	if err != nil {
 		if errors.Is(err, blueprint.ErrScaffoldNotFound) {
-			return fmt.Errorf("%w\nThis project was scaffolded before deployment metadata existed. Re-scaffold it with 'intropy int create', or commit a minimal %s:\n  {\"schemaVersion\":1,\"blueprint\":\"<blueprint>\",\"owner\":\"integrio-intropy\",\"repo\":\"intropy-blueprints\",\"version\":\"<tag>\",\"values\":{\"name\":\"<name>\"}}", err, blueprint.ScaffoldRelPath)
+			return fmt.Errorf("%w\nThis project was scaffolded before deployment metadata existed. Re-scaffold it with 'intropy int create', or commit a minimal %s:\n  {\"schemaVersion\":1,\"template\":\"<template>\",\"owner\":\"integrio-intropy\",\"repo\":\"intropy-templates\",\"version\":\"<tag>\",\"values\":{\"name\":\"<name>\"}}", err, blueprint.ScaffoldRelPath)
 		}
 		return err
 	}
@@ -111,12 +111,12 @@ func Create(ctx context.Context, opts CreateOptions) error {
 		tag = opts.Version
 	}
 	if tag == "" {
-		return fmt.Errorf("%s does not pin a blueprint version; pass --version", blueprint.ScaffoldRelPath)
+		return fmt.Errorf("%s does not pin a template version; pass --version", blueprint.ScaffoldRelPath)
 	}
 
 	gh := blueprint.NewGitHubClient(opts.HTTP, opts.UserAgent, opts.GitHubBaseURL)
 	fmt.Fprintf(opts.Stderr, "fetching %s/%s@%s\n", owner, repo, tag)
-	blueprintRoot, cleanup, err := blueprint.DownloadBlueprint(ctx, gh, owner, repo, tag, scaffold.Blueprint, "intropy-manifests-*")
+	blueprintRoot, cleanup, err := blueprint.DownloadBlueprint(ctx, gh, owner, repo, tag, scaffold.Template, "intropy-manifests-*")
 	if err != nil {
 		return err
 	}
@@ -125,7 +125,7 @@ func Create(ctx context.Context, opts CreateOptions) error {
 	manifestsRoot := filepath.Join(blueprintRoot, manifestDirName)
 	skelRoot := filepath.Join(manifestsRoot, skeletonDirName)
 	if !dirExists(skelRoot) || !fileExists(filepath.Join(manifestsRoot, templateManifestName)) {
-		return fmt.Errorf("blueprint %q at %s does not include deployment manifest templates (%s/); pass --version <newer tag> or update the blueprint", scaffold.Blueprint, tag, manifestDirName)
+		return fmt.Errorf("template %q at %s does not include deployment manifest templates (%s/); pass --version <newer tag> or update the template", scaffold.Template, tag, manifestDirName)
 	}
 
 	tmpl, err := blueprint.LoadTemplate(filepath.Join(manifestsRoot, templateManifestName))
@@ -147,7 +147,7 @@ func Create(ctx context.Context, opts CreateOptions) error {
 	if err := blueprint.Render(skelRoot, outputDir, values); err != nil {
 		return err
 	}
-	fmt.Fprintf(opts.Stderr, "wrote deployment manifests to %s (blueprint %s@%s)\n", outputDir, scaffold.Blueprint, tag)
+	fmt.Fprintf(opts.Stderr, "wrote deployment manifests to %s (template %s@%s)\n", outputDir, scaffold.Template, tag)
 
 	return maybeWriteCreateResult(opts, scaffold, owner, repo, tag, outputDir, values)
 }
@@ -194,7 +194,7 @@ func maybeWriteCreateResult(opts CreateOptions, scaffold *blueprint.Scaffold, ow
 		absOut = outputDir
 	}
 	result := CreateResult{
-		Blueprint: scaffold.Blueprint,
+		Template:  scaffold.Template,
 		Owner:     owner,
 		Repo:      repo,
 		Version:   tag,

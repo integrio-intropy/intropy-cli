@@ -1,14 +1,16 @@
-// Package blueprint downloads, validates, describes, and renders Intropy blueprints.
+// Package blueprint downloads, validates, describes, and renders Intropy
+// scaffolding templates. (The package predates the "template" vocabulary;
+// it keeps its name to avoid colliding with text/template.)
 //
-// A blueprint is a template.yaml manifest plus a skeleton/ directory. The
+// A template is a template.yaml manifest plus a skeleton/ directory. The
 // package supports two main workflows:
-//   - Describe: fetch a blueprint manifest and return its metadata and parameters.
-//   - Create: fetch a blueprint, resolve parameter values, and render files.
+//   - Describe: fetch a template manifest and return its metadata and parameters.
+//   - Create: fetch a template, resolve parameter values, and render files.
 //
 // Create also writes a scaffold record (.intropy/scaffold.json) into the
-// output directory, pinning the blueprint, version, and resolved values.
+// output directory, pinning the template, version, and resolved values.
 //
-// A blueprint may additionally carry a manifests/ directory — a second
+// A template may additionally carry a manifests/ directory — a second
 // template.yaml + skeleton/ pair with the same contract — holding Kubernetes
 // deployment manifest templates. It is consumed by the deploy package
 // (`intropy manifests create`), which re-fetches the pinned version from the

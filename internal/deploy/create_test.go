@@ -182,7 +182,7 @@ func writeTestScaffold(t *testing.T, version string, values map[string]any) stri
 	root := t.TempDir()
 	err := blueprint.WriteScaffold(root, blueprint.Scaffold{
 		SchemaVersion: blueprint.ScaffoldSchemaVersion,
-		Blueprint:     "test-blueprint",
+		Template:      "test-blueprint",
 		Owner:         "o",
 		Repo:          "r",
 		Version:       version,
@@ -379,7 +379,7 @@ func TestCreateTooNewSchemaVersion(t *testing.T) {
 	root := t.TempDir()
 	err := blueprint.WriteScaffold(root, blueprint.Scaffold{
 		SchemaVersion: blueprint.ScaffoldSchemaVersion + 1,
-		Blueprint:     "test-blueprint",
+		Template:      "test-blueprint",
 		Owner:         "o",
 		Repo:          "r",
 		Version:       "v1",
@@ -446,8 +446,8 @@ func TestCreateWritesOutputJSON(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal result: %v\n%s", err, stdout.String())
 	}
-	if got.Blueprint != "test-blueprint" || got.Version != "v1.2.3" {
-		t.Errorf("result identity = %q@%q", got.Blueprint, got.Version)
+	if got.Template != "test-blueprint" || got.Version != "v1.2.3" {
+		t.Errorf("result identity = %q@%q", got.Template, got.Version)
 	}
 	if !filepath.IsAbs(got.OutputDir) {
 		t.Errorf("OutputDir should be absolute: %q", got.OutputDir)
