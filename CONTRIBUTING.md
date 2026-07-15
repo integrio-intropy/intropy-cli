@@ -145,7 +145,7 @@ This project uses Cobra + Viper. When adding or modifying commands:
 
 ### Error handling
 
-- Return wrapped errors with context: `fmt.Errorf("resolving blueprint: %w", err)`
+- Return wrapped errors with context: `fmt.Errorf("resolving template: %w", err)`
 - Use exit code `2` for usage errors (invalid flags/args), `1` for runtime errors.
 
 ## Testing
@@ -193,7 +193,7 @@ go test -race ./...
 
 ```
 cmd/intropy/         Cobra commands — one file per command + tests
-internal/blueprint/  Blueprint download, validation, describe, render
+internal/blueprint/  Template download, validation, describe, render
 internal/skill/      skills.json/lockfile, install/update/add, collection cache
 internal/skill/oci/  OCI client wrappers, pack/push/pull, references
 ```

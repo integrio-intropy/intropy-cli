@@ -90,7 +90,7 @@ func Create(ctx context.Context, opts CreateOptions) error {
 	if err := renderCreateOutput(blueprintRoot, opts.Blueprint, opts.OutputDir, opts.Force, values); err != nil {
 		return err
 	}
-	fmt.Fprintf(opts.Stderr, "created %s from %s/%s@%s (blueprint %s)\n", opts.OutputDir, opts.Owner, opts.Repo, tag, opts.Blueprint)
+	fmt.Fprintf(opts.Stderr, "created %s from %s/%s@%s (template %s)\n", opts.OutputDir, opts.Owner, opts.Repo, tag, opts.Blueprint)
 
 	return maybeWriteCreateResult(opts, tmpl, values, tag)
 }
@@ -122,7 +122,7 @@ func prepareCreateTemplate(blueprintRoot string, opts CreateOptions) (*Template,
 func renderCreateOutput(blueprintRoot, blueprintName, outputDir string, force bool, values map[string]any) error {
 	skelRoot := filepath.Join(blueprintRoot, blueprintSkeletonDir)
 	if info, err := os.Stat(skelRoot); err != nil || !info.IsDir() {
-		return fmt.Errorf("blueprint %q is missing %s/ directory", blueprintName, blueprintSkeletonDir)
+		return fmt.Errorf("template %q is missing %s/ directory", blueprintName, blueprintSkeletonDir)
 	}
 	if err := ensureOutputDir(outputDir, force); err != nil {
 		return err
@@ -188,17 +188,17 @@ func ensureOutputDir(dir string, force bool) error {
 
 // validateBlueprintName rejects empty names and anything that could escape the
 // extracted tarball root via filepath.Join (separators, parent refs, hidden
-// directories). The blueprint argument is user input that we turn directly into
+// directories). The template argument is user input that we turn directly into
 // a path segment, so it has to be sanitized.
 func validateBlueprintName(name string) error {
 	if name == "" {
-		return errors.New("blueprint name is required")
+		return errors.New("template name is required")
 	}
 	if name == "." || name == ".." || strings.HasPrefix(name, ".") {
-		return fmt.Errorf("invalid blueprint name %q", name)
+		return fmt.Errorf("invalid template name %q", name)
 	}
 	if strings.ContainsAny(name, `/\`) {
-		return fmt.Errorf("invalid blueprint name %q (must be a single path segment)", name)
+		return fmt.Errorf("invalid template name %q (must be a single path segment)", name)
 	}
 	return nil
 }

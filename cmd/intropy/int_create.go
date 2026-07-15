@@ -26,9 +26,9 @@ type createFlags struct {
 var intCreateFlags createFlags
 
 var intCreateCmd = &cobra.Command{
-	Use:               "create <blueprint>",
+	Use:               "create <template>",
 	Short:             "Create a new integration",
-	Long:              "Scaffold a new integration from the official Intropy blueprints library. The positional argument selects which blueprint subdirectory to render (e.g. 'hello-world'). After scaffolding, offers to install the Intropy agent skills collection into the new integration; --install-skills installs and --skip-install-skills skips without prompting, otherwise the prompt is skipped with --no-input or when stdin is not a terminal.",
+	Long:              "Scaffold a new integration from the official Intropy template library. The positional argument selects which template subdirectory to render (e.g. 'hello-world'). After scaffolding, offers to install the Intropy agent skills collection into the new integration; --install-skills installs and --skip-install-skills skips without prompting, otherwise the prompt is skipped with --no-input or when stdin is not a terminal.",
 	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: completeBlueprints,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -84,8 +84,8 @@ func resolveCreateName(name, output string, sets map[string]any) (string, error)
 func init() {
 	f := intCreateCmd.Flags()
 	f.StringVarP(&intCreateFlags.output, "output", "o", "", "destination directory (defaults to --name)")
-	f.StringVarP(&intCreateFlags.name, "name", "n", "", "integration name; sets the blueprint's 'name' parameter and, unless -o is set, becomes the output directory")
-	f.StringVar(&intCreateFlags.version, "version", "", "blueprint release tag (default: latest)")
+	f.StringVarP(&intCreateFlags.name, "name", "n", "", "integration name; sets the template's 'name' parameter and, unless -o is set, becomes the output directory")
+	f.StringVar(&intCreateFlags.version, "version", "", "template release tag (default: latest)")
 	f.StringArrayVarP(&intCreateFlags.values, "values", "f", nil, "values file in YAML/JSON (repeatable; use - to read one doc from stdin)")
 	f.StringArrayVarP(&intCreateFlags.sets, "set", "s", nil, "set a value as key=value (repeatable)")
 	f.BoolVar(&intCreateFlags.force, "force", false, "allow rendering into a non-empty output directory")

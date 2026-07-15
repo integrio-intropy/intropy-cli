@@ -79,7 +79,7 @@ func downloadBlueprint(ctx context.Context, gh *GitHub, owner, repo, tag, bluepr
 	blueprintRoot := filepath.Join(tmpDir, blueprint)
 	if info, err := os.Stat(blueprintRoot); err != nil || !info.IsDir() {
 		cleanup()
-		return "", nil, fmt.Errorf("blueprint %q not found in %s/%s@%s", blueprint, owner, repo, tag)
+		return "", nil, fmt.Errorf("template %q not found in %s/%s@%s", blueprint, owner, repo, tag)
 	}
 	return blueprintRoot, cleanup, nil
 }

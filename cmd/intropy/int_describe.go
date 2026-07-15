@@ -18,9 +18,9 @@ type describeFlags struct {
 var intDescribeFlags describeFlags
 
 var intDescribeCmd = &cobra.Command{
-	Use:   "describe <blueprint>",
-	Short: "Describe an Intropy blueprint",
-	Long: "Print the blueprint manifest — metadata and parameter schema — for the requested release. " +
+	Use:   "describe <template>",
+	Short: "Describe an Intropy template",
+	Long: "Print the template manifest — metadata and parameter schema — for the requested release. " +
 		"Use --output json to emit a stable, machine-readable document (the same schema Backstage's frontend renders).",
 	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: completeBlueprints,
@@ -50,7 +50,7 @@ var intDescribeCmd = &cobra.Command{
 
 func init() {
 	f := intDescribeCmd.Flags()
-	f.StringVar(&intDescribeFlags.version, "version", "", "blueprint release tag (default: latest)")
+	f.StringVar(&intDescribeFlags.version, "version", "", "template release tag (default: latest)")
 	f.StringVarP(&intDescribeFlags.output, "output", "o", "plain", "output format: plain or json")
 	intCmd.AddCommand(intDescribeCmd)
 }

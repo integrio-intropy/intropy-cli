@@ -3,7 +3,7 @@
 `intropy` is the command-line interface for working with Intropy integrations
 and agent skills. It does two things:
 
-- **Scaffolds integrations** from the official Intropy blueprint library hosted at
+- **Scaffolds integrations** from the official Intropy template library hosted at
   [`integrio-intropy/intropy-blueprints`](https://github.com/integrio-intropy/intropy-blueprints).
 - **Manages agent skills** as OCI artifacts — adding, listing, updating, and
   publishing skills (individually or as curated collections) against any OCI
@@ -139,7 +139,7 @@ intropy version
 ### Scaffold your first integration
 
 ```sh
-# Inspect a blueprint before you scaffold it
+# Inspect a template before you scaffold it
 intropy int describe hello-world
 
 # Render it into a new directory
@@ -164,8 +164,8 @@ intropy skills list
 ```
 intropy
 ├── int                    Manage integrations
-│   ├── create <blueprint>     Scaffold a new integration from a blueprint
-│   └── describe <blueprint>   Print a blueprint's manifest and parameter schema
+│   ├── create <template>      Scaffold a new integration from a template
+│   └── describe <template>    Print a template's manifest and parameter schema
 ├── skills                 Manage Intropy skills
 │   ├── add [ref]              Add and install a skill from an OCI registry
 │   ├── list                   List installed skills
@@ -182,9 +182,9 @@ Run any command with `--help` for full flag documentation.
 
 ## Integrations (`intropy int`)
 
-### Describe a blueprint
+### Describe a template
 
-Inspect what parameters a blueprint accepts before scaffolding it:
+Inspect what parameters a template accepts before scaffolding it:
 
 ```sh
 intropy int describe hello-world
@@ -200,7 +200,7 @@ Without `--version`, the latest GitHub release is used.
 intropy int create hello-world --output ./my-integration
 ```
 
-Name the integration and scaffold it in one step. `-n/--name` sets the blueprint's
+Name the integration and scaffold it in one step. `-n/--name` sets the template's
 `name` parameter (so you're not prompted for it) and, unless `-o` is given, becomes
 the output directory:
 
@@ -376,7 +376,7 @@ tooling, and the CLI will pick up the credentials transparently.
 
 ```
 cmd/intropy/         Cobra command wiring (one file per command)
-internal/blueprint/  Blueprint download, validation, describe, render
+internal/blueprint/  Template download, validation, describe, render
 internal/skill/      skills.json/lockfile, install/update/add, collection cache
 internal/skill/oci/  OCI client wrappers, pack/push/pull, references
 ```
@@ -391,7 +391,7 @@ internal/skill/oci/  OCI client wrappers, pack/push/pull, references
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `intropy int create` fails with "blueprint not found" | The blueprint name is misspelled or does not exist in the library. | Run `intropy int describe <name>` to verify the blueprint exists. Check spelling and case. |
+| `intropy int create` fails with "template not found" | The template name is misspelled or does not exist in the library. | Run `intropy int describe <name>` to verify the template exists. Check spelling and case. |
 | `intropy skills add` fails with "unauthorized" | Missing or expired registry credentials. | Run `docker login <registry>` or `gh auth login` (for `ghcr.io`) and retry. |
 | `intropy skills add --name <skill>` fails with "not found" | The skill name is not in any registered collection, or the collection cache is stale. | Run `intropy skills collection update <alias>` to refresh the cache, or install by full OCI ref. |
 | `skills.json` merge conflicts | Multiple contributors edited `skills.json` or `skills.lock.json` simultaneously. | Resolve the conflict manually (both files are plain JSON), then run `intropy skills list` to verify. |
@@ -410,5 +410,5 @@ and the pull request workflow.
   — the packaging, distribution, signing, and tracking spec the `skills`
   subsystem implements.
 - [`integrio-intropy/intropy-blueprints`](https://github.com/integrio-intropy/intropy-blueprints)
-  — the blueprint library `intropy int create` and `intropy int describe`
+  — the template library `intropy int create` and `intropy int describe`
   download from by default.
