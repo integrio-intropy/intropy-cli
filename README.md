@@ -4,7 +4,7 @@
 and agent skills. It does two things:
 
 - **Scaffolds integrations** from the official Intropy template library hosted at
-  [`integrio-intropy/intropy-blueprints`](https://github.com/integrio-intropy/intropy-blueprints).
+  [`integrio-intropy/intropy-templates`](https://github.com/integrio-intropy/intropy-templates).
 - **Manages agent skills** as OCI artifacts — adding, listing, updating, and
   publishing skills (individually or as curated collections) against any OCI
   registry. The skills subsystem implements the
@@ -409,6 +409,6 @@ and the pull request workflow.
 - [Agent Skills OCI Artifacts Spec](https://github.com/ThomasVitale/agents-skills-oci-artifacts-spec)
   — the packaging, distribution, signing, and tracking spec the `skills`
   subsystem implements.
-- [`integrio-intropy/intropy-blueprints`](https://github.com/integrio-intropy/intropy-blueprints)
+- [`integrio-intropy/intropy-templates`](https://github.com/integrio-intropy/intropy-templates)
   — the template library `intropy int create` and `intropy int describe`
   download from by default.

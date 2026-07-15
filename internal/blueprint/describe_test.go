@@ -23,8 +23,8 @@ func TestDescribe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Describe: %v", err)
 	}
-	if got.Blueprint != "test-blueprint" {
-		t.Errorf("Blueprint = %q", got.Blueprint)
+	if got.Template != "test-blueprint" {
+		t.Errorf("Template = %q", got.Template)
 	}
 	if got.Version != "v1.2.3" {
 		t.Errorf("Version = %q", got.Version)
@@ -63,7 +63,7 @@ func TestDescribeJSONStable(t *testing.T) {
 	// Pin the public field names. Adding new fields is fine; renaming/removing
 	// these breaks downstream Backstage consumers.
 	for _, key := range []string{
-		`"blueprint":`, `"owner":`, `"repo":`, `"version":`,
+		`"template":`, `"owner":`, `"repo":`, `"version":`,
 		`"parameters":`,
 	} {
 		if !strings.Contains(string(data), key) {

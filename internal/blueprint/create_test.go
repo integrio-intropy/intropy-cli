@@ -82,8 +82,8 @@ func TestCreateWritesOutputJSON(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal result: %v\n%s", err, string(data))
 	}
-	if got.Blueprint != "test-blueprint" {
-		t.Errorf("Blueprint = %q", got.Blueprint)
+	if got.Template != "test-blueprint" {
+		t.Errorf("Template = %q", got.Template)
 	}
 	if got.Owner != "o" || got.Repo != "r" {
 		t.Errorf("Owner/Repo = %q/%q", got.Owner, got.Repo)
@@ -126,7 +126,7 @@ func TestCreateOutputJSONStdout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if !strings.Contains(stdout.String(), `"blueprint": "test-blueprint"`) {
+	if !strings.Contains(stdout.String(), `"template": "test-blueprint"`) {
 		t.Errorf("stdout missing blueprint field: %s", stdout.String())
 	}
 	// Human-readable logs must stay on stderr so stdout is pure JSON.

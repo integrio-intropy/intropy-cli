@@ -35,11 +35,11 @@ func (o *DescribeOptions) applyDefaults() {
 	}
 }
 
-// DescribeResult is the machine-readable view of a blueprint manifest. The
+// DescribeResult is the machine-readable view of a template manifest. The
 // shape is stable and additive-only — Backstage's frontend renders the form
 // from Parameters (a raw JSON Schema), so this contract is load-bearing.
 type DescribeResult struct {
-	Blueprint   string            `json:"blueprint"`
+	Template    string            `json:"template"`
 	Title       string            `json:"title,omitempty"`
 	Description string            `json:"description,omitempty"`
 	Tags        []string          `json:"tags,omitempty"`
@@ -82,7 +82,7 @@ func Describe(ctx context.Context, opts DescribeOptions) (*DescribeResult, error
 	}
 
 	return &DescribeResult{
-		Blueprint:     tmpl.Metadata.Name,
+		Template:      tmpl.Metadata.Name,
 		Title:         tmpl.Metadata.Title,
 		Description:   tmpl.Metadata.Description,
 		Tags:          tmpl.Metadata.Tags,
@@ -99,9 +99,9 @@ func Describe(ctx context.Context, opts DescribeOptions) (*DescribeResult, error
 // machine-readable form is JSON-marshaled DescribeResult — callers needing
 // stable parsing should use that instead.
 func (r *DescribeResult) FormatText(w io.Writer) {
-	title := r.Blueprint
+	title := r.Template
 	if r.Title != "" {
-		title = fmt.Sprintf("%s (%s)", r.Title, r.Blueprint)
+		title = fmt.Sprintf("%s (%s)", r.Title, r.Template)
 	}
 	fmt.Fprintf(w, "%s @ %s/%s@%s\n", title, r.Owner, r.Repo, r.Version)
 	if r.Description != "" {

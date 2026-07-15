@@ -28,7 +28,7 @@ type CreateOptions struct {
 	UserAgent  string
 
 	// Test overrides. Production callers leave these zero-valued; the CLI
-	// always targets the official blueprint library at integrio-intropy/intropy-blueprints.
+	// always targets the official template library at integrio-intropy/intropy-templates.
 	Owner         string
 	Repo          string
 	GitHubBaseURL string
@@ -38,7 +38,7 @@ type CreateOptions struct {
 // set. It is the contract chained scaffolder steps consume; field names are
 // stable and additive-only.
 type CreateResult struct {
-	Blueprint string         `json:"blueprint"`
+	Template  string         `json:"template"`
 	Owner     string         `json:"owner"`
 	Repo      string         `json:"repo"`
 	Version   string         `json:"version"`
@@ -140,7 +140,7 @@ func maybeWriteCreateResult(opts CreateOptions, tmpl *Template, values map[strin
 		absOut = opts.OutputDir
 	}
 	result := CreateResult{
-		Blueprint: tmpl.Metadata.Name,
+		Template:  tmpl.Metadata.Name,
 		Owner:     opts.Owner,
 		Repo:      opts.Repo,
 		Version:   tag,
