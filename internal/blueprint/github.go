@@ -52,10 +52,23 @@ func newConfiguredGitHub(client *http.Client, userAgent, baseURL string) *GitHub
 }
 
 func resolveReleaseTag(ctx context.Context, gh *GitHub, owner, repo, requestedTag string) (string, error) {
+	return gh.ResolveTag(ctx, owner, repo, requestedTag)
+}
+
+// ResolveTag returns requestedTag as-is when set, otherwise the latest
+// release tag for owner/repo.
+func (g *GitHub) ResolveTag(ctx context.Context, owner, repo, requestedTag string) (string, error) {
 	if requestedTag != "" {
 		return requestedTag, nil
 	}
-	return gh.LatestTag(ctx, owner, repo)
+	return g.LatestTag(ctx, owner, repo)
+}
+
+// DownloadBlueprint fetches the repo tarball at tag, extracts it to a temp
+// dir (created with tempPattern), and returns the path of the named blueprint
+// subdirectory plus a cleanup func that removes the temp dir.
+func DownloadBlueprint(ctx context.Context, gh *GitHub, owner, repo, tag, blueprint, tempPattern string) (string, func(), error) {
+	return downloadBlueprint(ctx, gh, owner, repo, tag, blueprint, tempPattern)
 }
 
 func downloadBlueprint(ctx context.Context, gh *GitHub, owner, repo, tag, blueprint, tempPattern string) (string, func(), error) {

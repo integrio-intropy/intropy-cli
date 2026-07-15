@@ -32,11 +32,23 @@ const StdinValuesPath = "-"
 // text/template (with sprig) against the merged map and added under its key.
 // A spec.values key that collides with a parameter name is rejected.
 func Resolve(t *Template, files []string, stdin io.Reader, sets map[string]any, prompter Prompter) (map[string]any, error) {
+	return ResolveLayered(t, nil, files, stdin, sets, prompter)
+}
+
+// ResolveLayered is Resolve with an extra base layer that sits between the
+// spec.parameters defaults and the --values files. Callers use it to seed
+// values from an earlier resolution (e.g. a committed scaffold record) so
+// they take effect without re-prompting but still yield to explicit
+// --values / --set input.
+func ResolveLayered(t *Template, base map[string]any, files []string, stdin io.Reader, sets map[string]any, prompter Prompter) (map[string]any, error) {
 	fields := t.Fields()
 	byName := indexFields(fields)
 	out := map[string]any{}
 
 	applyDefaultValues(fields, out)
+	for k, v := range base {
+		out[k] = coerceKnownFieldValue(k, v, byName)
+	}
 	if err := applyValuesFiles(files, stdin, out, byName); err != nil {
 		return nil, err
 	}
