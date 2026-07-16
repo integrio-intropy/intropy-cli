@@ -1,4 +1,4 @@
-package blueprint
+package template
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 )
 
 type CreateOptions struct {
-	Blueprint  string // required; subdirectory in the blueprints repo holding template.yaml + skeleton/
+	Template   string // required; subdirectory in the templates repo holding template.yaml + skeleton/
 	OutputDir  string
 	Version    string
 	SetValues  map[string]any
@@ -48,10 +48,10 @@ type CreateResult struct {
 
 func (o *CreateOptions) applyDefaults() {
 	if o.Owner == "" {
-		o.Owner = defaultBlueprintOwner
+		o.Owner = defaultTemplateOwner
 	}
 	if o.Repo == "" {
-		o.Repo = defaultBlueprintRepo
+		o.Repo = defaultTemplateRepo
 	}
 	if o.Stdin == nil {
 		o.Stdin = os.Stdin
@@ -76,27 +76,27 @@ func Create(ctx context.Context, opts CreateOptions) error {
 	}
 	fmt.Fprintf(opts.Stderr, "fetching %s/%s@%s\n", opts.Owner, opts.Repo, tag)
 
-	blueprintRoot, cleanup, err := downloadBlueprint(ctx, gh, opts.Owner, opts.Repo, tag, opts.Blueprint, "intropy-blueprint-*")
+	templateRoot, cleanup, err := downloadTemplate(ctx, gh, opts.Owner, opts.Repo, tag, opts.Template, "intropy-template-*")
 	if err != nil {
 		return err
 	}
 	defer cleanup()
 
-	tmpl, values, err := prepareCreateTemplate(blueprintRoot, opts)
+	tmpl, values, err := prepareCreateTemplate(templateRoot, opts)
 	if err != nil {
 		return err
 	}
 
-	if err := renderCreateOutput(blueprintRoot, opts.Blueprint, opts.OutputDir, opts.Force, values); err != nil {
+	if err := renderCreateOutput(templateRoot, opts.Template, opts.OutputDir, opts.Force, values); err != nil {
 		return err
 	}
-	fmt.Fprintf(opts.Stderr, "created %s from %s/%s@%s (template %s)\n", opts.OutputDir, opts.Owner, opts.Repo, tag, opts.Blueprint)
+	fmt.Fprintf(opts.Stderr, "created %s from %s/%s@%s (template %s)\n", opts.OutputDir, opts.Owner, opts.Repo, tag, opts.Template)
 
-	// The template field is the repo directory name (opts.Blueprint), not
+	// The template field is the repo directory name (opts.Template), not
 	// tmpl.Metadata.Name — it is what a later re-fetch needs.
 	if err := WriteScaffold(opts.OutputDir, Scaffold{
 		SchemaVersion: ScaffoldSchemaVersion,
-		Template:      opts.Blueprint,
+		Template:      opts.Template,
 		Owner:         opts.Owner,
 		Repo:          opts.Repo,
 		Version:       tag,
@@ -109,7 +109,7 @@ func Create(ctx context.Context, opts CreateOptions) error {
 }
 
 func validateCreateOptions(opts CreateOptions) error {
-	if err := validateBlueprintName(opts.Blueprint); err != nil {
+	if err := validateTemplateName(opts.Template); err != nil {
 		return err
 	}
 	if opts.OutputDir == "" {
@@ -118,8 +118,8 @@ func validateCreateOptions(opts CreateOptions) error {
 	return nil
 }
 
-func prepareCreateTemplate(blueprintRoot string, opts CreateOptions) (*Template, map[string]any, error) {
-	tmpl, err := LoadTemplate(filepath.Join(blueprintRoot, templateManifestName))
+func prepareCreateTemplate(templateRoot string, opts CreateOptions) (*Template, map[string]any, error) {
+	tmpl, err := LoadTemplate(filepath.Join(templateRoot, templateManifestName))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -132,10 +132,10 @@ func prepareCreateTemplate(blueprintRoot string, opts CreateOptions) (*Template,
 	return tmpl, values, nil
 }
 
-func renderCreateOutput(blueprintRoot, blueprintName, outputDir string, force bool, values map[string]any) error {
-	skelRoot := filepath.Join(blueprintRoot, blueprintSkeletonDir)
+func renderCreateOutput(templateRoot, templateName, outputDir string, force bool, values map[string]any) error {
+	skelRoot := filepath.Join(templateRoot, templateSkeletonDir)
 	if info, err := os.Stat(skelRoot); err != nil || !info.IsDir() {
-		return fmt.Errorf("template %q is missing %s/ directory", blueprintName, blueprintSkeletonDir)
+		return fmt.Errorf("template %q is missing %s/ directory", templateName, templateSkeletonDir)
 	}
 	if err := ensureOutputDir(outputDir, force); err != nil {
 		return err
@@ -205,11 +205,11 @@ func ensureOutputDir(dir string, force bool) error {
 	return nil
 }
 
-// validateBlueprintName rejects empty names and anything that could escape the
+// validateTemplateName rejects empty names and anything that could escape the
 // extracted tarball root via filepath.Join (separators, parent refs, hidden
 // directories). The template argument is user input that we turn directly into
 // a path segment, so it has to be sanitized.
-func validateBlueprintName(name string) error {
+func validateTemplateName(name string) error {
 	if name == "" {
 		return errors.New("template name is required")
 	}

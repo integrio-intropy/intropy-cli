@@ -6,7 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/integrio-intropy/intropy-cli/internal/blueprint"
+	"github.com/integrio-intropy/intropy-cli/internal/template"
 	"github.com/spf13/cobra"
 )
 
@@ -32,7 +32,7 @@ var intCreateCmd = &cobra.Command{
 	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: completeBlueprints,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		sets, err := blueprint.ParseSets(intCreateFlags.sets)
+		sets, err := template.ParseSets(intCreateFlags.sets)
 		if err != nil {
 			return err
 		}
@@ -42,7 +42,7 @@ var intCreateCmd = &cobra.Command{
 		}
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
-		if err := blueprint.Create(ctx, blueprint.CreateOptions{
+		if err := template.Create(ctx, template.CreateOptions{
 			Blueprint:  args[0],
 			OutputDir:  outputDir,
 			Version:    intCreateFlags.version,

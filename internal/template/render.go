@@ -1,4 +1,4 @@
-package blueprint
+package template
 
 import (
 	"fmt"
@@ -22,7 +22,7 @@ const tmplSuffix = ".tmpl"
 //   - skeleton/{{.Name}}/svc.go        → <Name>/svc.go (path rendered, contents copied)
 //   - skeleton/{{.Name}}.http.tmpl     → <Name>.http (path and contents rendered)
 //
-// srcDir is the blueprint's skeleton/ directory; the manifest lives outside
+// srcDir is the template's skeleton/ directory; the manifest lives outside
 // this tree.
 func Render(srcDir, destDir string, values map[string]any) error {
 	return filepath.WalkDir(srcDir, func(path string, d fs.DirEntry, err error) error {

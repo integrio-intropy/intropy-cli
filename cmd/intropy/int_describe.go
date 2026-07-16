@@ -6,7 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/integrio-intropy/intropy-cli/internal/blueprint"
+	"github.com/integrio-intropy/intropy-cli/internal/template"
 	"github.com/spf13/cobra"
 )
 
@@ -30,7 +30,7 @@ var intDescribeCmd = &cobra.Command{
 		}
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
-		result, err := blueprint.Describe(ctx, blueprint.DescribeOptions{
+		result, err := template.Describe(ctx, template.DescribeOptions{
 			Blueprint: args[0],
 			Version:   intDescribeFlags.version,
 			UserAgent: "intropy-cli/" + version,

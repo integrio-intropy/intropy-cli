@@ -1,4 +1,4 @@
-package blueprint
+package template
 
 import (
 	"os"
@@ -13,7 +13,7 @@ func TestLoadTemplate(t *testing.T) {
 apiVersion: intropy.dev/v1
 kind: Template
 metadata:
-  name: test-blueprint
+  name: test-template
   title: Test
   description: For tests
   tags: [test]
@@ -39,8 +39,8 @@ spec:
 	if err != nil {
 		t.Fatalf("LoadTemplate: %v", err)
 	}
-	if tmpl.Metadata.Name != "test-blueprint" {
-		t.Errorf("Name = %q, want test-blueprint", tmpl.Metadata.Name)
+	if tmpl.Metadata.Name != "test-template" {
+		t.Errorf("Name = %q, want test-template", tmpl.Metadata.Name)
 	}
 	fields := tmpl.Fields()
 	if len(fields) != 2 {
@@ -83,7 +83,7 @@ func TestLoadTemplateRejectsUnknownKind(t *testing.T) {
 	path := filepath.Join(dir, templateManifestName)
 	body := `
 apiVersion: intropy.dev/v1
-kind: Blueprint
+kind: Widget
 metadata:
   name: x
 spec:

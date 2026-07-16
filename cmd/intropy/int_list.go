@@ -6,7 +6,7 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/integrio-intropy/intropy-cli/internal/blueprint"
+	"github.com/integrio-intropy/intropy-cli/internal/template"
 	"github.com/spf13/cobra"
 )
 
@@ -20,7 +20,7 @@ var intListCmd = &cobra.Command{
 	Use:   "list [dir]",
 	Short: "List scaffolded integrations under a directory",
 	Long: "Walk the directory tree from dir (default: the current directory) and list every project carrying a " +
-		blueprint.ScaffoldRelPath + " record written by `int create`. " +
+		template.ScaffoldRelPath + " record written by `int create`. " +
 		"Matched projects are not descended into, and .git, .intropy, node_modules, bin and dist are skipped. " +
 		"Use --output json for a machine-readable document including the pinned source and scaffold values.",
 	Args: cobra.MaximumNArgs(1),
@@ -38,14 +38,14 @@ var intListCmd = &cobra.Command{
 			return newUsageErrorf("list: %s is not a directory", root)
 		}
 
-		entries, warnings := blueprint.ListScaffolds(root)
+		entries, warnings := template.ListScaffolds(root)
 		for _, w := range warnings {
 			fmt.Fprintln(cmd.ErrOrStderr(), "warning:", w)
 		}
 
 		if intListOpts.output == "json" {
 			if entries == nil {
-				entries = []blueprint.ScaffoldEntry{}
+				entries = []template.ScaffoldEntry{}
 			}
 			enc := json.NewEncoder(cmd.OutOrStdout())
 			enc.SetIndent("", "  ")

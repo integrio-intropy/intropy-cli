@@ -1,4 +1,4 @@
-package blueprint
+package template
 
 import (
 	"errors"
@@ -11,7 +11,7 @@ import (
 func testScaffold() Scaffold {
 	return Scaffold{
 		SchemaVersion: ScaffoldSchemaVersion,
-		Template:      "test-blueprint",
+		Template:      "test-template",
 		Owner:         "o",
 		Repo:          "r",
 		Version:       "v1.2.3",
@@ -49,7 +49,7 @@ func TestFindScaffoldWalksUp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FindScaffold: %v", err)
 	}
-	if got.Template != "test-blueprint" {
+	if got.Template != "test-template" {
 		t.Errorf("Template = %q", got.Template)
 	}
 	// t.TempDir may sit behind a symlink (macOS /tmp); compare resolved paths.

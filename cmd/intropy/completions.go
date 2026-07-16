@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/integrio-intropy/intropy-cli/internal/blueprint"
+	"github.com/integrio-intropy/intropy-cli/internal/template"
 	"github.com/integrio-intropy/intropy-cli/internal/skill"
 	"github.com/spf13/cobra"
 )
@@ -19,7 +19,7 @@ func completeBlueprints(cmd *cobra.Command, args []string, toComplete string) ([
 		ctx = context.Background()
 	}
 
-	gh := blueprint.NewGitHubClient(nil, "intropy-cli/"+version, "")
+	gh := template.NewGitHubClient(nil, "intropy-cli/"+version, "")
 	entries, err := gh.ListBlueprints(ctx, "", "")
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp

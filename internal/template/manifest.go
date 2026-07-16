@@ -1,4 +1,4 @@
-package blueprint
+package template
 
 import (
 	"fmt"
@@ -12,7 +12,7 @@ const (
 	KindTemplate = "Template"
 )
 
-// Template is the on-disk manifest for a blueprint. The envelope mirrors the
+// Template is the on-disk manifest for a template. The envelope mirrors the
 // Kubernetes / Backstage shape so authors recognize it at a glance; the body
 // is a deliberately narrow subset (no ui: extensions, no step pipeline).
 type Template struct {

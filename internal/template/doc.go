@@ -1,4 +1,4 @@
-// Package blueprint downloads, validates, describes, and renders Intropy
+// Package template downloads, validates, describes, and renders Intropy
 // scaffolding templates. (The package predates the "template" vocabulary;
 // it keeps its name to avoid colliding with text/template.)
 //
@@ -16,4 +16,4 @@
 // (`intropy manifests create`), which re-fetches the pinned version from the
 // scaffold record and renders manifests/skeleton with values seeded from the
 // record.
-package blueprint
+package template

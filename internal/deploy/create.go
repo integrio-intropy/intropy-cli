@@ -15,7 +15,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/integrio-intropy/intropy-cli/internal/blueprint"
+	"github.com/integrio-intropy/intropy-cli/internal/template"
 )
 
 const (
@@ -88,15 +88,15 @@ func (o *CreateOptions) applyDefaults() {
 func Create(ctx context.Context, opts CreateOptions) error {
 	opts.applyDefaults()
 
-	scaffold, projectRoot, err := blueprint.FindScaffold(opts.StartDir)
+	scaffold, projectRoot, err := template.FindScaffold(opts.StartDir)
 	if err != nil {
-		if errors.Is(err, blueprint.ErrScaffoldNotFound) {
-			return fmt.Errorf("%w\nThis project was scaffolded before deployment metadata existed. Re-scaffold it with 'intropy int create', or commit a minimal %s:\n  {\"schemaVersion\":1,\"template\":\"<template>\",\"owner\":\"integrio-intropy\",\"repo\":\"intropy-templates\",\"version\":\"<tag>\",\"values\":{\"name\":\"<name>\"}}", err, blueprint.ScaffoldRelPath)
+		if errors.Is(err, template.ErrScaffoldNotFound) {
+			return fmt.Errorf("%w\nThis project was scaffolded before deployment metadata existed. Re-scaffold it with 'intropy int create', or commit a minimal %s:\n  {\"schemaVersion\":1,\"template\":\"<template>\",\"owner\":\"integrio-intropy\",\"repo\":\"intropy-templates\",\"version\":\"<tag>\",\"values\":{\"name\":\"<name>\"}}", err, template.ScaffoldRelPath)
 		}
 		return err
 	}
-	if scaffold.SchemaVersion > blueprint.ScaffoldSchemaVersion {
-		return fmt.Errorf("%s has schemaVersion %d, but this CLI supports up to %d; upgrade intropy", blueprint.ScaffoldRelPath, scaffold.SchemaVersion, blueprint.ScaffoldSchemaVersion)
+	if scaffold.SchemaVersion > template.ScaffoldSchemaVersion {
+		return fmt.Errorf("%s has schemaVersion %d, but this CLI supports up to %d; upgrade intropy", template.ScaffoldRelPath, scaffold.SchemaVersion, template.ScaffoldSchemaVersion)
 	}
 	owner, repo := scaffold.Owner, scaffold.Repo
 	if opts.Owner != "" {
@@ -111,12 +111,12 @@ func Create(ctx context.Context, opts CreateOptions) error {
 		tag = opts.Version
 	}
 	if tag == "" {
-		return fmt.Errorf("%s does not pin a template version; pass --version", blueprint.ScaffoldRelPath)
+		return fmt.Errorf("%s does not pin a template version; pass --version", template.ScaffoldRelPath)
 	}
 
-	gh := blueprint.NewGitHubClient(opts.HTTP, opts.UserAgent, opts.GitHubBaseURL)
+	gh := template.NewGitHubClient(opts.HTTP, opts.UserAgent, opts.GitHubBaseURL)
 	fmt.Fprintf(opts.Stderr, "fetching %s/%s@%s\n", owner, repo, tag)
-	blueprintRoot, cleanup, err := blueprint.DownloadBlueprint(ctx, gh, owner, repo, tag, scaffold.Template, "intropy-manifests-*")
+	blueprintRoot, cleanup, err := template.DownloadBlueprint(ctx, gh, owner, repo, tag, scaffold.Template, "intropy-manifests-*")
 	if err != nil {
 		return err
 	}
@@ -128,7 +128,7 @@ func Create(ctx context.Context, opts CreateOptions) error {
 		return fmt.Errorf("template %q at %s does not include deployment manifest templates (%s/); pass --version <newer tag> or update the template", scaffold.Template, tag, manifestDirName)
 	}
 
-	tmpl, err := blueprint.LoadTemplate(filepath.Join(manifestsRoot, templateManifestName))
+	tmpl, err := template.LoadTemplate(filepath.Join(manifestsRoot, templateManifestName))
 	if err != nil {
 		return err
 	}
@@ -141,10 +141,10 @@ func Create(ctx context.Context, opts CreateOptions) error {
 	if outputDir == "" {
 		outputDir = filepath.Join(projectRoot, defaultOutputDirName)
 	}
-	if err := blueprint.EnsureOutputDir(outputDir, opts.Force); err != nil {
+	if err := template.EnsureOutputDir(outputDir, opts.Force); err != nil {
 		return err
 	}
-	if err := blueprint.Render(skelRoot, outputDir, values); err != nil {
+	if err := template.Render(skelRoot, outputDir, values); err != nil {
 		return err
 	}
 	fmt.Fprintf(opts.Stderr, "wrote deployment manifests to %s (template %s@%s)\n", outputDir, scaffold.Template, tag)
@@ -157,7 +157,7 @@ func Create(ctx context.Context, opts CreateOptions) error {
 // parameters auto-fill (no re-prompt) but yield to --values/--set. The full
 // scaffold value map is exposed under the reserved "scaffold" key — added
 // after Resolve so it never contaminates JSON Schema validation.
-func resolveManifestValues(tmpl *blueprint.Template, scaffold *blueprint.Scaffold, opts CreateOptions) (map[string]any, error) {
+func resolveManifestValues(tmpl *template.Template, scaffold *template.Scaffold, opts CreateOptions) (map[string]any, error) {
 	declared := map[string]bool{}
 	for _, f := range tmpl.Fields() {
 		if f.Name == scaffoldValuesKey {
@@ -176,8 +176,8 @@ func resolveManifestValues(tmpl *blueprint.Template, scaffold *blueprint.Scaffol
 		}
 	}
 
-	prompter := blueprint.AutoPrompter(opts.Stdin, opts.Stderr, opts.NoInput)
-	values, err := blueprint.ResolveLayered(tmpl, seed, opts.Files, opts.Stdin, opts.SetValues, prompter)
+	prompter := template.AutoPrompter(opts.Stdin, opts.Stderr, opts.NoInput)
+	values, err := template.ResolveLayered(tmpl, seed, opts.Files, opts.Stdin, opts.SetValues, prompter)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +185,7 @@ func resolveManifestValues(tmpl *blueprint.Template, scaffold *blueprint.Scaffol
 	return values, nil
 }
 
-func maybeWriteCreateResult(opts CreateOptions, scaffold *blueprint.Scaffold, owner, repo, tag, outputDir string, values map[string]any) error {
+func maybeWriteCreateResult(opts CreateOptions, scaffold *template.Scaffold, owner, repo, tag, outputDir string, values map[string]any) error {
 	if opts.OutputJSON == "" {
 		return nil
 	}

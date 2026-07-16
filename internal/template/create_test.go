@@ -1,4 +1,4 @@
-package blueprint
+package template
 
 import (
 	"bytes"
@@ -15,7 +15,7 @@ import (
 const testTemplateYAML = `apiVersion: intropy.dev/v1
 kind: Template
 metadata:
-  name: test-blueprint
+  name: test-template
   title: Test
 spec:
   parameters:
@@ -29,14 +29,14 @@ spec:
         default: default
 `
 
-// newBlueprintServer serves a tarball containing a single blueprint named
-// "test-blueprint" laid out as the v1 model expects: <blueprint>/template.yaml
-// plus <blueprint>/skeleton/<files>.
-func newBlueprintServer(t *testing.T, tag string) *httptest.Server {
+// newTemplateServer serves a tarball containing a single template named
+// "test-template" laid out as the v1 model expects: <template>/template.yaml
+// plus <template>/skeleton/<files>.
+func newTemplateServer(t *testing.T, tag string) *httptest.Server {
 	t.Helper()
 	tarball := buildTarGz(t, "owner-repo-abc123", map[string]string{
-		"test-blueprint/template.yaml":           testTemplateYAML,
-		"test-blueprint/skeleton/README.md.tmpl": "{{ .integrationName }} in {{ .namespace }}\n",
+		"test-template/template.yaml":           testTemplateYAML,
+		"test-template/skeleton/README.md.tmpl": "{{ .integrationName }} in {{ .namespace }}\n",
 	})
 	mux := http.NewServeMux()
 	mux.HandleFunc("/repos/o/r/releases/latest", func(w http.ResponseWriter, r *http.Request) {
@@ -50,7 +50,7 @@ func newBlueprintServer(t *testing.T, tag string) *httptest.Server {
 }
 
 func TestCreateWritesOutputJSON(t *testing.T) {
-	srv := newBlueprintServer(t, "v9.9.9")
+	srv := newTemplateServer(t, "v9.9.9")
 	defer srv.Close()
 
 	outDir := filepath.Join(t.TempDir(), "out")
@@ -58,7 +58,7 @@ func TestCreateWritesOutputJSON(t *testing.T) {
 	var stderr bytes.Buffer
 
 	err := Create(context.Background(), CreateOptions{
-		Blueprint:     "test-blueprint",
+		Template:      "test-template",
 		OutputDir:     outDir,
 		Version:       "v9.9.9",
 		SetValues:     map[string]any{"integrationName": "orders"},
@@ -82,7 +82,7 @@ func TestCreateWritesOutputJSON(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal result: %v\n%s", err, string(data))
 	}
-	if got.Template != "test-blueprint" {
+	if got.Template != "test-template" {
 		t.Errorf("Template = %q", got.Template)
 	}
 	if got.Owner != "o" || got.Repo != "r" {
@@ -103,12 +103,12 @@ func TestCreateWritesOutputJSON(t *testing.T) {
 }
 
 func TestCreateWritesScaffoldFile(t *testing.T) {
-	srv := newBlueprintServer(t, "v2.0.0")
+	srv := newTemplateServer(t, "v2.0.0")
 	defer srv.Close()
 
 	outDir := filepath.Join(t.TempDir(), "out")
 	err := Create(context.Background(), CreateOptions{
-		Blueprint:     "test-blueprint",
+		Template:      "test-template",
 		OutputDir:     outDir,
 		Version:       "v2.0.0",
 		SetValues:     map[string]any{"integrationName": "orders"},
@@ -130,7 +130,7 @@ func TestCreateWritesScaffoldFile(t *testing.T) {
 	if got.SchemaVersion != ScaffoldSchemaVersion {
 		t.Errorf("SchemaVersion = %d", got.SchemaVersion)
 	}
-	if got.Template != "test-blueprint" || got.Owner != "o" || got.Repo != "r" || got.Version != "v2.0.0" {
+	if got.Template != "test-template" || got.Owner != "o" || got.Repo != "r" || got.Version != "v2.0.0" {
 		t.Errorf("scaffold identity = %q %q/%q@%q", got.Template, got.Owner, got.Repo, got.Version)
 	}
 	if got.Values["integrationName"] != "orders" || got.Values["namespace"] != "default" {
@@ -139,14 +139,14 @@ func TestCreateWritesScaffoldFile(t *testing.T) {
 }
 
 func TestCreateOutputJSONStdout(t *testing.T) {
-	srv := newBlueprintServer(t, "v1")
+	srv := newTemplateServer(t, "v1")
 	defer srv.Close()
 
 	outDir := filepath.Join(t.TempDir(), "out")
 	var stdout, stderr bytes.Buffer
 
 	err := Create(context.Background(), CreateOptions{
-		Blueprint:     "test-blueprint",
+		Template:      "test-template",
 		OutputDir:     outDir,
 		Version:       "v1",
 		SetValues:     map[string]any{"integrationName": "x"},
@@ -162,8 +162,8 @@ func TestCreateOutputJSONStdout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if !strings.Contains(stdout.String(), `"template": "test-blueprint"`) {
-		t.Errorf("stdout missing blueprint field: %s", stdout.String())
+	if !strings.Contains(stdout.String(), `"template": "test-template"`) {
+		t.Errorf("stdout missing template field: %s", stdout.String())
 	}
 	// Human-readable logs must stay on stderr so stdout is pure JSON.
 	if strings.Contains(stdout.String(), "fetching") {
@@ -172,12 +172,12 @@ func TestCreateOutputJSONStdout(t *testing.T) {
 }
 
 func TestCreateDoesNotCreateOutputDirWhenValidationFails(t *testing.T) {
-	srv := newBlueprintServer(t, "v1")
+	srv := newTemplateServer(t, "v1")
 	defer srv.Close()
 
 	outDir := filepath.Join(t.TempDir(), "out")
 	err := Create(context.Background(), CreateOptions{
-		Blueprint:     "test-blueprint",
+		Template:      "test-template",
 		OutputDir:     outDir,
 		Version:       "v1",
 		NoInput:       true,
@@ -196,14 +196,14 @@ func TestCreateDoesNotCreateOutputDirWhenValidationFails(t *testing.T) {
 }
 
 func TestCreateReadsStdinValues(t *testing.T) {
-	srv := newBlueprintServer(t, "v1")
+	srv := newTemplateServer(t, "v1")
 	defer srv.Close()
 
 	outDir := filepath.Join(t.TempDir(), "out")
 	jsonPath := filepath.Join(t.TempDir(), "result.json")
 
 	err := Create(context.Background(), CreateOptions{
-		Blueprint:     "test-blueprint",
+		Template:      "test-template",
 		OutputDir:     outDir,
 		Version:       "v1",
 		Files:         []string{StdinValuesPath},

@@ -1,4 +1,4 @@
-package blueprint
+package template
 
 import "testing"
 
@@ -7,10 +7,10 @@ import "testing"
 // template library, so accidental changes to these constants must be a
 // deliberate, reviewed edit (which updates this test).
 func TestProductionDefaults(t *testing.T) {
-	if defaultBlueprintOwner != "integrio-intropy" {
-		t.Errorf("defaultBlueprintOwner = %q, want %q", defaultBlueprintOwner, "integrio-intropy")
+	if defaultTemplateOwner != "integrio-intropy" {
+		t.Errorf("defaultTemplateOwner = %q, want %q", defaultTemplateOwner, "integrio-intropy")
 	}
-	if defaultBlueprintRepo != "intropy-templates" {
-		t.Errorf("defaultBlueprintRepo = %q, want %q", defaultBlueprintRepo, "intropy-templates")
+	if defaultTemplateRepo != "intropy-templates" {
+		t.Errorf("defaultTemplateRepo = %q, want %q", defaultTemplateRepo, "intropy-templates")
 	}
 }

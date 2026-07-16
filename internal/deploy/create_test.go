@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/integrio-intropy/intropy-cli/internal/blueprint"
+	"github.com/integrio-intropy/intropy-cli/internal/template"
 	"gopkg.in/yaml.v3"
 )
 
@@ -180,8 +180,8 @@ func newManifestsServer(t *testing.T, tag string, files map[string]string) *http
 func writeTestScaffold(t *testing.T, version string, values map[string]any) string {
 	t.Helper()
 	root := t.TempDir()
-	err := blueprint.WriteScaffold(root, blueprint.Scaffold{
-		SchemaVersion: blueprint.ScaffoldSchemaVersion,
+	err := template.WriteScaffold(root, template.Scaffold{
+		SchemaVersion: template.ScaffoldSchemaVersion,
 		Template:      "test-blueprint",
 		Owner:         "o",
 		Repo:          "r",
@@ -191,12 +191,12 @@ func writeTestScaffold(t *testing.T, version string, values map[string]any) stri
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(root, filepath.FromSlash(blueprint.ScaffoldRelPath))
-	loaded, err := blueprint.LoadScaffold(path)
+	path := filepath.Join(root, filepath.FromSlash(template.ScaffoldRelPath))
+	loaded, err := template.LoadScaffold(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := blueprint.WriteScaffold(root, *loaded); err != nil {
+	if err := template.WriteScaffold(root, *loaded); err != nil {
 		t.Fatal(err)
 	}
 	return root
@@ -377,8 +377,8 @@ func TestCreateMissingManifestsDir(t *testing.T) {
 
 func TestCreateTooNewSchemaVersion(t *testing.T) {
 	root := t.TempDir()
-	err := blueprint.WriteScaffold(root, blueprint.Scaffold{
-		SchemaVersion: blueprint.ScaffoldSchemaVersion + 1,
+	err := template.WriteScaffold(root, template.Scaffold{
+		SchemaVersion: template.ScaffoldSchemaVersion + 1,
 		Template:      "test-blueprint",
 		Owner:         "o",
 		Repo:          "r",

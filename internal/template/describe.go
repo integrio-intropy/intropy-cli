@@ -1,4 +1,4 @@
-package blueprint
+package template
 
 import (
 	"context"
@@ -9,10 +9,10 @@ import (
 	"sort"
 )
 
-// DescribeOptions selects which blueprint release to inspect. Fields mirror
+// DescribeOptions selects which template release to inspect. Fields mirror
 // CreateOptions for the create flow so callers can share configuration.
 type DescribeOptions struct {
-	Blueprint string // required; subdirectory in the blueprints repo holding template.yaml
+	Template  string // required; subdirectory in the templates repo holding template.yaml
 	Version   string
 	HTTP      *http.Client
 	UserAgent string
@@ -25,10 +25,10 @@ type DescribeOptions struct {
 
 func (o *DescribeOptions) applyDefaults() {
 	if o.Owner == "" {
-		o.Owner = defaultBlueprintOwner
+		o.Owner = defaultTemplateOwner
 	}
 	if o.Repo == "" {
-		o.Repo = defaultBlueprintRepo
+		o.Repo = defaultTemplateRepo
 	}
 	if o.UserAgent == "" {
 		o.UserAgent = "intropy-cli"
@@ -55,12 +55,12 @@ type DescribeResult struct {
 	orderedFields []FieldSpec
 }
 
-// Describe fetches the blueprint tarball at the requested version (or latest)
+// Describe fetches the template tarball at the requested version (or latest)
 // and returns its parsed template manifest. It performs the same fetch+extract
 // path as Create but stops short of value resolution or rendering.
 func Describe(ctx context.Context, opts DescribeOptions) (*DescribeResult, error) {
 	opts.applyDefaults()
-	if err := validateBlueprintName(opts.Blueprint); err != nil {
+	if err := validateTemplateName(opts.Template); err != nil {
 		return nil, err
 	}
 
@@ -70,13 +70,13 @@ func Describe(ctx context.Context, opts DescribeOptions) (*DescribeResult, error
 		return nil, err
 	}
 
-	blueprintRoot, cleanup, err := downloadBlueprint(ctx, gh, opts.Owner, opts.Repo, tag, opts.Blueprint, "intropy-describe-*")
+	templateRoot, cleanup, err := downloadTemplate(ctx, gh, opts.Owner, opts.Repo, tag, opts.Template, "intropy-describe-*")
 	if err != nil {
 		return nil, err
 	}
 	defer cleanup()
 
-	tmpl, err := LoadTemplate(filepath.Join(blueprintRoot, templateManifestName))
+	tmpl, err := LoadTemplate(filepath.Join(templateRoot, templateManifestName))
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +95,7 @@ func Describe(ctx context.Context, opts DescribeOptions) (*DescribeResult, error
 	}, nil
 }
 
-// FormatText writes a human-readable summary of the blueprint to w. The
+// FormatText writes a human-readable summary of the template to w. The
 // machine-readable form is JSON-marshaled DescribeResult — callers needing
 // stable parsing should use that instead.
 func (r *DescribeResult) FormatText(w io.Writer) {

@@ -1,4 +1,4 @@
-package blueprint
+package template
 
 import (
 	"archive/tar"

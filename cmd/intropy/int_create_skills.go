@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/integrio-intropy/intropy-cli/internal/blueprint"
+	"github.com/integrio-intropy/intropy-cli/internal/template"
 	"github.com/integrio-intropy/intropy-cli/internal/skill"
 	"github.com/integrio-intropy/intropy-cli/internal/skill/oci"
 	"golang.org/x/term"
@@ -92,7 +92,7 @@ func maybeInstallSkills(ctx context.Context, in io.Reader, errW io.Writer, force
 // confirmInstallSkills renders a [Y/n] prompt (default yes) and reads the
 // answer. EOF counts as a decline, not an error.
 func confirmInstallSkills(in io.Reader, out io.Writer) (bool, error) {
-	v, err := blueprint.NewStdinPrompter(in, out).Prompt(blueprint.FieldSpec{
+	v, err := template.NewStdinPrompter(in, out).Prompt(template.FieldSpec{
 		Name:    "install-skills",
 		Title:   "Install agent skills into .agents/skills?",
 		Type:    "boolean",

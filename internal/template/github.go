@@ -1,4 +1,4 @@
-package blueprint
+package template
 
 import (
 	"context"
@@ -11,11 +11,11 @@ import (
 )
 
 const (
-	defaultBlueprintOwner = "integrio-intropy"
-	defaultBlueprintRepo  = "intropy-templates"
-	templateManifestName  = "template.yaml"
-	blueprintSkeletonDir  = "skeleton"
-	githubAPIBaseURL      = "https://api.github.com"
+	defaultTemplateOwner = "integrio-intropy"
+	defaultTemplateRepo  = "intropy-templates"
+	templateManifestName = "template.yaml"
+	templateSkeletonDir  = "skeleton"
+	githubAPIBaseURL     = "https://api.github.com"
 )
 
 // GitHub talks to a GitHub-compatible API. BaseURL is overridable for tests.
@@ -64,14 +64,14 @@ func (g *GitHub) ResolveTag(ctx context.Context, owner, repo, requestedTag strin
 	return g.LatestTag(ctx, owner, repo)
 }
 
-// DownloadBlueprint fetches the repo tarball at tag, extracts it to a temp
-// dir (created with tempPattern), and returns the path of the named blueprint
+// DownloadTemplate fetches the repo tarball at tag, extracts it to a temp
+// dir (created with tempPattern), and returns the path of the named template
 // subdirectory plus a cleanup func that removes the temp dir.
-func DownloadBlueprint(ctx context.Context, gh *GitHub, owner, repo, tag, blueprint, tempPattern string) (string, func(), error) {
-	return downloadBlueprint(ctx, gh, owner, repo, tag, blueprint, tempPattern)
+func DownloadTemplate(ctx context.Context, gh *GitHub, owner, repo, tag, templateName, tempPattern string) (string, func(), error) {
+	return downloadTemplate(ctx, gh, owner, repo, tag, templateName, tempPattern)
 }
 
-func downloadBlueprint(ctx context.Context, gh *GitHub, owner, repo, tag, blueprint, tempPattern string) (string, func(), error) {
+func downloadTemplate(ctx context.Context, gh *GitHub, owner, repo, tag, templateName, tempPattern string) (string, func(), error) {
 	rc, err := gh.Tarball(ctx, owner, repo, tag)
 	if err != nil {
 		return "", nil, err
@@ -89,12 +89,12 @@ func downloadBlueprint(ctx context.Context, gh *GitHub, owner, repo, tag, bluepr
 		return "", nil, err
 	}
 
-	blueprintRoot := filepath.Join(tmpDir, blueprint)
-	if info, err := os.Stat(blueprintRoot); err != nil || !info.IsDir() {
+	templateRoot := filepath.Join(tmpDir, templateName)
+	if info, err := os.Stat(templateRoot); err != nil || !info.IsDir() {
 		cleanup()
-		return "", nil, fmt.Errorf("template %q not found in %s/%s@%s", blueprint, owner, repo, tag)
+		return "", nil, fmt.Errorf("template %q not found in %s/%s@%s", templateName, owner, repo, tag)
 	}
-	return blueprintRoot, cleanup, nil
+	return templateRoot, cleanup, nil
 }
 
 // LatestTag returns the tag_name of the most recent release for owner/repo.
@@ -150,14 +150,14 @@ func (g *GitHub) Tarball(ctx context.Context, owner, repo, tag string) (io.ReadC
 	return resp.Body, nil
 }
 
-// ListBlueprints returns the names of blueprint directories at the root of
-// the blueprints repository. On any error an empty slice is returned.
-func (g *GitHub) ListBlueprints(ctx context.Context, owner, repo string) ([]string, error) {
+// ListTemplates returns the names of template directories at the root of
+// the templates repository. On any error an empty slice is returned.
+func (g *GitHub) ListTemplates(ctx context.Context, owner, repo string) ([]string, error) {
 	if owner == "" {
-		owner = defaultBlueprintOwner
+		owner = defaultTemplateOwner
 	}
 	if repo == "" {
-		repo = defaultBlueprintRepo
+		repo = defaultTemplateRepo
 	}
 	u := fmt.Sprintf("%s/repos/%s/%s/contents/", g.BaseURL, owner, repo)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)

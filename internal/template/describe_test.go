@@ -1,4 +1,4 @@
-package blueprint
+package template
 
 import (
 	"bytes"
@@ -9,11 +9,11 @@ import (
 )
 
 func TestDescribe(t *testing.T) {
-	srv := newBlueprintServer(t, "v1.2.3")
+	srv := newTemplateServer(t, "v1.2.3")
 	defer srv.Close()
 
 	got, err := Describe(context.Background(), DescribeOptions{
-		Blueprint:     "test-blueprint",
+		Template:      "test-template",
 		Version:       "v1.2.3",
 		HTTP:          srv.Client(),
 		Owner:         "o",
@@ -23,7 +23,7 @@ func TestDescribe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Describe: %v", err)
 	}
-	if got.Template != "test-blueprint" {
+	if got.Template != "test-template" {
 		t.Errorf("Template = %q", got.Template)
 	}
 	if got.Version != "v1.2.3" {
@@ -42,11 +42,11 @@ func TestDescribe(t *testing.T) {
 }
 
 func TestDescribeJSONStable(t *testing.T) {
-	srv := newBlueprintServer(t, "v1")
+	srv := newTemplateServer(t, "v1")
 	defer srv.Close()
 
 	got, err := Describe(context.Background(), DescribeOptions{
-		Blueprint:     "test-blueprint",
+		Template:      "test-template",
 		Version:       "v1",
 		HTTP:          srv.Client(),
 		Owner:         "o",
@@ -73,11 +73,11 @@ func TestDescribeJSONStable(t *testing.T) {
 }
 
 func TestDescribeFormatTextPreservesDeclarationOrder(t *testing.T) {
-	srv := newBlueprintServer(t, "v1")
+	srv := newTemplateServer(t, "v1")
 	defer srv.Close()
 
 	got, err := Describe(context.Background(), DescribeOptions{
-		Blueprint:     "test-blueprint",
+		Template:      "test-template",
 		Version:       "v1",
 		HTTP:          srv.Client(),
 		Owner:         "o",
