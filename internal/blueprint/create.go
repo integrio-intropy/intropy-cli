@@ -92,6 +92,19 @@ func Create(ctx context.Context, opts CreateOptions) error {
 	}
 	fmt.Fprintf(opts.Stderr, "created %s from %s/%s@%s (template %s)\n", opts.OutputDir, opts.Owner, opts.Repo, tag, opts.Blueprint)
 
+	// The template field is the repo directory name (opts.Blueprint), not
+	// tmpl.Metadata.Name — it is what a later re-fetch needs.
+	if err := WriteScaffold(opts.OutputDir, Scaffold{
+		SchemaVersion: ScaffoldSchemaVersion,
+		Template:      opts.Blueprint,
+		Owner:         opts.Owner,
+		Repo:          opts.Repo,
+		Version:       tag,
+		Values:        values,
+	}); err != nil {
+		return err
+	}
+
 	return maybeWriteCreateResult(opts, tmpl, values, tag)
 }
 
@@ -166,6 +179,12 @@ func writeOutputJSON(path string, stdout io.Writer, r CreateResult) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
+// EnsureOutputDir creates dir if missing and refuses to render into a
+// non-empty directory unless force is set.
+func EnsureOutputDir(dir string, force bool) error {
+	return ensureOutputDir(dir, force)
+}
+
 func ensureOutputDir(dir string, force bool) error {
 	info, err := os.Stat(dir)
 	switch {
@@ -204,15 +223,20 @@ func validateBlueprintName(name string) error {
 }
 
 func selectPrompter(opts *CreateOptions) Prompter {
-	if opts.NoInput {
+	return AutoPrompter(opts.Stdin, opts.Stderr, opts.NoInput)
+}
+
+// AutoPrompter returns a StdinPrompter when interactive prompting is viable:
+// noInput is false and stdin is a real terminal. In CI / piped contexts it
+// returns nil, so Resolve reports a clean "missing required parameter(s)"
+// error instead of hanging on a read.
+func AutoPrompter(stdin io.Reader, out io.Writer, noInput bool) Prompter {
+	if noInput {
 		return nil
 	}
-	// Only prompt when stdin is a real terminal. In CI / piped contexts the
-	// caller must supply values via --set or --values; otherwise Resolve
-	// returns a clean "missing required parameter(s)" error.
-	stdin, ok := opts.Stdin.(*os.File)
-	if !ok || !isTerminal(stdin.Fd()) {
+	f, ok := stdin.(*os.File)
+	if !ok || !isTerminal(f.Fd()) {
 		return nil
 	}
-	return NewStdinPrompter(opts.Stdin, opts.Stderr)
+	return NewStdinPrompter(stdin, out)
 }

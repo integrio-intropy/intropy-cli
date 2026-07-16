@@ -68,6 +68,50 @@ func TestResolvePrecedence(t *testing.T) {
 	}
 }
 
+func TestResolveLayeredPrecedence(t *testing.T) {
+	dir := t.TempDir()
+	vf := filepath.Join(dir, "vals.yaml")
+	if err := os.WriteFile(vf, []byte("namespace: from-file\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tmpl := buildTemplate(map[string]any{
+		"type":     "object",
+		"required": []any{"integrationName"},
+		"properties": map[string]any{
+			"integrationName": map[string]any{"type": "string"},
+			"namespace":       map[string]any{"type": "string", "default": "default"},
+			"region":          map[string]any{"type": "string", "default": "eu-north-1"},
+			"replicas":        map[string]any{"type": "integer", "default": 1},
+		},
+	}, []string{"integrationName", "namespace", "region", "replicas"}, nil)
+
+	// base beats defaults, files beat base, sets beat files. A base value for
+	// a required parameter satisfies it (no prompter needed), and base values
+	// are coerced to the declared schema type like every other layer.
+	base := map[string]any{
+		"integrationName": "from-base",
+		"namespace":       "from-base",
+		"region":          "from-base",
+		"replicas":        "3",
+	}
+	out, err := ResolveLayered(tmpl, base, []string{vf}, nil, map[string]any{"region": "from-set"}, nil)
+	if err != nil {
+		t.Fatalf("ResolveLayered: %v", err)
+	}
+	if out["integrationName"] != "from-base" {
+		t.Errorf("integrationName = %v, want from-base (base satisfies required)", out["integrationName"])
+	}
+	if out["namespace"] != "from-file" {
+		t.Errorf("namespace = %v, want from-file (files beat base)", out["namespace"])
+	}
+	if out["region"] != "from-set" {
+		t.Errorf("region = %v, want from-set (sets beat base)", out["region"])
+	}
+	if out["replicas"] != int64(3) {
+		t.Errorf("replicas = %v (%T), want int64(3) (base values coerced)", out["replicas"], out["replicas"])
+	}
+}
+
 func TestResolveMissingRequiredNoPrompter(t *testing.T) {
 	tmpl := buildTemplate(map[string]any{
 		"type":     "object",

@@ -165,7 +165,10 @@ intropy skills list
 intropy
 ├── int                    Manage integrations
 │   ├── create <template>      Scaffold a new integration from a template
-│   └── describe <template>    Print a template's manifest and parameter schema
+│   ├── describe <template>    Print a template's manifest and parameter schema
+│   └── list [dir]             List scaffolded integrations under a directory
+├── manifests              Manage deployment manifests
+│   └── create                 Generate Kubernetes manifests for a scaffolded integration
 ├── skills                 Manage Intropy skills
 │   ├── add [ref]              Add and install a skill from an OCI registry
 │   ├── list                   List installed skills
@@ -244,6 +247,87 @@ intropy int create hello-world -n orders --skip-install-skills
 
 Set `INTROPY_SKILLS_COLLECTION` to point the install at a different
 collection ref (e.g. a local registry when testing).
+
+`int create` also writes a scaffold record to `.intropy/scaffold.json` inside
+the new integration — the template name, the exact release version, and the
+resolved parameter values. Commit it: later commands (like
+`intropy manifests create`) read it to reproduce decisions made at scaffold
+time.
+
+### List scaffolded integrations
+
+Discover every integration under a directory tree — each project is
+identified by its committed `.intropy/scaffold.json` record:
+
+```sh
+# walk down from the current directory
+intropy int list
+
+# or from an explicit root
+intropy int list ~/dev/integrations
+
+# machine-readable, including the pinned source and scaffold values
+intropy int list -o json
+```
+
+The walk skips `.git`, `node_modules`, `bin` and `dist`, and doesn't descend
+into a project once matched (projects don't nest). Projects with an unreadable
+record are reported as warnings on stderr without hiding the rest.
+
+## Deployment manifests (`intropy manifests`)
+
+### Generate Kubernetes manifests
+
+Run inside a scaffolded integration (any subdirectory works — the command
+walks up to find `.intropy/scaffold.json`):
+
+```sh
+intropy manifests create
+```
+
+This re-fetches the template at the exact version pinned in
+`.intropy/scaffold.json` and renders its `manifests/` templates into a
+kustomize tree:
+
+```
+deploy/
+├── base/                  Deployment + Service with Dapr sidecar annotations
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   └── kustomization.yaml
+└── overlays/
+    ├── dev/               Dapr components for local-style backends
+    └── prod/              Real-broker placeholders, secrets via secretKeyRef
+```
+
+Values recorded at scaffold time (like `name` and `appPort`) pre-fill the
+matching manifest parameters, so you're only asked for what's new — typically
+the container image:
+
+```sh
+# inline
+intropy manifests create --set imageRepository=ghcr.io/acme/orders --set imageTag=1.0.0
+
+# non-interactive (fail fast on missing required values)
+intropy manifests create --no-input -f deploy-values.yaml
+
+# elsewhere than deploy/, or on top of existing files
+intropy manifests create -o ./k8s --force
+
+# newer template release than the one pinned at scaffold time
+intropy manifests create --version v1.5.0
+
+# machine-readable result document (consumed by chained tooling)
+intropy manifests create --output-json -
+```
+
+Projects scaffolded before `.intropy/scaffold.json` existed get an error
+explaining how to add the file by hand; templates whose pinned release
+predates `manifests/` templates are told to pass `--version` with a newer
+tag.
+
+Validate the result with `kustomize build deploy/overlays/dev` (or point your
+GitOps tooling at an overlay directly).
 
 ## Skills (`intropy skills`)
 

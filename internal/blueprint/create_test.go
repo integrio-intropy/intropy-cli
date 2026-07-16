@@ -102,6 +102,42 @@ func TestCreateWritesOutputJSON(t *testing.T) {
 	}
 }
 
+func TestCreateWritesScaffoldFile(t *testing.T) {
+	srv := newBlueprintServer(t, "v2.0.0")
+	defer srv.Close()
+
+	outDir := filepath.Join(t.TempDir(), "out")
+	err := Create(context.Background(), CreateOptions{
+		Blueprint:     "test-blueprint",
+		OutputDir:     outDir,
+		Version:       "v2.0.0",
+		SetValues:     map[string]any{"integrationName": "orders"},
+		NoInput:       true,
+		Stderr:        &bytes.Buffer{},
+		HTTP:          srv.Client(),
+		Owner:         "o",
+		Repo:          "r",
+		GitHubBaseURL: srv.URL,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, err := LoadScaffold(filepath.Join(outDir, filepath.FromSlash(ScaffoldRelPath)))
+	if err != nil {
+		t.Fatalf("LoadScaffold: %v", err)
+	}
+	if got.SchemaVersion != ScaffoldSchemaVersion {
+		t.Errorf("SchemaVersion = %d", got.SchemaVersion)
+	}
+	if got.Template != "test-blueprint" || got.Owner != "o" || got.Repo != "r" || got.Version != "v2.0.0" {
+		t.Errorf("scaffold identity = %q %q/%q@%q", got.Template, got.Owner, got.Repo, got.Version)
+	}
+	if got.Values["integrationName"] != "orders" || got.Values["namespace"] != "default" {
+		t.Errorf("Values = %v", got.Values)
+	}
+}
+
 func TestCreateOutputJSONStdout(t *testing.T) {
 	srv := newBlueprintServer(t, "v1")
 	defer srv.Close()
