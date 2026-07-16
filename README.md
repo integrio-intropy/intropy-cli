@@ -165,7 +165,8 @@ intropy skills list
 intropy
 ├── int                    Manage integrations
 │   ├── create <template>      Scaffold a new integration from a template
-│   └── describe <template>    Print a template's manifest and parameter schema
+│   ├── describe <template>    Print a template's manifest and parameter schema
+│   └── list [dir]             List scaffolded integrations under a directory
 ├── manifests              Manage deployment manifests
 │   └── create                 Generate Kubernetes manifests for a scaffolded integration
 ├── skills                 Manage Intropy skills
@@ -252,6 +253,26 @@ the new integration — the template name, the exact release version, and the
 resolved parameter values. Commit it: later commands (like
 `intropy manifests create`) read it to reproduce decisions made at scaffold
 time.
+
+### List scaffolded integrations
+
+Discover every integration under a directory tree — each project is
+identified by its committed `.intropy/scaffold.json` record:
+
+```sh
+# walk down from the current directory
+intropy int list
+
+# or from an explicit root
+intropy int list ~/dev/integrations
+
+# machine-readable, including the pinned source and scaffold values
+intropy int list -o json
+```
+
+The walk skips `.git`, `node_modules`, `bin` and `dist`, and doesn't descend
+into a project once matched (projects don't nest). Projects with an unreadable
+record are reported as warnings on stderr without hiding the rest.
 
 ## Deployment manifests (`intropy manifests`)
 
