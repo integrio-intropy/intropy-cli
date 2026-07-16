@@ -2,14 +2,16 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 )
 
 var (
-	verboseFlag bool
-	quietFlag   bool
-	noColorFlag bool
+	verboseFlag   bool
+	quietFlag     bool
+	noColorFlag   bool
+	changeDirFlag string
 )
 
 var rootCmd = &cobra.Command{
@@ -19,6 +21,15 @@ var rootCmd = &cobra.Command{
 	Version:       version,
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		if changeDirFlag == "" {
+			return nil
+		}
+		if err := os.Chdir(changeDirFlag); err != nil {
+			return fmt.Errorf("cannot change to directory %q: %w", changeDirFlag, err)
+		}
+		return nil
+	},
 }
 
 func Execute() error {
@@ -44,4 +55,6 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verboseFlag, "verbose", "v", false, "enable verbose output")
 	rootCmd.PersistentFlags().BoolVarP(&quietFlag, "quiet", "q", false, "suppress non-error output")
 	rootCmd.PersistentFlags().BoolVar(&noColorFlag, "no-color", false, "disable colored output")
+	rootCmd.PersistentFlags().StringVarP(&changeDirFlag, "directory", "C", "", "change to directory before running the command")
+	_ = rootCmd.MarkPersistentFlagDirname("directory")
 }
