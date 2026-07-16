@@ -73,7 +73,7 @@ git checkout -b feat/short-description
 | `test/` | New or updated tests |
 | `chore/` | Dependency updates, tooling, maintenance |
 
-**Examples:** `feat/int-create-dry-run`, `fix/blueprint-archive-paths`, `docs/readme-install`
+**Examples:** `feat/int-create-dry-run`, `fix/template-archive-paths`, `docs/readme-install`
 
 ## Commit Message Convention
 
@@ -90,14 +90,14 @@ automated changelog generation.
 
 **Types:** `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
 
-**Scopes (common):** `int`, `skills`, `oci`, `blueprint`, `cli`, `deps`
+**Scopes (common):** `int`, `skills`, `oci`, `template`, `cli`, `deps`
 
 **Examples:**
 
 ```
 feat(int): add --dry-run flag to create
 
-fix(blueprint): handle nested archive paths on extraction
+fix(template): handle nested archive paths on extraction
 
 docs(readme): update install instructions for macOS
 ```
@@ -178,7 +178,7 @@ go test -race ./...
 
 - Test commands by executing them programmatically and capturing output.
 - Use `cmd.SetOut(buf)` and `cmd.SetErr(errBuf)` so tests can inspect output.
-- Mock OCI registry calls and HTTP transports (e.g. the GitHub blueprint client) — do not hit the network or real registries in tests.
+- Mock OCI registry calls and HTTP transports (e.g. the GitHub template client) — do not hit the network or real registries in tests.
 - Each `_test.go` file lives alongside the code it tests.
 
 ### Adding tests
@@ -193,7 +193,7 @@ go test -race ./...
 
 ```
 cmd/intropy/         Cobra commands — one file per command + tests
-internal/blueprint/  Template download, validation, describe, render
+internal/template/  Template download, validation, describe, render
 internal/skill/      skills.json/lockfile, install/update/add, collection cache
 internal/skill/oci/  OCI client wrappers, pack/push/pull, references
 ```

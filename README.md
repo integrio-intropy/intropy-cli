@@ -460,7 +460,7 @@ tooling, and the CLI will pick up the credentials transparently.
 
 ```
 cmd/intropy/         Cobra command wiring (one file per command)
-internal/blueprint/  Template download, validation, describe, render
+internal/template/  Template download, validation, describe, render
 internal/skill/      skills.json/lockfile, install/update/add, collection cache
 internal/skill/oci/  OCI client wrappers, pack/push/pull, references
 ```

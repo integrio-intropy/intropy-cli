@@ -2,7 +2,7 @@
 // base + overlays tree) for a previously scaffolded integration. It reads
 // the committed .intropy/scaffold.json record, re-fetches the exact
 // template version it pins, and renders the template's manifests/
-// directory with the blueprint package's template machinery.
+// directory with the template package's template machinery.
 package deploy
 
 import (
@@ -116,13 +116,13 @@ func Create(ctx context.Context, opts CreateOptions) error {
 
 	gh := template.NewGitHubClient(opts.HTTP, opts.UserAgent, opts.GitHubBaseURL)
 	fmt.Fprintf(opts.Stderr, "fetching %s/%s@%s\n", owner, repo, tag)
-	blueprintRoot, cleanup, err := template.DownloadBlueprint(ctx, gh, owner, repo, tag, scaffold.Template, "intropy-manifests-*")
+	templateRoot, cleanup, err := template.DownloadTemplate(ctx, gh, owner, repo, tag, scaffold.Template, "intropy-manifests-*")
 	if err != nil {
 		return err
 	}
 	defer cleanup()
 
-	manifestsRoot := filepath.Join(blueprintRoot, manifestDirName)
+	manifestsRoot := filepath.Join(templateRoot, manifestDirName)
 	skelRoot := filepath.Join(manifestsRoot, skeletonDirName)
 	if !dirExists(skelRoot) || !fileExists(filepath.Join(manifestsRoot, templateManifestName)) {
 		return fmt.Errorf("template %q at %s does not include deployment manifest templates (%s/); pass --version <newer tag> or update the template", scaffold.Template, tag, manifestDirName)

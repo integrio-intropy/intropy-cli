@@ -23,7 +23,7 @@ var intDescribeCmd = &cobra.Command{
 	Long: "Print the template manifest — metadata and parameter schema — for the requested release. " +
 		"Use --output json to emit a stable, machine-readable document (the same schema Backstage's frontend renders).",
 	Args:              cobra.ExactArgs(1),
-	ValidArgsFunction: completeBlueprints,
+	ValidArgsFunction: completeTemplates,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validateOutputFlag(intDescribeFlags.output, "json", "plain"); err != nil {
 			return err
@@ -31,7 +31,7 @@ var intDescribeCmd = &cobra.Command{
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 		result, err := template.Describe(ctx, template.DescribeOptions{
-			Blueprint: args[0],
+			Template:  args[0],
 			Version:   intDescribeFlags.version,
 			UserAgent: "intropy-cli/" + version,
 		})

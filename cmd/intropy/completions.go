@@ -5,22 +5,22 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/integrio-intropy/intropy-cli/internal/template"
 	"github.com/integrio-intropy/intropy-cli/internal/skill"
+	"github.com/integrio-intropy/intropy-cli/internal/template"
 	"github.com/spf13/cobra"
 )
 
-// completeBlueprints returns completion candidates for blueprint names.
-// It fetches the blueprint index from GitHub; on any error it returns
+// completeTemplates returns completion candidates for template names.
+// It fetches the template index from GitHub; on any error it returns
 // nothing so completion stays fast and non-blocking.
-func completeBlueprints(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+func completeTemplates(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	ctx := cmd.Context()
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
 	gh := template.NewGitHubClient(nil, "intropy-cli/"+version, "")
-	entries, err := gh.ListBlueprints(ctx, "", "")
+	entries, err := gh.ListTemplates(ctx, "", "")
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}

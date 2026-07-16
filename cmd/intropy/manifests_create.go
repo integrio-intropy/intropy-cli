@@ -5,8 +5,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/integrio-intropy/intropy-cli/internal/template"
 	"github.com/integrio-intropy/intropy-cli/internal/deploy"
+	"github.com/integrio-intropy/intropy-cli/internal/template"
 	"github.com/spf13/cobra"
 )
 

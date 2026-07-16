@@ -9,9 +9,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/integrio-intropy/intropy-cli/internal/template"
 	"github.com/integrio-intropy/intropy-cli/internal/skill"
 	"github.com/integrio-intropy/intropy-cli/internal/skill/oci"
+	"github.com/integrio-intropy/intropy-cli/internal/template"
 	"golang.org/x/term"
 )
 
@@ -109,7 +109,7 @@ func confirmInstallSkills(in io.Reader, out io.Writer) (bool, error) {
 }
 
 // skillProjectAt returns the skills project rooted exactly at dir, creating an
-// empty skills.json there if the blueprint didn't ship one. Unlike
+// empty skills.json there if the template didn't ship one. Unlike
 // resolveOrBootstrapProject it never walks up: the scaffolded integration is
 // its own skills project even when created inside a larger repo.
 func skillProjectAt(dir string) (*skill.Project, error) {

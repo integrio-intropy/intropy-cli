@@ -20,7 +20,7 @@ import (
 const testManifestTemplateYAML = `apiVersion: intropy.dev/v1
 kind: Template
 metadata:
-  name: test-blueprint-manifests
+  name: test-template-manifests
 spec:
   parameters:
     type: object
@@ -85,11 +85,11 @@ spec:
 
 func testManifestFiles() map[string]string {
 	return map[string]string{
-		"test-blueprint/template.yaml":                                "unused-by-deploy",
-		"test-blueprint/skeleton/README.md":                           "unused-by-deploy",
-		"test-blueprint/manifests/template.yaml":                      testManifestTemplateYAML,
-		"test-blueprint/manifests/skeleton/base/deployment.yaml.tmpl": testDeploymentTmpl,
-		"test-blueprint/manifests/skeleton/base/service.yaml.tmpl": `apiVersion: v1
+		"test-template/template.yaml":                                "unused-by-deploy",
+		"test-template/skeleton/README.md":                           "unused-by-deploy",
+		"test-template/manifests/template.yaml":                      testManifestTemplateYAML,
+		"test-template/manifests/skeleton/base/deployment.yaml.tmpl": testDeploymentTmpl,
+		"test-template/manifests/skeleton/base/service.yaml.tmpl": `apiVersion: v1
 kind: Service
 metadata:
   name: {{ .appId }}
@@ -100,15 +100,15 @@ spec:
     - port: 80
       targetPort: {{ .appPort }}
 `,
-		"test-blueprint/manifests/skeleton/base/kustomization.yaml": `resources:
+		"test-template/manifests/skeleton/base/kustomization.yaml": `resources:
   - deployment.yaml
   - service.yaml
 `,
-		"test-blueprint/manifests/skeleton/overlays/dev/kustomization.yaml": `resources:
+		"test-template/manifests/skeleton/overlays/dev/kustomization.yaml": `resources:
   - ../../base
   - pubsub.yaml
 `,
-		"test-blueprint/manifests/skeleton/overlays/dev/pubsub.yaml": `apiVersion: dapr.io/v1alpha1
+		"test-template/manifests/skeleton/overlays/dev/pubsub.yaml": `apiVersion: dapr.io/v1alpha1
 kind: Component
 metadata:
   name: pubsub
@@ -116,7 +116,7 @@ spec:
   type: pubsub.in-memory
   version: v1
 `,
-		"test-blueprint/manifests/skeleton/overlays/prod/kustomization.yaml.tmpl": `resources:
+		"test-template/manifests/skeleton/overlays/prod/kustomization.yaml.tmpl": `resources:
   - ../../base
   - pubsub.yaml
 replicas:
@@ -126,7 +126,7 @@ images:
   - name: {{ .imageRepository }}
     newTag: {{ .imageTag }}
 `,
-		"test-blueprint/manifests/skeleton/overlays/prod/pubsub.yaml.tmpl": testProdPubsubTmpl,
+		"test-template/manifests/skeleton/overlays/prod/pubsub.yaml.tmpl": testProdPubsubTmpl,
 	}
 }
 
@@ -157,7 +157,7 @@ func buildTarGz(t *testing.T, prefix string, entries map[string]string) []byte {
 	return buf.Bytes()
 }
 
-// newManifestsServer serves the fixture blueprint tarball for exactly one
+// newManifestsServer serves the fixture template tarball for exactly one
 // tag. Any hit on releases/latest fails the test: manifests create must use
 // the version pinned in scaffold.json, never resolve "latest".
 func newManifestsServer(t *testing.T, tag string, files map[string]string) *httptest.Server {
@@ -182,7 +182,7 @@ func writeTestScaffold(t *testing.T, version string, values map[string]any) stri
 	root := t.TempDir()
 	err := template.WriteScaffold(root, template.Scaffold{
 		SchemaVersion: template.ScaffoldSchemaVersion,
-		Template:      "test-blueprint",
+		Template:      "test-template",
 		Owner:         "o",
 		Repo:          "r",
 		Version:       version,
@@ -362,8 +362,8 @@ func TestCreateMissingScaffold(t *testing.T) {
 
 func TestCreateMissingManifestsDir(t *testing.T) {
 	files := map[string]string{
-		"test-blueprint/template.yaml":      "unused",
-		"test-blueprint/skeleton/README.md": "unused",
+		"test-template/template.yaml":      "unused",
+		"test-template/skeleton/README.md": "unused",
 	}
 	srv := newManifestsServer(t, "v1.2.3", files)
 	defer srv.Close()
@@ -379,7 +379,7 @@ func TestCreateTooNewSchemaVersion(t *testing.T) {
 	root := t.TempDir()
 	err := template.WriteScaffold(root, template.Scaffold{
 		SchemaVersion: template.ScaffoldSchemaVersion + 1,
-		Template:      "test-blueprint",
+		Template:      "test-template",
 		Owner:         "o",
 		Repo:          "r",
 		Version:       "v1",
@@ -446,7 +446,7 @@ func TestCreateWritesOutputJSON(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal result: %v\n%s", err, stdout.String())
 	}
-	if got.Template != "test-blueprint" || got.Version != "v1.2.3" {
+	if got.Template != "test-template" || got.Version != "v1.2.3" {
 		t.Errorf("result identity = %q@%q", got.Template, got.Version)
 	}
 	if !filepath.IsAbs(got.OutputDir) {
@@ -459,7 +459,7 @@ func TestCreateWritesOutputJSON(t *testing.T) {
 
 func TestCreateRejectsReservedScaffoldParameter(t *testing.T) {
 	files := testManifestFiles()
-	files["test-blueprint/manifests/template.yaml"] = `apiVersion: intropy.dev/v1
+	files["test-template/manifests/template.yaml"] = `apiVersion: intropy.dev/v1
 kind: Template
 metadata:
   name: bad

@@ -38,7 +38,7 @@ func buildTarGz(t *testing.T, prefix string, entries map[string]string) []byte {
 }
 
 func TestExtractTarGzStripsLeadingDir(t *testing.T) {
-	raw := buildTarGz(t, "integrio-intropy-blueprints-abc123", map[string]string{
+	raw := buildTarGz(t, "integrio-intropy-templates-abc123", map[string]string{
 		"intropy.yaml": "name: x",
 		"foo/bar.txt":  "hello",
 		"foo/baz.tmpl": "{{.X}}",

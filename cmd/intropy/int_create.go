@@ -30,7 +30,7 @@ var intCreateCmd = &cobra.Command{
 	Short:             "Create a new integration",
 	Long:              "Scaffold a new integration from the official Intropy template library. The positional argument selects which template subdirectory to render (e.g. 'hello-world'). After scaffolding, offers to install the Intropy agent skills collection into the new integration; --install-skills installs and --skip-install-skills skips without prompting, otherwise the prompt is skipped with --no-input or when stdin is not a terminal.",
 	Args:              cobra.ExactArgs(1),
-	ValidArgsFunction: completeBlueprints,
+	ValidArgsFunction: completeTemplates,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sets, err := template.ParseSets(intCreateFlags.sets)
 		if err != nil {
@@ -43,7 +43,7 @@ var intCreateCmd = &cobra.Command{
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 		if err := template.Create(ctx, template.CreateOptions{
-			Blueprint:  args[0],
+			Template:   args[0],
 			OutputDir:  outputDir,
 			Version:    intCreateFlags.version,
 			SetValues:  sets,
