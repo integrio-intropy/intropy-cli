@@ -1,0 +1,120 @@
+<task-notification>
+<task-id>a62ff96bf1f78f134</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/a73b4cf5-052c-4d7c-bd82-cb2846d01710/tasks/a62ff96bf1f78f134.output</output-file>
+<status>completed</status>
+<summary>Agent "Design From/To implementation plan" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>The Write tool isn't available in this read-only context, so I'll deliver the plan directly as my final output.
+
+# Implementation Plan: `.From(...)` / `.To(...)` in the generated system definition
+
+## Design decisions (with rationale)
+
+### D1 — Connector name: template-derived, per-block unique (`&lt;appId&gt;-source` / `&lt;appId&gt;-destination`)
+New `spec.values` entry in extractor/loader `template.yaml`:
+- extractor: `connector: '{{ .name | kebabcase | replace "." "-" }}-source'`
+- loader: `connector: '{{ .name | kebabcase | replace "." "-" }}-destination'`
+
+Rationale: the expression is identical to the `appId` derivation, so connector uniqueness rides on the appId-uniqueness check Assemble already enforces. A shared fixed name ("source") would silently merge two extractors' connectors into one `ConnectorResource` (UsedBy union) and one folder — wrong default. No new user parameter: the connector name is intrinsic plumbing at scaffold time (per `Refs.cs:106-115`, what/how is a resolution concern); a rename to a semantic name ("pim") is a post-scaffold edit. Values flow through the generic scaffold `values` map, so no Go struct changes on the read path.
+
+### D2 — sys create resolves the default: FILE transport, via new `Transport.File(rootPath)` + `ConnectorRef.Define(name, transport)`
+Aspire hard-fails on unresolved connectors (`IntropyAspire.cs:61-70`), so leaving ITP107-unresolved connectors would break the F5 golden path. Emitting `Transport.Custom("bindings.localstorage")` cannot carry `rootPath` (Generation builds binding metadata only from the DevManifest, keyed by external system — `Generation.cs:110-134` — and the default connector has none). So Intropy.Topology gains:
+
+1. `FileTransport` record: `DaprType =&gt; "bindings.localstorage"`, `SupportsInput/Output =&gt; true`, plus `public string RootPath { get; }`; factory `Transport.File([ConstantExpected] string rootPath)`; `[JsonDerivedType(typeof(FileTransport), "file")]`.
+2. `ConnectorRef.Define(string name, Transport transport)` overload (transport known, external system deferred) — today only `(name)`, `(name, system)`, `(name, system, transport)` exist (`Refs.cs:146-178`).
+3. `UnresolvedConnectorRule` (ITP107, `ConnectorCapabilityRules.cs:74-105`): skip the "external system" missing branch when `connector.Transport is FileTransport` — a local folder *is* the endpoint; there is no external system to resolve. Otherwise the freshly assembled golden-path system warns on every `check`. (Flagged below as the one library-contract change to confirm with the user.)
+4. `TopologyGenerator.BindingComponent`: when transport is `FileTransport`, emit `("rootPath", RootPath)` metadata first (dev metadata from the manifest still appends). Recommended: in the Dev profile absolutize with `Path.GetFullPath(RootPath)` (dev artifacts are per-run temp files; the sidecar cwd is not guaranteed to be the host dir), emit verbatim for Prod.
+
+### D3 — System-level test folders: `&lt;system-host&gt;/local/storage/&lt;connector&gt;/`, created by `sys create`; overlay naming fixed in templates
+`system-host/skeleton/.gitignore:485` already ignores `local/storage/`. `sys create` runs `os.MkdirAll` for each connector folder after rendering (so the extractor's first `list` poll doesn't error on a missing dir).
+
+The overlay trap is real and must be fixed in the templates: generated binding YAML is named `binding.&lt;connector&gt;` (`Resources.cs:45`), but the component-local files are named `inbound`/`destination`, so ComponentOverlay (keyed on `metadata.name`) would *add* the generated component instead of replacing the local one, and the app (Constants) would keep using the local folder. Fix: make the local component name and the app's binding-name constant both `binding.{{ .connector }}`:
+- `extractor/skeleton/local/dapr-components/inbound.yaml.tmpl`: `metadata.name: binding.{{ .connector }}`, `rootPath: "./local/storage/{{ .connector }}"` (component-local path for standalone runs — "same names, different backing", exactly ComponentOverlay's documented contract).
+- `loader/skeleton/local/dapr-components/destination.yaml` → `destination.yaml.tmpl`, same treatment.
+- `Constants.cs.tmpl` (both): `InboundBindingName` / `DestinationBindingName` = `"binding.{{ .connector }}"`. Keyed adapter keys ("source"/"destination") stay unchanged. Dapr component names are DNS-subdomains; dots are legal (cf. generated `binding.&lt;name&gt;` already in the library).
+- Sync the folder references in `Taskfile.yml.tmpl` (`INBOUND_DIR: ./local/storage/inbound` etc.), `README.md.tmpl`, `AGENTS.md.tmpl`.
+
+### D4 — Codegen emits `Connectors.cs` + From/To lines, gated on a template placeholder
+New generated file (mirrors Topics.cs; namespace-less; only `using Intropy.Topology;`):
+
+```csharp
+using Intropy.Topology;
+
+/// &lt;summary&gt;The system's connectors: the named ports its edge blocks reach the outside world through. Default: local file folders under local/storage/.&lt;/summary&gt;
+public static class Connectors
+{
+    /// &lt;summary&gt;Local file connector 'order-extractor-source' (folder ./local/storage/order-extractor-source). Resolve to a real external system + transport when known.&lt;/summary&gt;
+    public static readonly ConnectorRef OrderExtractorSource = ConnectorRef.Define("order-extractor-source", Transport.File("./local/storage/order-extractor-source"));
+
+    /// &lt;summary&gt;Local file connector 'order-loader-destination' (folder ./local/storage/order-loader-destination). ...&lt;/summary&gt;
+    public static readonly ConnectorRef OrderLoaderDestination = ConnectorRef.Define("order-loader-destination", Transport.File("./local/storage/order-loader-destination"));
+}
+```
+
+System class lines (API verified against `ComponentBuilders.cs:41-45,132-144`):
+
+```csharp
+builder.AddExtractor("order-extractor").From(Connectors.OrderExtractorSource).Publishes(Topics.Orders);
+builder.AddLoader("order-loader").Subscribes(Topics.Orders).To(Connectors.OrderLoaderDestination);
+```
+
+Compatibility gate (mirrors the existing `writeSystemClassFile` placeholder gate, `codegen.go:72-76`): if the rendered system-host template left no `Connectors.cs` placeholder, the template release predates connectors — warn, skip Connectors.cs, and emit legacy (no-From/To) system-class lines. This keeps `--version &lt;old-tag&gt;` working, and protects against generated code referencing `Transport.File` that the pinned `Intropy.Topology` 0.1.0 package doesn't have.
+
+### D5 — Repo split and sequencing
+1. **Intropy.Topology** first (new API, ships as a package version bump — the system-host csproj pins `Intropy.Topology.Aspire`/`Generation` at `0.1.0`).
+2. **intropy-templates** second (connector value, `binding.{{ .connector }}` renames, system-host `Connectors.cs.tmpl` placeholder + package version bump + fix `examples/*.yaml` missing required `contract`). New release tag.
+3. **intropy-cli** last (assemble/model/codegen/summary + tests). The CLI reads `connector` from the generic values map — no coupling beyond the placeholder gate.
+
+### D6 — Back-compat: missing `connector` value → warn + assemble without From/To (never default)
+"Scaffold records never lie": a CLI-side default (`&lt;appId&gt;-source`) would describe a binding the old rendered code doesn't use (its Constants hardcode `"inbound"`, its local YAML is named `inbound`). The `pubsub` precedent doesn't apply — that default matched what old skeletons actually rendered; a connector default would not. So: warn (`"no connector recorded — re-scaffold with a newer template release to wire From/To"`) and emit the component exactly as today. This is valid topology: a loader without `To` is explicitly legal (decision 0008, `CompletenessRules.cs:5-10`) and an extractor only *must* publish (ITP206). Also skip such components in Connectors.cs.
+
+---
+
+## Ordered steps
+
+### Phase A — Intropy.Topology (`/Users/robinhultman/dev/intropy/tooling/Intropy.Topology`)
+1. `src/Intropy.Topology/Refs.cs`: add `FileTransport` + `Transport.File(rootPath)` + `JsonDerivedType` entry; add `ConnectorRef.Define(name, transport)` overload; update the ConnectorRef doc comment (local-file default is a valid resolution).
+2. `src/Intropy.Topology/Validation/Rules/ConnectorCapabilityRules.cs`: `UnresolvedConnectorRule` skips the external-system check for `FileTransport`.
+3. `src/Intropy.Topology.Generation/Generation.cs`: `BindingComponent` emits `rootPath` for `FileTransport` (dev: `Path.GetFullPath`; prod: verbatim).
+4. Tests (`test/Intropy.Topology.Test`, `test/Intropy.Topology.Generation.Test`, `test/Intropy.Topology.Aspire.Test`): Transport.File properties; Define(name, transport) round-trip; ITP107 not raised for file-transport connector, still raised for `Define(name)` and for sftp-without-system; generator emits rootPath metadata and no TODO comment; Aspire `Apply` accepts a file-transport connector (no "unresolved" throw).
+5. Bump package version; publish to the feed.
+
+### Phase B — intropy-templates (`/Users/robinhultman/dev/intropy/tooling/intropy-templates`)
+1. `extractor/template.yaml` + `loader/template.yaml`: add `connector` to `spec.values` (D1) with a comment mirroring the `pubsub` one ("recorded for `intropy sys create`").
+2. `extractor/skeleton/local/dapr-components/inbound.yaml.tmpl`, `loader/skeleton/local/dapr-components/destination.yaml` (→ `.tmpl`): `metadata.name: binding.{{ .connector }}`, rootPath `./local/storage/{{ .connector }}`.
+3. `extractor/skeleton/src/Configuration/Constants.cs.tmpl`, `loader/.../Constants.cs.tmpl`: binding-name constants → `"binding.{{ .connector }}"`.
+4. Sync folder/name references: both `Taskfile.yml.tmpl` (INBOUND_DIR etc.), `README.md.tmpl`, `AGENTS.md.tmpl`.
+5. `system-host/skeleton/Connectors.cs.tmpl`: new compilable placeholder (comment + empty `public static class Connectors`, TODO text mirroring `Topics.cs.tmpl`); update the `{{ .systemClass }}.cs.tmpl` example comment to show `.From(Connectors.X)`/`.To(Connectors.Y)`; bump `Intropy.Topology.*` package versions in `{{ .projectName }}.SystemHost.csproj.tmpl`; note `local/storage/` is already gitignored.
+6. Fix `extractor/examples/*.yaml` and `loader/examples/*.yaml`: add the already-missing required `contract` (and nothing for connector — it's derived).
+7. Tag a release.
+
+### Phase C — intropy-cli (`/Users/robinhultman/dev/intropy/tooling/intropy-cli`, branch `feature/system`)
+1. `internal/system/model.go`: `Component` gains `Connector string \`json:"connector,omitempty"\``; new `type Connector struct { Name string \`json:"name"\`; Field string \`json:"-"\` }`; `Model` gains `Connectors []Connector` (sorted by Name).
+2. `internal/system/assemble.go`: read `connector` — present → `stringValue` (empty string errors as usual); absent → `warnf` + empty (D6). Error on duplicate connector name across two components (same shape as the dup-appId error) and on pascalIdent field collisions among connectors (same shape as the Topics field check). Build `Model.Connectors` from distinct non-empty names.
+3. `internal/system/codegen.go`:
+   - New `connectorsFileTmpl` + `writeConnectorsFile` (sketch in D4; rootPath computed in-template as `./local/storage/{{ .Name }}`).
+   - `componentView` gains `ConnectorField string`; system-class template line becomes conditional: extractor `AddExtractor("x"){{ if .ConnectorField }}.From(Connectors.{{ . }}){{ end }}.Publishes(...)`, loader `AddLoader("x").Subscribes(...){{ if }}.To(Connectors.{{ . }}){{ end }}`.
+   - Placeholder gate: `writeConnectorsFile` checks `&lt;dir&gt;/Connectors.cs` exists (template rendered it); if not, warn + skip connectors entirely (pass a "legacy" flag so `writeSystemClassFile` omits From/To too).
+4. `internal/system/create.go`: call `writeConnectorsFile` between topics and system-class writes; `MkdirAll(filepath.Join(outDir, "local", "storage", c.Name))` per connector; extend the "assembled system" stderr line with connector count; `Summary` gains `Connectors []Connector \`json:"connectors,omitempty"\`` (additive-only contract holds; `Component.Connector` is additive too).
+5. No changes to `internal/template/*` (the `connector` value flows through the generic map; `dataFlow` stays advisory/unread — codegen keys off `BlockKind` as today).
+
+### Test plan (Phase C)
+- `internal/system/create_test.go`: fixture `systemHostFiles()` adds `"system-host/skeleton/Connectors.cs.tmpl": "// placeholder\n"`; `writeBlock` records `"connector": appID + "-source"|"-destination"` (choose by kind); update `wantSystemCS` with From/To lines; new golden `wantConnectorsCS` exact-compared; assert `local/storage/order-extractor-source` exists; assert Summary JSON contains connectors. New tests: (a) old-template fixture without the Connectors placeholder → legacy golden output + warning, no Connectors.cs; (b) workspace where one block record lacks `connector` → that component has no From/To, warning on stderr; validates-before-network test unchanged.
+- `internal/system/assemble_test.go`: connector recorded → `Component.Connector` + sorted `Model.Connectors`; missing → warn via `discardWarnf` capture + empty; duplicate connector across components → error; connector field collision (`a-b` vs `a.b`) → error.
+- `cmd/intropy/sys_create_test.go`: unchanged.
+
+## Open questions for the user
+1. **ITP107 relaxation** (D2.3): OK to change the library contract so a `FileTransport` connector with no external system counts as *resolved* (no warning)? Alternative: keep the warning and accept that every freshly assembled system warns on `check`.
+2. **Naming**: confirm `&lt;appId&gt;-source` / `&lt;appId&gt;-destination` defaults (folder names become e.g. `local/storage/order-extractor-source/`), vs. shorter shared names with merge semantics.
+3. **Relative rootPath under Aspire**: the plan absolutizes in dev generation via `Path.GetFullPath` (cwd = where `dotnet run` is invoked, normally the system-host dir). Needs a runtime verification during Phase A that the sidecar honors it; acceptable?
+4. **Release choreography**: Topology package bump → templates release → CLI release; is coordinating the three acceptable, given the CLI's placeholder gate covers old-template/new-CLI but nothing covers new-template/old-CLI (old CLI simply ignores `connector` and generates today's output — probably fine)?
+
+### Critical Files for Implementation
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/codegen.go
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/assemble.go
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/create_test.go
+- /Users/robinhultman/dev/intropy/tooling/Intropy.Topology/src/Intropy.Topology/Refs.cs
+- /Users/robinhultman/dev/intropy/tooling/intropy-templates/extractor/template.yaml (and its loader/system-host siblings)</result>
+<usage><subagent_tokens>114430</subagent_tokens><tool_uses>39</tool_uses><duration_ms>1128339</duration_ms></usage>
+</task-notification>
