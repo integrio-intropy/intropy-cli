@@ -1,0 +1,1 @@
+Help me design a new subcommand, intropy manifests create, that will create kubernetes manifest files for a previously scaffolded integration
