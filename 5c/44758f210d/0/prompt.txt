@@ -1,0 +1,1 @@
+I am considering if we should have a -n (name) parameter so that you can specify the name in a single command instead of being prompted? We could default the output directory to be same as name if -o isnt explicitly set
