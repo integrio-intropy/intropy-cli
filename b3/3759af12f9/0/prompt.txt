@@ -1,0 +1,115 @@
+If we were to add a "AppHost" project to each of our integration systems that were able to generate a file like this;
+{
+  "version": 1,
+  "generator": {
+    "tool": "Intropy.Topology.Generation",
+    "version": "0.1.0",
+    "source": "integrations@3f9c2e1",
+    "system": "product-distribution"
+  },
+  "system": "product-distribution",
+  "owner": "team-integration",
+  "integrations": ["INT-042"],
+  "nodes": [
+    {
+      "id": "pim-extractor",
+      "kind": "component",
+      "blockType": "extractor",
+      "workload": "cronjob",
+      "trigger": { "kind": "schedule", "schedule": "*/15 * * * *" }
+    },
+    {
+      "id": "product-assembler",
+      "kind": "component",
+      "blockType": "assembler",
+      "workload": "deployment",
+      "trigger": { "kind": "topic" }
+    },
+    {
+      "id": "erp-loader",
+      "kind": "component",
+      "blockType": "loader",
+      "workload": "deployment",
+      "trigger": { "kind": "topic" }
+    },
+    {
+      "id": "mock-pim",
+      "kind": "component",
+      "blockType": "containerService",
+      "workload": "deployment",
+      "image": "ghcr.io/integrio/mock-pim:1.2.0"
+    },
+    {
+      "id": "product-distribution-pubsub/product-raw",
+      "kind": "topic",
+      "pubsub": "product-distribution-pubsub",
+      "topic": "product-raw",
+      "entity": "RawProduct",
+      "visibility": "internal"
+    },
+    {
+      "id": "product-distribution-pubsub/price-raw",
+      "kind": "topic",
+      "pubsub": "product-distribution-pubsub",
+      "topic": "price-raw",
+      "entity": "RawPrice",
+      "visibility": "contract"
+    },
+    {
+      "id": "product-distribution-pubsub/product-enriched",
+      "kind": "topic",
+      "pubsub": "product-distribution-pubsub",
+      "topic": "product-enriched",
+      "entity": "EnrichedProduct",
+      "visibility": "contract"
+    },
+    {
+      "id": "conn:pim",
+      "kind": "connector",
+      "externalSystem": "pim",
+      "transport": "sftp",
+      "daprComponent": "binding.pim"
+    },
+    {
+      "id": "conn:erp",
+      "kind": "connector",
+      "externalSystem": "erp",
+      "transport": "http",
+      "daprComponent": "binding.erp"
+    },
+    { "id": "ext:pim", "kind": "externalSystem" },
+    { "id": "ext:erp", "kind": "externalSystem" },
+    { "id": "svc:iss-idempotency-service", "kind": "service" }
+  ],
+  "edges": [
+    { "from": "ext:pim", "to": "conn:pim", "kind": "connector" },
+    { "from": "conn:pim", "to": "pim-extractor", "kind": "connector", "direction": "in" },
+    { "from": "pim-extractor", "to": "product-distribution-pubsub/product-raw",
+      "kind": "publish", "port": "default" },
+    { "from": "product-distribution-pubsub/product-raw", "to": "product-assembler",
+      "kind": "consume" },
+    { "from": "product-distribution-pubsub/price-raw", "to": "product-assembler",
+      "kind": "consume" },
+    { "from": "product-assembler", "to": "product-distribution-pubsub/product-enriched",
+      "kind": "publish", "port": "products" },
+    { "from": "product-distribution-pubsub/product-enriched", "to": "erp-loader",
+      "kind": "consume" },
+    { "from": "erp-loader", "to": "conn:erp", "kind": "connector", "direction": "out" },
+    { "from": "conn:erp", "to": "ext:erp", "kind": "connector" },
+    { "from": "product-assembler", "to": "svc:iss-idempotency-service", "kind": "uses" }
+  ],
+  "ports": [
+    {
+      "topic": "product-distribution-pubsub/price-raw",
+      "direction": "import",
+      "contract": "Integrio.Contracts.Prices"
+    },
+    {
+      "topic": "product-distribution-pubsub/product-enriched",
+      "direction": "export",
+      "contract": "Integrio.Contracts.Products"
+    }
+  ]
+}
+
+Would that simplify things? What would you change in the file?
