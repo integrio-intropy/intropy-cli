@@ -1,0 +1,1 @@
+Could you analyse this cli tool and suggest how we can work with mono-repos where you have multiple scaffolded projects
