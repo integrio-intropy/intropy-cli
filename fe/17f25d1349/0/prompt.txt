@@ -1,0 +1,35 @@
+Robins-MacBook-Pro intropy-cli on  main [?] ➜  goreleaser release --snapshot --clean                                                                                                     07:25
+  • starting release
+  • skipping announce, publish, and validate...
+  • cleaning distribution directory
+  • loading environment variables
+  • getting and validating git state
+    • ignoring errors because this is a snapshot     error=git doesn't contain any tags - either add a tag or use --snapshot
+    • using tags                                     previous=<unknown> current=v0.0.0
+    • pipe skipped or partially skipped              reason=disabled during snapshot mode
+  • parsing tag
+  • setting defaults
+  • snapshotting
+    • building snapshot...                           version=0.0.1-rc
+  • running before hooks
+    • running                                        hook=go mod tidy
+    • running                                        hook=go test ./...
+  • ensuring distribution directory
+  • setting up metadata
+  • writing release metadata
+  • loading go mod information
+  • build prerequisites
+  • building binaries
+    • building                                       paths=cmd/intropy binaries=intropy target=linux_amd64_v1
+    • building                                       paths=cmd/intropy binaries=intropy target=darwin_arm64_v8.0
+    • building                                       paths=cmd/intropy binaries=intropy target=linux_arm64_v8.0
+    • building                                       paths=cmd/intropy binaries=intropy target=darwin_amd64_v1
+  • archives
+    • archiving                                      name=dist/intropy_0.0.1-rc_darwin_arm64.tar.gz
+    • archiving                                      name=dist/intropy_0.0.1-rc_linux_arm64.tar.gz
+    • archiving                                      name=dist/intropy_0.0.1-rc_linux_amd64.tar.gz
+    • archiving                                      name=dist/intropy_0.0.1-rc_darwin_amd64.tar.gz
+  • calculating checksums
+  • signing artifacts
+    • signing                                        cmd=cosign artifact=intropy_0.0.1-rc_darwin_arm64.tar.gz signature=dist/intropy_0.0.1-rc_darwin_arm64.tar.gz.sig certificate=dist/intropy_0.0.1-rc_darwin_arm64.tar.gz.pem
+  ⨯ release failed after 1s                          error=exec: "cosign": executable file not found in $PATH message=could not sign artifact cmd=cosign artifact=intropy_0.0.1-rc_darwin_arm64.tar.gz
