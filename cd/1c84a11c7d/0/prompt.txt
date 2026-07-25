@@ -1,0 +1,4 @@
+Where is this agentskill thing coming from? onst title =
+    value?.config?.name ??
+    value?.annotations['io.agentskills.skill.name'] ??
+    'Skill';
