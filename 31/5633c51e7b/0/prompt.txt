@@ -1,0 +1,1 @@
+Can you make sure that /Users/robinhultman/dev/intropy/intropy-techdocs/docs/get-started/ai-assistants.md reflects these changes?
