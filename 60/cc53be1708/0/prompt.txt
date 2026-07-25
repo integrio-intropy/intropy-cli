@@ -1,0 +1,5 @@
+When specifying both -n and -o to int create I get this error: Mac customers/fluxia/integrations ➜  intropy int create hello-world -n INT123 -o ./domains/order-management
+fetching integrio-intropy/intropy-templates@v0.1.7
+error: --output ./domains/order-management is not empty (use --force to overwrite)
+
+I dont think that should fail? We are creating a new folder, INT123 so we are not overwriting anything
