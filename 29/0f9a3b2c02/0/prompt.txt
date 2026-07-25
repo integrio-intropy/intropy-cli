@@ -1,0 +1,1 @@
+I am not asking you to update any code but is it possible to style the flow diagrams? Would it be possible to use more of a hand-drawn style like https://www.cncf.io/blog/2025/06/25/cloud-native-app-local-development-made-easy-with-microcks-and-dapr/
