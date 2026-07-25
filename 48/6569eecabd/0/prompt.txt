@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bnept6zup</task-id>
+<tool-use-id>toolu_01DYsrCrXL5PkCkZRJA93tJP</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/5bbffed9-6155-4724-a838-4e6b26a54ac9/tasks/bnept6zup.output</output-file>
+<status>completed</status>
+<summary>Background command "Start dashboard on lovenskiold solution" completed (exit code 0)</summary>
+</task-notification>
