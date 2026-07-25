@@ -1,0 +1,107 @@
+<task-notification>
+<task-id>a14158a909682c4b9</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/a73b4cf5-052c-4d7c-bd82-cb2846d01710/tasks/a14158a909682c4b9.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore CLI command structure" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## 1. Command tree
+
+Registration pattern: every command is a package-level `var xxxCmd = &amp;cobra.Command{…}` in `package main` under `cmd/intropy/`, attached to its parent in that file's `func init()`. There is no central registry file — one file per command, plus one file per noun group.
+
+```
+intropy                        cmd/intropy/root.go:17  (rootCmd, Execute() :34)
+├── int                        cmd/intropy/int.go:5    (intCmd; rootCmd.AddCommand :12)
+│   ├── create &lt;template&gt;      cmd/intropy/int_create.go:28  (intCmd.AddCommand :99)
+│   ├── describe &lt;template&gt;    cmd/intropy/int_describe.go:20 (:55)
+│   └── list [dir]             cmd/intropy/int_list.go:19     (:72)
+├── manifests                  cmd/intropy/manifests.go:5     (:12)
+│   └── create                 cmd/intropy/manifests_create.go:25 (:65)
+├── skills                     cmd/intropy/skills.go:5
+│   ├── add [ref]              cmd/intropy/skills_add.go
+│   ├── list                   cmd/intropy/skills_list.go
+│   ├── update [name]          cmd/intropy/skills_update.go
+│   ├── publish                cmd/intropy/skills_publish.go
+│   └── collection             cmd/intropy/skills_collection.go:5 (skillsCmd.AddCommand :11)
+│       ├── add                cmd/intropy/skills_collection_add.go
+│       ├── update &lt;alias&gt;     cmd/intropy/skills_collection_update.go
+│       └── publish            cmd/intropy/skills_collection_publish.go
+└── version                    cmd/intropy/version.go:17
+```
+
+Other cmd-layer pieces: `cmd/intropy/completions.go` (`completeTemplates` :16 — GitHub-backed `ValidArgsFunction`), `cmd/intropy/errors.go` (`usageError`, `newUsageErrorf`), `cmd/intropy/main.go:16` (`exitCode`), `cmd/intropy/int_create_skills.go` (post-create skills install). The README's ASCII command tree is at `README.md:162-184` — a new noun must be added there.
+
+Persistent flags (root.go:53-59): `-v/--verbose`, `-q/--quiet`, `--no-color`, `-C/--directory` (chdir in `PersistentPreRunE` root.go:23).
+
+## 2. `int create` end to end
+
+**Flags** — `cmd/intropy/int_create.go:85-99`, struct `createFlags` at :13:
+- `-o/--output` (dest dir), `-n/--name`, `--version` (release tag), `-f/--values` (repeatable, `-`=stdin), `-s/--set key=value` (repeatable), `--force`, `--no-input`, `--output-json`, `--install-skills`/`--skip-install-skills` (mutually exclusive :96).
+- `Args: cobra.ExactArgs(1)` — the template directory name; `MarkFlagsOneRequired("output","name")` :98.
+
+**Name handling** — `resolveCreateName` (int_create.go:71-83): `-n` is sugar for `--set name=&lt;v&gt;` and defaults `-o` to it; `-n` + `--set name=` is a `usageError`. `-o` is literal, never nested (`dotnet new` semantics; test at `cmd/intropy/int_create_test.go:23`). **There is no PascalCase/kebab-case conversion in Go.** All case derivation lives in the templates' `spec.values` via sprig — e.g. `appId: '{{ .name | kebabcase | replace "." "-" }}'` (`…/intropy-templates/extractor/template.yaml:46`) and `projectName: '{{ .name | replace "-" " " | title | replace " " "" }}'` (`…/intropy-templates/system-host/template.yaml:33`). If `sys create` needs a `pascalCase(name)` in Go it must be written fresh — and the system-host README explicitly requires it to match that sprig expression (`…/system-host/README.md:38-42`).
+
+**Orchestration** — `internal/template/create.go`:
+1. `Create(ctx, CreateOptions)` :71; options struct :15, defaults :54.
+2. Template source is **GitHub releases**, not Harbor (Harbor is only the skills OCI registry, `int_create_skills.go:21`). Constants `internal/template/github.go:13-19`: owner `integrio-intropy`, repo `intropy-templates`, `template.yaml`, `skeleton`, `https://api.github.com`.
+3. `resolveReleaseTag` → `GitHub.LatestTag` (github.go:101) when `--version` empty.
+4. `downloadTemplate` (github.go:74) — `GET /repos/{o}/{r}/tarball/{tag}`, extracted to a temp dir via `ExtractTarGz` (`internal/template/archive.go`); returns `&lt;tmp&gt;/&lt;templateName&gt;` + cleanup.
+5. `prepareCreateTemplate` :142 → `LoadTemplate` (`internal/template/manifest.go:167`, validates `apiVersion: intropy.dev/v1`, `kind: Template`) → `Resolve` (`internal/template/values.go:34`).
+6. Value layering — `ResolveLayered` (values.go:43): schema defaults → `base` seed → `--values` files → `--set` → prompts for missing required (`internal/template/prompt.go`, `AutoPrompter` create.go:255 returns nil when `--no-input` or stdin isn't a TTY) → JSON Schema validation (values.go:202) → `spec.values` derived strings (values.go:135).
+7. Render — `renderCreateOutput` :156 → `ensureOutputDir` :210 (refuses non-empty without `--force`) → `Render` (`internal/template/render.go:27`): `text/template` + `sprig.TxtFuncMap()`, `missingkey=error`; path segments always templated, contents only for `*.tmpl` (suffix stripped), atomic writes (render.go:115).
+8. Dependencies — `processDependencies` (`internal/template/dependencies.go:43`), rendered from the same tarball, no prompting, `--force` never propagates, idempotent skip when target already has a matching scaffold record (`dependencyDirScaffold` :171).
+9. `WriteScaffold` (create.go:116).
+10. `maybeWriteCreateResult` :167 → `CreateResult` (:40, JSON keys `template/owner/repo/version/outputDir/values/dependencies`).
+11. Back in the cmd layer: `maybeInstallSkills` (`cmd/intropy/int_create_skills.go:55`).
+
+## 3. `.intropy/scaffold.json`
+
+All in `internal/template/scaffold.go`:
+
+- Constants :11-30 — `ScaffoldSchemaVersion = 1`, `ScaffoldRelPath = ".intropy/scaffold.json"`, `TemplateRoleLabel = "intropy.dev/template-role"`, `RoleSharedLibrary = "shared-library"`.
+- `type Scaffold` :38-54:
+
+| Go field | JSON key | notes |
+|---|---|---|
+| `SchemaVersion int` | `schemaVersion` | |
+| `Template string` | `template` | **repo directory name**, not `metadata.name` (create.go:114-117) |
+| `Owner string` | `owner` | |
+| `Repo string` | `repo` | |
+| `Version string` | `version` | resolved release tag |
+| `Values map[string]any` | `values` | full resolved map incl. `spec.values` derivations |
+| `Role string` | `role,omitempty` | from label `intropy.dev/template-role` (`roleFromLabels` :63) |
+| `DependsOn []DependencyRecord` | `dependsOn,omitempty` | |
+
+- `DependencyRecord` :58 — `Template string`/`template`, `Dir string`/`dir` (slash-separated, relative, e.g. `../Models`).
+- Writer: `WriteScaffold(projectRoot, s)` :68 → `&lt;root&gt;/.intropy/scaffold.json`, `MarshalIndent` 2-space + trailing newline, 0644. Called at create.go:116 (component) and dependencies.go:132 (dependency).
+- Readers: `LoadScaffold(path)` :85, `FindScaffold(startDir)` :100 (walks **up**, returns record + project root, `ErrScaffoldNotFound` :32).
+
+**Important gap for `sys create`:** there is **no `blockKind` / `dataFlow` field today**. `grep -rn "block-kind\|data-flow"` over the CLI returns nothing. The templates repo already declares `intropy.dev/block-kind: extractor|loader` and `intropy.dev/data-flow: in|out` (`…/extractor/template.yaml:14-15`, `…/loader/template.yaml:14-15`) and its `CLAUDE.md:92-98` asserts the CLI "records them in `.intropy/scaffold.json`, which `intropy sys create` later assembles" — that recording is unimplemented. Adding two fields (additive, no `schemaVersion` bump per the comment at scaffold.go:12-15) plus a `blockKindFromLabels`-style helper next to `roleFromLabels` is a prerequisite. Note the topic/appId/name data `sys create` needs is already present in `values` (extractor/loader declare `topic`, `name`, `organization`, and derive `appId`, `models`).
+
+## 4. Existing readers / directory-scanning helpers
+
+- **`manifests create` pins to it**: `internal/deploy/create.go:91` `template.FindScaffold(opts.StartDir)`; schemaVersion guard :98; owner/repo/version taken from the record :101-115 with flag overrides; missing-record error message includes a hand-writable minimal JSON :94; scaffold values seeded into the manifest template via `ResolveLayered` and exposed wholesale under the reserved `scaffold` key (`resolveManifestValues` :160-186, const `scaffoldValuesKey = "scaffold"` :32).
+- **`int list` scans downward**: `internal/template/scaffold_list.go` — `ListScaffolds(root) (entries []ScaffoldEntry, warnings []error)` :36. `ScaffoldEntry` :24 = `Path string`/`path` + embedded `Scaffold` (flattened into JSON). Walk semantics: `filepath.WalkDir`, skip set `listSkipDirs` :13 (`.git`, `.intropy`, `node_modules`, `bin`, `dist`), `fs.SkipDir` once matched (projects don't nest :63), unreadable/malformed records become warnings not failures. Consumed at `cmd/intropy/int_list.go:41-65`. **This is the discovery primitive `sys create` should reuse** — it already returns role/values per project; add block-kind filtering on top.
+- **Dependency-aware reader**: `dependencyDirScaffold` (`internal/template/dependencies.go:171`) — classifies a target dir as "same template → skip", "missing/empty → render", "foreign scaffold or unmanaged non-empty → error". Good precedent for `sys create`'s idempotency on the host directory.
+
+## 5. Layout &amp; conventions
+
+- **Packages** (`CONTRIBUTING.md:216-224`): `cmd/intropy/` = Cobra commands, one file per command + adjacent `_test.go`; `internal/template/` = fetch/validate/describe/render + scaffold record; `internal/deploy/` = manifests generation (thin consumer of `internal/template`); `internal/skill/` + `internal/skill/oci/`. A new noun would follow `internal/deploy`'s shape: `internal/system/` (or similar) with `Create(ctx, CreateOptions) error`, `CreateOptions` carrying `Stdin/Stdout/Stderr/HTTP/UserAgent` + `Owner/Repo/GitHubBaseURL` test overrides, and a `CreateResult` with stable additive JSON. Package doc convention: see `internal/template/doc.go` and the package comment at `internal/deploy/create.go:1-6`.
+- **Errors**: wrap with context (`fmt.Errorf("write scaffold record: %w", err)`); `usageError` via `newUsageErrorf` for exit code 2 (`cmd/intropy/errors.go`, mapped in `main.go:16-33`); sentinel errors like `ErrScaffoldNotFound` with `errors.Is` checks (`deploy/create.go:93`); `SilenceUsage`/`SilenceErrors` set once on root (`root.go:21-22`); `RunE` never calls `os.Exit`. Shared `--output` validation helper: `validateOutputFlag` (`root.go:42`).
+- **Output**: program output → `cmd.OutOrStdout()`; progress/diagnostics/warnings → `cmd.ErrOrStderr()` (e.g. `fetching %s/%s@%s`, `created %s from …` at create.go:82/98; `warning: …` at int_list.go:43). No logging library; plain `fmt.Fprintf`. Tables via `text/tabwriter` (int_list.go:60). Machine output via `json.Encoder` with `SetIndent("", "  ")` or an `--output-json` file/`-` sentinel. Cancellation: `signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)` in each long-running `RunE`.
+- **Testing patterns**:
+  - Cmd-level: execute `rootCmd` in-process with `rootCmd.SetArgs([...])`, buffers wired via helper `resetRootIO` (`cmd/intropy/skills_list_test.go:83`) and `writeFileT` (:94); `t.Chdir(t.TempDir())`; scaffold fixture helper `writeScaffoldT` (`cmd/intropy/int_list_test.go:12`). Full examples: `int_list_test.go`, `root_test.go`.
+  - Pure-logic cmd tests: `cmd/intropy/int_create_test.go` (subtests on `resolveCreateName`, asserts `errors.As(err, &amp;ue)` for usage errors).
+  - Package-level: `httptest` GitHub stub — `newTemplateServer` (`internal/template/create_test.go:35`) and `newManifestsServer` (`internal/deploy/create_test.go:163`, which deliberately `t.Error`s if `releases/latest` is hit to prove version pinning), tarballs built by `buildTarGz`, injected through `HTTP: srv.Client()`, `Owner/Repo/GitHubBaseURL`. Scaffold fixture via `template.WriteScaffold` + round-trip through `LoadScaffold` so numbers arrive as `float64` (`deploy/create_test.go:181-205`) — a real trap for any code reading `values` numerics.
+  - `make check` = fmt + vet + test; `make ci` adds tidy/lint/`-race`.
+
+## Cross-repo context that shapes this work
+
+`…/tooling/intropy-templates/system-host/` **already exists** and is written against `intropy sys create`:
+- `template.yaml:16-18` — "renders this template with only `name` and `--no-input`. No other parameter may ever be required"; label `intropy.dev/template-role: system-host` (:13); derives `projectName`, `systemClass`, `pubsub: pubsub` (:29-35).
+- `README.md:14-29` — ownership split: skeleton owns `Program.cs`, csproj, `Taskfile.yml`, `launchSettings.json`, docs; skeleton ships **compilable placeholders** `&lt;projectName&gt;System.cs` and `Topics.cs` that **`sys create` codegen overwrites**; codegen alone owns `Apis.cs`, `Connectors.cs`, and the sibling `&lt;projectName&gt;.Contracts/` project (host csproj reference is `Exists`-guarded, `…SystemHost.csproj.tmpl:26-28`).
+- Placeholders to be regenerated: `skeleton/{{ .systemClass }}.cs.tmpl` (`ISystemDefinition`, `SystemName`, `Define(SystemBuilder)` with `builder.AddExtractor("…").Publishes(Topics.X)`) and `skeleton/Topics.cs.tmpl` (`TopicRef&lt;T&gt;.Define("pubsub", "orders")`).
+- The C# side lives at `/Users/robinhultman/dev/intropy/tooling/Intropy.Topology` (packages `Intropy.Topology.Aspire` / `.Generation` 0.1.0).
+- Templates authoring contract: `…/intropy-templates/CLAUDE.md:92-98` (the two load-bearing labels) and `:113-121` (shared-library role has no block-kind).</result>
+<usage><subagent_tokens>96816</subagent_tokens><tool_uses>38</tool_uses><duration_ms>209958</duration_ms></usage>
+</task-notification>
