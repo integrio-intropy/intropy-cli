@@ -1,0 +1,1 @@
+Hmm perhaps we should have it pointing to a single collection and perhaps defaulting to the latest version?
