@@ -1,0 +1,79 @@
+<task-notification>
+<task-id>aee59fbef51c274c1</task-id>
+<tool-use-id>toolu_017hJssvADy7ZQWJJrfGrPn6</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/8c8e7928-1546-4b88-abba-1e3bc4147d38/tasks/aee59fbef51c274c1.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore dashboard web frontend" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have a complete picture. Here is my thorough exploration report.
+
+## Dashboard Web Frontend — Flow Page Exploration
+
+### 1. Tech stack
+
+From `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/package.json`:
+- Framework: React 18.3 + React DOM, TypeScript 5.5, built with Vite 5.4 (`@vitejs/plugin-react`).
+- Graph/diagram library: **`@xyflow/react` ^12.11.2 — this is React Flow (v12)**. This is the only graph library. There is no d3, mermaid, elk, or dagre. Layout is hand-rolled (see section 5).
+- Icons: `@material-symbols/svg-400` imported as React components via `vite-plugin-svgr` (see `web/src/icons.ts`).
+- Distribution: the SPA is built to `web/dist` and embedded into the Go CLI binary via `go:embed all:dist` in `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/embed.go`. Served by `intropy int run` (the "run subcommand" commit) from `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/`.
+
+### 2. Where the flow page lives / how it renders
+
+- Flow view component: `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/components/FlowView.tsx` — the entire flow rendering lives here.
+- Wired in `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/App.tsx`: a top-nav toggles between two views, `'catalog'` and `'flow'` (labels "Integration Catalog" / "Integration Flow"). When `view === 'flow'`, `&lt;FlowView selected={...} onSelect={...} /&gt;` renders in `&lt;main className="content"&gt;`. Selection is shared with the sidebar/detail panel.
+- `FlowView` renders a `&lt;ReactFlow&gt;` canvas (`className="flow-canvas"`) with `&lt;Background&gt;`, `&lt;Controls&gt;`, `&lt;MiniMap&gt;`, `fitView`, `colorMode="system"`, `minZoom={0.3}`, attribution hidden. Clicking an integration node calls `onSelect(node.id)`.
+
+### 3. Data model consumed
+
+Data is fetched from a single JSON API endpoint: `api.flow()` → `GET /api/flow` (defined in `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/api.ts`). It is served by the embedded Go server, handler `(*apiServer).flow` in `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/handlers.go`. The whole graph loads in one request — no per-node fetching, not static JSON, not embedded-in-HTML.
+
+The consumed shape is `IntegrationDetail[]` (TS in `api.ts`, Go `integrationDetail` in `handlers.go`). An integration node's fields:
+- `path` (root-relative slash id — used as the React Flow node id)
+- `name` (display name = the directory holding the `.intropy` record)
+- `template` (the scaffold template, shown as a pill/tag)
+- `system?`, `domain?` (grouping coordinates; `system` = parent dir, `domain` = grandparent; empty near root)
+- `pipelineSteps?: string[]` — filenames from `&lt;dir&gt;/src/Process/Steps` (e.g. `OrderValidateStep.cs`)
+- `daprComponents?: string[]` — filenames from `&lt;dir&gt;/local/dapr-components`
+- plus scaffold metadata `schemaVersion, owner, repo, version, values` (unused by the flow canvas)
+
+For the `/api/flow` response the Go handler leaves `agents`/`readme` nil; it only populates `DaprComponents` and `PipelineSteps` (via `listNames`). The React node data (`IntNodeData`) is `{ name, template, steps, components, selected }`.
+
+**Edges/connections: there are none.** `&lt;ReactFlow edges={[]}&gt;` — the graph is drawn with zero edges. There is currently no inter-integration connection model at all. Each integration is an isolated card; the only relationship expressed is containment (system/domain grouping).
+
+### 4. Existing notion of system boundary / grouping / containers / subgraphs
+
+Yes — implemented via React Flow **parent/child (sub-flow) nodes**, in `buildNodes()` in `FlowView.tsx`:
+- Integrations are grouped into a `Map` keyed by `[domain, system]` joined with `/` (fallback `(root)` / title `Workspace`).
+- Each group becomes a `type: 'group'` node (`GroupNode` component, rendered as `.rf-group`, a **dashed rounded container** with an uppercase title + count badge — CSS comment literally says "Dashed system/domain container").
+- Each integration is a child node with `parentId: 'grp:&lt;key&gt;'` and `extent: 'parent'` (so it can't be dragged outside its container). Group nodes are `draggable: false, selectable: false`. Comment: "groups integrations by their domain/system container."
+- This is the closest existing analog to a "system boundary": a one-level container derived from directory hierarchy (domain/system). There is no nesting beyond this single group level, and no explicit boundary/connection semantics — grouping is purely folder-derived.
+
+### 5. Node styling &amp; layout
+
+Layout is **deterministic and hand-computed** (no dagre/elk/force layout). Geometry constants in `FlowView.tsx`:
+```
+NODE_W=300, NODE_H=172, COL_GAP=28, ROW_GAP=28, COLS=2,
+GROUP_HEADER=44, GROUP_PAD=20, GROUP_GAP=40
+```
+Algorithm in `buildNodes()`:
+- Groups stack top-to-bottom: a running `y` accumulates `height + GROUP_GAP` per group. Every group is placed at `x: 0`.
+- Group size is computed from item count: `cols = min(2, n)`, `rows = ceil(n/cols)`; width/height derived from the constants above.
+- Within a group, integrations flow left-to-right in a fixed 2-column grid: child `position.x = GROUP_PAD + col*(NODE_W+COL_GAP)`, `position.y = GROUP_HEADER + row*(NODE_H+ROW_GAP)`.
+- Positions are stable across reloads; the comment notes a reload "lands things in the same place." Nodes are draggable but selection updates avoid disturbing dragged positions (the `selected` effect only patches `data`, not `position`).
+
+Node rendering (`IntegrationNode` → `.rf-int` card, CSS in `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/index.css` lines ~549–699):
+- 300px card with header (MemoryIcon + name + template tag pill), a "steps" row (RouteIcon + chips, or "no steps"), and an optional "components" row (ExtensionIcon + monospace `.infra` chips).
+- Selected state: accent border + ring (`.rf-int.selected`). Helpers `stepName()` (e.g. `OrderValidateStep.cs` → "Order Validate") and `componentName()` (strips `.yaml`) prettify chip labels.
+- React Flow chrome (controls, minimap, background dashed grid `gap={20}`) is themed via CSS variables.
+
+### Summary of key files
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/components/FlowView.tsx` — all flow rendering, grouping, layout.
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/api.ts` — data shapes + `/api/flow` fetch.
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/handlers.go` — Go `/api/flow` handler and `integrationDetail` model.
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/index.css` (lines 549–699) — flow/group/node styling.
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/App.tsx` — view switching and shared selection.
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/embed.go` — SPA embedding into the CLI.
+
+Notable gap relative to a future "system boundary" feature: the flow currently has **no edges and only single-level, folder-derived grouping**, so any richer boundary/connection model would be new ground.</result>
+<usage><subagent_tokens>27084</subagent_tokens><tool_uses>10</tool_uses><duration_ms>69356</duration_ms></usage>
+</task-notification>
