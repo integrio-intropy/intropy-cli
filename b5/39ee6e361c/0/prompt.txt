@@ -1,0 +1,206 @@
+<task-notification>
+<task-id>a8b2c577b9b760dec</task-id>
+<tool-use-id>toolu_01JJCdLGqHQJSjDtFDmRbS6K</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/e91c6ba9-a9cd-4e77-8aa1-f9b8023dcfe4/tasks/a8b2c577b9b760dec.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore new price domain structure" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have a complete picture. Here is my thorough report.
+
+## Overview
+
+The target directory `/Users/robinhultman/dev/intropy/customers/fluxia/integrations/domains/price/price` is a **reworked, lightweight "descriptor-only" layout**. Unlike the older sibling systems (`product/distribution`, `order-management/INT123`) which contain full generated code trees (`.cs`, `Dockerfile`, `Taskfile.yml`, `src/`, `test/`, `local/`), the price system contains **only `.intropy/` descriptor files** — no source code, no build files, no Dockerfiles. It is purely a declaration of system shape.
+
+## 1. Complete directory tree
+
+```
+price/
+└── distribution/                         ← the "system" root
+    ├── .intropy/
+    │   └── topology.json                 ← system-level wiring graph
+    ├── erp-loader/
+    │   └── .intropy/
+    │       └── scaffold.json             ← per-component template record
+    ├── extractor/
+    │   └── .intropy/
+    │       └── scaffold.json
+    ├── web-integration/
+    │   └── .intropy/
+    │       └── scaffold.json
+    └── wms-loader/
+        └── .intropy/
+            └── scaffold.json
+```
+
+That is the entire tree: 1 `topology.json` + 4 `scaffold.json`. No AGENTS.md, Taskfile.yml, match.json, README, Dockerfile, or code files exist anywhere under `price/`. (`match.json` does not exist anywhere in the tree — you asked about it specifically; it is absent.)
+
+## 2 &amp; 3. Full file contents
+
+### `price/distribution/.intropy/topology.json`
+
+This is the reworked schema. Note it uses `apiVersion` + `kind` (Kubernetes/Backstage-style), **not** the old `schemaVersion` integer.
+
+```json
+{
+  "apiVersion": "topology.intropy.io/v1",
+  "kind": "SystemTopology",
+  "system": "distribution",
+
+  "components": [
+    {
+      "name": "extractor",
+      "kind": "async-extractor",
+      "subscribes": [],
+      "publishes": [
+        { "port": "b2c", "pubsub": "price-pubsub", "topic": "price-b2c" },
+        { "port": "b2b", "pubsub": "price-pubsub", "topic": "price-b2b" }
+      ],
+      "provides": [],
+      "consumes": [],
+      "connectors": [ { "connector": "pricemaster", "direction": "in" } ]
+    },
+    {
+      "name": "erp-loader",
+      "kind": "loader",
+      "subscribes": [ { "pubsub": "price-pubsub", "topic": "price-b2b" } ],
+      "publishes": [], "provides": [], "consumes": [],
+      "connectors": [ { "connector": "erp", "direction": "out" } ]
+    },
+    {
+      "name": "wms-loader",
+      "kind": "loader",
+      "subscribes": [ { "pubsub": "price-pubsub", "topic": "price-b2c" } ],
+      "publishes": [], "provides": [], "consumes": [],
+      "connectors": [ { "connector": "wms", "direction": "out" } ]
+    },
+    {
+      "name": "web-integration",
+      "kind": "transactionalIntegration",
+      "subscribes": [], "publishes": [], "provides": [], "consumes": [],
+      "connectors": [
+        { "connector": "price-master",    "direction": "in"  },
+        { "connector": "trading-partner", "direction": "out" }
+      ]
+    }
+  ],
+
+  "topics": [
+    { "pubsub": "order-fulfillment-pubsub", "topic": "order-fulfillment",
+      "contract": "OrderFulfillment.SystemHost.Contracts.FulfillmentOrder",
+      "publishers": [ "order-aggregator" ], "subscribers": [ "erp-order-loader" ] },
+    { "pubsub": "order-fulfillment-pubsub", "topic": "order-raw",
+      "contract": "OrderFulfillment.SystemHost.Contracts.RawOrder",
+      "publishers": [ "order-extractor" ], "subscribers": [ "order-aggregator" ] },
+    { "pubsub": "order-fulfillment-pubsub", "topic": "stock-raw",
+      "contract": "OrderFulfillment.SystemHost.Contracts.StockLevel",
+      "publishers": [ "stock-extractor" ], "subscribers": [ "order-aggregator" ] }
+  ],
+
+  "apis": [
+    { "name": "freight-booking",
+      "contract": "OrderFulfillment.SystemHost.Contracts.FreightBooking",
+      "providers": [ "freight-booking" ], "consumers": [ "order-aggregator" ] }
+  ],
+
+  "connectors": [
+    { "name": "erp", "externalSystem": "erp",
+      "transport": { "type": "http", "supportsInput": false, "supportsOutput": true },
+      "directions": [ "out" ], "usedBy": [ "erp-order-loader" ] },
+    { "name": "freight", "externalSystem": "freight-provider",
+      "transport": { "type": "http", "supportsInput": false, "supportsOutput": true },
+      "directions": [ "out" ], "usedBy": [ "freight-booking" ] },
+    { "name": "webshop", "externalSystem": "webshop",
+      "transport": { "type": "sftp", "supportsInput": true, "supportsOutput": true },
+      "directions": [ "in" ], "usedBy": [ "order-extractor" ] },
+    { "name": "wms", "externalSystem": "wms",
+      "transport": { "type": "blob", "supportsInput": true, "supportsOutput": true },
+      "directions": [ "in" ], "usedBy": [ "stock-extractor" ] }
+  ]
+}
+```
+
+**Important data-quality flag:** the `topics`, `apis`, and `connectors` sections are internally inconsistent with `components`. The components describe a *price* system (`extractor`, `erp-loader`, `wms-loader`, `web-integration`; topics `price-b2c`/`price-b2b`; pubsub `price-pubsub`; connectors `pricemaster`/`price-master`/`trading-partner`/`erp`/`wms`). But the bottom three sections describe an unrelated *order-fulfillment* system (`order-aggregator`, `erp-order-loader`, `order-extractor`, `stock-extractor`, `freight-booking`; pubsub `order-fulfillment-pubsub`; connectors `freight`/`webshop`). These look like copy-paste leftovers from an order-fulfillment example. The connector names referenced by components (`pricemaster`, `price-master`, `trading-partner`) are **not** declared in the `connectors` array, and the declared connectors (`freight`, `webshop`) are not used by any component. Your rewritten `run` command should decide whether to cross-validate these references or tolerate the mismatch.
+
+### The four `scaffold.json` files
+
+All share the identical schema (the same one the current CLI already understands — `internal/template/scaffold.go`, `schemaVersion: 1`).
+
+`price/distribution/extractor/.intropy/scaffold.json`:
+```json
+{
+  "schemaVersion": 1,
+  "template": "async-extractor",
+  "owner": "integrio-intropy",
+  "repo": "intropy-templates",
+  "version": "v0.1.7",
+  "values": { "appId": "Extractor", "name": "Extractor" }
+}
+```
+
+`price/distribution/erp-loader/.intropy/scaffold.json`:
+```json
+{
+  "schemaVersion": 1,
+  "template": "loader",
+  "owner": "integrio-intropy",
+  "repo": "intropy-templates",
+  "version": "v0.1.7",
+  "values": { "appId": "erploader", "name": "ERPLoader" }
+}
+```
+
+`price/distribution/wms-loader/.intropy/scaffold.json`:
+```json
+{
+  "schemaVersion": 1,
+  "template": "extractor",
+  "owner": "integrio-intropy",
+  "repo": "intropy-templates",
+  "version": "v0.1.7",
+  "values": { "appId": "aggregator", "name": "Aggregator" }
+}
+```
+(Note: the wms-loader folder's scaffold has `template: "extractor"` and `values` naming it "Aggregator" — another apparent copy-paste inconsistency; the folder name and topology `kind: loader` disagree with the scaffold's template/values.)
+
+`price/distribution/web-integration/.intropy/scaffold.json`:
+```json
+{
+  "schemaVersion": 1,
+  "template": "transactionalintegration",
+  "owner": "integrio-intropy",
+  "repo": "intropy-templates",
+  "version": "v0.1.7",
+  "values": { "appId": "webintegration", "name": "WebIntegration" }
+}
+```
+
+## 4. Code files
+
+None. There are zero `.cs`, `.go`, `.csproj`, `.sln`, `Dockerfile`, `Taskfile.yml`, or compose files under `price/`. This confirms the reworked layout is descriptor-only — it *represents* what would be scaffolded/generated rather than containing generated output.
+
+## 5. Overall organizing model
+
+The hierarchy is: **`domains/&lt;domain&gt;/&lt;system&gt;/`**, where the system directory is the unit that carries a `.intropy/topology.json`, and each **component/block** under it is a subdirectory carrying its own `.intropy/scaffold.json`.
+
+- **Domain** = `price` (a business area; siblings are `product`, `order-management`).
+- **System** = `distribution` (the deployable system / blueprint instance; the topology root). The `topology.json` field `"system": "distribution"` names it.
+- **Components (blocks)** = `extractor`, `erp-loader`, `wms-loader`, `web-integration`. Each is one directory with a `scaffold.json`. Component `kind` values seen: `async-extractor`, `loader`, `transactionalIntegration`. These correspond to Intropy block archetypes (Extractor, Loader, etc.).
+- **Blueprints/templates** = referenced by each component's `scaffold.json` `template` field (`async-extractor`, `loader`, `extractor`, `transactionalintegration`), pinned to `intropy-templates@v0.1.7` owned by `integrio-intropy`.
+- **Pipelines / wiring** = expressed in `topology.json` by embedding each component's edges *inline* on the component (`subscribes`, `publishes`, `provides`, `consumes`, `connectors`) rather than as a separate edge list. `publishes`/`subscribes` connect components to pub/sub `topics`; `provides`/`consumes` connect to `apis`; `connectors` connect to external `connectors` with a `direction`.
+- **Connectors / external systems** = declared in the top-level `connectors` array (name, `externalSystem`, `transport` object with `type`/`supportsInput`/`supportsOutput`, `directions`, `usedBy`).
+
+## How this differs from what the current `run` command consumes (critical for your rewrite)
+
+The current `run` command is at `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/int_run.go`. It does **not** run integrations — it launches a local web dashboard (`internal/dashboard.Serve`) that visualizes scaffolds. Discovery/parsing lives in:
+
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/topology/topology.go` — parses `topology.json`.
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/scaffold.go` and `scaffold_list.go` — parse and walk `scaffold.json`.
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/handlers.go` — serves `/api/topology` (via `topology.List`) and integration lists (via `template.ListScaffolds`).
+
+**The schema mismatch you must handle:** the current `topology.Load` (topology.go lines 132-148) expects the OLD schema — a top-level integer field `"schemaVersion": 1`, plus `generator`, `system` (object), `components` (with `type`/`project`/`workload`/`trigger`), `resources`, `apis`, `edges` (explicit `from`/`to`/`kind` graph). See the old example at `/Users/robinhultman/dev/intropy/customers/fluxia/integrations/domains/product/distribution/.intropy/topology.json`.
+
+The reworked price `topology.json` has **no `schemaVersion` field at all** — it uses `"apiVersion": "topology.intropy.io/v1"` + `"kind": "SystemTopology"`, `system` as a *string*, per-component inline edges, and top-level `topics`/`connectors` sections instead of `resources`/`edges`. Loaded by the current code it would unmarshal `SchemaVersion` as `0` and fail the check at line 143 ("unsupported schema version 0"). So the rewrite needs a new parser (or a version-dispatch on `apiVersion`) for `topology.intropy.io/v1`.
+
+The `scaffold.json` schema is **unchanged** — `template.LoadScaffold`/`ListScaffolds` already handle the price component records as-is (`schemaVersion: 1`, `template`, `owner`, `repo`, `version`, `values`). The `RelPath` conventions (`.intropy/topology.json` at the system root, `.intropy/scaffold.json` per project, and the shared `listSkipDirs` walk that does not descend into matched roots) still hold for the new layout.</result>
+<usage><subagent_tokens>37646</subagent_tokens><tool_uses>22</tool_uses><duration_ms>141630</duration_ms></usage>
+</task-notification>
