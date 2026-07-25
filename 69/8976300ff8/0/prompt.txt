@@ -1,0 +1,1 @@
+I have pushed these changes and created a release and the pipeline ran successfully. How can I test it?
