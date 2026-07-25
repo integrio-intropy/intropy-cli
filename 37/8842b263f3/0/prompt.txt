@@ -1,0 +1,109 @@
+<task-notification>
+<task-id>a35c447c949fe4666</task-id>
+<tool-use-id>toolu_01G3MZ1tT85m3j9Xn7Hua638</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/8c8e7928-1546-4b88-abba-1e3bc4147d38/tasks/a35c447c949fe4666.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore Intropy domain model" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have a complete picture. Here is the report.
+
+## Intropy domain model — as it relates to your dashboard "flow page"
+
+Important framing: there is **no `MEMORY.md` and no `memory/` directory** in this repo (I searched; the "memory" phrases you quoted live in `benchmark/skills/biztalk-migration-no-cli/SKILL.md`). More importantly, **the dashboard flow page you're designing already exists in this repo** — it's the `intropy int run` command backed by `internal/dashboard/` (Go API) and `web/src/` (React + `@xyflow/react`). So a lot of your questions already have concrete answers in code.
+
+---
+
+### 1. "System" vs "Integration" — and the scaffold record
+
+An **integration** is a scaffolded project: a directory containing `.intropy/scaffold.json`. That file is the authoritative record.
+
+- Schema defined in `internal/template/scaffold.go` (`type Scaffold`):
+  - `schemaVersion` (int), `template` (dir name in the blueprint repo), `owner`, `repo`, `version` (pinned template version), `values` (map).
+- Constant: `ScaffoldRelPath = ".intropy/scaffold.json"`, `ScaffoldSchemaVersion = 1`.
+- Real example — `tmp/testint/.intropy/scaffold.json`:
+  ```json
+  { "schemaVersion": 1, "blueprint": "hello-world", "owner": "integrio-intropy",
+    "repo": "intropy-blueprints", "version": "v0.1.6",
+    "values": { "appId": "int89", "name": "INT89" } }
+  ```
+  (Note: this sample uses `blueprint` where the Go struct field is `template` — the on-disk field name is `template`; treat `blueprint`/`template` as the same slot.)
+
+A **"system" is NOT a first-class record** — it is *derived from directory nesting*. This is the key insight for your flow page. See `internal/dashboard/handlers.go`, `summarize()`:
+- `Name` = the directory holding `.intropy/scaffold.json` (the integration).
+- `System` = that directory's **parent** folder name.
+- `Domain` = the **grandparent** folder name.
+- The workspace root never counts as a system/domain; an integration directly under root has a system but no domain.
+
+So the containment hierarchy is purely path-based: `domain/system/integration/`. The frontend groups by this in `web/src/components/FlowView.tsx` (`buildNodes`), drawing a labelled **group container** (the "system boundary" you want) per `domain/system` key, with integration cards laid out in a grid inside it. `web/src/api.ts` mirrors the contract: `Integration` has optional `system?` and `domain?`.
+
+There is no scaffold field for "system" — if you want richer system metadata than a folder name, it does not exist yet in the model.
+
+---
+
+### 2. Dapr components in the model
+
+Dapr components live in each integration at `local/dapr-components/*.yaml`. The dashboard reads them by listing filenames in that dir (`handlers.go` `listNames(filepath.Join(dir, "local", "dapr-components"))`) and exposes them as `daprComponents []string` on both `/api/flow` and `/api/integrations/{path}`.
+
+Example projects and the exact component types/naming I found:
+
+- `Demo/local/dapr-components/pubsub.yaml` and `Orders/...` and `tmp/testint/...`:
+  - `metadata.name: pubsub`, `spec.type: pubsub.in-memory`, `version: v1`
+- `Demo/local/dapr-components/local-storage.yaml`:
+  - `metadata.name: local-storage`, `spec.type: bindings.localstorage`, `metadata.rootPath: "/tmp/demo"`
+- `Orders/local/dapr-components/local-storage.yaml`:
+  - same, `rootPath: "./local/test/out"`
+
+Conventions:
+- **Component types seen**: `pubsub.in-memory` (pub/sub) and `bindings.localstorage` (output binding to local files). The biztalk migration skill also references `state.in-memory` for **state stores** (statestore) named `lookups` — see `benchmark/skills/biztalk-migration-no-cli/SKILL.md` (core simplification 3: "Lookups use Dapr in-memory state … `state.in-memory` named `lookups`").
+- **Naming**: component `metadata.name` is a stable logical handle referenced from C# `Configuration/Constants.cs`. In `Orders/src/Configuration/Constants.cs`: `PubSubName = "pubsub"`, `TopicName = "messages"`, `LocalStorageBindingName = "local-storage"`, plus `ComponentName = "orders"` and `CustomerName = "Entrovia"`. AGENTS.md files stress "keep component names in sync between `src/Program.cs` and `local/dapr-components/*.yaml`."
+- These are **local dev** components (in-memory / local file) meant to be "rewired for real transports later" — the biztalk skill says explicitly "Transport is local file, always … The developer rewires for real transports later," and "Do not generate Dapr components for non-file transports — FTP, SFTP …".
+
+Dapr's three primitives you named all map here: **pubsub** = `pubsub.in-memory`, **statestore** = `state.in-memory` (lookups), **bindings** = `bindings.localstorage`.
+
+---
+
+### 3. "Public" vs "private" APIs, and APIs at all
+
+There is no formal `public`/`private` API taxonomy in the scaffold model, but there is a clear **convention** in the sample integrations, expressed in READMEs and endpoint code:
+
+- `Orders/README.md` / `Demo/README.md`:
+  - `POST /publish` — "the **public route you call**"; accepts `OrderIn`, publishes to pubsub component `pubsub`, topic `messages`.
+  - `POST /subscribe` — "**not a route you call**"; it's the Dapr subscription handler, invoked by Dapr per message, runs the send pipeline.
+- Confirmed in `Orders/src/Ingest/Endpoints.cs`: `/publish` calls `DaprClient.PublishEventAsync`; `/subscribe` is decorated `.WithTopic(PubSubName, TopicName)` + `MapSubscribeHandler()` in `Program.cs`. So "public API" = the externally-callable HTTP entry; "private" = the Dapr-internal subscribe handler.
+
+The `match.json` / `pipeline_steps` / transport concepts are a **separate subsystem** (BizTalk migration), and they are *conceptual only in this repo* — the Go `internal/migrate/*` files they reference (`match.go`, `flow.go`, etc.) **do not exist in this checkout**; only the benchmark skill describing them does. In that model:
+- A per-destination `pipeline_steps` list is emitted in a fixed order: `deserialize → extract → validate → transform → serialize → send` (SKILL.md lines ~215-231).
+- Each `send`/trigger step carries a `transport` field; **every transport normalizes to `FILE`** in v1 (a non-FILE original adapter emits a `transport_override` gap).
+- `processingMode` is `streamed` (both formats xml) or `poco` otherwise.
+- Blueprint = `Transactional` (the only one wired). This matches the runtime C#: `Intropy.Framework.Blocks.TransactionalIntegration.Send`.
+
+APIs are NOT modeled as a resource type the dashboard draws — the flow page draws pipeline steps and Dapr components, not HTTP routes.
+
+---
+
+### 4. How integrations connect / share resources
+
+At the model level, integrations do **not** have explicit edges. Tellingly, `FlowView.tsx` renders `edges={[]}` — the current flow canvas draws **no connections** between integrations. Grouping (system boundary) is the only relationship expressed, and it's derived from folders.
+
+Actual connectivity is implicit, through Dapr:
+- **Pub/sub topics** are the coupling mechanism: an integration publishes to `pubsub`/`messages` and another subscribes to `pubsub`/`messages` (see the publish/subscribe split above). Two integrations sharing a `pubsub` component name + topic are effectively connected — but nothing in `scaffold.json` records that link; you'd have to infer it by matching `PubSubName`+`TopicName` (from `Constants.cs`) or component `metadata.name` across projects.
+- **Shared state / databases**: `state.in-memory` statestores (e.g. `lookups`) per the biztalk skill — used for reference-data lookups (`ExtractStep`), not cross-integration sharing.
+- **Bindings**: `bindings.localstorage` writes pipeline output to files (`OrderSendStep.cs` → `IFileAdapter.WriteAsync`). The `Intropy.Framework.Adapters.File` / `LocalFileAdapter` is how a pipeline's `send` block reaches a transport.
+- The pipeline itself (`Orders/src/Process/OrderSendPipeline.cs`) is the intra-integration flow: `deserialize → validate → transform → serialize → send`, discovered by the dashboard from `src/Process/Steps/*.cs` filenames.
+
+---
+
+### Most useful files for your redesign
+
+- `internal/dashboard/handlers.go` — the JSON API (`/api/flow`, `/api/integrations`, `/api/integrations/{path}`) and the exact enrichment model (`integrationDetail`: `daprComponents`, `pipelineSteps`, plus derived `name`/`system`/`domain`). This is the contract your redesigned page consumes.
+- `web/src/components/FlowView.tsx` — the existing flow canvas: system-boundary group nodes + integration cards, chips for steps and Dapr components. Note `edges={[]}` (no wiring yet) and the deterministic grid layout.
+- `web/src/api.ts` — TypeScript types mirroring the Go contract.
+- `web/src/components/DetailPanel.tsx` — side panel rendering Values / Pipeline steps / Dapr components / README.
+- `internal/template/scaffold.go` + `scaffold_list.go` — the `Scaffold`/`ScaffoldEntry` schema and how projects are discovered (walk for `.intropy/scaffold.json`, no nesting).
+- `tmp/testint/.intropy/scaffold.json` — a live scaffold record.
+- `Orders/` (and `Demo/`) — reference integrations: `Program.cs`, `Ingest/Endpoints.cs`, `Configuration/Constants.cs`, `Process/OrderSendPipeline.cs`, `local/dapr-components/{pubsub,local-storage}.yaml`, `AGENTS.md`, `README.md`.
+- `benchmark/skills/biztalk-migration-no-cli/SKILL.md` — the `match.json`/`pipeline_steps`/transport-normalization/gap model (conceptual; the referenced `internal/migrate/*.go` files are not present in this checkout).
+
+Gaps worth noting for your design: there is currently no first-class "system", no explicit integration-to-integration edges, and no API/topic resource nodes in the served model — pub/sub topics, databases, and public APIs are all inferable only from `Constants.cs` values and the Dapr component YAML, not from `scaffold.json`. If your new flow page wants to draw pubsub/database/API nodes and connect integrations through shared topics, that relationship data would need to be derived (e.g. join on component name + topic) or added to the API in `internal/dashboard/handlers.go`.</result>
+<usage><subagent_tokens>47536</subagent_tokens><tool_uses>24</tool_uses><duration_ms>134450</duration_ms></usage>
+</task-notification>
