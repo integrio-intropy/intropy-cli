@@ -1,0 +1,6 @@
+Robins-MacBook-Pro intropy-cli on  main [?] ➜  goreleaser check                                                                                                                          07:15
+  • checking                                  path=.goreleaser.yaml
+  • DEPRECATED:  archives.format  should not be used anymore, check https://goreleaser.com/deprecations#archivesformat for more info
+  • DEPRECATED:  brews  should not be used anymore, check https://goreleaser.com/deprecations#brews for more info
+  • .goreleaser.yaml                                 error=configuration is valid, but uses deprecated properties
+  ⨯ check failed                                     error=1 out of 1 configuration file(s) have issues
