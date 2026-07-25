@@ -1,0 +1,5 @@
+a) Add a persistent -C <dir> flag on the root command (the git -C / make -C convention). Implementation is small: resolve it in the root's PersistentPreRunE and either os.Chdir or thread it as StartDir into the option structs — deploy.CreateOptions already has the field. This alone makes the CLI fully scriptable in a mono-repo:
+
+for p in $(intropy int list -o json | jq -r '.[].path'); do
+  intropy -C "$p" manifests create --no-input -f "$p/deploy-values.yaml"
+done
