@@ -1,0 +1,1 @@
+This is only for testing so we must not commit anything to git but the folder structure is a bit different in lovenskiold so could you remove the extra directory level "extractor" and "loader" and move the contents of them one level up?
