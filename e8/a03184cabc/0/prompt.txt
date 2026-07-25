@@ -1,0 +1,1 @@
+Of all the uncommited code what is executed when running intropy int create?
