@@ -1,0 +1,9 @@
+Mac intropy-cli on  main [!?] ➜  git tag v1.0.1                                                                                                                                          09:44
+
+Mac intropy-cli on  main [?] ➜  git push origin v1.0.1                                                                                                                                   09:53
+Total 0 (delta 0), reused 0 (delta 0), pack-reused 0 (from 0)
+To github.com:integrio-intropy/intropy-cli.git
+ * [new tag]         v1.0.1 -> v1.0.1
+
+Mac intropy-cli on  main [?] ➜  gh release edit v1.0.1 -R integrio-intropy/intropy-cli --draft=false --latest                                                                            09:53
+release not found
