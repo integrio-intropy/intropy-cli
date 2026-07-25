@@ -1,0 +1,1 @@
+Is there a particular reason why the system-host uses redis for pubsub instead of rabbitmq?
