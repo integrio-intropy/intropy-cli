@@ -1,0 +1,1 @@
+It seems you must run brew trust integrio-intropy/tap. Perhaps we should get that into the instructions?
