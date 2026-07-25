@@ -1,0 +1,1 @@
+You wouldnt go so far as to use different shapes for loaders and extractors? Something to indicate that data flows into the system with an extractor and data flows out of the system with a loader. A transactional integration is both in and out and an aggregator is internal? Or is it better with just color?
