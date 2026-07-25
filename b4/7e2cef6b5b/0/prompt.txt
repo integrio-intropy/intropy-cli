@@ -1,0 +1,133 @@
+<task-notification>
+<task-id>a58aeb2a52218fa3a</task-id>
+<tool-use-id>toolu_01Tv6NRQ4ouj186t2UoU8BkG</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/8c8e7928-1546-4b88-abba-1e3bc4147d38/tasks/a58aeb2a52218fa3a.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore backend data model and Dapr" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have a complete picture. Here is my report.
+
+# Intropy Dashboard Backend — Exploration Report
+
+## 1. Command / server that serves the dashboard
+
+**Command:** `intropy int run [dir]` — defined in `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/int_run.go`. A Cobra subcommand of `int`. Flags: `--addr` (default `127.0.0.1`), `--port`/`-p` (default `8730`, `0` = free port), `--no-browser`. It validates that `dir` (default `.`) is a directory, sets up a SIGINT/SIGTERM context, then calls `dashboard.Serve`.
+
+**Server:** `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/server.go`. A plain stdlib `net/http` server (`dashboard.Serve(ctx, Options)`). `Options` = `{Root, Addr, Port, OpenBrowser, Version, Stdout, Stderr}`. It's explicitly read-only: "It starts no integration processes — it only visualizes what `int create` has scaffolded." Graceful 5s shutdown on ctx cancel. `browser.go` opens the URL.
+
+**Routes** (`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/handlers.go`, `newHandler`):
+- `GET /api/health` → `{status, version}`
+- `GET /api/integrations` → summary list
+- `GET /api/integrations/{path...}` → single enriched detail
+- `GET /api/flow` → all integrations enriched for the flow canvas
+- `/` → embedded SPA
+
+**Embedded frontend:** `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/embed.go` — `//go:embed all:dist` into `web.Assets`. Served by `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/static.go` (`staticHandler`), which serves `web/dist` and falls back to `index.html` for SPA deep links. The React/Vite SPA source is in `web/src/` (`App.tsx`, `api.ts`, and `components/FlowView.tsx`, `Sidebar.tsx`, `DetailPanel.tsx`), using `@xyflow/react` for the flow canvas.
+
+## 2. How integrations are discovered and modeled
+
+**Discovery is entirely driven by `.intropy/scaffold.json`.** The backend does NOT read Backstage catalog, `match.json`, or Dapr YAML for discovery.
+
+- Core walker: `template.ListScaffolds(root)` in `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/scaffold_list.go`. Walks the tree, and for every directory containing `.intropy/scaffold.json` yields a `ScaffoldEntry`. Skips `.git`, `.intropy`, `node_modules`, `bin`, `dist`; does not descend into a matched project (projects don't nest). This is the exact same primitive `int list` uses.
+
+- The record model, `Scaffold`, in `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/scaffold.go`:
+```go
+type Scaffold struct {
+	SchemaVersion int            `json:"schemaVersion"`
+	Template      string         `json:"template"`
+	Owner         string         `json:"owner"`
+	Repo          string         `json:"repo"`
+	Version       string         `json:"version"`
+	Values        map[string]any `json:"values"`
+}
+```
+`ScaffoldEntry` = `{Path string}` + embedded `Scaffold`. Const `ScaffoldRelPath = ".intropy/scaffold.json"`.
+
+Note: on-disk records vary — `tmp/testint/.intropy/scaffold.json` still uses the old key `"blueprint"` (from before the blueprint→template rename), so it would deserialize `Template` as empty. The `Orders/` and `Demo/` sample dirs have NO `.intropy/scaffold.json` at all, so they would not be discovered by the dashboard.
+
+**Dashboard's own models** (`handlers.go`):
+```go
+type integrationSummary struct {
+	template.ScaffoldEntry
+	Name   string `json:"name"`            // basename of dir carrying .intropy
+	System string `json:"system,omitempty"` // parent dir
+	Domain string `json:"domain,omitempty"` // grandparent dir
+}
+type integrationDetail struct {
+	integrationSummary
+	Agents         *fileDoc `json:"agents,omitempty"`
+	Readme         *fileDoc `json:"readme,omitempty"`
+	DaprComponents []string `json:"daprComponents,omitempty"`
+	PipelineSteps  []string `json:"pipelineSteps,omitempty"`
+}
+type fileDoc struct { Name, Content string }
+```
+`Name/System/Domain` are derived purely from directory nesting (`summarize`): name = dir basename, system = parent basename, domain = grandparent basename, each omitted when it would be the workspace root. `Path` is rewritten to a root-relative slash identifier for stable URLs.
+
+## 3. Dapr components — what is read
+
+Dapr YAML is **NOT parsed**. The backend only lists filenames. In `enrich` and `flow` (handlers.go):
+```go
+DaprComponents: listNames(filepath.Join(dir, "local", "dapr-components")),
+PipelineSteps:  listNames(filepath.Join(dir, "src", "Process", "Steps")),
+```
+`listNames` (handlers.go) does `os.ReadDir` and returns sorted base filenames of the non-dir entries — nothing more. So `DaprComponents` is just e.g. `["local-storage.yaml", "pubsub.yaml"]` and `PipelineSteps` is the `.cs` step filenames.
+
+The actual component YAML (`Orders/local/dapr-components/pubsub.yaml`, `local-storage.yaml`) contains rich data the backend ignores:
+```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: pubsub
+spec:
+  type: pubsub.in-memory      # component type — NOT extracted
+  version: v1
+```
+```yaml
+metadata:
+  name: local-storage
+spec:
+  type: bindings.localstorage # binding type + metadata — NOT extracted
+  metadata:
+    - name: rootPath
+      value: "./local/test/out"
+```
+Confirmed by grep: the only `yaml.v3` consumers in Go are `internal/template/manifest.go`, `internal/template/values.go`, `internal/skill/oci/frontmatter.go`, and test files. No `dapr`/`pubsub`/`statestore`/`binding` YAML parsing exists in non-test Go code. The frontend (`FlowView.tsx` `componentName`) merely strips the `.yaml` extension from the filename for a chip label. **Greenfield: extracting component type / metadata / topics from the Dapr YAML does not exist yet.**
+
+## 4. APIs (HTTP endpoints / service invocation / OpenAPI)
+
+**No notion of integration-level APIs exists.** Grep for `openapi`, `serviceinvocation`, `apidefinition`, `api.yaml` returns nothing in Go. There is no model for HTTP endpoints, service invocation, or OpenAPI/AsyncAPI specs. The only "API" concept is the dashboard's own internal JSON API (the `/api/*` routes above). **This is entirely greenfield.**
+
+Adjacent, but not integration-API discovery: `internal/template/manifest.go` parses a Backstage `scaffolder.backstage.io/v1beta3` Template (`Template/Metadata/Spec` with `Parameters`), and `internal/deploy/create.go` renders Dapr/k8s deployment manifests (with `dapr.io/*` annotations and a prod `pubsub.rabbitmq` component) — but these are template/scaffolding concerns, not consumed by the dashboard backend.
+
+## 5. Overall data flow
+
+```
+.intropy/scaffold.json (on disk, per project)
+   → template.ListScaffolds(root)            [walk, one entry per project]
+   → []ScaffoldEntry {Path, Scaffold{template,owner,repo,version,values}}
+   → apiServer.summarize()                   [derive name/system/domain from dir nesting; make Path root-relative]
+   → apiServer.enrich() / flow()             [best-effort filesystem reads:]
+         • AGENTS.md, README.md  → fileDoc (truncated to 128 KiB)
+         • local/dapr-components/* → filenames only
+         • src/Process/Steps/*     → filenames only
+   → writeJSON (indented) over /api/integrations, /api/integrations/{path}, /api/flow
+   → web/src/api.ts fetch → React SPA (Sidebar tree grouped by domain/system,
+                                       FlowView canvas of grouped cards with step + component chips,
+                                       DetailPanel showing scaffold fields + AGENTS/README)
+```
+The frontend TS types in `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/api.ts` (`Integration`, `IntegrationDetail`) exactly mirror the Go JSON contract.
+
+## What does NOT exist yet (greenfield for your work)
+
+- **No Dapr YAML parsing.** Component type (`pubsub.*`, `state.*`, `bindings.*`), `metadata` key/values, and pub/sub topics are all present on disk but never read — only filenames are surfaced.
+- **No pubsub/statestore/binding modeling.** No struct represents a Dapr component beyond a filename string.
+- **No API discovery.** No OpenAPI/AsyncAPI, no HTTP endpoint or service-invocation model anywhere.
+- **No database modeling.** Nothing extracts state stores or DB connections.
+- **No Backstage catalog or `match.json` reading** in the dashboard path. Discovery is 100% `.intropy/scaffold.json`.
+- **No cross-integration edges.** `FlowView` renders `edges={[]}` — integrations are grouped by directory nesting only; there is no relationship/topology graph.
+- **Discovery is directory-nesting based**, not semantic — "system"/"domain" are just parent/grandparent folder names, and the sample `Orders/`/`Demo/` projects lack scaffold records so wouldn't even appear.
+
+Key files to touch for backend enrichment: `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/handlers.go` (models + `enrich`/`flow`), and a new parser alongside it for `local/dapr-components/*.yaml` (a `gopkg.in/yaml.v3` dependency already exists in `go.mod`).</result>
+<usage><subagent_tokens>39085</subagent_tokens><tool_uses>17</tool_uses><duration_ms>115399</duration_ms></usage>
+</task-notification>
