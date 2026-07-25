@@ -1,0 +1,1 @@
+How can I test the new version without replacing my "real" installation of it?
