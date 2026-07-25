@@ -1,0 +1,127 @@
+<task-notification>
+<task-id>a88cdddbc0a84ef47</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/174cfbae-6a0b-4cfb-a561-e3d273629151/tasks/a88cdddbc0a84ef47.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore dashboard data sources" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have a complete picture. Here is my report.
+
+# Dashboard topology: how `int run` discovers and models an integration system today
+
+## 1. `internal/dashboard/` — files, data sources, and model structs
+
+Files present:
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/server.go` — HTTP server lifecycle (`Serve`, `Options`).
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/handlers.go` — JSON API routes + model structs.
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/components.go` — Dapr component YAML parsing.
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/static.go` — serves embedded SPA (SPA fallback to index.html).
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/browser.go` — opens browser on start.
+- Tests: `components_test.go`, `dashboard_test.go`. (No standalone `handlers_test.go`; server/handler behavior is covered by `dashboard_test.go`.)
+
+Data sources read (all filesystem scanning, read-only; the package explicitly "starts no integration processes" — server.go:1-6):
+- **`.intropy/scaffold.json`** — the authoritative integration record, discovered by walking the workspace tree (`template.ListScaffolds`, handlers.go:82, 126, 141).
+- **Dapr component YAML** — every `*.yaml/*.yml` directly under `&lt;project&gt;/local/dapr-components` (handlers.go:132,160; parsed in components.go).
+- **`&lt;project&gt;/src/Process/Steps`** — file base names become `PipelineSteps` (handlers.go:133,161 via `listNames`).
+- **`AGENTS.md`** and **`README.md`** at the project root — returned as raw text docs, truncated to 128 KiB (handlers.go:16, 158-159, `readDoc`).
+- No `match.json` anywhere in the repo (grep returned nothing). No `Taskfile` is read by the dashboard (Taskfile/AGENTS grep hits are unrelated skill code).
+
+API routes (handlers.go:61-67):
+- `GET /api/health`
+- `GET /api/integrations` — list (summaries)
+- `GET /api/integrations/{path...}` — one integration, fully enriched
+- `GET /api/flow` — every integration enriched with components + pipeline steps, for the canvas
+
+Model structs (handlers.go):
+- `apiServer{ root, version string }` (19-22)
+- `fileDoc{ Name, Content string }` (25-28)
+- `integrationSummary` (35-40): embeds `template.ScaffoldEntry`, plus `Name`, `System`, `Domain` — the last three derived purely from directory nesting (`summarize`, 96-109: Name = leaf dir, System = parent, Domain = grandparent; root is never a system/domain).
+- `integrationDetail` (45-51): embeds `integrationSummary`, plus `Agents *fileDoc`, `Readme *fileDoc`, `Components []DaprComponent`, `PipelineSteps []string`.
+
+`DaprComponent` (components.go:17-27):
+```go
+type DaprComponent struct {
+	Name     string `json:"name"`     // metadata.name, e.g. "pubsub"
+	Type     string `json:"type"`     // spec.type, e.g. "pubsub.in-memory"
+	Category string `json:"category"` // "pubsub" | "state" | "binding" | "other"
+	Direction string `json:"direction,omitempty"`
+	File      string `json:"file"` // source filename, for reference
+}
+```
+`Category` is derived from the `spec.type` prefix before the first `.` (`classify`, 87-101: pubsub/state/bindings→binding, else "other"). `Direction` is read only from a `spec.metadata` entry literally named `direction`, normalized to `input`/`output`/`input,output`; anything else yields `""` = unknown, never inferred (components.go:103-139).
+
+## 2. How relationships/edges are derived today
+
+Topology is **not modeled server-side at all**. The Go API emits a flat list of integrations, each with its own parsed Dapr components and pipeline-step filenames. There is no server-side notion of nodes/edges, no cross-integration linking, no code scanning, no publish/subscribe topic graph.
+
+All edges are **synthesized in the browser** by `buildGraph` in `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/components/FlowView.tsx:255-414`, using heuristics:
+- **Grouping into a "system"**: integrations are grouped by `domain/system` folder pair (`systemKey`, FlowView.tsx:115-117) — i.e. purely by directory layout, not by any declared membership. Root-level integrations fall into a `__workspace__` pseudo-system.
+- **Shared infra nodes** (pubsub/state): deduped across the system by `category:name` (FlowView.tsx:265-277). An edge is drawn from each integration to any pubsub/state component it declares (FlowView.tsx:397-411).
+- **External systems** (bindings): rendered outside the boundary, per-integration. Direction decides side/arrows: `input` → source on the left feeding the integration; anything undeclared → sink on the right; `input,output` → bidirectional arrows (FlowView.tsx:345-395).
+- **Pub/sub edges are NOT topic-aware**: there is no matching of a publisher's topic to a subscriber's topic. Two integrations "connect" only transitively by both pointing at the same named pubsub *component*, not by an actual publish→subscribe topic flow. A true pub/sub flow edge (producer topic → consumer topic) does not exist.
+
+So relationships are inferred from (a) filesystem nesting (system grouping) and (b) each integration's own Dapr component files — never from code, config beyond Dapr YAML, or a declared topology.
+
+Key guesses/hardcoding gaps:
+- **`TEMPLATE_DATA_FLOW` hardcoded map** (FlowView.tsx:68-73): `extractor→in, loader→out, transactional→both, aggregator→internal`. This is a fallback direction-by-template-name for scaffolds predating the `dataFlow` field. New templates are expected to declare `intropy.dev/data-flow` instead (see §4).
+- **Disk-vs-cloud external icon** guessed by regex on the component type string: `/localstorage|localfile|disk|file/i` (FlowView.tsx:466).
+- Undeclared binding direction is rendered as a sink (documented as "unknown is not guessed" but visually defaults to sink).
+- System membership is inferred from folder depth only; there is no explicit system manifest.
+
+## 3. `web/` (untracked) — contents and whether it renders a graph
+
+It is a Vite + React + TypeScript SPA embedded into the Go binary via `//go:embed all:dist` (`/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/embed.go`). Served by `static.go` from `dist/`.
+
+Source under `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/`:
+- `api.ts` — typed client mirroring the Go JSON contract (`Integration`, `IntegrationDetail`, `DaprComponent`, `FileDoc`, `Health`) and the four endpoints.
+- `App.tsx`, `main.tsx`, `index.css`, `icons.ts`, `vite-env.d.ts`.
+- `components/FlowView.tsx` — **the topology/graph view**, built on `@xyflow/react` (React Flow). Yes, it renders an interactive node/edge diagram: a dashed system-boundary group node, integration cards in a grid, shared-infra nodes (pubsub/state) inside the boundary, external binding nodes outside, MiniMap + Controls + Background. Node types: `group`, `integration`, `infra`, `external` (FlowView.tsx:484-489).
+- `components/Sidebar.tsx` (domain/system/integration tree), `components/DetailPanel.tsx` (AGENTS/README/steps/components for a selected integration), `components/Combobox.tsx` (system selector).
+
+Layout is deterministic geometry computed client-side (constants FlowView.tsx:43-56); there is no persisted layout/graph manifest.
+
+## 4. Existing topology/graph-manifest-like structs and the exact scaffold.json fields
+
+There is **no topology/graph manifest** (no nodes/edges schema) anywhere in the repo — the graph is derived on the fly. The closest persisted schemas are:
+
+`Scaffold` (written to `.intropy/scaffold.json`) — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/scaffold.go:32-44`:
+```go
+type Scaffold struct {
+	SchemaVersion int    `json:"schemaVersion"`
+	Template      string `json:"template"` // directory name in the template library repo
+	Owner         string `json:"owner"`
+	Repo          string `json:"repo"`
+	Version       string `json:"version"`
+	DataFlow string         `json:"dataFlow,omitempty"`
+	Values   map[string]any `json:"values"`
+}
+```
+Relevant constants (scaffold.go:11-24): `ScaffoldSchemaVersion = 1`, `ScaffoldRelPath = ".intropy/scaffold.json"`, and `DataFlowLabel = "intropy.dev/data-flow"`. `DataFlow` is copied at create time from the template manifest's label via `dataFlowFromLabels` (scaffold.go:49-56, validated to `in|out|both|internal`) — see create.go:97-107. This single `dataFlow` field is the only persisted, per-integration topology hint (which way data crosses the boundary); there is no notion of *which* external system, topic, or peer integration.
+
+`ScaffoldEntry` (list result, embedded into the API summary) — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/scaffold_list.go:24-27`:
+```go
+type ScaffoldEntry struct {
+	Path string `json:"path"`
+	Scaffold
+}
+```
+Writer/reader: `WriteScaffold`/`LoadScaffold`/`FindScaffold` (scaffold.go:59-115); `ListScaffolds` walks the tree, skipping `.git/.intropy/node_modules/bin/dist` and not descending into matched project roots (scaffold_list.go:13-19, 36-64).
+
+`CreateResult` (`--output-json` contract, create.go:40-47) carries `Template/Owner/Repo/Version/OutputDir/Values` — not persisted into the project and not read by the dashboard.
+
+Template manifest source of the data-flow label: `Template`/`Metadata` with `Labels map[string]string` in `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/manifest.go:18-30`.
+
+## 5. TODOs/comments about topology, graph, apphost, "AppHost"
+
+- **No occurrences of `apphost`/`AppHost` anywhere** in the codebase.
+- **No `TODO`/`FIXME`/`HACK`** related to topology or graph. The only "guess"-flavored comments are design notes affirming the *opposite* (surface unknown rather than infer):
+  - `internal/dashboard/components.go:106` — "…or any unrecognized value yields \"\" — unknown is surfaced, not guessed."
+  - `internal/template/scaffold.go:48` — "…an unrecognized declaration is surfaced as unknown, not guessed."
+  - `internal/skill/oci/config.go:23` — unrelated ("guessing at forward compatibility").
+- "graph"/"topology" terms only appear in the frontend (`buildGraph`, `built.nodes/edges` in FlowView.tsx) and in an unrelated benchmark skill markdown (`benchmark/skills/biztalk-migration-no-cli/SKILL.md`), plus `oras.CopyGraph` in the OCI skill code (unrelated).
+
+## Summary
+
+Topology today = **flat per-integration data from the Go API + client-side heuristic assembly.** The server (`internal/dashboard`) discovers integrations by walking for `.intropy/scaffold.json`, and enriches each with its own `local/dapr-components/*.yaml` (classified into pubsub/state/binding/other + optional direction), `src/Process/Steps` filenames, and AGENTS/README text. It builds no graph and models no relationships. The React `FlowView` invents the topology: it groups integrations into a "system" by `domain/system` folder nesting, draws each integration→its-own pubsub/state component as infra edges, and places bindings as external source/sink nodes by declared direction. There is no topic-level publish/subscribe matching, no cross-integration edges, no declared system membership, and no persisted nodes/edges manifest. The only persisted topology signal is the per-integration `dataFlow` (`in|out|both|internal`) from the `intropy.dev/data-flow` template label, with a hardcoded `TEMPLATE_DATA_FLOW` name map as fallback. This is the principal gap if you want a real system topology (an "AppHost"-style manifest of components, topics, connectors, external systems, and directed edges): nothing like it exists yet.</result>
+<usage><subagent_tokens>47785</subagent_tokens><tool_uses>15</tool_uses><duration_ms>103198</duration_ms></usage>
+</task-notification>
