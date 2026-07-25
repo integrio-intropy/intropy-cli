@@ -1,0 +1,1 @@
+We shouldnt have the pipeline steps in the integration rectangle
