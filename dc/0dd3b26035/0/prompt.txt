@@ -1,0 +1,3 @@
+I tried to follow the instruction to install on linux but I get: robinhultman@ubuntu:~$ curl -fsSL https://github.com/integrio-intropy/intropy-cli/blob/main/install.sh | sh
+sh: 8: Syntax error: newline unexpected
+curl: (23) Failure writing output to destination, passed 1370 returned 1337
