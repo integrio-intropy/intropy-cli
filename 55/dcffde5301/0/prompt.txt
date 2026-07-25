@@ -1,0 +1,1 @@
+Is it easy to include a button to switch between light and dark mode in the dashboard?
