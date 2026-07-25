@@ -1,0 +1,1 @@
+We should remove everything that has with json file generation from dotnet/src/Intropy.Topology
