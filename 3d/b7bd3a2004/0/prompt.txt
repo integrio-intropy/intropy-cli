@@ -1,0 +1,1 @@
+I want to wait with more tests. Is it ready to push? What is needed to release it with homebrew?
