@@ -1,0 +1,1 @@
+I materialized a system following the tutorial http://127.0.0.1:8000/tutorials/system/ here: /Users/robinhultman/dev/intropy/customers/fluxia/integrations/domains/orders/order-flow but for some reason the loader wasnt registered in the system-host. Why is that?
