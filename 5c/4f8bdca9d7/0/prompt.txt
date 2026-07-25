@@ -1,0 +1,1 @@
+How can I test the cli locally without conflicting with the version I have installed with homebrew?
