@@ -1,0 +1,1 @@
+I think we should skip the left menu on that page. We should have a searchable dropdown where you can select the system we want to display. So there will be only one dashed rectangle but external dependencies like when an integration sends data to an external api, or disk or sftp should appear outside the dashed rectangle
