@@ -1,0 +1,1 @@
+I want the intropy int create subcommand to prompt if skills should be installed and if yes do what the intropy skills install does
