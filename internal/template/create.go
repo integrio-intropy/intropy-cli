@@ -121,6 +121,8 @@ func Create(ctx context.Context, opts CreateOptions) error {
 		Version:       tag,
 		Values:        values,
 		Role:          roleFromLabels(tmpl.Metadata.Labels),
+		BlockKind:     blockKindFromLabels(tmpl.Metadata.Labels),
+		DataFlow:      dataFlowFromLabels(tmpl.Metadata.Labels),
 		DependsOn:     depRecords,
 	}); err != nil {
 		return err
