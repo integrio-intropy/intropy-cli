@@ -1,0 +1,1 @@
+Those kind of triggers will be a cronjob that as the first task pulls the file from the blob. I think that should be explicit that file arriving in blob doesnt directly trigger the integration
