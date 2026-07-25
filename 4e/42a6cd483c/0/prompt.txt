@@ -1,0 +1,154 @@
+<task-notification>
+<task-id>aa008dbadae145f27</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/8c8e7928-1546-4b88-abba-1e3bc4147d38/tasks/aa008dbadae145f27.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore scaffold/embed patterns" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have a complete picture. Here's my report.
+
+---
+
+# Exploration Report: intropy-cli codebase
+
+## Overview
+
+This is a Cobra-based Go CLI (`module github.com/integrio-intropy/intropy-cli`). Commands live in `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/`; business logic lives in `internal/` packages (`template`, `skill`, `deploy`). There is **no existing web/frontend/server code of any kind** in this repo.
+
+---
+
+## 1. How `int create` scaffolds projects
+
+Key fact: **templates are NOT embedded via `go:embed`.** There are zero `go:embed` directives in the codebase. Templates are fetched at runtime from a **remote GitHub repository** as release tarballs.
+
+### Command entry point
+`/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/int_create.go` — the `int create &lt;template&gt;` Cobra command. It builds a `template.CreateOptions` and calls `template.Create(ctx, opts)`. After scaffolding it optionally installs the agent skills collection (`maybeInstallSkills`).
+
+### Scaffold pipeline
+`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/create.go` — `Create()` (lines 66-109) runs the full flow:
+1. `resolveReleaseTag` — resolve requested version or "latest" via GitHub API.
+2. `downloadTemplate` — download repo tarball, extract to a temp dir, locate the named template subdirectory.
+3. `prepareCreateTemplate` — load `template.yaml` manifest, resolve values (with interactive prompting).
+4. `renderCreateOutput` — render the `skeleton/` subdirectory to the output dir.
+5. `WriteScaffold` — write `.intropy/scaffold.json`.
+6. `maybeWriteCreateResult` — optionally emit machine-readable `CreateResult` JSON (`--output-json`).
+
+### Remote source
+`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/github.go` (lines 13-19):
+```go
+defaultTemplateOwner = "integrio-intropy"
+defaultTemplateRepo  = "intropy-templates"
+templateManifestName = "template.yaml"
+templateSkeletonDir  = "skeleton"
+githubAPIBaseURL     = "https://api.github.com"
+```
+The `GitHub` struct wraps an `*http.Client` (client only — no server). It hits `/repos/{owner}/{repo}/releases/latest`, `/repos/{owner}/{repo}/tarball/{tag}`, and `/repos/{owner}/{repo}/contents/`. Uses `GITHUB_TOKEN` env var for auth if present.
+
+Each template in the remote repo has a `template.yaml` manifest plus a `skeleton/` directory that gets rendered. Other relevant files: `internal/template/render.go` (renders skeleton, using `Masterminds/sprig` templating), `internal/template/archive.go` (`ExtractTarGz`), `internal/template/values.go` + `prompt.go` (value resolution/prompting), `internal/template/manifest.go` (manifest model, below).
+
+### scaffold.json (the committed project record)
+`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/scaffold.go`:
+```go
+const (
+	ScaffoldSchemaVersion = 1
+	ScaffoldRelPath = ".intropy/scaffold.json"
+)
+
+type Scaffold struct {
+	SchemaVersion int            `json:"schemaVersion"`
+	Template      string         `json:"template"` // directory name in the template library repo
+	Owner         string         `json:"owner"`
+	Repo          string         `json:"repo"`
+	Version       string         `json:"version"`
+	Values        map[string]any `json:"values"`
+}
+```
+Functions: `WriteScaffold(projectRoot, s)` writes `&lt;root&gt;/.intropy/scaffold.json`; `LoadScaffold(path)` parses it; `FindScaffold(startDir)` walks **up** the tree from a start dir to find the enclosing project root (returns `ErrScaffoldNotFound` if it reaches filesystem root). This is exactly the helper an `int run` command would use to locate the current project.
+
+Sample record at `/Users/robinhultman/dev/intropy/tooling/intropy-cli/tmp/testint/.intropy/scaffold.json`:
+```json
+{
+  "schemaVersion": 1,
+  "blueprint": "hello-world",
+  "owner": "integrio-intropy",
+  "repo": "intropy-blueprints",
+  "version": "v0.1.6",
+  "values": { "appId": "int89", "name": "INT89" }
+}
+```
+(Note: this sample uses `blueprint` and `intropy-blueprints`, while the current Go struct/code uses `template` and `intropy-templates` — the sample file predates a rename. The live struct field is `Template`.)
+
+There's also a separate `CreateResult` struct (create.go lines 40-47) written only via `--output-json`, distinct from the persisted `Scaffold`: `{template, owner, repo, version, outputDir, values}`.
+
+---
+
+## 2. Existing web/frontend/dashboard/UI code
+
+**None.** Findings:
+- No `package.json`, no `vite.config.*`, no `.ts`/`.tsx`/`.jsx` files anywhere in the repo.
+- No HTTP **server** code: zero matches for `ListenAndServe`, `http.Server`, `http.FileServer`, `http.Serve`, or `net.Listen`.
+- The only `net/http` usage is **client-side** (GitHub API in `internal/template/github.go`, and `internal/deploy/create.go`, `internal/template/describe.go`).
+- No browser-opening dependency (no `pkg/browser`, no `xdg-open`/`open` exec calls).
+
+The scaffolded *output* projects (`Demo/`, `Orders/`, `tmp/testint/`) are **C# / .NET** integration projects (`.csproj`, `Program.cs`, Dapr components) — these are example rendered outputs, not part of the CLI. So a Vite SPA dashboard would be genuinely net-new for this repo.
+
+Note (describe.go, line 24): `int describe --output json` already emits "the same schema Backstage's frontend renders" — so there is an external Backstage frontend consuming this CLI's JSON, but no frontend inside this repo.
+
+---
+
+## 3. Detecting &amp; modeling `.intropy/scaffold.json` (the `int list` command)
+
+Command: `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/int_list.go` — `int list [dir]`. Validates `--output` (json/plain), calls `template.ListScaffolds(root)`, prints a tabwriter table (`PATH / TEMPLATE / VERSION`) or JSON array.
+
+Walker + model: `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/scaffold_list.go`:
+```go
+var listSkipDirs = map[string]bool{
+	".git": true, ".intropy": true, "node_modules": true, "bin": true, "dist": true,
+}
+
+type ScaffoldEntry struct {
+	Path string `json:"path"`
+	Scaffold          // embedded — flattens into the JSON document
+}
+
+func ListScaffolds(root string) (entries []ScaffoldEntry, warnings []error)
+```
+`ListScaffolds` uses `filepath.WalkDir`, skips the dirs above, and for each directory checks for `.intropy/scaffold.json`. On a match it `LoadScaffold`s the record, appends a `ScaffoldEntry`, and returns `fs.SkipDir` (projects don't nest). Malformed records / unreadable dirs become non-fatal warnings. The `Scaffold` struct is embedded so each entry serializes as one flat self-describing JSON object (path + all scaffold fields).
+
+This walk-and-collect pattern is directly reusable if the dashboard needs to enumerate all integrations under a workspace.
+
+---
+
+## 4. go.mod, and deps for HTTP-serving / browser / subprocess
+
+`/Users/robinhultman/dev/intropy/tooling/intropy-cli/go.mod`:
+- **Go version: `go 1.26.2`** (very new; supports `net/http.ServeMux` routing patterns, `embed`, etc. out of the box).
+- Direct deps: `Masterminds/sprig/v3` (templating), `opencontainers/go-digest` + `image-spec` and `oras.land/oras-go/v2` (OCI registry for skills), `santhosh-tekuri/jsonschema/v5`, `spf13/cobra`, `golang.org/x/term`, `gopkg.in/yaml.v3`.
+
+Relevant capabilities:
+- **HTTP serving:** none present — only stdlib `net/http` as a client. A dashboard server would use stdlib `net/http` (no new dep needed).
+- **Browser opening:** no dependency. Would need `github.com/pkg/browser` or a small `os/exec` wrapper (`open`/`xdg-open`/`start`).
+- **Subprocess (`os/exec`):** already used in exactly one place — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_publish.go:84` (`exec.Command("cosign", "sign", ...)`). So there is precedent for shelling out (useful for launching `vite`/`npm`).
+- **Signal handling precedent:** `int_create.go` / `int_describe.go` use `signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)` — the same pattern a long-running `int run` server would want for graceful shutdown.
+- **Embedding built SPA assets:** no `go:embed` used anywhere yet, but Go 1.26 supports it natively — this is the natural mechanism to ship a pre-built Vite `dist/` inside the binary.
+
+---
+
+## 5. Build tooling (would need a frontend build step)
+
+Build system is a **`Makefile`** (`/Users/robinhultman/dev/intropy/tooling/intropy-cli/Makefile`). **No `Taskfile.yml`** exists. Targets: `build` (ldflags inject `main.version/commit/date`, output `./bin/intropy`), `install`, `clean`, `test`, `test-race`, `test-cover`, `fmt`, `vet`, `lint` (golangci-lint), `tidy`, `check`, `ci`, `run`, `version`, `help`.
+
+Release tooling: `/Users/robinhultman/dev/intropy/tooling/intropy-cli/.goreleaser.yaml` (GoReleaser; produces the `dist/*.tar.gz` artifacts, Homebrew cask at `dist/homebrew/Casks/intropy.rb`), plus `Dockerfile`, `install.sh`, and CI at `.github/workflows/{test,release}.yaml`.
+
+A new frontend build step would need to be wired into: the `Makefile` (a `frontend`/`web` target that runs `vite build` before `go build`, so `go:embed` picks up the built assets), the GoReleaser `before.hooks` (to build the SPA before cross-compiling), and the two GitHub Actions workflows (add a Node/pnpm setup step).
+
+---
+
+## Summary for planning `int run`
+
+- Register a new `intCmd.AddCommand(intRunCmd)` in a new `cmd/intropy/int_run.go` (mirror `int_list.go` / `int_create.go` structure; use `signal.NotifyContext` like the existing commands).
+- Locate the project via existing `template.FindScaffold(cwd)` and enumerate sibling integrations via `template.ListScaffolds(root)` — both already exist and return the `Scaffold` / `ScaffoldEntry` models.
+- Serve with stdlib `net/http` (Go 1.26, no new dep); embed the built Vite SPA with `go:embed` (first use in repo); open the browser via a small `os/exec` helper (precedent in `skills_publish.go`) or add `pkg/browser`.
+- Add a frontend build step to `Makefile`, `.goreleaser.yaml`, and both CI workflows.</result>
+<usage><subagent_tokens>38456</subagent_tokens><tool_uses>16</tool_uses><duration_ms>93533</duration_ms></usage>
+</task-notification>
