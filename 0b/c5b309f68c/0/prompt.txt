@@ -1,0 +1,1 @@
+Should we rename the "Models" project "Contracts" instead while we are at it?
