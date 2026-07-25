@@ -1,0 +1,14 @@
+Can you give me a C# example based on my example:
+
+var s = SystemBuilder.Create("order-fulfillment");
+
+var idempotency = s.UseService("iss-idempotency-service");
+
+s.AddExtractor("stock-extractor")
+    .TriggeredBy(Trigger.Connector(Connectors.Wms))
+    .Publishes(StockFlow.Raw);
+
+s.AddAssembler("order-assembler")
+    .TriggeredBy(OrderFlow.Raw, StockFlow.Raw)
+    .Publishes("fulfillment", OrderFlow.Fulfillment)
+    .Uses(idempotency);
