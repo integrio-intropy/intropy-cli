@@ -1,0 +1,1 @@
+I wonder if this is wrong. As far as I am concerned the topology does not exist when running intropy int create. It is created with intropy system create
