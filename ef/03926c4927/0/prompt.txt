@@ -1,0 +1,192 @@
+<task-notification>
+<task-id>aff8c9d0e017425a7</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/a73b4cf5-052c-4d7c-bd82-cb2846d01710/tasks/aff8c9d0e017425a7.output</output-file>
+<status>completed</status>
+<summary>Agent "Verify topology lib vs tutorial" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Repo/branch situation — first, a path correction
+
+The path I was given, `/Users/robinhultman/dev/intropy/intropy-topology`, is **not the library the tutorial is about**. It is a separate, stale, single-commit repo:
+
+- `/Users/robinhultman/dev/intropy/intropy-topology` — one branch (`main`), one commit (`55af75a "Initial"`), dirty worktree. Contains **only** `Models/` + `Building/` + `Validation/`. Its `CLAUDE.md:9-15` explicitly forbids serialization ("model + builder only… do not reintroduce `System.Text.Json`"). It has **no** `ISystemDefinition`, **no** `TopicRef`, **no** `.Aspire`, **no** `.Generation`, **no** ITP208/209 (`/Users/robinhultman/dev/intropy/intropy-topology/src/Intropy.Topology/Validation/TopologyRules.cs:13-26` lists ITP001/002/003/101/102/103/201/206/207/301/302 only), and `Publishes`/`Consumes` on a single untyped `ComponentBuilder` (no compile-time block constraint). Against this repo, ~every tutorial claim fails.
+
+The real library is **`/Users/robinhultman/dev/intropy/tooling/Intropy.Topology`**, and it matches your memory exactly:
+
+- Branches: `feature/file-transport`, **`* feature/minimal-core` (checked out)**, `full-topology`, `main`. HEAD `09ce919 "Fixes"`.
+- Worktree is **dirty with staged changes**: `M CLAUDE.md`, `M README.md`, `M Directory.Packages.props`, `M Intropy.Topology.slnx`, `D docs/concepts/apis.md`, modified concept docs.
+- What's on `feature/minimal-core`: the minimal model — 3 block kinds, one topic per publisher, file connectors only. `docs/decisions/0009-minimal-model-for-system-tutorial.md:17-34` lists what was cut and preserved on **`full-topology`**: Aggregator block, APIs (`ApiRef&lt;T&gt;`, `Provides`/`Consumes`, ITP501), named publish ports, `Transport.Http/Sftp/Blob/Custom` (+ITP105/106), unresolved connectors/`ExternalSystem` (ITP107), the `IDevProfile`/Microcks dev-mocking seam, and the Prod generation profile. `CLAUDE.md:33` says the same.
+
+**All evidence below is from `/Users/robinhultman/dev/intropy/tooling/Intropy.Topology` on `feature/minimal-core`.**
+
+---
+
+## Claim-by-claim verdicts
+
+### 1. Namespaces/types — **SUPPORTED** (minor naming nits)
+
+| Claimed | Actual |
+|---|---|
+| `Intropy.Topology` namespace | ✅ flat root namespace holds the whole DSL (`CLAUDE.md:61`) |
+| `ISystemDefinition` | ✅ `src/Intropy.Topology/Discovery.cs:11` |
+| `string SystemName` | ✅ `Discovery.cs:14` (get-only property) |
+| `void Define(SystemBuilder builder)` | ✅ `Discovery.cs:18` |
+| `SystemBuilder.AddExtractor(string)` | ✅ returns `ExtractorBuilder` — `src/Intropy.Topology/SystemBuilder.cs:36-37` |
+| `SystemBuilder.AddLoader(string)` | ✅ returns `LoaderBuilder` — `SystemBuilder.cs:41-42` |
+| `.Publishes(topicRef)` | ✅ `src/Intropy.Topology/Building/ComponentBuilders.cs:40` — param type is the **non-generic base** `TopicRef` |
+| `.Subscribes(topicRef)` | ✅ `ComponentBuilders.cs:55` |
+| `TopicRef&lt;T&gt;.Define(string, string)` static | ✅ `src/Intropy.Topology/Refs.cs:52-55`; params are `pubSubName`, `topicName` (both `[ConstantExpected]`), not `pubsubComponent` |
+
+**Compile-time block-kind constraint: SUPPORTED, exactly as claimed.** `ExtractorBuilder` exposes only `From` + `Publishes` (`ComponentBuilders.cs:32,40`); `LoaderBuilder` only `Subscribes` + `To` (`:55,63`). There is no shared `Publishes`/`Subscribes` on the base (`ComponentBuilders.cs:14-22` holds only `Component`). So `AddExtractor(...).Subscribes(t)` and `AddLoader(...).Publishes(t)` don't compile — documented at `README.md:119-122` and `CLAUDE.md:51`.
+
+Also worth knowing (tutorial silent): there's a third kind, `AddTransactionalIntegration` → `From`/`To` only (`SystemBuilder.cs:46-47`, `ComponentBuilders.cs:72-93`), and name validation is **eager** at the call site (`ArgumentException` from `NameRules.RequireLabel`/`RequireSubdomain`, `SystemBuilder.cs:32,37`, `Refs.cs:27-28`), not a Build() diagnostic.
+
+### 2. `Intropy.Topology.Aspire` / `.Generation` entry points — **SUPPORTED**
+
+- `namespace Intropy.Topology.Aspire` + `public static Task&lt;int&gt; IntropyAspire.RunAsync(Assembly assembly, string[] args)` — `src/Intropy.Topology.Aspire/IntropyAspire.cs:9,30`
+- `namespace Intropy.Topology.Generation` + `public static Task&lt;int&gt; IntropyGenerate.RunAsync(Assembly assembly, string[] args)` — `src/Intropy.Topology.Generation/IntropyGenerate.cs:6,20`
+
+Both return `Task&lt;int&gt;` (process exit code), so `return await …` in `Program.cs` type-checks.
+
+### 3. Program.cs dispatch + verbs — **SUPPORTED**
+
+Verbatim in the reference host: `examples/OrderFlow.SystemHost/Program.cs:16-18`
+```csharp
+return args is ["run", ..] or []
+    ? await IntropyAspire.RunAsync(assembly, args)
+    : await IntropyGenerate.RunAsync(assembly, args);
+```
+`IntropyGenerate` supports exactly `check | graph | generate` (`IntropyGenerate.cs:26-32`); default verb when `args` is empty is `check` (`:25`); unknown verb → **exit 2** with `unknown command '&lt;verb&gt;'. Expected: check | graph | generate.` (`:171-175`).
+
+Outputs:
+- `check` → one line, exit 0/1 (`:35-48`)
+- `graph` → indented JSON display projection to stdout, exit 0 (`:50-55`)
+- `generate [dir]` → writes `components/*.yaml` + `config/*.intropy.json` under `dir` (default `./out`, `:156`), then prints `generated N files to 'dir':` and each relative path (`:162-167`). Verified by `test/Intropy.Topology.Generation.Test/IntropyGenerateTests.cs:48-70`.
+
+### 4. `check` output + ITP208/ITP209 — **PARTIAL** (codes/meanings right, per-line wording wrong)
+
+- Success line is **byte-exact**: `IntropyGenerate.cs:40` → `ok: 'order-flow' is valid (2 components).` ✅
+- Failure prefix + header are **exact**: `error: {ex.Message}` (`:45`) over `The system topology is invalid ({errorCount} error(s)):` (`TopologyValidationException.cs:51`). ✅
+- **ITP208 exists with that meaning** — `src/Intropy.Topology/Validation/Rules/CompletenessRules.cs:63-76` ("every published topic must have a subscriber").
+- **ITP209 exists with that meaning** — `CompletenessRules.cs:82-94` ("every subscribed topic must have a publisher").
+- ❌ **Wording differs.** Line format is `  {Code} [{Severity}] {Target}: {Message}` (`TopologyValidationException.cs:55-61`), where `Target` is the bare topic name (`CompletenessRules.cs:74,93`). Real output:
+  ```
+    ITP208 [Error] orders: The topic 'orders' on pubsub 'pubsub' is published but no component subscribes to it.
+    ITP209 [Error] oders: The topic 'oders' on pubsub 'pubsub' is subscribed to but no component publishes it.
+  ```
+  Tutorial (`intropy-techdocs/docs/tutorials/system/03-systemhost.md:149-150`) prints `ITP208 [Error] topic 'orders' (pubsub 'pubsub'): the topic is published but…` — invented target formatting and lowercased sentence. `docs/concepts/validation.md:29-33` shows the correct shape.
+- Extra gap: `Check` only catches `TopologyValidationException` (`IntropyGenerate.cs:43`). Discovery failures (no `ISystemDefinition` / more than one → `InvalidOperationException`, `Discovery.cs:51,57`) escape as an unhandled crash, not `error: …`.
+
+### 5. `graph` JSON shape — **PARTIAL** (keys correct; sample incomplete; the `topology.intropy.io/v1` memory belongs elsewhere)
+
+The display projection is `IntropyGenerate.cs:62-130` and matches the claimed keys exactly:
+- `systemName` (`:65`), `components[]` with `name` + kebab-cased `kind` (`:92-94,138-152`)
+- `publishes[] = {pubsub, topic}` (+`port` only when non-`default`) — `:106-115`
+- `subscribes[] = {pubsub, topic}` — `:99-101`
+- `topics[] = {pubsub, name, contract}` where `contract` is the **short** type name → `"Order"` — `:68-73,132-136`
+- Empty collections are **omitted** (`:97,104,118`), which is why the tutorial's extractor entry legitimately has no `subscribes` key. Asserted at `IntropyGenerateTests.cs:29-46`.
+
+Two corrections:
+1. ❌ The tutorial's sample **omits `connectors`**. A `sys create`-scaffolded system declares connectors (`examples/OrderFlow.SystemHost/Connectors.cs:7,10`; CLI codegen `tooling/intropy-cli/internal/system/codegen.go:31`), and `graph` then emits per-component `connectors:[{name,direction}]` (`IntropyGenerate.cs:118-129`) plus a top-level `connectors:[{name,transport,usedBy}]` (`:76-84`). So the tutorial's JSON is not what a reader will actually see.
+2. ❌ **No `topology.intropy.io/v1` and no `apiVersion`/`kind` anywhere in this library.** `graph` is explicitly presentation-only, and the wire format is plain PascalCase `System.Text.Json` of `SystemTopology` — byte-exact snapshot at `test/Intropy.Topology.Test/Building/EndToEndTests.cs:112` (`{"SystemName":…,"Components":[{"Name":…,"Kind":0,"Subscribes":[],"Publishes":[{"Port":"default",…}],"Connectors":[…]}],"Topics":[…],"Connectors":[…]}`). The `topology.intropy.io/v1` document you remember is a hand-authored/Go-side artifact: `/Users/robinhultman/dev/intropy/customers/fluxia/integrations/domains/price/distribution/.intropy/topology.json:2` — and it is *full-model* shaped (named ports, `provides`, `consumes`), which this branch cannot even express.
+
+### 6. Build() gate before any process starts — **SUPPORTED**
+
+`SystemDiscovery.Discover` → `builder.Build()` (`Discovery.cs:63-65`), and `Build()` throws `TopologyValidationException` carrying **all** diagnostics on any error (`SystemBuilder.cs:54-74`). In the Aspire path, `Discover` is called at `IntropyAspire.cs:35` — **before** `DistributedApplication.CreateBuilder` (`:41`) and before any resource is added. `check` runs the identical gate (`IntropyGenerate.cs:39`). Also `docs/concepts/validation.md:15,23-25`. Warnings never fail (`TopologyDiagnostic.cs:5-10`, `SystemBuilder.cs:66`).
+
+### 7. Aspire run-backend mechanisms — **SUPPORTED**, every sub-detail verified
+
+| Mechanism | Evidence |
+|---|---|
+| Dapr sidecar per integration, `app-id` = component name | `IntropyAspire.cs:239-245`; test `test/Intropy.Topology.Aspire.Test/IntropyAspireTests.cs:65-77` |
+| Generated pubsub component **named after the topic's pubsub component**, type `pubsub.redis` | `src/Intropy.Topology.Generation/Generation.cs:75-85` — `metadata.name` = `pubSubName`, file `components/&lt;pubSubName&gt;.yaml`; one per distinct `PubSubName` (`:57-59`) |
+| Redis-backed, **`redisHost: localhost:6379` pinned** | `Generation.cs:82` (`("redisHost","localhost:6379")`, `("redisPassword","")`); host side `IntropyAspire.cs:22` (`RedisPort = 6379`), container `:61-63` |
+| System-scoped (`scopes`) | `Generation.cs:77-80` → `DaprYaml` emits `scopes:` (`:161-168`) |
+| Staged per-integration set under `&lt;host&gt;/obj/dapr-components/&lt;integration-name&gt;/` | `src/Intropy.Topology.Aspire/ComponentOverlay.cs:17`; regenerated every start (`:18-23`); test asserts the exact path and that each sidecar gets **only its own** (`IntropyAspireTests.cs:79-92`) |
+| Copy integration's `local/dapr-components/` first | `ComponentOverlay.cs:27-35` + `ProjectConvention.cs:31-32` |
+| Overlay generated components **keyed on `metadata.name`** — same name replaces, new names added | `ComponentOverlay.cs:26-51`; `MetadataName` parses only the **unindented** `metadata:` block so `spec.metadata` can't spoof it (`:60-81`) |
+| Sidecar started with `--resources-path` at staged dir | `IntropyAspire.cs:243-244` sets `DaprSidecarOptions.ResourcesPaths = [stagedPath]`; the flag itself is emitted by `CommunityToolkit.Aspire.Hosting.Dapr` — the repo never spells `--resources-path` literally |
+
+Also present and undocumented in the tutorial: one Dapr **binding** component per connector with `rootPath` absolutized at generation time (`Generation.cs:87-100`); `WithHttpEndpoint()` to force port allocation/app-port (`IntropyAspire.cs:118-120`); project resolution by folder convention with a hard failure listing unresolved components (`:109-131`, `ProjectConvention.cs:13-28`); a `TcpReadyHealthCheck` + `BeforeResourceStartedEvent` hook that holds every `*-dapr-cli` resource until backends actually answer, because daprd treats failed component init as fatal (`IntropyAspire.cs:66-100`, `TcpReadyHealthCheck.cs`).
+
+### 8. Redis provisioned because a topic exists — **PARTIAL**
+
+- "No explicit broker registration API": ✅ correct. `SystemBuilder` has no `AddTopic`/`AddPubSub` — only the three `Add*` block methods (`SystemBuilder.cs:36-47`); resources materialize from usage (`Refs.cs:11-12`, `CLAUDE.md:57`).
+- "Provisions a Redis container automatically": ✅ `IntropyAspire.cs:61-64` (plain `AddContainer("redis","docker.io/library/redis","8")`, deliberately not `AddRedis` — comment `:59-60` explains the generated YAML speaks password-less plaintext).
+- ❌ The causal framing is a simplification: Redis is added **unconditionally**, before the topology's topics are even inspected. A system with zero topics still starts Redis. What *is* topic-conditional is the generated pubsub YAML (`Generation.cs:57`).
+
+### 9. Subscriber-first startup ordering derived from topology — **SUPPORTED** (one caveat)
+
+`SubscriberPrecedence` derives publisher→subscribers from `TopicResource.Publishers`/`Subscribers` (`IntropyAspire.cs:171-196`, self-loops skipped), then makes each publisher `WaitFor` every subscriber (`:146-158`) **and** gates the publisher's `-dapr-cli` sidecar on each subscriber sidecar reaching `Running` (`:161-162` + `:90-99`). Nothing declares it. Test: `IntropyAspireTests.cs:94-112`.
+
+Caveat: a publish/subscribe **cycle** disables ordering entirely with only a stderr warning (`:137-144`) — and the wait is on the subscriber resource being *Running*, not on its subscription being *registered*, so the tutorial's stronger phrasing ("registered its subscription before the extractor began polling") is best-effort.
+
+### 10. OTLP injected into every integration; no Grafana needed — **PARTIAL / not this library's doing**
+
+There is **zero** OTLP/OpenTelemetry/Grafana/Tempo code or reference in `src/` (repo-wide grep: only `examples/OrderFlow.SystemHost/Properties/launchSettings.json:12-14` sets `ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL`/`ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL`/`ASPIRE_ALLOW_UNSECURED_TRANSPORT` for the **host itself**). `IntropyAspire.Wire` injects only `INTROPY__COMPONENT` and `INTROPY__CONFIG` (`IntropyAspire.cs:251-252`).
+
+So the outcome is probably true — `builder.AddProject(...)` (`:120`) makes Aspire inject `OTEL_EXPORTER_OTLP_ENDPOINT` etc. by default — but it is **Aspire's built-in behavior, not something the SystemHost or this library does**, and it is nowhere asserted or tested here. "No Grafana stack under host" is consistent with the repo (no Grafana anywhere), but note the integration templates *do* ship a standalone Grafana/platform-services compose (`tooling/intropy-templates/loader/skeleton/local/platform-services/compose.yaml`).
+
+### 11. Runtime config injection ("integrations bind topic/component names from host-generated config") — **MISSING in substance; the caveat box is accurate and load-bearing**
+
+What actually exists:
+- The host generates, per component, `config/&lt;component&gt;.intropy.json` containing `Intropy.System/Component/Kind/Subscribes[]/Publishes[]/Connectors[]` with `DaprComponent = binding.&lt;name&gt;` (`Generation.cs:102-124`).
+- The host injects exactly two env vars: `INTROPY__COMPONENT` = component name, `INTROPY__CONFIG` = **absolute path to that JSON** (`IntropyAspire.cs:251-252`; test `IntropyAspireTests.cs:114-132`).
+- The generated root is a per-run temp dir: `Path.GetTempPath()/intropy-aspire/&lt;system&gt;-&lt;guid&gt;` (`IntropyAspire.cs:37-39`) — not under `obj/`.
+
+What does **not** exist:
+- **No integration reads it.** The two reference workers only log it: `examples/order-extractor/Program.cs:9-11` and `examples/order-loader/Program.cs:9-11`, with the comment "A real worker would use the **(future)** Intropy Hosting framework to bind subscriptions, publishes, and connectors from the same INTROPY__CONFIG contract" (`:3-4`).
+- **The scaffolding templates hard-code the names as compile-time constants**, so they cannot bind host-supplied config at all: `tooling/intropy-templates/extractor/skeleton/src/Configuration/Constants.cs.tmpl:9` → `public const string TopicName = "{{ .topic }}";` (loader identical, `loader/skeleton/src/Configuration/Constants.cs.tmpl:9`; consumed at `loader/.../LoaderRunner.cs.tmpl:64,74`). A repo-wide grep for `INTROPY__` across `intropy-templates` returns **nothing**.
+- The library itself says so: "The runtime-config contract injected into each project (`INTROPY__COMPONENT`, `INTROPY__CONFIG`) is **provisional** until the Intropy Hosting framework consumes it" — `src/Intropy.Topology.Aspire/README.md:81-82`.
+
+Verdict: the tutorial's mechanism sentence (`03-systemhost.md:159-164`) describes an intended design, not shipped behavior; the caveat box at `03-systemhost.md:166-169` is the only thing keeping it honest. What *does* swap correctly today is the **Dapr component overlay** (claim 7), which is the mechanism the reader will actually observe.
+
+### 12. Distributed trace via CloudEvents envelope — **MISSING from this repo**
+
+Repo-wide grep for `cloudevent|traceparent|propagat|opentelemetry|otlp|trace context` over `src/`, `docs/`, `test/`, `examples/`: **no hits**. Nothing here creates spans, sets `traceparent`, or touches CloudEvents. The behavior would come from Dapr's own pub/sub CloudEvents envelope plus the integration templates (which do build CloudEvents: `tooling/intropy-templates/loader/skeleton/src/LoaderRunner.cs.tmpl:152`) — the tutorial links out to `concepts/cloudevents.md`, so the claim isn't wrong, it's just entirely out of scope of this library and unverifiable here. The reference workers publish/subscribe nothing at all, so a run of *this* repo's example produces no such trace.
+
+### 13. NuGet packaging — **PARTIAL** ("arrive on first restore" is aspirational; no `.nuspec`; version drift)
+
+Set up to ship, yes:
+- Three packable projects with per-package `Description`/`PackageTags`: `src/Intropy.Topology/Intropy.Topology.csproj:4-5`, `Intropy.Topology.Generation.csproj:4-5`, `Intropy.Topology.Aspire.csproj:4-5`.
+- Shared package metadata (Authors/Company/MIT/`PackageProjectUrl`+`RepositoryUrl` = `github.com/integrio-intropy/intropy-topology`, `PackageReadmeFile`, SourceLink-ish `PublishRepositoryUrl`/`EmbedUntrackedSources`/`DebugType=embedded`): `Directory.Build.props:13-34`.
+- **No `.nuspec` anywhere** — packing is SDK-driven.
+- `dotnet pack` + push to `https://api.nuget.org/v3/index.json` on `v*` tags: `.github/workflows/release.yml:31-32,66` (OIDC `nuget/login@v1`); CI packs `0.0.0-ci.&lt;run&gt;` (`.github/workflows/ci.yml:30`).
+- No `&lt;Version&gt;` in props — version comes only from `-p:Version` at release.
+
+But not demonstrably published, and the scaffold contradicts "first restore":
+- `tooling/intropy-templates/system-host/README.md:56-59`: "Building the render requires the `Intropy.Topology.Aspire` / `Intropy.Topology.Generation` packages **(0.1.0)** to be resolvable from a NuGet feed; **until they are published, pack the Intropy.Topology repo to a local folder feed**."
+- The scaffolded csproj pins **0.2.0** — `tooling/intropy-templates/system-host/skeleton/{{ .projectName }}.SystemHost.csproj.tmpl:19-20` — a version mismatch with its own README.
+- **No `NuGet.config` is scaffolded** (searched all of `intropy-templates`), so a scaffolded host restores from whatever feeds the machine has configured, i.e. **nuget.org by default** — plus whatever local folder feed the developer adds by hand.
+
+The adjacent half of the claim *is* solid: Aspire's orchestrator and dashboard genuinely arrive via NuGet — `Sdk Name="Aspire.AppHost.Sdk" Version="13.4.6"` + `PackageReference Aspire.Hosting.AppHost` (`csproj.tmpl:3,17`; same in `examples/OrderFlow.SystemHost/OrderFlow.SystemHost.csproj:3,14`), with no separate Aspire install. And `CLAUDE.md:45` explains the SDK line exists precisely so the run backend can fetch orchestrator + dashboard.
+
+---
+
+## In the library, absent from the tutorial
+
+- **Connectors** — the entire outward-edge concept: `ConnectorRef.Define(name, transport)` (`Refs.cs:89-93`), `From`/`To` on extractor/loader/transactional (`ComponentBuilders.cs:32,63,80,88`), `ConnectorResource` with **derived** Dapr name `binding.&lt;connector-name&gt;` (`Model/Resources.cs:36`), materialized `Directions`/`UsedBy` (`Building/TopologyMaterializer.cs:116-130`), and a generated binding YAML per connector with `rootPath` absolutized at generation time (`Generation.cs:87-100`). The tutorial's chapter-3 declaration (`03-systemhost.md:93-94`) and `graph` sample both drop them, though `sys create` scaffolds `Connectors.cs`.
+- **`Transport.File` / `FileTransport`** (`bindings.localstorage`, folder-is-the-endpoint) and the `$transport` JSON polymorphism discriminator — `Refs.cs:96-141`.
+- **`TransactionalIntegration`** block kind — `SystemBuilder.cs:46-47`, `Components.cs:77-81`.
+- **`TryBuild` / `Validate`** non-throwing APIs — `SystemBuilder.cs:62-78`, `docs/concepts/validation.md:21-25`.
+- **`SystemDiscovery` / `DiscoveredSystem`** and the exactly-one-definition rule with its own error messages — `Discovery.cs:24,37-66`.
+- **Ten more diagnostics the tutorial never mentions**: ITP001 dup component, ITP002 empty system, ITP101 &gt;1 `Publishes`, ITP102 dup subscription, ITP103 conflicting contract types on one topic, ITP104 conflicting transports on one connector, ITP206 extractor without publish, ITP207 loader ≠ exactly-1 subscription, ITP302 (**warning**) edgeless component, ITP401 pubsub name colliding with `binding.&lt;connector&gt;` — `Validation/TopologyRules.cs:17-31`, tabulated in `docs/concepts/validation.md:39-52`.
+- **Retired-code discipline**: ITP105/106/107/201/202/203/204/205/501 never reused — `Validation/TopologyRules.cs:8-16`, `docs/concepts/validation.md:56-70`.
+- **`generate`'s full artifact set** (`components/` + `config/`, `GeneratedArtifacts.WriteTo`) — `Generation.cs:13-38`.
+- **Mocks (`IDevProfile`, `DevBuilder`, `MockExternalSystem`, `MockHttpExternalSystem`, `MockApi`, Microcks on 8585, `HTTPEndpoint` generation)** — documented at `src/Intropy.Topology.Aspire/README.md:39-62` and `docs/decisions/0006-microcks-dev-mocks.md`, but **the code does not exist on this branch** (cut by ADR 0009; lives on `full-topology`). This is stale docs, not a tutorial gap.
+- **Full-model features on `full-topology`**: aggregators, APIs/`Provides`/`Consumes`, named publish ports, Http/Sftp/Blob/Custom transports, unresolved connectors/`ExternalSystem`, Prod generation profile — `docs/decisions/0009-…:17-34`.
+
+## Known gaps / TODOs found
+
+1. **Stale docs on `feature/minimal-core`**: `src/Intropy.Topology.Aspire/README.md:10-14,39-62,76-80` still describes Microcks, `IDevProfile`, `MockApi`, container overrides; `src/Intropy.Topology.Generation/README.md:12-14,20` still shows `TopologyGenerator.Generate(topology, GenerationProfile.Dev, dev)` — the real signature is `Generate(SystemTopology)` only (`Generation.cs:52`).
+2. **Runtime-config contract is provisional** — `src/Intropy.Topology.Aspire/README.md:81-82`; nothing consumes `INTROPY__CONFIG` (claim 11).
+3. **Fixed ports are a known limitation** — Redis 6379 (and Microcks 8585 in the stale text): `src/Intropy.Topology.Aspire/README.md:73-75`.
+4. **`check` doesn't handle discovery errors** — `IntropyGenerate.cs:43` catches only `TopologyValidationException`.
+5. **Cycles silently disable startup ordering** (stderr warning only) — `IntropyAspire.cs:137-144`.
+6. **`metadata.name` extraction is a hand-rolled line scanner** — `ComponentOverlay.cs:60-81`; breaks on flow-style or multi-doc YAML.
+7. **Generated artifacts live in a per-run temp GUID dir** (`IntropyAspire.cs:37-39`) while the tutorial's mental model is "under `obj/`" — only the *component overlay* is under `obj/`.
+8. **Repo is not clean**: staged modifications to `CLAUDE.md`, `README.md`, `Directory.Packages.props`, `Intropy.Topology.slnx`, concept docs, and a deleted `docs/concepts/apis.md` — docs and code may not be in a consistent committed state.
+9. **Version drift** in the scaffolding: template README says 0.1.0, template csproj pins 0.2.0, library props declare no version.
+10. **The duplicate repo at the path I was given** (`/Users/robinhultman/dev/intropy/intropy-topology`) is a divergent minimal fork with a *different* API (`Consumes` not `Subscribes`, `AddTopic` present, no discovery, no ITP208/209) — anyone fact-checking the tutorial against that path will conclude, wrongly, that almost nothing exists.</result>
+<usage><subagent_tokens>145843</subagent_tokens><tool_uses>40</tool_uses><duration_ms>453850</duration_ms></usage>
+</task-notification>
