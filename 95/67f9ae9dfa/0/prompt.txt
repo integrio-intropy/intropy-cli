@@ -1,0 +1,1 @@
+I want to create a new subcommand, intropy int run. Similar to encore it should launch a new vite spa application. Help me design the cli changes and the skeleton spa application
