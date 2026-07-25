@@ -1,0 +1,1 @@
+We should implement intropy sys create as described in chapter 3 of the "compose a system" tutorial at http://127.0.0.1:8000/tutorials/system/. This is as completely new way of thinking for us so there probably is a lot of holes. Ask questions before making to much assumptions
