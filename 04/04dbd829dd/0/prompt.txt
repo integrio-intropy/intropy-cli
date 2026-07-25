@@ -1,0 +1,168 @@
+<task-notification>
+<task-id>a89bb884b5f7cd91b</task-id>
+<tool-use-id>toolu_017wZyBYCwyfh6Si7TsLZnxo</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/e91c6ba9-a9cd-4e77-8aa1-f9b8023dcfe4/tasks/a89bb884b5f7cd91b.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore intropy run command" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have everything needed. Here is the report.
+
+## Overview
+
+`intropy run` (aliased as `int run`) starts a local, read-only web dashboard that visualizes integrations scaffolded under a workspace directory. It embeds a React/Vite SPA into the Go binary and serves it plus a small JSON API from a stdlib `net/http` server. It starts no integration processes.
+
+Data flows from three on-disk sources: per-project `.intropy/scaffold.json` records (the primary source), per-system `.intropy/topology.json` records (new, optional), and best-effort enrichment files (AGENTS.md, README.md, Dapr component YAML, pipeline step files).
+
+---
+
+## 1. The `run` command
+
+`/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/int_run.go`
+
+Cobra command, registered under the `int` parent command (`intCmd.AddCommand(intRunCmd)` at line 60).
+
+- Use: `run [dir]` (lines 21-28). Args: `cobra.MaximumNArgs(1)` — optional directory, defaults to `"."`.
+- Flags (lines 55-59):
+  - `--addr` string, default `127.0.0.1` (bind host/interface)
+  - `--port` / `-p` int, default `8730` (0 picks a free port)
+  - `--no-browser` bool, default false
+- `RunE` (lines 29-52): resolves `root`, `os.Stat`-checks it is a directory (returns a usage error otherwise), sets up a `signal.NotifyContext` for SIGINT/SIGTERM, then calls `dashboard.Serve(ctx, dashboard.Options{...})` passing Root, Addr, Port, `OpenBrowser: !noBrowser`, the CLI `version`, and cmd stdout/stderr.
+
+Tests: `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/int_run_test.go`.
+
+---
+
+## 2. The dashboard package `internal/dashboard/`
+
+### server.go — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/server.go`
+- `Options` struct (lines 21-36): Root, Addr, Port, OpenBrowser, Version, Stdout, Stderr.
+- `Serve(ctx, opts)` (lines 44-103): builds the handler via `newHandler`, listens on `net.JoinHostPort(Addr, Port)`, prints the URL to stderr, optionally opens the browser, runs `http.Server`, and shuts down gracefully on ctx cancel with a 5s `shutdownTimeout`. Returns nil on clean shutdown.
+- `displayURL` (lines 107-116): uses the actually-bound port (matters for port 0) and rewrites wildcard hosts to `localhost`.
+
+### handlers.go — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/handlers.go`
+Routes wired in `newHandler` (lines 55-70) on a Go 1.22 `ServeMux`:
+- `GET /api/health` → version/status
+- `GET /api/integrations` → `listIntegrations`
+- `GET /api/integrations/{path...}` → `getIntegration`
+- `GET /api/flow` → `flow`
+- `GET /api/topology` → `topologies`
+- `/` → embedded static SPA handler
+
+Key response types:
+```go
+type integrationSummary struct {
+    template.ScaffoldEntry
+    Name   string `json:"name"`
+    System string `json:"system,omitempty"`
+    Domain string `json:"domain,omitempty"`
+}
+
+type integrationDetail struct {
+    integrationSummary
+    Agents        *fileDoc        `json:"agents,omitempty"`
+    Readme        *fileDoc        `json:"readme,omitempty"`
+    Components    []DaprComponent `json:"components,omitempty"`
+    PipelineSteps []string        `json:"pipelineSteps,omitempty"`
+}
+```
+- `listIntegrations` (83-90): calls `template.ListScaffolds(root)`, wraps each in a summary via `summarize`.
+- `summarize` (98-111): derives Name (base dir), System (parent), Domain (grandparent) from the path, and normalizes Path to a root-relative slash identifier via `relPath` (116-121).
+- `flow` (127-139): returns every integration as an `integrationDetail` with `Components` (read from `&lt;dir&gt;/local/dapr-components`) and `PipelineSteps` (files under `&lt;dir&gt;/src/Process/Steps`), but leaves docs nil.
+- `topologies` (147-155): calls `topology.List(root)`, rewrites each `Path` to root-relative, returns the array.
+- `getIntegration` (157-173): matches the `{path...}` (treating empty as `"."`) against scaffold entries and returns the enriched detail; 404 otherwise.
+- `enrich` (178-187): full detail incl. AGENTS.md/README.md via `readDoc` (capped at `maxDocBytes` = 128 KiB, line 17).
+
+### components.go — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/components.go`
+Parses Dapr component YAML for the flow canvas:
+```go
+type DaprComponent struct {
+    Name      string `json:"name"`
+    Type      string `json:"type"`
+    Category  string `json:"category"` // "pubsub" | "state" | "binding" | "other"
+    Direction string `json:"direction,omitempty"` // "input" | "output" | "input,output"
+    File      string `json:"file"`
+}
+```
+- `readComponents` (48-82): reads `*.yaml`/`*.yml` under a dir into the minimal `componentYAML` shape (31-42), best-effort, sorted by Name.
+- `classify` (87-101): maps `spec.type` prefix (`pubsub`/`state`/`bindings`→binding) to Category.
+- `direction`/`normalizeDirection` (107-139): reads/normalizes the `direction` spec.metadata entry.
+
+### static.go — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/static.go`
+`staticHandler` (17-45): `fs.Sub(web.Assets, "dist")`, requires `dist/index.html`, serves real build files by content type and falls back to index.html for any unmatched path (SPA deep-link/reload support).
+
+### browser.go — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/browser.go`
+`openBrowser` (10-22): best-effort `open`/`rundll32`/`xdg-open` per OS.
+
+### Tests
+`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/dashboard_test.go` (modified) and `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/components_test.go` (untracked).
+
+---
+
+## 3. The `internal/topology/` package (untracked)
+
+`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/topology/topology.go`
+
+Reads `.intropy/topology.json` — a per-system graph record emitted by a system's AppHost project, using Backstage catalog taxonomy (Components/Resources/APIs) plus an Intropy `edges` extension for data-flow direction. The CLI only consumes it, never writes it.
+
+Constants (25-30): `SchemaVersion = 1`, `RelPath = ".intropy/topology.json"`.
+
+```go
+type Topology struct {
+    SchemaVersion int         `json:"schemaVersion"`
+    Generator     Generator   `json:"generator"`
+    System        System      `json:"system"`
+    Components    []Component `json:"components,omitempty"`
+    Resources     []Resource  `json:"resources,omitempty"`
+    APIs          []API       `json:"apis,omitempty"`
+    Edges         []Edge      `json:"edges,omitempty"`
+}
+```
+- `Generator` (48-52): Tool, Version, Source (e.g. `integrations@3f9c2e1`).
+- `System` (56-60): Name, Owner (Group ref), Domain.
+- `Component` (65-84): Name, Type (extractor/assembler/loader/… or "mock"), Tags (int identifiers), Project (dir relative to system root — joins to scaffold.json), Workload, `Trigger *Trigger`, Image, Lifecycle, Implements, Profiles.
+- `Trigger` (87-90): Kind ("schedule"), Schedule (cron).
+- `Resource` (95-106): Name, Type ("topic"/"pubsub"/"connector"), plus PubSub, Entity, Transport, DaprComponent (joins to component YAML), ExternalSystem (catalog ref).
+- `API` (110-118): Name, Type ("asyncapi"), Direction ("provides"/"consumes"), Contract, Topic.
+- `Edge` (124-130): From, To, Kind ("publish"/"consume"/"connector"/"uses"), Port. Refs are `&lt;kind&gt;:&lt;name&gt;` locally or full `&lt;kind&gt;:&lt;namespace&gt;/&lt;name&gt;` for external catalog entities.
+
+Functions:
+- `Load(path)` (134-148): reads/unmarshals; errors on unsupported schema version (no guessing).
+- `List(root)` (172-205): walks the tree, returns an `Entry` (162-165: `Path` + embedded `Topology`) for each dir containing `.intropy/topology.json`. Skips `.git/.intropy/node_modules/bin/dist` (152-158), does not descend into matched system roots (systems don't nest), and turns unreadable/malformed records into warnings rather than failures.
+
+Tests: `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/topology/topology_test.go`.
+
+This mirrors the older `internal/template` scaffold code: `Scaffold`/`ScaffoldEntry`/`ListScaffolds` in `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/scaffold.go` and `scaffold_list.go`.
+
+---
+
+## 4. The `web/` directory (untracked)
+
+Vite + React + TypeScript SPA, embedded via Go embed.
+
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/embed.go` — `//go:embed all:dist` exposes `web.Assets embed.FS`. A placeholder `dist/index.html` is committed so `go build`/`go test` work before a real `vite build` (`make web`) overwrites it.
+- Built assets (present): `web/dist/index.html`, `web/dist/assets/index-BxrtUTsD.js`, `web/dist/assets/index-CkZ1lJcc.css`.
+- Source: `web/src/api.ts` (typed API client + all TS interfaces mirroring the Go JSON contract), `web/src/App.tsx` (top-level, two views: `catalog` and `flow`), and `web/src/components/`: `Sidebar.tsx`, `DetailPanel.tsx`, `FlowView.tsx` (823 lines — the React Flow canvas), `Combobox.tsx`.
+- Config: `web/package.json`, `web/vite.config.ts`, tsconfig files, `web/.gitignore`.
+
+`web/src/api.ts` defines the client (lines 151-160): `listIntegrations`, `getIntegration(path)`, `flow`, `topologies`, `health`. Its TS interfaces (`Integration`, `IntegrationDetail`, `DaprComponent`, `Topology` and the `TopologyComponent/Resource/Api/Edge/Trigger` sub-types) are a faithful mirror of the Go structs above.
+
+---
+
+## 5. Data flow: `intropy run` → data load → render
+
+1. `int run [dir]` (`int_run.go`) validates the dir and calls `dashboard.Serve` with Root = that dir.
+2. `Serve` (`server.go`) builds the mux (`newHandler`), binds the socket, opens the browser, and serves the embedded SPA (`web.Assets` → `dist/`) plus the JSON API.
+3. The SPA (`App.tsx`) on load calls `GET /api/integrations` and `GET /api/health`. The Flow view (`FlowView.tsx`) calls `GET /api/flow` and `GET /api/topology`.
+4. Server side, all three data endpoints walk the Root directory:
+   - `/api/integrations` and `/api/integrations/{path}` → `template.ListScaffolds(root)` reads every `.intropy/scaffold.json` (the primary catalog data). Detail requests additionally read `AGENTS.md`, `README.md`, `local/dapr-components/*.yaml`, and `src/Process/Steps/*`.
+   - `/api/flow` → same scaffold list plus Dapr components and pipeline steps for each node.
+   - `/api/topology` → `topology.List(root)` reads every `.intropy/topology.json`.
+5. Rendering:
+   - The Catalog view renders the scaffold entries in the Sidebar (grouped by derived Domain/System/Name) and the selected integration in the DetailPanel (scaffold values + AGENTS/README/components/steps).
+   - The Flow view groups integrations by system, then per system calls `topologyFor(items, topologies)` (`FlowView.tsx` lines 139-152) to find the declared `topology.json` whose directory contains all of the group's integrations (a record at `.` covers everything). If a declared topology matches, it renders the declared graph (`buildDeclaredGraph`, ~line 481) using its components/resources/apis/edges, and uses `system.name` as the authoritative label. If no topology record matches, it falls back to component-derived heuristics built from the `/api/flow` Dapr components and the `dataFlow` field on the scaffold.
+
+So: the dashboard's core data is `scaffold.json` (always), enriched by on-disk files, with `topology.json` as a newer, optional overlay that drives the authoritative flow graph when present. The topology and scaffold records are matched purely by root-relative directory path (`relPath` on the Go side, path-prefix matching in `topologyFor` on the frontend).
+
+Note: no `intropy run` code writes any file — it is strictly read-only, consistent with the package docs.</result>
+<usage><subagent_tokens>37510</subagent_tokens><tool_uses>17</tool_uses><duration_ms>108863</duration_ms></usage>
+</task-notification>
