@@ -1,0 +1,1 @@
+Can you help me design the changes to the blueprint repo (/Users/robinhultman/dev/intropy/blueprints) that the new subcommand intropy manifest create requires?
