@@ -1,0 +1,146 @@
+<task-notification>
+<task-id>ad3b133e83a046da2</task-id>
+<tool-use-id>toolu_01JjnFGN1M2uoLJ9bkQcEfEd</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/a73b4cf5-052c-4d7c-bd82-cb2846d01710/tasks/ad3b133e83a046da2.output</output-file>
+<status>completed</status>
+<summary>Agent "Trace sys create registration logic" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Conclusion first
+
+I reproduced the bug against a real workspace on disk. The loader was dropped because **its `.intropy/scaffold.json` has no `blockKind` field**, and `sys create` treats that as a *warning-level skip* (exit code 0, host still generated) rather than an error.
+
+Evidence — `/Users/robinhultman/dev/intropy/customers/fluxia/integrations/domains/orders/order-flow/`:
+
+| record | `template` | `version` | `blockKind` |
+|---|---|---|---|
+| `order-extractor/.intropy/scaffold.json` | extractor | v0.2.1-beta.5 | `"extractor"` + `dataFlow: "in"` |
+| `order-loader/.intropy/scaffold.json` | loader | v0.2.1-beta.5 | **absent** (no `dataFlow` either) |
+
+and the generated host `/Users/robinhultman/dev/intropy/customers/fluxia/integrations/domains/orders/order-flow/system-host/OrderFlowSystem.cs` contains only:
+
+```csharp
+    public void Define(SystemBuilder builder)
+    {
+        builder.AddExtractor("order-extractor").Publishes(Topics.Orders);
+    }
+```
+
+Why the record lacks the field: the `blockKind`/`dataFlow` plumbing is **uncommitted** in this repo (`git diff internal/template/create.go` adds lines 124-125), while the binary on PATH is `/opt/homebrew/bin/intropy` → `intropy 0.7.0 (commit 617e875d…)`, which is exactly current `HEAD` — i.e. a binary **without** blockKind recording. The templates are innocent: `/Users/robinhultman/dev/intropy/tooling/intropy-templates/loader/template.yaml:12-15` carries `intropy.dev/block-kind: loader` and `intropy.dev/data-flow: "out"` at the very tag that was used (`v0.2.1-beta.5` = `dd78568`), identical in shape to `extractor/template.yaml:12-15`. So the loader record was written by a binary/run that predates the label plumbing, and the extractor record by one that has it (mixed binaries, 40 s apart: 12:23:22 vs 12:24:02).
+
+The design defect this exposes: nothing cross-checks the two records, `dataFlow` is recorded but never read, the `template` field literally says `"loader"` and is never used as a fallback, and the run exits 0 with a one-line stderr warning plus a misleading success line (`assembled system "order-flow": 1 component(s), 1 topic(s)`).
+
+---
+
+## 1. Discovery of components and scaffold records
+
+- `/Users/robinhultman/dev/intropy/cmd/intropy/sys_create.go` → `cmd/intropy/sys_create.go:23-44`: cobra `sys create` calls `system.Create`.
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/create.go:100-110`:
+
+```go
+	entries, warnings := template.ListScaffolds(opts.StartDir)
+	for _, w := range warnings {
+		fmt.Fprintf(opts.Stderr, "warning: %v\n", w)
+	}
+	model, err := Assemble(entries, func(format string, args ...any) {
+		fmt.Fprintf(opts.Stderr, "warning: "+format+"\n", args...)
+	})
+```
+
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/scaffold_list.go:36-69` — `ListScaffolds` walks `root`, and for each dir containing `.intropy/scaffold.json` appends a `ScaffoldEntry` then **stops descending** (`return fs.SkipDir`, line 63). `listSkipDirs` (lines 13-19) also prunes `.git`, `.intropy`, `node_modules`, `bin`, `dist`.
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/scaffold.go:120-131` — `LoadScaffold` parses the record; `Scaffold.BlockKind` is at `scaffold.go:72` (`json:"blockKind,omitempty"`), `DataFlow` at `:76`.
+- Record producers: `internal/template/create.go:116-129` (top-level `int create`) and `internal/template/dependencies.go:132-145` (dependency renders), both via `blockKindFromLabels(tmpl.Metadata.Labels)` (`scaffold.go:95-97`, label key `intropy.dev/block-kind` at `scaffold.go:39`).
+
+## 2. How the registration code is generated
+
+Registration is **one place only**: the generated `ISystemDefinition` class. `system-host/skeleton/Program.cs` discovers by reflection (`Assembly.GetExecutingAssembly()` → `IntropyAspire.RunAsync`), so a missing `builder.AddLoader(...)` line removes the loader from Aspire resources, `check`, `graph` and `generate` alike.
+
+The template — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/codegen.go:31-45`:
+
+```go
+const systemClassFileTmpl = `using Intropy.Topology;
+...
+    public void Define(SystemBuilder builder)
+    {
+{{- range .Components }}
+        builder.{{ .Add }}("{{ .AppID }}").{{ .Edge }}(Topics.{{ .Field }});
+{{- end }}
+    }
+}
+`
+```
+
+The data — `codegen.go:72-98`. Note there is **no filtering here at all**: every `m.Components` entry gets exactly one registration line, so the drop happens upstream in `Assemble`.
+
+```go
+	for i, c := range m.Components {
+		v := componentView{AppID: c.AppID, Field: fieldByKey[c.Topic]}
+		if c.Kind == intropytemplate.BlockKindExtractor {
+			v.Add, v.Edge = "AddExtractor", "Publishes"
+		} else {
+			v.Add, v.Edge = "AddLoader", "Subscribes"
+		}
+		views[i] = v
+	}
+```
+(`internal/system/codegen.go:83-91`)
+
+`writeSystemClassFile` also refuses to *create* the file (`codegen.go:73-76`) — it only overwrites the template's placeholder.
+
+The list of components comes from `Assemble` — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/assemble.go:31-49` and `:83`:
+
+```go
+	for _, e := range entries {
+		switch {
+		case e.Role == template.RoleSharedLibrary:
+			...
+			continue
+		case e.Role == template.RoleSystemHost:
+			warnf("skipping %s: an existing system host", e.Path)
+			continue
+		case e.BlockKind == "":
+			warnf("skipping %s: scaffold record has no block kind — re-scaffold with a newer template release to include it", e.Path)
+			continue
+		case e.BlockKind != template.BlockKindExtractor &amp;&amp; e.BlockKind != template.BlockKindLoader:
+			warnf("skipping %s: unsupported block kind %q (sys create assembles extractors and loaders only)", e.Path, e.BlockKind)
+			continue
+		}
+```
+
+**`assemble.go:43-45` is the exact line that dropped the loader.** It is the only gate that fired; everything downstream (`Topics.cs`, csproj reference, `--output-json`) then reflected a 1-component system.
+
+## 3. blockKind switches/maps — is "loader" handled everywhere?
+
+There is no map keyed on blockKind anywhere; only three places branch on it:
+
+1. `internal/system/assemble.go:46` — allow-list `{extractor, loader}`. Exact, case-sensitive string compare against `BlockKindExtractor = "extractor"` / `BlockKindLoader = "loader"` (`internal/template/scaffold.go:48-49`). Loader *is* handled; `reconciler`/`assembler` are deliberately unsupported and warn (`:47`).
+2. `internal/system/codegen.go:85-89` — binary `if extractor / else loader`. The `else` is a **silent catch-all**: any kind that ever gets past the `Assemble` gate but isn't exactly `"extractor"` is emitted as `AddLoader(...).Subscribes(...)`. So a casing mismatch on the *extractor* side (`"Extractor"`) would today be rejected by `Assemble`; if that gate is ever loosened, the extractor becomes a loader silently.
+3. `internal/template/{create.go:124, dependencies.go:140}` — pass-through copy of the label; no normalization (no `strings.ToLower`/`TrimSpace`). A template label of `Loader`, `LOADER`, or `loader ` would land verbatim in the record and then be skipped as "unsupported block kind" at `assemble.go:46`.
+
+Additional silent-drop path worth flagging: the `switch` in `assemble.go:32-39` tests `Role` **before** `BlockKind`, and `RoleSharedLibrary` `continue`s with **no warning at all**. Any block template that gains a `intropy.dev/template-role` label would vanish from the system with zero output.
+
+`dataFlow` (`"in"`/`"out"`) is recorded (`scaffold.go:76`, written at `create.go:125`) but read nowhere — grep confirms zero consumers. It is an available, unused signal for inferring/validating kind.
+
+## 4. Topology/edge-based filtering
+
+None. Topics are derived in the same loop that builds components (`assemble.go:73-83`), and `writeSystemClassFile` renders one edge per component with no edge/topology predicate. The only edge-adjacent risk is `fieldByKey[c.Topic]` (`codegen.go:84`): a Go map miss yields `""`, which would emit `.Subscribes(Topics.)` — uncompilable rather than dropped. Currently unreachable, because `fieldByKey` is built from the same `byTopic` map the components were keyed against.
+
+Hard-error paths (not silent drops): duplicate `appId` (`assemble.go:68-70`), conflicting contracts on one topic key (`:74-77`), C# field-name collisions (`:111-117`), zero/multiple shared libraries (`:89-98`), missing `appId`/`topic`/`contract` values (`:51-66`).
+
+## 5. Test coverage
+
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/create_test.go:113-120, 168-192, 194-256` — `TestCreateAssemblesSystem` is the end-to-end registration test; the loader **is** covered on the happy path, with the exact expected line at `create_test.go:189`: `builder.AddLoader("order-loader").Subscribes(Topics.Orders);`. Note `writeBlock` (`create_test.go:122-138`) always sets `BlockKind: kind`, so the fixture can never reproduce the reported record shape.
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/assemble_test.go:49-78` (`TestAssembleHappyPath`), `:80-98`, `:113-207` (error table, several rows use `loaderEntry`).
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/assemble_test.go:216-250` (`TestAssembleSkipsWithWarnings`) — **the gap**. It exercises exactly the failing gate, but the record with no block kind is `Template: "extractor"` (`:222-224`), and the "unsupported kind" case is `"reconciler"` (`:233`). There is no test where a **loader** record lacks `blockKind`, no test that a partially-assembled system is surfaced as anything stronger than a stderr warning, and no test of a loader-only workspace or of kind-casing normalization.
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/sys_create_test.go` — flag wiring only (required `--name`, rejects `--set`); nothing about registration.
+- `internal/template/dependencies_test.go` (modified, +9 lines) asserts the dependency record carries the labels; there is no equivalent assertion for the top-level `Create` path in `internal/template/create_test.go`.
+
+Documented behaviour matching the failure: `README.md:371-373` (uncommitted) — "Records without a `blockKind` (scaffolded by an older CLI) or with a block kind other than extractor/loader are skipped with a warning."
+
+### Fix directions this points at
+- Fall back to `Scaffold.Template` and/or `DataFlow` when `BlockKind == ""` in `assemble.go:43`, or hard-error instead of warn.
+- Normalize the label (`strings.ToLower(strings.TrimSpace(...))`) in `blockKindFromLabels` (`scaffold.go:95-97`).
+- Replace the `else` in `codegen.go:85-89` with an explicit `switch` on kind plus a `default:` that errors.
+- Make the summary line at `create.go:162-163` report skipped records, and consider a non-zero exit or explicit `--allow-partial` when any record was skipped.
+- Reorder the `Assemble` switch so a present `BlockKind` beats a stray `Role`, and warn (not silently `continue`) on the shared-library branch.</result>
+<usage><subagent_tokens>76988</subagent_tokens><tool_uses>37</tool_uses><duration_ms>264435</duration_ms></usage>
+</task-notification>
