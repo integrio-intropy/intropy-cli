@@ -1,0 +1,1 @@
+when you specify both -o and -n in int create i would like it to create subdirectory corresponding to -n to the path specified in -o
