@@ -1,0 +1,1 @@
+I am testing using ~/dev/customers/fluxia/integrations/domains/product. The integrations there was not scaffolded using the cli so they have no .intropy folders. Could you create them for me?
