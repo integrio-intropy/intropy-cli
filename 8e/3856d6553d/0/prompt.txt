@@ -1,0 +1,1 @@
+Do we really need the intropy.yaml files? It is mentioned in the skills repo but I think we removed it from the blueprints
