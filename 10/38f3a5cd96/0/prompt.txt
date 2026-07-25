@@ -1,0 +1,199 @@
+<task-notification>
+<task-id>a2c0fb6a312e605a6</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/34dcd7fc-fdd3-4d3f-a711-ce215eef8fd9/tasks/a2c0fb6a312e605a6.output</output-file>
+<status>completed</status>
+<summary>Agent "Map CLI command structure" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Excellent! Now I have a complete map. Let me organize my findings into the structured report you requested:
+
+## Complete Command Structure Map for intropy-cli
+
+### **1. Main Entry Point**
+
+**File**: `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/main.go`
+
+**Root command defined in**: `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/root.go`
+
+The `Execute()` function calls `rootCmd.Execute()` which is a Cobra command instance initialized at the package level.
+
+---
+
+### **2. Top-Level Commands (Registered on Root)**
+
+| Command | File | Description | Depends On |
+|---------|------|-------------|-----------|
+| `int` | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/int.go` | Manage integrations | `internal/blueprint` |
+| `skills` | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills.go` | Manage Intropy skills | `internal/skill` |
+| `version` | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/version.go` | Print version information | None (stdlib only) |
+
+---
+
+### **3. The `int` Command - Subcommands and Dependencies**
+
+**Parent file**: `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/int.go`
+
+| Subcommand | File | Description | Dependencies |
+|------------|------|-------------|--------------|
+| `create` | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/int_create.go` | Scaffold a new integration from blueprints | `internal/blueprint` |
+| `describe` | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/int_describe.go` | Print blueprint manifest and metadata | `internal/blueprint` |
+
+**Supporting packages for `int` command**:
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/blueprint/` — All files in this directory support the `int` command exclusively:
+  - `archive.go`, `archive_test.go` — Archive/tarball handling
+  - `create.go`, `create_test.go` — Blueprint scaffolding logic
+  - `defaults_test.go` — Test defaults
+  - `describe.go`, `describe_test.go` — Blueprint metadata retrieval
+  - `doc.go` — Package documentation
+  - `github.go`, `github_test.go` — GitHub API interaction for fetching blueprints
+  - `manifest.go`, `manifest_test.go` — Blueprint manifest parsing
+  - `prompt.go` — Interactive prompts for values
+  - `render.go`, `render_test.go` — Template rendering
+  - `values.go`, `values_test.go` — Value file parsing
+
+---
+
+### **4. The `skills` Command - Subcommands and Dependencies**
+
+**Parent file**: `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills.go`
+
+#### Top-level `skills` subcommands:
+
+| Subcommand | File | Description | Dependencies |
+|------------|------|-------------|--------------|
+| `add` | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_add.go` | Add a skill to project and install it | `internal/skill`, `internal/skill/oci` |
+| `list` | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_list.go` | List installed skills | `internal/skill` |
+| `publish` | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_publish.go` | Publish a skill to OCI registry | `internal/skill/oci` |
+| `update` | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_update.go` | Update installed skill to pinned version | `internal/skill`, `internal/skill/oci` |
+| `collection` | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_collection.go` | Manage registered skill collections | `internal/skill`, `internal/skill/oci` |
+
+#### Nested `skills collection` subcommands:
+
+**Parent file**: `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_collection.go`
+
+| Sub-subcommand | File | Description | Dependencies |
+|-----------------|------|-------------|--------------|
+| `add` | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_collection_add.go` | Register a collection to project | `internal/skill`, `internal/skill/oci` |
+| `update` | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_collection_update.go` | Refresh cached collection index | `internal/skill`, `internal/skill/oci` |
+| `publish` | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_collection_publish.go` | Publish a collection to OCI registry | `internal/skill`, `internal/skill/oci` |
+
+**Supporting packages for `skills` command**:
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/` — Core skill management (used by all skills subcommands):
+  - `adder.go`, `adder_test.go` — Logic to add skills to project
+  - `collectioncache.go`, `collectioncache_test.go` — Local collection index caching
+  - `collectionpublisher.go` — Publishing collection indexes
+  - `extractor.go` — Extract/unpack skill archives
+  - `installer.go`, `installer_test.go` — Install skills to filesystem
+  - `lockfile.go`, `lockfile_test.go` — skills.lock.json file management
+  - `manifest.go`, `manifest_test.go` — skills.json manifest parsing
+  - `project.go`, `project_test.go` — Project discovery and management
+  - `registry.go` — Skill registry lookups
+  - `updater.go`, `updater_test.go` — Update installed skills
+
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/oci/` — OCI registry operations (used by publish, add, update, collection commands):
+  - `client.go` — OCI registry client
+  - `config.go` — OCI config file handling
+  - `errors.go` — OCI-specific error definitions
+  - `frontmatter.go` — OCI artifact metadata
+  - `pack.go`, `pack_test.go` — Package skills for OCI
+  - `pull.go` — Pull artifacts from OCI registry
+  - `pullindex.go` — Pull collection indexes
+  - `push.go` — Push artifacts to OCI registry
+  - `pushindex.go` — Push collection indexes
+  - `reference.go`, `reference_test.go` — OCI reference parsing/validation
+  - `resolve.go` — Resolve OCI references
+  - `types.go` — OCI type definitions
+
+---
+
+### **5. Supporting/Utility Files**
+
+| File | Used By | Purpose |
+|------|---------|---------|
+| `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/completions.go` | `int_create.go`, `int_describe.go`, `skills_add.go`, `skills_update.go` | Shell completion functions (blueprints, installed skills, collections) |
+| `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/errors.go` | `int_create.go`, others | Custom error types (`usageError`) |
+
+---
+
+### **6. Non-`int` Command Dependencies (Candidates for Removal)**
+
+**For the `skills` command family**, the following packages/directories exist solely to support skills management and could be removed if the `skills` command were removed:
+
+1. **Entire `internal/skill/` directory** (23 files):
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/adder.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/adder_test.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/collectioncache.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/collectioncache_test.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/collectionpublisher.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/extractor.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/installer.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/installer_test.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/lockfile.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/lockfile_test.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/manifest.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/manifest_test.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/project.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/project_test.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/registry.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/updater.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/updater_test.go`
+
+2. **Entire `internal/skill/oci/` directory** (18 files):
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/oci/client.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/oci/config.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/oci/errors.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/oci/frontmatter.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/oci/pack.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/oci/pack_test.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/oci/pull.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/oci/pullindex.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/oci/push.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/oci/pushindex.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/oci/reference.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/oci/reference_test.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/oci/resolve.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/skill/oci/types.go`
+
+3. **Command files for skills**:
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_add.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_add_test.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_list.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_list_test.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_publish.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_publish_test.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_update.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_update_test.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_collection.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_collection_add.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_collection_add_test.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_collection_update.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_collection_update_test.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_collection_publish.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills_collection_publish_test.go`
+   - `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/skills.go`
+
+---
+
+### **Summary Table**
+
+```
+ROOT ("intropy")
+├── int                          (cmd/intropy/int.go)
+│   ├── create                   (cmd/intropy/int_create.go)
+│   │   └── depends on: internal/blueprint/*
+│   └── describe                 (cmd/intropy/int_describe.go)
+│       └── depends on: internal/blueprint/*
+├── skills                       (cmd/intropy/skills.go)
+│   ├── add                      (cmd/intropy/skills_add.go)
+│   ├── list                     (cmd/intropy/skills_list.go)
+│   ├── publish                  (cmd/intropy/skills_publish.go)
+│   ├── update                   (cmd/intropy/skills_update.go)
+│   └── collection               (cmd/intropy/skills_collection.go)
+│       ├── add                  (cmd/intropy/skills_collection_add.go)
+│       ├── update               (cmd/intropy/skills_collection_update.go)
+│       └── publish              (cmd/intropy/skills_collection_publish.go)
+│       └── depends on: internal/skill/*, internal/skill/oci/*
+└── version                      (cmd/intropy/version.go)
+```</result>
+<usage><subagent_tokens>31813</subagent_tokens><tool_uses>32</tool_uses><duration_ms>76536</duration_ms></usage>
+</task-notification>
