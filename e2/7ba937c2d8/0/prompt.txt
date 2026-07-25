@@ -1,0 +1,133 @@
+<task-notification>
+<task-id>ad20806db7586e442</task-id>
+<tool-use-id>toolu_0181w2neWCFay1VWanhBEaAr</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/8c8e7928-1546-4b88-abba-1e3bc4147d38/tasks/ad20806db7586e442.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore CLI command structure" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have everything needed. Here is my report.
+
+---
+
+# Intropy CLI codebase — subcommand structure for adding `intropy int run`
+
+## 1. Directory layout
+
+```
+intropy-cli/
+├── cmd/intropy/          # ALL cobra command wiring + main.go (package main)
+├── internal/             # business logic, imported by the cmd layer
+│   ├── template/         # scaffold/render logic ("int create", "int list", "int describe")
+│   ├── deploy/           # "manifests create" logic
+│   └── skill/            # skills commands logic
+│       └── oci/          # OCI registry client for skills
+├── .github/workflows/    # release.yaml, test.yaml
+├── .goreleaser.yaml      # release build config (no Taskfile/Makefile)
+├── Dockerfile            # distroless image, binary copied in (no in-image build)
+├── install.sh
+├── go.mod / go.sum
+├── bin/  dist/           # build output (gitignored-style)
+└── Demo/ Orders/ tmp/    # sample scaffolded integrations (test fixtures, not source)
+```
+
+There is **no `pkg/` directory**. All reusable logic lives under `internal/`. The convention is a **thin `cmd/intropy` cobra layer** that parses flags and delegates to an `internal/&lt;domain&gt;` package exposing an `Options` struct + top-level function (e.g. `template.Create`, `deploy.Create`, `template.Describe`).
+
+Note: **`int migrate` does not exist** anywhere in the codebase (grep found nothing). The existing `int` subcommands are: `create`, `list`, `describe` (plus post-create skills install logic). So `int run` will be a genuinely new subcommand.
+
+## 2. CLI framework
+
+**Cobra** (`github.com/spf13/cobra v1.10.2`), with `github.com/spf13/pflag v1.0.9` (indirect). Relevant `go.mod` lines:
+
+```
+go 1.26.2
+require (
+    github.com/spf13/cobra v1.10.2
+    golang.org/x/term v0.43.0        // TTY detection for prompts
+    gopkg.in/yaml.v3 v3.0.1
+    ... (sprig, oras-go, jsonschema for template/skills domains)
+)
+```
+
+No urfave/cli, no stdlib-only flag.
+
+## 3. Command group + subcommand registration pattern
+
+Every command lives in its own file in `cmd/intropy/`, declares a package-level `*cobra.Command` var, and registers itself with a parent in an `init()` func. Parents are wired to `rootCmd`; children to their group command. This gives a self-registering tree with no central registry list.
+
+**Root** — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/root.go:17`:
+```go
+var rootCmd = &amp;cobra.Command{
+    Use: "intropy", Version: version,
+    SilenceUsage: true, SilenceErrors: true,
+    PersistentPreRunE: ... // handles -C/--directory chdir
+}
+```
+Persistent flags registered in `init()` (root.go:54): `-v/--verbose`, `-q/--quiet`, `--no-color`, `-C/--directory`.
+
+**The `int` group** — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/int.go` (whole file):
+```go
+var intCmd = &amp;cobra.Command{
+    Use: "int", Short: "Manage integrations",
+    Long: "Manage Intropy integrations — create new ones and run existing ones.",
+}
+func init() { rootCmd.AddCommand(intCmd) }
+```
+(Note the Long string already says "and run existing ones" — a `run` subcommand is anticipated.)
+
+**The `manifests` group** — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/manifests.go` — identical shape, registers `manifestsCmd` on root; `manifests_create.go` registers `manifestsCreateCmd` on `manifestsCmd`.
+
+**Representative subcommand — `int list`** — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/int_list.go`:
+- Flags struct + package var (lines 13-17): `type intListFlags struct { output string }; var intListOpts intListFlags`
+- Command var with `Use`/`Short`/`Long`/`Args`/`RunE` (lines 19-67). `Args: cobra.MaximumNArgs(1)`.
+- `RunE` validates output format, does work, writes to `cmd.OutOrStdout()`.
+- Registration (lines 69-73):
+```go
+func init() {
+    f := intListCmd.Flags()
+    f.StringVarP(&amp;intListOpts.output, "output", "o", "plain", "output format: plain or json")
+    intCmd.AddCommand(intListCmd)
+}
+```
+
+**`int create`** — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/int_create.go` — the fullest example of the pattern:
+- `type createFlags struct {...}` + `var intCreateFlags createFlags` (lines 14-27)
+- Command with `Args: cobra.ExactArgs(1)`, `ValidArgsFunction: completeTemplates` (shell completion), and a `RunE` that:
+  - parses `--set` values via `template.ParseSets` (line 36)
+  - sets up signal-cancellable context (line 44): `ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)`
+  - delegates to `template.Create(ctx, template.CreateOptions{...})` passing `cmd.InOrStdin()/OutOrStdout()/ErrOrStdout()` and `UserAgent: "intropy-cli/" + version`
+- `init()` (lines 86-100) registers flags with shorthands, uses `MarkFlagsMutuallyExclusive` and `MarkFlagsOneRequired`, then `intCmd.AddCommand(intCreateCmd)`.
+
+This delegation shape (build `Options`, pass std streams + signal ctx + UserAgent, call `internal` func) is the exact template to copy for `int run`.
+
+## 4. Flags, output modes, shared helpers
+
+- **Output modes**: commands take `-o/--output` with default `"plain"` and validate via a shared helper in root.go:45, `validateOutputFlag(format, "json", "plain")`, which returns a `usageError` on mismatch. JSON is emitted with `json.NewEncoder(cmd.OutOrStdout())` + `SetIndent("", "  ")` (see int_list.go:46-53, int_describe.go:41-45). Plain text uses `text/tabwriter` (int_list.go:60).
+- **Error/exit-code handling** — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/errors.go` + `main.go`:
+  - `usageError` type (errors.go) + constructor `newUsageErrorf(...)` for exit code 2 (usage errors).
+  - `main.go:20 exitCode(err)` maps: 0 success, 2 usage (`usageError` or Cobra flag/arg errors detected by message prefix in `isCobraUsageError`), 1 otherwise.
+  - Root sets `SilenceUsage/SilenceErrors: true`; `Execute()` prints `"error:", err` to stderr itself (root.go:35-41).
+- **Shell completion** — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/completions.go`: `completeTemplates`, `completeInstalledSkills`, `completeRegisteredCollections` (used via `ValidArgsFunction`).
+- **Interactive prompting / TTY detection**: `golang.org/x/term`, `term.IsTerminal(int(f.Fd()))` (int_create_skills.go:45); prompts via `template.NewStdinPrompter(...)`. `--no-input` disables prompting; commands accept `Stdin/Stdout/Stderr` in their Options so they're testable.
+- **Shared value parsing**: `template.ParseSets` (for `--set key=value`) and `--values`/`-f` YAML/JSON files, used by both `int create` and `manifests create`.
+- **Scaffold record helpers** (most relevant to `int run`) — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/scaffold.go`: constants `ScaffoldRelPath = ".intropy/scaffold.json"` and `ScaffoldSchemaVersion = 1`; `Scaffold` struct (Template/Owner/Repo/Version/Values); and crucially `FindScaffold(startDir)` which **walks up from a start dir to the project root** (scaffold.go:67), plus `LoadScaffold`. `manifests create` uses exactly this walk-up pattern (see `internal/deploy/create.go:88` `Create` → `template.FindScaffold(opts.StartDir)`), which an `int run` executed from inside a project would likely reuse.
+
+## 5. Version embedding &amp; build
+
+- **Version vars** — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/version.go:11-15`:
+```go
+var ( version = "dev"; commit = "unknown"; date = "unknown" )
+```
+Set at build time via `-ldflags -X main.version=... -X main.commit=... -X main.date=...`. `rootCmd.Version = version` (root.go:21), and a `version` subcommand prints all three plus Go version from `debug.ReadBuildInfo()`.
+- **Entry point** — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/main.go:9`: `main()` calls `Execute()` and `os.Exit(exitCode(err))`.
+- **Build**: No Makefile/Taskfile. Local build (from README.md:91 / CONTRIBUTING.md:38): `go build -o bin/intropy ./cmd/intropy`. Release is **GoReleaser** — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/.goreleaser.yaml`: builds `./cmd/intropy` for linux/darwin × amd64/arm64, `CGO_ENABLED=0`, injects the ldflags above (lines 29-33), runs `go test ./...` in a `before` hook, produces tar.gz archives, a distroless Docker image (`dockers_v2`), cosign signatures, checksums, and a Homebrew cask. Triggered by `v*` tags via `.github/workflows/release.yaml`.
+
+## 6. Embedded assets, static serving, HTTP servers
+
+- **No `go:embed` anywhere** — grep for `go:embed` and `"embed"` returned nothing. Templates are fetched at runtime from GitHub, not embedded. Skills are pulled from an OCI registry (`harbor.intropy.io/skills/...`, see int_create_skills.go:21).
+- **No HTTP server** — there is no `http.ListenAndServe`, `http.Server`, or handler registration. `net/http` is used purely as an **HTTP client** to download templates from GitHub: `internal/template/github.go`, `internal/template/create.go`, `internal/template/describe.go`, and `internal/deploy/create.go` (the `HTTP *http.Client` field on `CreateOptions`, deploy/create.go:52). The GitHub client is constructed via `template.NewGitHubClient(httpClient, userAgent, baseURL)`.
+
+## Summary for adding `int run`
+
+Create `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/int_run.go` following the `int_create.go`/`int_describe.go` pattern: define an `intRunFlags` struct + var, an `intRunCmd` `*cobra.Command` (choose `Args`, likely `cobra.NoArgs` or a dir arg like `manifests create`), a `RunE` that builds a signal-cancellable context and delegates to a new `internal/&lt;domain&gt;` package function passing `cmd.In/Out/ErrOr*` streams and `UserAgent: "intropy-cli/"+version`, and an `init()` that registers flags (use `-o/--output` + `validateOutputFlag` if you need JSON output) and calls `intCmd.AddCommand(intRunCmd)`. If `int run` operates on an existing scaffolded project, reuse `template.FindScaffold(startDir)` to locate the project root, exactly as `internal/deploy/create.go` does. Put the actual run logic in `internal/` (e.g. a new `internal/run` package) with an `Options` struct mirroring `deploy.CreateOptions`, and add a matching `int_run_test.go` (the repo tests every command — see `int_create_test.go`, `int_list_test.go`, `root_test.go`).</result>
+<usage><subagent_tokens>38657</subagent_tokens><tool_uses>11</tool_uses><duration_ms>155844</duration_ms></usage>
+</task-notification>
