@@ -204,16 +204,16 @@ intropy int create hello-world --output ./my-integration
 ```
 
 Name the integration and scaffold it in one step. `-n/--name` sets the template's
-`name` parameter (so you're not prompted for it) and names the output directory —
-on its own it scaffolds into `./<name>`, and combined with `-o` it scaffolds into
-`<output>/<name>`:
+`name` parameter (so you're not prompted for it) and, unless `-o` is given, becomes
+the output directory — the same split as `dotnet new`, where `-o` is the literal
+output location and `-n` only names the artifacts:
 
 ```sh
 # scaffolds into ./orders and sets name=orders
 intropy int create hello-world -n orders
 
-# scaffolds into ./integrations/orders
-intropy int create hello-world -n orders -o ./integrations
+# -o overrides the output directory: scaffolds into ./order-extractor with name=OrderExtractor
+intropy int create hello-world -n OrderExtractor -o ./order-extractor
 ```
 
 Provide parameter values inline, from files, or interactively:

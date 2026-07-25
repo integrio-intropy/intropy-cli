@@ -44,6 +44,11 @@ type CreateResult struct {
 	Version   string         `json:"version"`
 	OutputDir string         `json:"outputDir"`
 	Values    map[string]any `json:"values"`
+
+	// Dependencies reports what happened to each spec.dependencies entry
+	// (including transitive ones): rendered now ("created") or already
+	// present ("exists").
+	Dependencies []DependencyResult `json:"dependencies,omitempty"`
 }
 
 func (o *CreateOptions) applyDefaults() {
@@ -92,6 +97,20 @@ func Create(ctx context.Context, opts CreateOptions) error {
 	}
 	fmt.Fprintf(opts.Stderr, "created %s from %s/%s@%s (template %s)\n", opts.OutputDir, opts.Owner, opts.Repo, tag, opts.Template)
 
+	// Dependencies come from the same extracted tarball, so they are always
+	// version-locked to the component that declared them.
+	depRecords, depResults, err := processDependencies(tmpl, values, opts.OutputDir, &depContext{
+		repoRoot: filepath.Dir(templateRoot),
+		owner:    opts.Owner,
+		repo:     opts.Repo,
+		version:  tag,
+		stderr:   opts.Stderr,
+		visited:  map[string]bool{},
+	}, 0)
+	if err != nil {
+		return err
+	}
+
 	// The template field is the repo directory name (opts.Template), not
 	// tmpl.Metadata.Name — it is what a later re-fetch needs.
 	if err := WriteScaffold(opts.OutputDir, Scaffold{
@@ -101,11 +120,13 @@ func Create(ctx context.Context, opts CreateOptions) error {
 		Repo:          opts.Repo,
 		Version:       tag,
 		Values:        values,
+		Role:          roleFromLabels(tmpl.Metadata.Labels),
+		DependsOn:     depRecords,
 	}); err != nil {
 		return err
 	}
 
-	return maybeWriteCreateResult(opts, tmpl, values, tag)
+	return maybeWriteCreateResult(opts, tmpl, values, tag, depResults)
 }
 
 func validateCreateOptions(opts CreateOptions) error {
@@ -143,7 +164,7 @@ func renderCreateOutput(templateRoot, templateName, outputDir string, force bool
 	return Render(skelRoot, outputDir, values)
 }
 
-func maybeWriteCreateResult(opts CreateOptions, tmpl *Template, values map[string]any, tag string) error {
+func maybeWriteCreateResult(opts CreateOptions, tmpl *Template, values map[string]any, tag string, deps []DependencyResult) error {
 	if opts.OutputJSON == "" {
 		return nil
 	}
@@ -153,12 +174,13 @@ func maybeWriteCreateResult(opts CreateOptions, tmpl *Template, values map[strin
 		absOut = opts.OutputDir
 	}
 	result := CreateResult{
-		Template:  tmpl.Metadata.Name,
-		Owner:     opts.Owner,
-		Repo:      opts.Repo,
-		Version:   tag,
-		OutputDir: absOut,
-		Values:    values,
+		Template:     tmpl.Metadata.Name,
+		Owner:        opts.Owner,
+		Repo:         opts.Repo,
+		Version:      tag,
+		OutputDir:    absOut,
+		Values:       values,
+		Dependencies: deps,
 	}
 	if err := writeOutputJSON(opts.OutputJSON, opts.Stdout, result); err != nil {
 		return fmt.Errorf("write --output-json: %w", err)

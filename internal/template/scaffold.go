@@ -16,6 +16,17 @@ const (
 
 	// ScaffoldRelPath is where the scaffold record lives inside a project.
 	ScaffoldRelPath = ".intropy/scaffold.json"
+
+	// TemplateRoleLabel names the manifest label that declares what role a
+	// template's output plays in a system. Its value is copied into the
+	// scaffold record so later commands can tell support projects apart
+	// from system blocks.
+	TemplateRoleLabel = "intropy.dev/template-role"
+
+	// RoleSharedLibrary marks a scaffolded project that exists to be
+	// referenced by sibling components (e.g. shared models). System
+	// assembly must not treat it as a block.
+	RoleSharedLibrary = "shared-library"
 )
 
 var ErrScaffoldNotFound = errors.New("no " + ScaffoldRelPath + " found in current directory or any parent")
@@ -31,6 +42,26 @@ type Scaffold struct {
 	Repo          string         `json:"repo"`
 	Version       string         `json:"version"`
 	Values        map[string]any `json:"values"`
+
+	// Role is the value of the template's intropy.dev/template-role label,
+	// if any (e.g. "shared-library").
+	Role string `json:"role,omitempty"`
+
+	// DependsOn lists the sibling projects this project's template declared
+	// under spec.dependencies, whether the render created them or they
+	// already existed.
+	DependsOn []DependencyRecord `json:"dependsOn,omitempty"`
+}
+
+// DependencyRecord points at a sibling project a component depends on. Dir
+// is slash-separated and relative to the component root (e.g. "../Acme.Models").
+type DependencyRecord struct {
+	Template string `json:"template"`
+	Dir      string `json:"dir"`
+}
+
+func roleFromLabels(labels map[string]string) string {
+	return labels[TemplateRoleLabel]
 }
 
 // WriteScaffold writes the scaffold record to <projectRoot>/.intropy/scaffold.json.
