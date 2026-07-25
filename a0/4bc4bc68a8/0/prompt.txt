@@ -1,0 +1,125 @@
+<task-notification>
+<task-id>a7eb79cffb95b3ca0</task-id>
+<tool-use-id>toolu_011DEVnRJquc18kdVtPwVuGS</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/8bc086a3-b593-46ca-93bd-0ed2de64bee6/tasks/a7eb79cffb95b3ca0.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore blueprints and agent.md" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have a complete picture. Here are my findings.
+
+## 1. Where blueprints live
+
+Blueprints live in a **separate sibling repo**, not in the CLI. The CLI's `internal/blueprint/` contains only Go rendering code, no blueprint content.
+
+- **Blueprint repo (local clone):** `/Users/robinhultman/dev/intropy/blueprints` — remote is `github.com/integrio-intropy/intropy-blueprints`.
+- The CLI fetches blueprints at runtime from GitHub by release tag (tarball download → extract → render). See `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/blueprint/github.go` (constants `defaultBlueprintOwner = "integrio-intropy"`, `defaultBlueprintRepo = "intropy-blueprints"`).
+
+There are exactly **two blueprints**: `hello-world` and `transactional`.
+
+### Blueprint file trees
+
+`hello-world` (ASP.NET Minimal API + Dapr pub/sub; **no Taskfile**):
+```
+hello-world/
+  template.yaml                         # intropy.dev/v1 manifest
+  skeleton/
+    agent.md.tmpl
+    README.md.tmpl
+    .gitignore
+    local/dapr-components/local-storage.yaml.tmpl
+    local/dapr-components/pubsub.yaml
+    src/{{ .name }}.csproj
+    src/{{ .name }}.http
+    src/appsettings.json / appsettings.Development.json
+    src/Program.cs.tmpl
+    src/Configuration/Constants.cs.tmpl
+    src/Ingest/Endpoints.cs.tmpl
+    src/Model/OrderIn.cs.tmpl, OrderOut.cs.tmpl
+    src/Process/OrderSendPipeline*.cs.tmpl, ServiceCollectionExtensions.cs.tmpl
+    src/Process/Steps/OrderDeserialize|Send|Serialize|Transform|Validate Step.cs.tmpl
+    src/Properties/launchSettings.json
+```
+
+`transactional` (console VETER integration job; **has Taskfile.yml.tmpl + docker-compose**):
+```
+transactional/
+  template.yaml
+  skeleton/
+    agent.md.tmpl
+    README.md.tmpl
+    Taskfile.yml.tmpl
+    docker-compose.yml.tmpl
+    .gitignore
+    local/dapr-components/inbound-storage.yaml.tmpl, outbound-storage.yaml.tmpl, pubsub.yaml
+    local/sample-data/sample-order.json.tmpl
+    src/{{ .name }}.csproj
+    src/appsettings.json
+    src/Program.cs.tmpl
+    src/Configuration/Constants.cs.tmpl
+    src/Model/In.cs.tmpl, Line.cs.tmpl, Out.cs.tmpl
+    src/Receive/Receiver|Enqueuer|Completer|SourceLister|ServiceCollectionExtensions.cs.tmpl
+    src/Send/Deserializer|Extractor|Validator|Transformer|Serializer|Sender|ServiceCollectionExtensions.cs.tmpl
+```
+
+Only `template.yaml` and `skeleton/` are seen by the renderer; everything else at the blueprint root (README, examples) is author-facing.
+
+## 2. The agent.md files (full content summary)
+
+Both `agent.md` files are named `agent.md.tmpl` inside each blueprint's `skeleton/`, so they render into the scaffolded project as `agent.md`. I read both in full.
+
+**`hello-world/skeleton/agent.md.tmpl`** — sections:
+- Title + one-line description (ASP.NET Minimal API using Dapr pub/sub, in-memory component).
+- **Project overview:** framework .NET 10, ASP.NET Core Minimal API, package `Dapr.AspNetCore`, pub/sub component `pubsub`, topic `messages`.
+- **Important files:** `src/Program.cs`, `local/dapr-components/pubsub.yaml`, `src/{{ .name }}.http`, `README.md`.
+- **Development notes:** keep API minimal; use `DaprClient.PublishEventAsync`; use `.WithTopic("pubsub","messages")`; keep component names in sync between `Program.cs` and `pubsub.yaml`.
+- **Build and run:** `dotnet build ./src`; then a raw `dapr run --app-id {{ .appId }} --app-port 5000 --dapr-http-port 3500 --resources-path ./local/dapr-components -- dotnet run --project ./src --urls http://localhost:5000`.
+- **Testing:** use the `.http` file to POST to `/publish`.
+
+**`transactional/skeleton/agent.md.tmpl`** — sections:
+- Title + description (transactional integration job on the Intropy framework; file binding → in-memory pub/sub → VETER send pipeline → second file binding).
+- **Project overview:** .NET 10, console job (no web endpoints), runner `Intropy.Framework.Hosting.TransactionalIntegration.Job.TransactionalIntegrationRunner`, pub/sub `pubsub`, topic `orders`, source binding `inbound-storage`, destination binding `outbound-storage` (rootPaths under `/tmp/{{ .name | kebabcase }}/…`).
+- **Important files:** `Program.cs`, `Constants.cs`, `Receive/`, `Send/`, the three dapr component YAMLs, sample data.
+- **Development notes:** keyed singleton `IFileAdapter` registration and `[FromKeyedServices]` injection; receive pipeline runs once per file, send pipeline once per delivery; keep `Constants.PubSubName`/`TopicName` in sync with YAML; note that idempotency/business-incident services are deliberately omitted and how to add `.WithIdempotency(...)` / `.WithBusinessIncidents(...)`.
+- **Build and run:** `dotnet build ./src`; then `mkdir`/`cp` sample data and a raw `dapr run --app-id {{ .appId }} --dapr-http-port 3500 --resources-path ./local/dapr-components -- dotnet run --project ./src`.
+
+**What agent.md currently covers:** project overview/architecture, framework versions, Dapr specifics (components, topics, bindings, sidecar flags), file-map, conventions/development notes, and build+run commands. It reads as an AI-agent-oriented README for the scaffolded project. Variation between the two is only in domain content; both share the same section structure (Overview / Important files / Development notes / Build and run [+ Testing]).
+
+## 3. How agent.md is templated/generated by the CLI
+
+**There is no special-casing of `agent.md` anywhere in the CLI.** Grepping the entire Go source (`internal/`, `cmd/`) for `agent.md` and `Taskfile` returns nothing. `agent.md.tmpl` is just an ordinary skeleton file rendered by the generic engine:
+
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/blueprint/render.go` — `Render()` walks `skeleton/`, runs every path segment through Go `text/template` + sprig, and renders file contents only when the basename ends in `.tmpl` (suffix stripped on output). So `agent.md.tmpl` → `agent.md` with `{{ .name }}`, `{{ .appId }}`, `{{ .name | kebabcase }}` substituted. Renderer uses `missingkey=error`.
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/blueprint/create.go` — `Create()` orchestrates: resolve release tag → download tarball → extract → `LoadTemplate(template.yaml)` → `Resolve` values (flags/files/prompt) → `Render(skeleton, outputDir, values)`. `renderCreateOutput` requires the `skeleton/` dir; no per-file logic.
+- Data context is a flat map of the manifest `parameters` + derived `spec.values`. From `template.yaml`: `name` (required, PascalCase; transactional also has `empty` boolean) and derived `appId: '{{ .name | kebabcase | replace "." "-" }}'`.
+
+So agent.md's content is entirely owned by the blueprint repo; the CLI treats it as opaque skeleton content.
+
+## 4. Docs stating agent.md's intended purpose
+
+**None found.** agent.md is not mentioned in:
+- CLI `README.md` or `CONTRIBUTING.md` (grep for `agent.md` → no hits).
+- Blueprints repo `README.md` or `CLAUDE.md` (`/Users/robinhultman/dev/intropy/blueprints/CLAUDE.md`) — these document the manifest schema, skeleton conventions, and the `.tmpl` rule, but list `agent.md` only implicitly as "just another skeleton file." The CLAUDE.md example even uses `README.md.tmpl` as the representative skeleton file.
+
+There is no documented, intended contract for what agent.md must contain. Its purpose is implicit: an agent/human-facing guide bundled into the scaffolded project. This is a gap if you intend agent.md to be the canonical home of run instructions.
+
+## 5. intropy.yaml retirement + Taskfile vs agent.md
+
+**intropy.yaml is effectively gone from the CLI and blueprints.** No references in CLI core code or in either blueprint. The only surviving mentions are in a stale benchmark fixture, `/Users/robinhultman/dev/intropy/tooling/intropy-cli/benchmark/skills/biztalk-migration-no-cli/SKILL.md` (references `intropy.yaml` next to `src/`) — that's an old benchmark skill, not live tooling.
+
+**Taskfile.yml vs agent.md — the run command lives in different places per blueprint, and they are not consistent:**
+
+- `transactional` **has** `Taskfile.yml.tmpl` (`/Users/robinhultman/dev/intropy/blueprints/transactional/skeleton/Taskfile.yml.tmpl`). Its `run` task is the richer/canonical runner: `deps: [seed, lgtm:up]`, sets `DOTNET_ENVIRONMENT=Development` and `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317`, and calls `dapr run` with `--dapr-http-port`, `--dapr-grpc-port`, `--placement-host-address=""`, `--scheduler-host-address=""`, `--log-level`. It also defines `build`, `seed`, `lgtm:up`, `lgtm:down`, `clean`.
+- `transactional`'s `agent.md` and `README.md`, by contrast, give a **simpler raw `dapr run`** (only `--app-id`, `--dapr-http-port 3500`, `--resources-path`) with a manual `mkdir`/`cp` seed — no grpc port, no OTEL, no placement/scheduler flags, no lgtm stack, and no mention of `task run` / the Taskfile at all. So for transactional the Taskfile is the authoritative run path but agent.md/README duplicate a diverging, less complete version.
+- `hello-world` **has no Taskfile** at all. Its run command exists **only** in `agent.md` and `README.md`. Note an internal inconsistency: `agent.md` uses `--app-port 5000 / --urls http://localhost:5000`, while `README.md` uses `5001`.
+
+Net: after intropy.yaml's retirement, the run command is scattered — canonical in `Taskfile.yml` for transactional, but only in agent.md/README for hello-world — and the agent.md copies drift from the Taskfile (and from README) rather than pointing at `task run`.
+
+### Key file paths
+- Blueprints repo: `/Users/robinhultman/dev/intropy/blueprints/{README.md,CLAUDE.md}`
+- agent.md sources: `/Users/robinhultman/dev/intropy/blueprints/hello-world/skeleton/agent.md.tmpl`, `/Users/robinhultman/dev/intropy/blueprints/transactional/skeleton/agent.md.tmpl`
+- Manifests: `.../hello-world/template.yaml`, `.../transactional/template.yaml`
+- Taskfile: `.../transactional/skeleton/Taskfile.yml.tmpl`
+- READMEs: `.../hello-world/skeleton/README.md.tmpl`, `.../transactional/skeleton/README.md.tmpl`
+- CLI rendering/wiring: `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/blueprint/{render.go,create.go,github.go}`</result>
+<usage><subagent_tokens>41124</subagent_tokens><tool_uses>21</tool_uses><duration_ms>122341</duration_ms></usage>
+</task-notification>
