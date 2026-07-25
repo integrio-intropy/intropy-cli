@@ -1,0 +1,1 @@
+Is gcr.io/distroless/static-debian12:nonroot what you typically build go programs on?
