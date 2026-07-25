@@ -1,0 +1,1 @@
+I want the dashboard to use the int list subcommand to get a list of all integrations. They should be displayed in a tree where the folder name immidately above the .intropy folder is the integration name and the integrations parent folder is the system. Many integrations can exist in a single system
