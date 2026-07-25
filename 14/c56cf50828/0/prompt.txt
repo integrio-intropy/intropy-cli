@@ -1,0 +1,1 @@
+But do we need it. Cant we isolate that to the the system? Making every component self-contained
