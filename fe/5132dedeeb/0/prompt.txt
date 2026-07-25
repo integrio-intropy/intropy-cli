@@ -1,0 +1,214 @@
+<task-notification>
+<task-id>a07b8a016552ffbf0</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/a73b4cf5-052c-4d7c-bd82-cb2846d01710/tasks/a07b8a016552ffbf0.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore system create + topology" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Summary
+
+`intropy sys create` is new, uncommitted work on `feature/system`. Everything below is in the CLI repo unless the path says otherwise. Note that the interesting parts of your questions (topology JSON, transports, `From`/`To`) do **not** live in this repo — they live in sibling repos, and the CLI's codegen currently emits only a subset of that model.
+
+---
+
+## 1. `intropy sys create` — end-to-end flow
+
+**Command wiring**
+
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/sys.go:5-13` — bare `sys` parent command ("Manage integration systems").
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/sys_create.go:13-55` — flags are deliberately minimal: `-n/--name` (required), `-o/--output`, `--version`, `--force`, `--output-json`. **No `--set` / `-f values`** — the template's contract is "only `name`, never prompt" (`internal/system/create.go:121-124`). Signal handling via `signal.NotifyContext` (line 31).
+
+**Flow** (`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/create.go:87-166`)
+
+1. `xstrings.ToKebabCase(name)` — exact parity with sprig's `kebabcase` in the template (`create.go:93-98`). `OrderFlow` ≡ `order-flow`. Output dir defaults to the kebab name.
+2. `template.ListScaffolds(startDir)` walks the workspace collecting every `.intropy/scaffold.json` (`internal/template/scaffold_list.go:36-69`; skips `.git`, `.intropy`, `node_modules`, `bin`, `dist`; does not descend into a matched dir).
+3. `system.Assemble(entries, warnf)` → `*Model`. **All validation happens before any network I/O** — this is asserted by a test.
+4. `contractsInclude(outputDir, model.Shared)` computes the relative `ProjectReference` path (`internal/system/csproj.go:43-57`).
+5. `template.Create(...)` renders the `system-host` template (`hostTemplate` const, `create.go:26`) with `SetValues{"name": kebab}`, `NoInput: true`.
+6. **Reads back** the host's own `.intropy/scaffold.json` to get `projectName` / `systemClass` — deliberately, so CLI-side and template-side name derivation can never drift (`create.go:136-149`).
+7. `writeTopicsFile` → `Topics.cs`; `writeSystemClassFile` → `&lt;SystemClass&gt;.cs`; `insertProjectReference` → csproj.
+8. Human summary to stderr, optional `CreateResult` JSON.
+
+**Topology / edge derivation from scaffold records** (`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/assemble.go:22-120`)
+
+Records are classified by `Role` and `BlockKind` (both new fields, see §5):
+
+| record | outcome |
+|---|---|
+| `role: shared-library` | becomes `Model.Shared` — referenced, never a component. Exactly one required (lines 89-98) |
+| `role: system-host` | skipped with warning "an existing system host" |
+| no `blockKind` | skipped with warning ("re-scaffold with a newer template release") |
+| `blockKind` ∉ {extractor, loader} | skipped with warning |
+| extractor / loader | becomes a `Component` |
+
+Required values per block: `appId`, `topic`, `contract` (hard error with re-scaffold guidance, line 61), plus `pubsub` defaulting to `"pubsub"` via `stringValueDefault` (line 63).
+
+**Edges are never declared — they are derived by topic-key collision.** `TopicKey{Pubsub, Name}` is the join key (`assemble.go:73`). Two scaffolds naming the same key are the two halves of one contract. Conflict detection:
+
+- duplicate `appId` across dirs → error (line 68)
+- same `TopicKey`, different `contract` → error naming both dirs (line 74-77)
+- two topics collapsing to the same C# field name via `pascalIdent` → error (line 111-117)
+
+Topics are sorted by `(Pubsub, Name)` for determinism (line 104).
+
+**Data model** (`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/model.go`): `TopicKey`, `Topic{TopicKey, Contract, Field}`, `Component{AppID, Kind, Topic, Path}`, `SharedLibrary{Path, Name}`, `Model{Name, ProjectName, SystemClass, Components, Topics, Shared}`. Note `Component` holds exactly **one** `TopicKey` — the model cannot express a component touching two topics, or touching anything that isn't a topic.
+
+**Codegen** (`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/codegen.go:16-45`) — two `text/template` string constants:
+
+- `Topics.cs`: `TopicRef&lt;Contract&gt;.Define("pubsub", "topic")` per topic
+- `&lt;SystemClass&gt;.cs`: one line per component — `builder.AddExtractor("x").Publishes(Topics.Y);` / `builder.AddLoader("y").Subscribes(Topics.Y);` via `componentView{Add, Edge}` (lines 54-59, 85-90)
+
+`writeSystemClassFile` **refuses to create** the file — if the placeholder isn't there, the template's `systemClass` derivation disagrees with the CLI and writing would add a *second* `ISystemDefinition` (`codegen.go:72-76`).
+
+`insertProjectReference` does textual insertion before `&lt;/Project&gt;` rather than XML round-tripping, to preserve template comments, and sets `IsAspireProjectResource="false"` (`csproj.go:16-38`).
+
+---
+
+## 2. System-level directory layout after `sys create`
+
+From the template (`/Users/robinhultman/dev/intropy/tooling/intropy-templates/system-host/skeleton/`) plus codegen, documented at `/Users/robinhultman/dev/intropy/intropy-techdocs/docs/tutorials/system/03-systemhost.md:30-39`:
+
+```
+workspace/
+├── order-extractor/            # int create, has .intropy/scaffold.json
+│   ├── src/  test/  local/dapr-components/  local/sample-data/  local/storage/
+├── order-loader/
+├── Contracts/                  # shared-library scaffold
+└── system-host/                # sys create output
+    ├── OrderFlow.SystemHost.csproj   # + inserted ProjectReference to ../Contracts
+    ├── Program.cs                    # two backends; not edited
+    ├── OrderFlowSystem.cs            # codegen-owned
+    ├── Topics.cs                     # codegen-owned
+    ├── Properties/launchSettings.json
+    ├── Taskfile.yml                  # run | check | graph | generate | build
+    ├── AGENTS.md, CLAUDE.md, README.md, .gitignore
+    └── .intropy/scaffold.json        # role: system-host
+```
+
+Ownership split is spelled out in `/Users/robinhultman/dev/intropy/tooling/intropy-templates/system-host/README.md:16-27`: skeleton owns everything except `&lt;Project&gt;System.cs` and `Topics.cs`, which ship as compilable placeholders that codegen overwrites. **`Apis.cs` / `Connectors.cs` codegen is explicitly deferred** (README line 26-27) — this is the seam your `From`/`To` work would fill.
+
+Notably absent at system level: no `dapr-components/`, no `local/`, no `test/` project. The component overlay is staged at runtime into `obj/dapr-components/&lt;component&gt;/` (`AGENTS.md.tmpl:63-67`).
+
+**Drift worth flagging:** `AGENTS.md.tmpl:15-17` and `:30-31` claim the shared contracts project is `../{{ .projectName }}.Contracts` with an `Exists`-guarded reference. The CLI actually resolves it from the `shared-library` scaffold record (typically plain `Contracts/`) and inserts an unguarded reference. Template docs and CLI behavior disagree.
+
+---
+
+## 3. Topology output format
+
+**`topology.intropy.io/v1` does not exist in the CLI repo.** The only file in your whole tree with that `apiVersion` is a hand-authored example:
+
+`/Users/robinhultman/dev/intropy/customers/fluxia/integrations/domains/price/distribution/.intropy/topology.json`
+
+```json
+{ "apiVersion": "topology.intropy.io/v1", "kind": "SystemTopology", "system": "distribution",
+  "components": [ { "name": "extractor", "kind": "extractor",
+      "subscribes": [], "publishes": [{"port":"b2c","pubsub":"price-pubsub","topic":"price-b2c"}],
+      "provides": [], "consumes": [],
+      "connectors": [{"connector":"price-master","direction":"in"}] } ],
+  "topics": [...], "apis": [], "connectors": [
+    { "name":"erp", "externalSystem":"erp",
+      "transport": {"type":"http","supportsInput":false,"supportsOutput":true},
+      "directions":["out"], "usedBy":["erp-loader"] } ] }
+```
+
+This **is** the "inline-edge schema": edges live *on* each component as `subscribes` / `publishes` / `provides` / `consumes` / `connectors` arrays, with `topics` / `apis` / `connectors` as top-level resource sections carrying the precomputed reverse index (`publishers`, `subscribers`, `usedBy`).
+
+Its live source is the `graph` verb's display projection:
+`/Users/robinhultman/dev/intropy/tooling/Intropy.Topology/src/Intropy.Topology.Generation/IntropyGenerate.cs:62-157` (`DisplayModel` / `DisplayComponent`). Same shape, minus the `apiVersion`/`kind` envelope; empty collections are omitted, kinds are kebab-cased, contract names shortened. The doc comment at line 57-61 says explicitly: *"this is presentation, not interchange."* Connector transport there is flattened to a bare string (`c.Transport?.DaprType ?? "(unresolved)"`, line 97), **not** the `{type, supportsInput, supportsOutput}` object the fluxia file uses — so the fluxia file is ahead of the emitter.
+
+Two competing older shapes exist, worth knowing so you don't accidentally revive one:
+
+- **Top-level `edges[]` array** — `/Users/robinhultman/dev/intropy/customers/fluxia/integrations/domains/product/distribution/.intropy/topology.json`, `schemaVersion: 1`, edges as `{from:"component:x", to:"resource:y", kind:"publish", port:"..."}`. Matches the small `/Users/robinhultman/dev/intropy/intropy-topology/` model repo (`Models/Edge.cs`, `Models/Ref.cs`).
+- **`nodes[]`/`edges[]` graph** — `/Users/robinhultman/dev/intropy/tooling/Intropy.Topology/examples/graph.json`, with `externalSystem` and `service` node kinds and a `ports[]` section.
+
+**Two `Intropy.Topology` repos exist** and diverge — this matters for planning:
+- `/Users/robinhultman/dev/intropy/intropy-topology/` — small, model+builder only, `Publishes`/`Consumes`, no connectors, no transports. Its `CLAUDE.md:7-15` forbids serialization.
+- `/Users/robinhultman/dev/intropy/tooling/Intropy.Topology/` — the real one. Has `ConnectorRef`, `Transport`, `ApiRef`, `From`/`To`, Aspire + Generation backends. **This is what the `system-host` template's csproj references** (`Intropy.Topology.Aspire` / `.Generation` 0.1.0).
+
+**`web/` in the CLI repo is an empty shell** — only `node_modules/` remains (untracked, contains `@xyflow/react` i.e. React Flow, `@material-symbols`, vite, vitest). The source was deleted; there is no `package.json`. No dashboard code to consume topology here. The real dashboard, `/Users/robinhultman/dev/intropy/intropy-dashboard/`, is a Backstage-style **catalog** viewer (`src/catalog/schema.ts`, `types.ts`, `normalize.ts`) — it consumes catalog YAML, not topology JSON.
+
+---
+
+## 4. Local file drop folders / FILE transport defaults
+
+**System-level test folder: none exists.** Extractor and loader templates each ship `test/` with xUnit projects (`extractor/skeleton/test/Process/*Tests.cs.tmpl`). The `system-host` skeleton has no test project.
+
+**Local file drop folders — the convention exists per-component, and the system host already anticipates it:**
+
+- `/Users/robinhultman/dev/intropy/tooling/intropy-templates/extractor/skeleton/local/dapr-components/inbound.yaml.tmpl` — `type: bindings.localstorage`, `rootPath: "./local/storage/inbound"`
+- `/Users/robinhultman/dev/intropy/tooling/intropy-templates/loader/skeleton/local/dapr-components/destination.yaml` — `bindings.localstorage`, `rootPath: "./local/storage/destination"`
+- Binding names are `"inbound"` / `"destination"`, hardcoded in `extractor/skeleton/src/Configuration/Constants.cs.tmpl:11` and `loader/.../Constants.cs.tmpl:11`; file-adapter keys `"source"` / `"destination"` (lines 16 / 13)
+- `extractor/skeleton/local/sample-data/sample-order.json.tmpl` is the seed file
+- **`system-host/skeleton/.gitignore:484-485`** ends with `# Local Dapr storage-binding working folders (seeded/produced by 'task run')` → `local/storage/`. The system host already reserves `local/storage/` even though nothing creates it yet.
+- Tutorial flow: `cp order-extractor/local/sample-data/sample-order.json order-extractor/local/storage/inbound/` then `cat order-loader/local/storage/destination/ORD-1001.json` (`05-run-the-system.md:28,36`)
+
+**The "every transport becomes FILE" convention lives in the archived CLI, not this one:**
+
+- `/Users/robinhultman/dev/intropy/tooling/cli-archive/internal/migrate/transport.go:15-18` — *"The match step's current local-first policy collapses every transport to FILE regardless of push/pull"*; `transportBehaviors` table at lines 50-61 (FILE/FTP/SFTP/FTPS/POP3/HTTP/SOAP/MSMQ/MQS/SMTP with pull/push per direction).
+- `/Users/robinhultman/dev/intropy/tooling/cli-archive/internal/migrate/inventory.go:95` — *"was normalized to FILE or HTTP for local-first execution"*
+- `/Users/robinhultman/dev/intropy/tooling/cli-archive/skills/intropy-best-practices/SKILL.md:126` — the canonical statement: *"Every transport is collapsed to FILE at match time; the original is recorded on `io[].transport` and surfaced via the informational `transport-normalized` Gap… The single point of policy is `normalizeTransport` in `internal/migrate/match_transport.go`"*. **That file no longer exists** in the archive (the doc references it but `internal/migrate/` has no `match_transport.go`) — the policy is documented but the implementation is gone. Memory key referenced: `project_local_first_transport_normalization`.
+- `/Users/robinhultman/dev/intropy/tooling/cli-archive/skills/execute-migration-task-plan/SKILL.md:53` — *"Today every entry is `biztalk-file-{receive|send}`… Do NOT pick `bindings.sftp` / `bindings.rabbitmq`"*
+
+**No FILE transport exists in the live topology model.** `/Users/robinhultman/dev/intropy/tooling/Intropy.Topology/src/Intropy.Topology/Refs.cs:205-306` defines exactly four: `HttpTransport` (`bindings.http`, output-only), `SftpTransport`, `BlobTransport` (`bindings.azure.blobstorage`), `CustomTransport`. **There is no `Transport.File()` / `bindings.localstorage` factory** — the local-first default the scaffolds actually run on is unrepresentable in the topology model except via `Transport.Custom("bindings.localstorage")`. That is a concrete gap.
+
+---
+
+## 5. Extractors/loaders → sources/destinations; external systems
+
+**In the CLI today: no.** `internal/system/model.go` has no connector, external-system, or transport concept. Codegen emits only `.Publishes(...)` / `.Subscribes(...)`. The generated `OrderFlowSystem.cs` describes a *closed* system — nothing says where the extractor's data comes from or where the loader's goes.
+
+**In `/Users/robinhultman/dev/intropy/tooling/Intropy.Topology/`: yes, fully — and the API is literally named `From` and `To`.**
+
+- `src/Intropy.Topology/Building/ComponentBuilders.cs:41-45` — `ExtractorBuilder.From(ConnectorRef)` → `AddConnector(connector, ConnectorDirection.In)`
+- `src/Intropy.Topology/Building/ComponentBuilders.cs:140-144` — `LoaderBuilder.To(ConnectorRef)` → `AddConnector(connector, ConnectorDirection.Out)`
+- `src/Intropy.Topology/Building/ComponentBuilders.cs:166-178` — `TransactionalIntegrationBuilder` has both
+- `src/Intropy.Topology/Model/Enums.cs:19-27` — `ConnectorDirection { In, Out }`, doc-commented as *"`From` / connector trigger"* and *"`To`"*
+- `src/Intropy.Topology/Refs.cs:185-197` — `ExternalSystem` (DNS-1123 identity), so external systems **are** modeled
+- `src/Intropy.Topology/Model/Resources.cs:27-52` — `ConnectorResource{Name, ExternalSystemName?, Transport?, Directions, UsedBy}`; `DaprComponentName =&gt; $"binding.{Name}"` always derived
+
+**The critical design note for your work** — `Refs.cs:106-115`:
+
+&gt; Only the connector's *name* is intrinsic to a component — it is the local port the component reads from or writes to. Both *what* it connects to (the external system) and *how* (the transport) are resolution concerns, **bound together at a later system-assembly step (`intropy system create`)**, not at block scaffolding (`intropy int create`). A connector declared by name only is *unresolved*… it surfaces as a warning (ITP107) rather than an error.
+
+This is a written contract naming `intropy sys create` as the resolution point, and it is currently unimplemented. Corroborating: `Generation.cs:138-139` emits `TODO(intropy): transport unresolved — resolve with 'intropy system create'` into the Dapr YAML; `IntropyAspire.cs:62` filters on `c.Transport is null`.
+
+### Where `From` / `To` naturally attach
+
+1. **Scaffold record** — extractor/loader `template.yaml` `spec.values` currently record `appId`, `contracts`, `pubsub` (`extractor/template.yaml:51-61`). A `connector: 'source'` / `connector: 'destination'` value is the obvious addition, mirroring the existing `InboundBindingName = "inbound"` / `DestinationBindingName = "destination"` constants. The `intropy.dev/data-flow: "in"` / `"out"` labels already exist on both templates (`extractor/template.yaml:15`, `loader/template.yaml:15`) and are already plumbed into the record as `Scaffold.DataFlow` — **currently written but never read by `Assemble`**. That's your direction signal, already wired.
+
+2. **`Component` struct** (`internal/system/model.go:20-25`) — add a `Connector` field alongside `Topic`. Note the struct assumes one topic per component; connectors would be the second edge slot.
+
+3. **`Assemble`** (`assemble.go:31-84`) — a second dedup map keyed by connector name (parallel to `byTopic`), producing a `[]Connector` on the `Model` with `Directions` unioned and `UsedBy` accumulated — mirroring `ConnectorResource`.
+
+4. **`codegen.go`** — extend `componentView` (line 54-59) with a `Connector`/`Direction` and append `.From(Connectors.Source)` / `.To(Connectors.Destination)` to the builder chain; add a third generated file `Connectors.cs`, which the template README already lists as deferred-but-expected.
+
+5. **Transport defaulting** — `Transport.Custom("bindings.localstorage", true, true)` is the only way to express the scaffolds' actual local-first default today. Either add a `Transport.File()` factory upstream in `Refs.cs`, or have `sys create` emit the `Custom` form. The `local/storage/` gitignore entry in the system-host skeleton and the `ComponentOverlay` staging logic (`src/Intropy.Topology.Aspire/ComponentOverlay.cs:15-54`, generated component replaces local one by `metadata.name`) mean a generated `binding.source` / `binding.destination` would cleanly override the scaffolds' `inbound.yaml` / `destination.yaml` — but only if the generated `metadata.name` matches the name in `Constants.cs`. That naming-sync is a real trap.
+
+6. **`Summary` / `CreateResult`** (`create.go:49-66`) — add `Connectors []Connector`; field names are documented as stable and additive-only.
+
+---
+
+## Test conventions in `sys_create_test.go` and siblings
+
+`/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/sys_create_test.go` is thin (38 lines, 2 tests) — it covers only Cobra wiring:
+
+- `resetRootIO(t, &amp;stdout, &amp;stderr)` + `t.Chdir(t.TempDir())` preamble; helpers in `cmd/intropy/root_test.go` / `errors.go`
+- `rootCmd.SetArgs([]string{...})` then `rootCmd.Execute()` — the shared `rootCmd` singleton is mutated, hence the reset helpers
+- Assert on `strings.Contains(err.Error(), ...)` **and** `exitCode(err) != 2` (usage errors are exit 2)
+- `TestSysCreateRejectsSetFlag` asserts `--set` is an *unknown flag* — the absence of a flag is an intentional, tested contract
+
+Real behavior is tested one layer down in `internal/system/`:
+
+`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/create_test.go` (349 lines)
+- `systemHostTemplateYAML` (line 23) is a *trimmed but faithful* copy of the real template manifest — same required param, same pattern, same `spec.values` derivations
+- `buildTarGz` + `httptest.NewServer` serving `/repos/o/r/releases/latest` and `/repos/o/r/tarball/&lt;tag&gt;`, with an `atomic.Int32` hit counter (line 93-108) so `TestCreateValidatesBeforeNetwork` can assert `hits.Load() == 0`
+- `writeWorkspace(t)` builds the tutorial's exact order-flow layout via `template.WriteScaffold` — fixtures are written through the production writer, not raw JSON
+- Golden strings `wantTopicsCS` / `wantSystemCS` (lines 168-192) compared with exact `!=` on full file content
+- `runCreate` helper injects `Owner: "o"`, `Repo: "r"`, `GitHubBaseURL: srv.URL` — the `CreateOptions` test-override fields documented at `create.go:41-45`
+- Failure-mode tests are guidance-oriented: assert the error *mentions `--force`*, or *"rendered no OrderFlowSystem.cs placeholder"*, rather than sentinel equality
+
+`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/assemble_test.go` (280 lines) — pure unit tests with `extractorEntry` / `loaderEntry` / `sharedEntry` builders and a `discardWarnf` no-op. Imports `sprig` and `xstrings` directly, presumably to assert kebab-case parity with the template.
+
+Per `CONTRIBUTING.md:181-182`: mock all HTTP/OCI, never hit the network, `_test.go` alongside the code.</result>
+<usage><subagent_tokens>141024</subagent_tokens><tool_uses>59</tool_uses><duration_ms>330814</duration_ms></usage>
+</task-notification>
