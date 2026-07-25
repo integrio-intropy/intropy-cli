@@ -1,0 +1,1 @@
+Could you generate a topology.json for ~/dev/intropy/customers/fluxia/integrations/domains/product/distribution?
