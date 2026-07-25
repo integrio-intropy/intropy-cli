@@ -1,0 +1,1 @@
+Can you introduce a top menu as-well? The current view should be under "Integration Catalog" and I want a new "Integration Flow".
