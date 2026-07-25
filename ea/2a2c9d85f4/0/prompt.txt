@@ -1,0 +1,1 @@
+We need to decide what the purpose of agent.md is and what they should contain in the blueprints repo. We have the skills now and need to be clear what different purpose they fill
