@@ -1,0 +1,124 @@
+<task-notification>
+<task-id>a56bedb6916614012</task-id>
+<tool-use-id>toolu_017o98SQHPwzDZJToRoGnJdo</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/174cfbae-6a0b-4cfb-a561-e3d273629151/tasks/a56bedb6916614012.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore topology.json schema and dashboard" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have everything needed. Here is the complete report.
+
+## topology.json schema — full findings
+
+### Authoritative source
+The Go model lives in `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/topology/topology.go`. The TypeScript mirror is `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/api.ts` (lines 56-134). A live example is `/Users/robinhultman/dev/intropy/tooling/intropy-cli/Orders/.intropy/topology.json`, and the richest fixture is the `validRecord` constant in `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/topology/topology_test.go` (lines 10-35).
+
+### File location convention
+Constant `RelPath = ".intropy/topology.json"` — `topology.go:29`. Sibling to `.intropy/scaffold.json`. The `.NET` AppHost project emits it; the CLI only reads it (`topology.go:9-10`).
+
+### Complete JSON structure (verbatim keys, from `topology.go:36-130`)
+
+Root object — `Topology` (`topology.go:36-44`):
+- `schemaVersion` int, required. Must equal `1` (`SchemaVersion = 1`, `topology.go:25`); any other value is a hard error (`topology.go:143-146`, tested at `topology_test.go:92-97`).
+- `generator` object, required.
+- `system` object, required.
+- `components` array, `omitempty`.
+- `resources` array, `omitempty`.
+- `apis` array, `omitempty`.
+- `edges` array, `omitempty`.
+
+`generator` — `Generator` (`topology.go:48-52`):
+- `tool` string (e.g. `"Intropy.Topology.Generation"`)
+- `version` string, omitempty (e.g. `"0.1.0"`)
+- `source` string, omitempty (e.g. `"integrations@3f9c2e1"`, `"orders@local"`)
+
+`system` — `System` (`topology.go:56-60`):
+- `name` string, required
+- `owner` string, omitempty — Backstage Group ref, e.g. `"group:default/team-integration"`
+- `domain` string, omitempty (e.g. `"sales"`, `"distribution"`)
+
+`components[]` — `Component` (`topology.go:65-84`):
+- `name` string
+- `type` string (see component types below)
+- `tags` []string, omitempty — integration identifiers e.g. `"int-042"`, `"orders"`
+- `project` string, omitempty — dir relative to system root (`.` for root)
+- `workload` string, omitempty — deployment hint: `"cronjob"`, `"deployment"`
+- `trigger` object pointer, omitempty (nested `Trigger`)
+- `image` string, omitempty (e.g. `"ghcr.io/integrio/mock-pim:1.2.0"`)
+- `lifecycle` string, omitempty (e.g. `"local"` for dev-only mocks)
+- `implements` string, omitempty — catalog ref a mock stands in for, e.g. `"system:default/pim"`
+- `profiles` []string, omitempty (e.g. `["local"]`)
+
+`components[].trigger` — `Trigger` (`topology.go:87-90`):
+- `kind` string (e.g. `"schedule"`)
+- `schedule` string, omitempty — cron expression when kind is `"schedule"` (e.g. `"*/15 * * * *"`)
+
+`resources[]` — `Resource` (`topology.go:95-106`). `type` decides which optional fields apply:
+- `name` string
+- `type` string (see resource types below)
+- `pubsub` string, omitempty — topic field
+- `entity` string, omitempty — topic field, data entity e.g. `"RawProduct"`, `"Order"`
+- `transport` string, omitempty — connector field (e.g. `"sftp"`, `"file"`)
+- `daprComponent` string, omitempty — connector field, the Dapr component's `metadata.name`
+- `externalSystem` string, omitempty — connector field, catalog ref e.g. `"system:default/pim"`, `"system:default/file-store"`
+
+`apis[]` — `API` (`topology.go:110-118`):
+- `name` string
+- `type` string (e.g. `"asyncapi"`)
+- `direction` string, required — `"provides"` or `"consumes"`
+- `contract` string, omitempty (e.g. `"Integrio.Contracts.Products"`)
+- `topic` string, omitempty — ref to topic resource, e.g. `"resource:product-enriched"`
+
+`edges[]` — `Edge` (`topology.go:124-130`):
+- `from` string — entity ref
+- `to` string — entity ref
+- `kind` string — `"publish"`, `"consume"`, `"connector"`, or `"uses"`
+- `port` string, omitempty — component output port a publish edge leaves through (e.g. `"default"`)
+
+Entity ref format (`topology.go:33-35`, `api.ts:114-117`): `"&lt;kind&gt;:&lt;name&gt;"` for entities declared in this file (`component:`, `resource:`, `api:`); full Backstage refs `"&lt;kind&gt;:&lt;namespace&gt;/&lt;name&gt;"` for external catalog entities (e.g. `"system:default/pim"`).
+
+### Concept names
+- Root type name: `Topology` (Go) / `Topology` (TS). The doc comment calls it the "system topology record" / "declared system topology" (`topology.go:1-7`, `api.ts:56`). There is no literal `SystemTopology` identifier — the type is `Topology` and the system-name field is `system.name`.
+- `SystemName` → JSON `system.name`.
+- `Components` → `components[]`; `Resources` → `resources[]`; `APIs` → `apis[]` (JSON key `apis`); plus `edges[]` (an Intropy extension for flow direction — Backstage relations can't express direction, `topology.go:5-7`).
+- Services: there is no `services` concept in this schema. "Services" appears only in the Backstage-catalog sense elsewhere; the topology taxonomy is Components + Resources + APIs + Edges.
+- Connectors are modeled as a Resource `type: "connector"`, not a top-level array.
+
+### Component types (`type` field)
+No Go enum/constants — they are free strings validated only by convention. Documented and used values:
+- `"extractor"` (`topology_test.go:15`, `dashboard_test.go:232`)
+- `"loader"` (`topology_test.go:17`)
+- `"assembler"` (mentioned `topology.go:63`, `api.ts:71`)
+- `"mock"` — local stand-in for an external system (`topology.go:64`, `topology_test.go:18`)
+- `"transactional"` — used in the live `Orders/.intropy/topology.json:16` (and as a scaffold template name `dashboard_test.go:274`). This is the `TransactionalIntegration` type you asked about; the topology value is the lowercase string `"transactional"`.
+- The comment lists them as open-ended: "extractor, assembler, loader, …" (`topology.go:63`, `api.ts:71`). No `TransactionalIntegration`/`reconciler` literal appears in Go, but the ellipsis makes the set open.
+
+### Resource types (`type` field)
+Documented at `topology.go:93-94` and `api.ts:91`:
+- `"topic"` — uses `pubsub`, `entity` fields
+- `"pubsub"` — no extra fields
+- `"connector"` — uses `transport`, `daprComponent`, `externalSystem` fields
+- `"…"` open-ended per the TS comment.
+
+### Edge kinds (enum-like, string)
+`"publish"` (component→topic), `"consume"` (topic→component), `"connector"` (connector↔component, ordering encodes direction), `"uses"` (component→catalog entity) — `topology.go:120-127`, TS union `api.ts:119`.
+
+### API direction values
+`"provides"` | `"consumes"` — `topology.go:113-115`, TS union `api.ts:108`.
+
+### How the dashboard reads the file
+1. `topology.Load(path)` (`topology.go:134-148`): `os.ReadFile` → `json.Unmarshal` into `Topology` → rejects unknown `schemaVersion`.
+2. `topology.List(root)` (`topology.go:172-205`): walks the tree, finds every dir containing `.intropy/topology.json`, skips `.git`, `.intropy`, `node_modules`, `bin`, `dist` (`topology.go:152-158`); systems don't nest (SkipDir on match); malformed records become warnings, not failures.
+3. HTTP: route `GET /api/topology` registered at `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/handlers.go:67`, handled by `apiServer.topologies` (`handlers.go:147-155`). It calls `topology.List(s.root)`, rewrites each `Path` to a root-relative slash identifier, and JSON-encodes an array (never null).
+4. The served element type is `topology.Entry` (`topology.go:162-165`): the flattened `Topology` embedded plus an added `path` string field (root-relative system dir). So each `/api/topology` array element = the full topology object **plus** a top-level `path` key. The TS `Topology` interface reflects this (`api.ts:124-134`: `path` first, then `schemaVersion`, `generator`, `system`, `components`, `resources`, `apis`, `edges`).
+5. Frontend client: `api.topologies()` → `getJSON&lt;Topology[]&gt;('/api/topology')` at `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/api.ts:158`.
+
+Note: `internal/dashboard/components.go` and `DaprComponent` are a *separate* concept (parsed Dapr YAML from `local/dapr-components/`, surfaced via `/api/flow`), not part of topology.json. Its categories (`"pubsub"`|`"state"`|`"binding"`|`"other"`, `components.go:87-101`) and directions (`"input"`|`"output"`|`"input,output"`, `components.go:107-139`) are unrelated to the topology schema.
+
+### Sample/fixture inventory
+- Live sample: `/Users/robinhultman/dev/intropy/tooling/intropy-cli/Orders/.intropy/topology.json` (the only real `topology.json` in the repo; none in Demo/, benchmark/, tmp/).
+- Inline fixtures: `validRecord` at `topology_test.go:10-35` (most complete — has components incl. mock, resources incl. connector, apis, edges with port); and the record string at `dashboard_test.go:228-235`.
+
+### Enums / constants summary
+Only two true Go constants exist (`topology.go:21-30`): `SchemaVersion = 1` and `RelPath = ".intropy/topology.json"`. All `type`/`kind`/`direction` values are convention-based free strings with no Go const declarations; the TS mirror encodes several as string-literal unions (edge `kind`, api `direction`, DaprComponent `category`/`direction`, integration `dataFlow`).</result>
+<usage><subagent_tokens>40931</subagent_tokens><tool_uses>12</tool_uses><duration_ms>78061</duration_ms></usage>
+</task-notification>
