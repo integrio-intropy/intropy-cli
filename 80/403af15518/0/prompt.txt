@@ -1,0 +1,1 @@
+I am preparing this cli for release and I would like to reduce the scope by only focusing on the int command. How do you suggest I do that?
