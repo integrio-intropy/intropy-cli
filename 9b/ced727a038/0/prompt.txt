@@ -1,0 +1,6 @@
+I think we should have a SystemBuilder aswell so that we can do: var s = SystemBuilder.Create("order-fulfillment");
+
+Also we should have helpers for the different blocks so that we can do:
+s.AddExtractor("stock-extractor")
+    .XXX
+    .Publishes(StockFlow.Raw);
