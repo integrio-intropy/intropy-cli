@@ -1,0 +1,92 @@
+<task-notification>
+<task-id>a324a9249abcf2af7</task-id>
+<tool-use-id>toolu_01Lsgoo725DGmthJgiC1isK2</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/a61f5e3e-0f35-4a1a-aba4-7d897a6e32f4/tasks/a324a9249abcf2af7.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore dashboard flow diagram rendering" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have everything needed. Here is the complete report.
+
+## Summary: the flow/topology diagram is rendered client-side by React Flow (`@xyflow/react` v12)
+
+The Go CLI does **not** render diagrams. It only serves JSON over HTTP and serves an embedded React SPA. All diagram drawing happens in the browser using the **React Flow** library (`@xyflow/react`). This is a DOM + SVG hybrid renderer: nodes are plain React components (HTML `&lt;div&gt;`s styled with CSS), and edges/handles/arrowheads are SVG paths that React Flow generates. There is no Mermaid, D3-force, dagre, elkjs, cytoscape, or graphviz driving layout — layout is computed by hand in TypeScript.
+
+---
+
+### 1. Dashboard Go code (`internal/dashboard/`) — serves JSON + an embedded SPA
+
+- `internal/dashboard/handlers.go` — the JSON API. Routes registered in `newHandler` (lines 55-70):
+  - `GET /api/flow` → `flow()` (lines 127-139): returns every integration enriched with Dapr `Components` and `PipelineSteps`.
+  - `GET /api/topology` → `topologies()` (lines 147-155): returns declared topology records.
+  - `GET /api/integrations`, `/api/integrations/{path...}`, `/api/health`, and `/` → static SPA.
+  - `writeJSON` (line 219) is the only output path — pure JSON, no HTML/SVG.
+- `internal/dashboard/components.go` — parses Dapr component YAML into `DaprComponent{Name,Type,Category,Direction}` (lines 17-27). `classify()` (line 87) maps spec types to `pubsub`/`state`/`binding`/`other`. This categorization tells the frontend where to place a node, but does no rendering.
+- `internal/dashboard/static.go` — `staticHandler()` serves the embedded `web/dist` build and falls back to `index.html` for SPA routing (lines 33-44).
+- No templates. Confirmed: `grep` for `svg`/`&lt;rect&gt;`/`&lt;path d=` across `internal/` returns nothing. There is zero server-side diagram generation.
+
+### 2. `web/` frontend assets
+
+- React 18 + TypeScript + Vite SPA. `web/package.json` dependencies (lines 13-17):
+  - **`@xyflow/react` `^12.11.2`** ← the diagramming library (React Flow).
+  - `react`, `react-dom`.
+- Icons: `@material-symbols/svg-400` imported per-glyph via `vite-plugin-svgr` (`web/src/icons.ts`).
+- `web/embed.go` embeds `dist/` via `//go:embed all:dist` (line 15) so the Go binary self-serves the built SPA.
+- `web/vite.config.ts` proxies `/api` → `http://127.0.0.1:8730` in dev.
+- Note: many `d3-*` packages appear under `web/node_modules` (`d3-zoom`, `d3-drag`, `d3-selection`, `d3-ease`), but these are **transitive dependencies of React Flow** (it uses d3-zoom/d3-drag internally for pan/zoom), not direct dependencies. There is no direct D3 usage in `web/src`.
+- Source components: `web/src/components/FlowView.tsx` (the diagram), plus `Combobox.tsx`, `DetailPanel.tsx`, `Sidebar.tsx`, and `App.tsx`, `api.ts`, `index.css`, `icons.ts`.
+
+### 3. `internal/topology/` data model
+
+`internal/topology/topology.go` defines the declared topology schema (apiVersion `topology.intropy.io/v1`, kind `SystemTopology`, read from `.intropy/topology.json`):
+- `Topology` (lines 40-52): `System`, `Components[]`, `Topics[]`, `Connectors[]`, opaque `APIs`.
+- `Component` (lines 58-67): `Name`, `Kind`, `Subscribes[]`, `Publishes[]`, `Connectors[]` — wiring is inlined per component.
+- `TopicRef`, `Publication`, `ConnectorUse`, `Topic`, `Transport`, `Connector` (lines 69-118).
+- `Load()` parses/validates the record; `List()` walks the tree for records (lines 122-193).
+- The CLI is read-only for these files. `handlers.go` `topologies()` passes them straight to the frontend as JSON via `topology.Entry`.
+
+### 4. How the diagram is actually drawn — client-side in `web/src/components/FlowView.tsx`
+
+This is the heart of it. The component fetches `/api/flow` and `/api/topology` (lines 170-181), builds a node/edge graph in TS, and hands it to `&lt;ReactFlow&gt;`.
+
+- Imports React Flow primitives (lines 2-18): `ReactFlow`, `Background`, `Controls`, `MiniMap`, `Handle`, `MarkerType`, `Position`, `ReactFlowProvider`, plus `'@xyflow/react/dist/style.css'`.
+- **Layout is hand-computed**, not by a graph library. Geometry constants at lines 50-63 (`NODE_W=300`, `NODE_H=84`, gaps, etc.). Two builders:
+  - `buildGraph()` (lines 324-483): heuristic layout — a dashed system boundary group, integration cards in a 2-column grid, shared infra row inside, external bindings outside (sources left / sinks right).
+  - `buildDeclaredGraph()` (lines 498-743): renders a declared topology using a **Kahn-style longest-path layering** (lines 550-576) to assign columns by flow depth — a small custom DAG layout, no external lib.
+- `&lt;FlowCanvas&gt;` (lines 279-319) renders `&lt;ReactFlow&gt;` with custom `nodeTypes`, `colorMode={theme}`, `&lt;Background gap={20}&gt;`, `&lt;Controls&gt;`, `&lt;MiniMap&gt;`, and `proOptions={{ hideAttribution: true }}`.
+- **Nodes are React components rendering HTML divs** (registered in `NODE_TYPES`, lines 843-849):
+  - `GroupNode` (745) → `.rf-group` dashed container.
+  - `IntegrationNode` (757) → `.rf-int` card, with `&lt;Handle&gt;` connection points.
+  - `TopicNode` (783) / `InfraNode` (804) → `.rf-infra`.
+  - `ExternalNode` (822) → `.rf-ext`.
+- **Edges are SVG** generated by React Flow. Edges are created as data objects (e.g. lines 440-448, 471-478, 654-676) with `markerEnd: { type: MarkerType.ArrowClosed }` and `className: 'rf-edge-ext'` / `'rf-edge-infra'`. React Flow renders these as `&lt;path class="react-flow__edge-path"&gt;` inside its SVG edge layer, with arrowheads as SVG markers.
+
+### 5. Styling / theming for the diagram — `web/src/index.css`
+
+Theming is CSS-variable driven (`:root` light at lines 1-17, `:root[data-theme='dark']` at lines 27-39). Key diagram styles:
+
+- Color tokens: `--accent: #0d9488` (teal, light) / `#2dd4bf` (dark), `--border: #e3e6ea`, `--surface`, `--text-muted: #6b7280`, radius `--radius: 10px`.
+- Fonts: body is `ui-sans-serif, system-ui, …` (lines 62-64); monospace `ui-monospace, SFMono-Regular, Menlo` for code-ish labels.
+- Diagram-specific rules (lines 585-1002):
+  - `.rf-group` (791): `border: 1px dashed var(--border)`, `border-radius: 12px` — the dashed system boundary.
+  - `.rf-int` (812): `300px` card, `1px solid var(--border)`, `border-radius: var(--radius)`; `.selected` gets accent border + `box-shadow: 0 0 0 1px var(--accent)`.
+  - `.rf-infra` (905) / `.rf-infra.pubsub` accent border (918); `.rf-ext` (960) dashed border on muted surface.
+  - **Edge/handle styling** (lines 981-1002) — most relevant for restyling stroke aesthetics:
+    - `.react-flow__handle`: `7px` muted dots, `opacity: 0.5`.
+    - `.rf-edge-infra .react-flow__edge-path`: `stroke: var(--accent); stroke-width: 1.5;`
+    - `.rf-edge-ext .react-flow__edge-path`: `stroke: var(--text-muted); stroke-width: 1.5; stroke-dasharray: 5 4;` (dashed external edges)
+    - `.rf-edge-ext .react-flow__arrowhead { fill: var(--text-muted); }`
+  - React Flow chrome (controls/minimap) tinted to theme at lines 763-788.
+
+---
+
+### Feasibility note for a "hand-drawn"/sketchy aesthetic
+
+Because rendering is **React Flow (DOM nodes + generated SVG edges)** and not a monolithic library like Mermaid, a sketchy look is achievable but touches two distinct layers:
+
+- **Node cards** are HTML/CSS divs (`.rf-int`, `.rf-group`, etc.) — a sketchy look here means CSS (wobbly borders, hand-drawn fonts, filter/texture) or swapping the node components in `NODE_TYPES` for custom-drawn SVG (e.g. rough.js). No library fights you here; you fully own these components.
+- **Edges** are SVG paths React Flow computes (Bezier by default). CSS `stroke`/`stroke-dasharray` styling is easy (already used), but a true rough/sketchy stroke requires a **custom edge type** in React Flow (an `edgeTypes` map — not currently defined; edges use the default type) that renders a rough.js-style path instead of React Flow's smooth path. React Flow fully supports custom edge components, so this is feasible.
+- The two hand-written layout functions (`buildGraph`, `buildDeclaredGraph`) produce fixed x/y coordinates, so a sketchy restyle does not disturb layout — it is purely a rendering-layer change in `FlowView.tsx` + `index.css`.
+
+Everything relevant lives in exactly two files for styling/rendering: `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/components/FlowView.tsx` and `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/index.css`.</result>
+<usage><subagent_tokens>54525</subagent_tokens><tool_uses>13</tool_uses><duration_ms>87499</duration_ms></usage>
+</task-notification>
