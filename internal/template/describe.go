@@ -49,6 +49,10 @@ type DescribeResult struct {
 	Version     string            `json:"version"`
 	Parameters  map[string]any    `json:"parameters"`
 
+	// Dependencies lists the sibling templates this template scaffolds
+	// alongside its own output (spec.dependencies).
+	Dependencies []DependencySpec `json:"dependencies,omitempty"`
+
 	// orderedFields preserves YAML declaration order for FormatText; YAML
 	// order is lost once Parameters round-trips through JSON, so we keep it
 	// here. Unexported so it stays out of the wire contract.
@@ -91,6 +95,7 @@ func Describe(ctx context.Context, opts DescribeOptions) (*DescribeResult, error
 		Repo:          opts.Repo,
 		Version:       tag,
 		Parameters:    tmpl.Spec.Parameters,
+		Dependencies:  tmpl.Spec.Dependencies,
 		orderedFields: tmpl.Fields(),
 	}, nil
 }
@@ -109,6 +114,12 @@ func (r *DescribeResult) FormatText(w io.Writer) {
 	}
 	if len(r.Tags) > 0 {
 		fmt.Fprintf(w, "\nTags: %v\n", r.Tags)
+	}
+	if len(r.Dependencies) > 0 {
+		fmt.Fprintln(w, "\nScaffolds alongside (skipped when already present):")
+		for _, d := range r.Dependencies {
+			fmt.Fprintf(w, "  %s -> ../%s\n", d.Template, d.Output)
+		}
 	}
 
 	fields := r.orderedFields

@@ -31,8 +31,9 @@ type Metadata struct {
 }
 
 type Spec struct {
-	Parameters map[string]any    `yaml:"parameters"`
-	Values     map[string]string `yaml:"values,omitempty"`
+	Parameters   map[string]any    `yaml:"parameters"`
+	Values       map[string]string `yaml:"values,omitempty"`
+	Dependencies []DependencySpec  `yaml:"dependencies,omitempty"`
 
 	// parameterOrder captures the declaration order of properties in
 	// spec.parameters.properties, since Go maps don't preserve YAML order.
@@ -40,12 +41,32 @@ type Spec struct {
 	parameterOrder []string
 }
 
+// DependencySpec declares another template in the same library that must
+// exist as a sibling of this template's output. Create renders it when the
+// target directory is missing and skips it when a scaffold record from the
+// same template is already there, so a shared project is created exactly
+// once no matter how many components declare it.
+type DependencySpec struct {
+	// Template is the dependency's directory name in the templates repo.
+	Template string `yaml:"template" json:"template"`
+	// Output is a Go template (with sprig) rendered against the parent's
+	// resolved values. It must produce a single path segment; the dependency
+	// is created as a sibling of the parent's output directory.
+	Output string `yaml:"output" json:"output"`
+	// Values maps dependency parameter names to Go templates rendered
+	// against the parent's resolved values. Dependencies resolve without
+	// prompting, so together with the dependency's own defaults these must
+	// cover every required parameter.
+	Values map[string]string `yaml:"values,omitempty" json:"values,omitempty"`
+}
+
 // UnmarshalYAML decodes the spec and captures property declaration order
 // so Fields() can return FieldSpecs in author-intended sequence.
 func (s *Spec) UnmarshalYAML(node *yaml.Node) error {
 	type rawSpec struct {
-		Parameters map[string]any    `yaml:"parameters"`
-		Values     map[string]string `yaml:"values,omitempty"`
+		Parameters   map[string]any    `yaml:"parameters"`
+		Values       map[string]string `yaml:"values,omitempty"`
+		Dependencies []DependencySpec  `yaml:"dependencies,omitempty"`
 	}
 	var r rawSpec
 	if err := node.Decode(&r); err != nil {
@@ -53,6 +74,7 @@ func (s *Spec) UnmarshalYAML(node *yaml.Node) error {
 	}
 	s.Parameters = r.Parameters
 	s.Values = r.Values
+	s.Dependencies = r.Dependencies
 	s.parameterOrder = extractPropertyOrder(node)
 	return nil
 }
@@ -172,6 +194,14 @@ func (t *Template) validate() error {
 	}
 	if typ, _ := t.Spec.Parameters["type"].(string); typ != "object" {
 		return fmt.Errorf(`spec.parameters.type must be "object"`)
+	}
+	for i, dep := range t.Spec.Dependencies {
+		if err := validateTemplateName(dep.Template); err != nil {
+			return fmt.Errorf("spec.dependencies[%d]: %w", i, err)
+		}
+		if dep.Output == "" {
+			return fmt.Errorf("spec.dependencies[%d] (%s): output is required", i, dep.Template)
+		}
 	}
 	return nil
 }

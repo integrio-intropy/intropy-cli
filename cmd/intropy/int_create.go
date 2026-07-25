@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 
 	"github.com/integrio-intropy/intropy-cli/internal/template"
@@ -67,8 +66,8 @@ var intCreateCmd = &cobra.Command{
 }
 
 // resolveCreateName folds the -n shorthand into the set map and derives the
-// output dir. -n is sugar for --set name=<v>; alone it names the output dir,
-// combined with --output it names a subdirectory under it.
+// output dir. -n is sugar for --set name=<v>; it also defaults --output when
+// -o is absent.
 func resolveCreateName(name, output string, sets map[string]any) (string, error) {
 	if name == "" {
 		return output, nil
@@ -78,15 +77,15 @@ func resolveCreateName(name, output string, sets map[string]any) (string, error)
 	}
 	sets["name"] = name
 	if output == "" {
-		return name, nil
+		output = name
 	}
-	return filepath.Join(output, name), nil
+	return output, nil
 }
 
 func init() {
 	f := intCreateCmd.Flags()
-	f.StringVarP(&intCreateFlags.output, "output", "o", "", "destination directory; with --name, the integration is created in <output>/<name>")
-	f.StringVarP(&intCreateFlags.name, "name", "n", "", "integration name; sets the template's 'name' parameter and names the output directory (under -o when both are set)")
+	f.StringVarP(&intCreateFlags.output, "output", "o", "", "destination directory (defaults to --name)")
+	f.StringVarP(&intCreateFlags.name, "name", "n", "", "integration name; sets the template's 'name' parameter and, unless -o is set, becomes the output directory")
 	f.StringVar(&intCreateFlags.version, "version", "", "template release tag (default: latest)")
 	f.StringArrayVarP(&intCreateFlags.values, "values", "f", nil, "values file in YAML/JSON (repeatable; use - to read one doc from stdin)")
 	f.StringArrayVarP(&intCreateFlags.sets, "set", "s", nil, "set a value as key=value (repeatable)")
