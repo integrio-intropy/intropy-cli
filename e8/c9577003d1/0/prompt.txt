@@ -1,0 +1,161 @@
+<task-notification>
+<task-id>ad34c231a30fd8547</task-id>
+<tool-use-id>toolu_01WsiFXS4fbWsqLQo1jjMN8D</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/a73b4cf5-052c-4d7c-bd82-cb2846d01710/tasks/ad34c231a30fd8547.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore template scaffolding code" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## 1. Component creation flow (`internal/template/`)
+
+**Entry point:** `cmd/intropy/int_create.go:28-66` → `template.Create()` at `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/create.go:71-132`.
+
+Sequence in `Create`:
+1. `resolveReleaseTag` → latest GitHub release of the template repo (`create.go:78`).
+2. `downloadTemplate` → fetches **the whole repo tarball** at that tag into a temp dir, returns `&lt;tmp&gt;/&lt;templateName&gt;/` (`github.go:74-98`). Because the whole repo is extracted, dependencies are version-locked for free.
+3. `prepareCreateTemplate` → `LoadTemplate(&lt;root&gt;/template.yaml)` + `Resolve(...)` (`create.go:144-156`).
+4. `renderCreateOutput` → renders `&lt;root&gt;/skeleton/` into `OutputDir` (`create.go:158-167`).
+5. `processDependencies` → renders sibling projects (`dependencies.go:43-100`).
+6. `WriteScaffold` → `.intropy/scaffold.json` (`create.go:116-129`).
+7. `maybeWriteCreateResult` → optional `--output-json` (`create.go:169-191`).
+
+**Value layering** (`values.go:34-67`, `ResolveLayered`): schema defaults → base layer → `--values` files (`-` = stdin) → `--set` → interactive prompts for missing required → JSON-Schema validation → `spec.values` derived expressions (Go text/template + sprig, `missingkey=error`).
+
+**Rendering** (`render.go:26-62`): walks `skeleton/`, renders both path segments and, for files ending in `.tmpl`, contents; the `.tmpl` suffix is stripped. Atomic writes via temp+rename. This is why files are named `src/{{ .name }}.csproj.tmpl`.
+
+**Dependencies** (`dependencies.go`):
+- `DependencySpec` = `{template, output, values}` (`manifest.go:49-61`). `output` renders to a **single path segment**, validated at `dependencies.go:230-239`; the dependency always lands as a *sibling* of the component.
+- Skip-if-already-scaffolded logic in `dependencyDirScaffold` (`:173-206`) — refuses foreign templates and non-empty unmanaged dirs; drift warning at `:211-225`. `--force` never propagates (`:120-125`). Depth cap 5 (`:16`), visited-set dedupes diamonds.
+
+## 2. scaffold.json data model
+
+`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/scaffold.go:58-89`, written to `.intropy/scaffold.json` (`ScaffoldRelPath`, `:18`), schema version 1 (`:15`).
+
+```jsonc
+{
+  "schemaVersion": 1,
+  "template": "extractor",        // repo directory name, NOT metadata.name
+  "owner": "integrio-intropy",
+  "repo": "intropy-templates",
+  "version": "v1.x.y",            // resolved release tag
+  "values": { ... },              // full resolved map incl. derived spec.values
+  "role": "shared-library",       // optional, from label
+  "blockKind": "extractor",       // optional, from label
+  "dataFlow": "in",               // optional, from label
+  "dependsOn": [{ "template": "shared-contracts", "dir": "../Contracts" }]
+}
+```
+
+`blockKind` / `dataFlow` / `role` are **not parameters** — they are lifted from `metadata.labels` (`scaffold.go:91-101`):
+- `intropy.dev/template-role` → `role` (`shared-library`, `system-host`)
+- `intropy.dev/block-kind` → `blockKind` (`extractor` | `loader`)
+- `intropy.dev/data-flow` → `dataFlow` (`"in"` | `"out"`)
+
+`blockKind`/`dataFlow` recording is **brand-new, uncommitted** — see `git diff internal/template/scaffold.go` and `create.go:123-125`, `dependencies.go:139-141`. Same for the whole `internal/system/` package and `cmd/intropy/sys*.go` (untracked).
+
+Discovery: `FindScaffold` walks up (`scaffold.go:136-160`); `ListScaffolds` walks down (`scaffold_list.go`).
+
+## 3. Where template content lives
+
+**External GitHub repo**, not embedded, not harbor: `integrio-intropy/intropy-templates` (`github.go:14-15`). Skills are the OCI/harbor path — templates are GitHub-release tarballs.
+
+Locally cloned at **`/Users/robinhultman/dev/intropy/tooling/intropy-templates`** (clean working tree, HEAD `dd78568 Rename models to contracts`). Templates: `extractor/`, `loader/`, `shared-contracts/`, `system-host/`, `hello-world/`, `transactional/`.
+
+### Extractor template
+`/Users/robinhultman/dev/intropy/tooling/intropy-templates/extractor/template.yaml`
+
+Parameters: `name` (PascalCase, dotted allowed), `organization`, `topic` (kebab), `contract` (PascalCase), `empty` (bool, default false). Derived `spec.values` (`:51-61`): `appId` = kebab of name with `.`→`-`; `contracts` = literal `"Contracts"`; `pubsub` = literal `"pubsub"`. Dependency: `shared-contracts` → `{{ .contracts }}` with `name` + `empty` passed through.
+
+Generated structure (`extractor/skeleton/`):
+```
+src/{{ .name }}.csproj, appsettings.json, Program.cs
+src/ExtractorRunner.cs
+src/Configuration/Constants.cs
+src/Model/In.cs
+src/Process/{Deserializer,Validator,Transformer,Serializer,ServiceCollectionExtensions}.cs
+test/{{ .name }}.Test.csproj + test/Process/{Deserializer,Serializer,Transformer,Validator}Tests.cs
+local/dapr-components/{inbound.yaml,pubsub.yaml,idempotency-service.yaml,business-incident-service.yaml}
+local/platform-services/... , local/sample-data/sample-order.json
+Taskfile.yml, docker-compose.yml, Dockerfile, README.md, AGENTS.md, CLAUDE.md, .gitignore, .dockerignore
+```
+
+**The fluent builder** — `extractor/skeleton/src/Process/ServiceCollectionExtensions.cs.tmpl:14-43`:
+
+```csharp
+ExtractorBuilder&lt;In, Order, Context&gt;.Create("{{ .name }}.Process", provider)
+    .WithDeserializer(new Deserializer())
+    .WithValidator(new Validator())
+    .WithIdempotency(idExtractor: (order,_) =&gt; order.OrderId,
+                     dateExtractor: (order,_) =&gt; order.OrderDate)
+    .WithTransformer(new Transformer())
+    .WithSerializer(new Serializer())
+    .WithDaprTopicPublisher(Constants.PubSubName, Constants.TopicName,
+                            new Uri(Constants.EventSource), Constants.EventType)
+    .WithBusinessIncidents(messageIdExtractor: ..., subjectExtractor: ...)
+    .Build()
+```
+Under `empty: true` the idempotency lambdas become `throw new NotImplementedException()` (`:18-30`); step bodies elsewhere follow the same `{{- if .empty }}` pattern (e.g. `Sender.cs.tmpl:13-24`, `Model/In.cs.tmpl`).
+
+### Loader template
+`/Users/robinhultman/dev/intropy/tooling/intropy-templates/loader/template.yaml` — identical parameter set, labels `block-kind: loader`, `data-flow: "out"`.
+
+`loader/skeleton/src/Process/ServiceCollectionExtensions.cs.tmpl:15-33`:
+```csharp
+LoaderBuilder&lt;Order, Out, Context&gt;.Create("{{ .name }}.Process", provider)
+    .WithDeserializer(new Deserializer())
+    .WithValidator(new Validator())
+    .WithIdempotency()                       // keys off CloudEvent Subject/Time
+    .WithTransformer(new Transformer())
+    .WithSender(new Sender(provider.GetRequiredKeyedService&lt;IFileAdapter&gt;(
+        Constants.DestinationFileAdapterKey)))
+    .WithBusinessIncidents(...)
+    .Build()
+```
+
+## 4. Transports / endpoints — "From" and "To" today
+
+**There is no transport/connector/endpoint abstraction anywhere in the CLI, the scaffold record, or the template parameters.** No `from`, `to`, `transport`, or `connector` parameter exists. The only pipeline-level "edges" the model knows about are the *pub/sub topic* (`topic` + `pubsub`) — i.e. the internal system edge, not the external endpoint.
+
+What actually exists is a **hardcoded FILE transport**, expressed in three places per component:
+
+1. **Dapr binding component (local-storage), fixed name + fixed folder:**
+   - `extractor/skeleton/local/dapr-components/inbound.yaml.tmpl` — `type: bindings.localstorage`, `name: inbound`, `rootPath: "./local/storage/inbound"`
+   - `loader/skeleton/local/dapr-components/destination.yaml` — same, `name: destination`, `rootPath: "./local/storage/destination"`
+   Note the extractor's is `.tmpl` but contains no template expressions; the loader's is plain YAML.
+
+2. **Constants** (`extractor/.../Configuration/Constants.cs.tmpl:11,16`, `loader/...:11,13`): `InboundBindingName = "inbound"` / `SourceFileAdapterKey = "source"`; `DestinationBindingName = "destination"` / `DestinationFileAdapterKey = "destination"`. These are literals — **not** derived from any template parameter.
+
+3. **DI registration** — `extractor/skeleton/src/Program.cs.tmpl:39-42` and `loader/skeleton/src/Program.cs.tmpl:41-44`:
+```csharp
+services.AddKeyedSingleton&lt;IFileAdapter&gt;(Constants.SourceFileAdapterKey, (sp,_) =&gt;
+    new LocalFileAdapter(sp.GetRequiredService&lt;DaprClient&gt;(),
+                         new FileAdapterOptions(Constants.InboundBindingName)));
+```
+
+The **extractor's "From"** is a poll loop, not a builder step: `ExtractorRunner.cs.tmpl:87-126` sweeps `fileAdapter.ListAsync()` every `Constants.PollIntervalSeconds` (5, hardcoded at `Constants.cs.tmpl:14`), reads content, injects `file_name` into `Context`, executes the pipeline, deletes on Success/Cancelled, leaves the file on failure for retry.
+
+The **loader's "To"** is a pipeline step: `Sender.cs.tmpl:11-26` — `JsonSerializer.Serialize(input)` then `fileAdapter.WriteAsync($"{input.OrderId}.json", ...)`. Its "From" is the Dapr streaming subscription in `LoaderRunner.cs.tmpl:62-77`.
+
+**The adapter abstraction already supports more transports than the templates use.** `/Users/robinhultman/dev/intropy/tooling/intropy-libs-framework/src/Intropy.Libs.Framework.Adapters/File/` contains `IFileAdapter.cs`, `LocalFileAdapter.cs`, `SftpAdapter.cs`, `AzureBlobStorageAdapter.cs`, and `FileAdapterOptions.cs` (`DaprBindingName`, `BasePath`, `FileNameRegex?`). Templates wire `LocalFileAdapter` only, and never use `BasePath`/`FileNameRegex`. That is the natural seam for a `transport` parameter: swap the adapter class + Dapr component YAML while keeping the keyed-service key and `Constants.*BindingName` stable.
+
+## 5. System-level assembly (`internal/system/`, untracked)
+
+`Assemble` (`assemble.go:27-119`) reads scaffold records: skips `blockKind == ""` with a warning (`:43`), skips unsupported kinds (`:46-47`), pulls `contract` (`:59`, hard error with remediation text) and `pubsub` defaulting to `"pubsub"` (`:63`), keys topics by `TopicKey{Pubsub, Name}` (`model.go:6-9`), and errors on conflicting contracts for the same key (`:74-77`). Exactly one `role: shared-library` project is required (`:91-97`).
+
+Codegen (`codegen.go`) emits two files into the host:
+- `Topics.cs`: `TopicRef&lt;{{Contract}}&gt;.Define("{{Pubsub}}", "{{Name}}")` (`:26`)
+- `&lt;SystemClass&gt;.cs`: `builder.AddExtractor("app-id").Publishes(Topics.Field);` / `builder.AddLoader("app-id").Subscribes(Topics.Field);` (`:41`, mapping at `:85-89`)
+
+So the only `From`/`To` in the generated topology is `Publishes`/`Subscribes` against a topic. External endpoints are invisible to the system model.
+
+## 6. Test folders &amp; local file conventions
+
+- Tests: `test/` sibling of `src/`, project `test/{{ .name }}.Test.csproj` referencing `../src/{{ .name }}.csproj`; net10.0, xunit 2.9.3 + xunit.runner.visualstudio 3.1.5 + NSubstitute 5.3.0, `&lt;Using Include="Xunit" /&gt;`. One test file per pipeline step under `test/Process/` — extractor has Deserializer/Serializer/Transformer/Validator, loader has Deserializer/Sender/Transformer/Validator. **No test exists for the Runner or for the file adapter wiring.**
+- Local dev tree (`Taskfile.yml.tmpl`): `INBOUND_DIR: ./local/storage/inbound` must be kept in sync by hand with `local/dapr-components/inbound.yaml` (comment at `Taskfile.yml.tmpl:17-19`). Tasks: `build`, `seed` (copies `local/sample-data/sample-order.json` into inbound), `test`, `run` (dapr run, no `--app-port`, `--resources-path ./local/dapr-components`), `services:up/down` (docker compose: otel-lgtm, idempotency-service, business-incident-service), `clean` (`rm -rf ./local/storage`).
+- `local/storage/` is created at runtime and gitignored; only `local/sample-data/` is committed.
+
+## 7. Two issues worth flagging
+
+1. **`contract` is a required parameter but the example fixtures omit it.** `extractor/examples/{minimal,empty}.yaml` and `loader/examples/minimal.yaml` set only `name`, `organization`, `topic` (+`empty`). The documented commands in those files use `--no-input`, so they now fail with `missing required parameter(s): contract`.
+2. **Duplicated literals for the transport.** `pubsub` appears both as a derived `spec.values` entry (used for scaffold.json / `sys create`) and as a hardcoded `PubSubName = "pubsub"` in `Constants.cs.tmpl:8` — the template value is not threaded into the generated C#. Same class of duplication for `inbound`/`destination` binding names vs. the Dapr component YAML. Any transport parameterization should collapse these.</result>
+<usage><subagent_tokens>90868</subagent_tokens><tool_uses>43</tool_uses><duration_ms>178984</duration_ms></usage>
+</task-notification>
