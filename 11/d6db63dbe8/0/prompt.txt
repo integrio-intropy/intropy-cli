@@ -1,0 +1,81 @@
+<task-notification>
+<task-id>a1fbd785fd9ca182c</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/8bc086a3-b593-46ca-93bd-0ed2de64bee6/tasks/a1fbd785fd9ca182c.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore Intropy skills content" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>No `intropy.yaml` references exist anywhere in the catalog — clean, no stale references to flag. All seven implementation skills reference `agent.md` (the current, non-retired manifest). No `references/` directories exist anywhere; every skill is a single self-contained `SKILL.md`.
+
+Here is the full findings report.
+
+## Repo structure: `/Users/robinhultman/dev/intropy/skills`
+
+A catalog of agent skills for building Intropy integrations, published as OCI artifacts to `harbor.intropy.io/skills/&lt;name&gt;`.
+
+- `.git/`, `.github/` (CI), `scripts/` (lint + publish tooling, e.g. `scripts/publish.sh`, `scripts/lint.sh`)
+- `.gitignore`, `VERSION`, `README.md`, `CONTRIBUTING.md`
+- `skills/` — the catalog itself
+
+Publishing model: skills tracked in `skills.json`, digest-pinned in `skills.lock.json`. CI lints on every branch and publishes on merge to `main` using the `intropy` CLI (`intropy skills publish` per skill + `intropy skills collection publish` for the index). Per CONTRIBUTING, the canonical skill layout allows an optional `references/` dir, but none of the current skills use one ("keep SKILL.md small; push depth into references/" is aspirational here). Key authoring rules: one capability per skill; description does the routing (trigger phrases + SKIP redirects); duplicate rather than share (no cross-skill include); must work outside Integrio (no internal hostnames); every skill ends with a Verification section.
+
+## All skills in `/Users/robinhultman/dev/intropy/skills/skills`
+
+Nine skill directories exist (the task named two; here are all):
+
+Building an integration:
+- `intropy-getting-started` — bootstrap a new integration from a blueprint, first run
+- `intropy-pipeline` — compose the transactional send pipeline (step order, builder, DI)
+- `intropy-blocks` — author Block step classes; BusinessStepResult vs TechnicalStepResult
+- `intropy-endpoint` — HTTP/subscribe endpoints and StepResult → response mapping
+- `intropy-dapr` — Dapr components and the code↔YAML naming-sync rule
+- `intropy-manifest` — `agent.md` project manifest and canonical project layout
+- `intropy-testing` — xUnit tests for Block steps and pipelines
+- `intropy-code-review` — review a component against Intropy conventions
+
+Platform:
+- `intropy-blueprint-authoring` — authoring blueprints (`template.yaml` manifests + skeleton trees)
+
+Planned (not present): `intropy-architecture`, `intropy-connector`, `intropy-migrate`. Integrio-internal skills live in a separate repo `intropy-skills-internal`.
+
+## Skill 1: `intropy-getting-started`
+
+File: `/Users/robinhultman/dev/intropy/skills/skills/intropy-getting-started/SKILL.md` (single file, no references). Owns the zero-to-running journey; routes all feature work to sibling skills.
+
+Content outline:
+- **Blueprint concept** — a scaffold template = manifest (`template.yaml`) declaring parameters + skeleton file tree; rendered by the `intropy` CLI; fetched by release tag for reproducibility.
+- **Prerequisites** — .NET 10 SDK; Dapr CLI initialized (`dapr init`); the `intropy` CLI. Install via Homebrew (`brew tap integrio-intropy/tap`, `brew install intropy`) or `curl` install script (macOS/Linux, Windows via WSL2). CLI provides `intropy int create` (scaffold) and `intropy skills add` (installs skills from `harbor.intropy.io/skills/&lt;name&gt;`).
+- **Available blueprints** — two: `hello-world` (ASP.NET Minimal API, Dapr pub/sub trigger, `POST /publish`, subscribed endpoint runs Deserialize → Validate → Transform → Serialize → Send) and `transactional` (a .NET job: polls inbound folder via Dapr binding, in-memory pub/sub, full VETER send pipeline, writes to outbound folder; extra `empty` boolean param that makes step bodies throw `NotImplementedException` for an agent to fill in). Both take a required PascalCase `name` param used for project/namespace/assembly; a kebab-case `appId` is derived (e.g. `Int1055.OrderSync` → `int1055-ordersync`).
+- **Scaffold** — write `values.yaml`, run `intropy int create hello-world -o ./hello-world -f values.yaml`. Version selection: no flag = latest release, `--version v0.2.1` = tag, `--version main` = default branch. Params validated against blueprint JSON Schema.
+- **What you get** — full rendered project tree: `agent.md` (agent-facing guide, holds run command), `README.md`, `local/dapr-components/` (`pubsub.yaml`, `local-storage.yaml`), `src/` (csproj, `.http`, `Program.cs` DI wiring, `appsettings*.json`, `Configuration/Constants.cs`, `Ingest/Endpoints.cs`, `Model/`, `Process/` with `OrderSendPipeline.cs`, `OrderSendPipelineBuilder.cs`, `ServiceCollectionExtensions.cs`, `Steps/`). `transactional` adds `Taskfile.yml` and `local/sample-data/`. Per-project `README.md`/`agent.md` are authoritative for the exact run command.
+- **First run** — `dotnet build ./src`; run under Dapr using the command from `agent.md` (given for hello-world: `dapr run --app-id hello-world --app-port 5001 --dapr-http-port 3500 --resources-path ./local/dapr-components -- dotnet run --project ./src --urls http://localhost:5001`); publish a sample message via `src/&lt;Name&gt;.http` `POST /publish` (sample order JSON); `GET /dapr/subscribe` to inspect subscriptions. `transactional` first run is file-driven (drop `sample-order.json` in inbound folder).
+- **Where to go next** — routes to `intropy-pipeline`, `intropy-blocks`, `intropy-endpoint`, `intropy-dapr`, `intropy-manifest`.
+- **Verification** — inspect rendered tree (placeholders resolved, no `.tmpl` suffixes), `dotnet build` succeeds, `dapr run` starts app+sidecar, `POST /publish` returns 200 and logs show pipeline completing.
+
+Topics it owns: blueprint definition, blueprint catalog (`hello-world`/`transactional`), `intropy int create` + version flags, `intropy` CLI install, prerequisites, rendered project layout overview, first build + first run + first message.
+
+## Skill 2: `intropy-dapr`
+
+File: `/Users/robinhultman/dev/intropy/skills/skills/intropy-dapr/SKILL.md` (single file, no references). Owns Dapr component YAML configuration and the code↔YAML name-sync discipline.
+
+Content outline:
+- **Two-layer model** — YAML under `local/dapr-components/` (read by sidecar at startup) + code references in `Program.cs`/Step constructors using components by name; names must match exactly.
+- **Naming-sync rule (load-bearing)** — table mapping four names across `Constants.cs`, `Program.cs`/`Endpoints.cs`, and the YAML: pub/sub component (`PubSubName` ↔ `.WithTopic`/`PublishEventAsync` ↔ `metadata.name`), topic (`TopicName`), binding (`LocalStorageBindingName` ↔ `FileAdapterOptions` ↔ binding `metadata.name`), component/service (`ComponentName` ↔ `x.ComponentName` and run command `--app-id`). Drift is silent at compile time; surfaces as "component not found" or messages disappearing.
+- **What's in `local/dapr-components/`** — scaffolds `pubsub.yaml` (`pubsub.in-memory`) and `local-storage.yaml` (`bindings.localstorage`, `rootPath: /tmp/hello-world`). These are dev components; production swaps the YAML flavour but keeps the component name so code doesn't change.
+- **Naming convention** — file → `metadata.name` mapping (`pubsub`, `local-storage`, `state-store`); metadata name is canonical, filename is a hint.
+- **Adding a new component** — worked Kafka pub/sub example (replace in-memory spec, keep metadata name → YAML-only change). If the name does change: add `Constants.OrdersPubSubName`, new `pubsub-orders.yaml`, update `.WithTopic`/`PublishEventAsync`, update `agent.md` (routes to `intropy-manifest`).
+- **Bindings — code wiring** — input binding (cron canonical example) points YAML at an endpoint route (route = metadata.name; handler is `intropy-endpoint` territory). Output binding: typed adapter in `Program.cs`, existing `IFileAdapter`/`LocalFileAdapter` pattern shown; note `IFileAdapter` is single-target today (use keyed service or new interface for a second binding; prefer one binding per adapter or consult framework owners). Non-file bindings use `DaprClient.InvokeBindingAsync(...)`.
+- **State stores** — `customer-store.yaml` (`state.in-memory`, swap for redis/cosmosdb), `Constants.CustomerStoreName`, `dapr.GetStateAsync&lt;Customer&gt;(...)`; `DaprClient` registered via `AddDaprClient()` and injected into step constructor.
+- **Does the run command need to change?** — usually no; sidecar discovers everything under `--resources-path`. Touch the run command only when run shape (port/command/app id) changes → `intropy-manifest`.
+- **What not to do** — no hard-coded component name literals (always via `Constants.cs`); no `IOptions&lt;...&gt;` for component names; no production credentials in `local/dapr-components/`; no per-environment YAML files there; don't change `apiVersion`/`kind`.
+- **Verification** — sidecar reads components at startup only (restart `dapr run` after YAML changes; code hot-reloads, components don't); check startup logs for `Component loaded: ...`; or query `GET /v1.0/metadata` components array; then exercise the flow.
+
+Topics it owns: `local/dapr-components/` directory, pub/sub components, input/output bindings (incl. cron), state stores, the naming-sync rule, swapping dev↔prod component flavours, Dapr "component not found"/silent-message debugging.
+
+## Cross-cutting notes
+
+- **`intropy.yaml`**: zero references anywhere in `skills/` — nothing stale to flag.
+- **`agent.md`**: referenced by 7 skills and treated as the current, authoritative per-project manifest holding the run command; `intropy-manifest` owns its conventions. Consistent with intropy.yaml having been retired in favor of `agent.md`.
+- **`references/` / supporting files**: none of the nine skills ship any; both target skills are single `SKILL.md` files.</result>
+<usage><subagent_tokens>24500</subagent_tokens><tool_uses>6</tool_uses><duration_ms>65514</duration_ms></usage>
+</task-notification>
