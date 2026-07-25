@@ -1,0 +1,1 @@
+encores dashboard is running on http://localhost:9400/gghps/flow, i want to do something similar
