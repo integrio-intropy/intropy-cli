@@ -1,0 +1,17 @@
+I am not sure if I think it is good that this file should decide how things are drawn
+The plan is that the AppHost project contains things like this
+
+var s = SystemBuilder.Create("order-fulfillment");
+
+var idempotency = s.UseService("iss-idempotency-service");
+
+s.AddExtractor("stock-extractor")
+    .TriggeredBy(Trigger.Connector(Connectors.Wms))
+    .Publishes(StockFlow.Raw);
+
+s.AddAssembler("order-assembler")
+    .TriggeredBy(OrderFlow.Raw, StockFlow.Raw)
+    .Publishes("fulfillment", OrderFlow.Fulfillment)
+    .Uses(idempotency);
+
+Maybe change so that a receiving component has something like .Consumes and the dependency is deduced by a component publishing something and another component consumes that something?
