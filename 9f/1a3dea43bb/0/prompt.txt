@@ -1,0 +1,1 @@
+The simpler topoly.json is the better. Do you see any information that we are tracking that could be removed?
