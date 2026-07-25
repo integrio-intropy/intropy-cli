@@ -1,0 +1,168 @@
+<task-notification>
+<task-id>a71e57be7931adfe8</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/a73b4cf5-052c-4d7c-bd82-cb2846d01710/tasks/a71e57be7931adfe8.output</output-file>
+<status>completed</status>
+<summary>Agent "Verify templates vs tutorial claims" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Authoritative location
+
+**`/Users/robinhultman/dev/intropy/tooling/intropy-templates`** — branch **`feature/more-templates`** (tracking `origin/feature/more-templates`, HEAD `5e4f769 "Add connector concept"`, clean tree). This is the only checkout that contains `extractor/`, `loader/`, `shared-contracts/` (and `system-host/`).
+
+Notes on the other locations:
+- `/Users/robinhultman/dev/intropy/blueprints` is a **second clone of the same remote** (`git@github.com:integrio-intropy/intropy-templates.git`) parked on branch `feature/manifests`. Its tree contains **only `hello-world/` and `transactional/`** — no extractor/loader/shared-contracts on *any* of its refs. It is not authoritative for this tutorial; it does carry `manifests/` subdirectories that `feature/more-templates` lacks.
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli` (branch `feature/system`) contains **no `go:embed`, no `embed.FS`, no `testdata/`**. Templates are always fetched at runtime from GitHub (`owner=integrio-intropy`, `repo=intropy-templates`) per `internal/template/create.go` / `github.go`. Nothing ships inside the CLI.
+- Important caveat: `origin/main` does **not** contain extractor/loader/shared-contracts. Any `intropy int create extractor` must pass `--version feature/more-templates` (or a tag cut from it) — `--version main` will fail.
+
+---
+
+## Claim-by-claim verdicts
+
+### 1. `extractor` and `loader` templates exist — **SUPPORTED**
+Templates in the authoritative repo: `extractor`, `loader`, `shared-contracts`, `system-host`, `hello-world`, `transactional`.
+- `/Users/robinhultman/dev/intropy/tooling/intropy-templates/extractor/template.yaml`
+- `/Users/robinhultman/dev/intropy/tooling/intropy-templates/loader/template.yaml`
+
+### 2. Parameters `organization` + `topic`; is `contract` a parameter? — **PARTIAL** (both params exist, but `contract` is also **required** and the tutorial's command omits it)
+Both `extractor/template.yaml` and `loader/template.yaml` declare identical parameter sets:
+
+| Param | Required | Default | Pattern |
+|---|---|---|---|
+| `name` | yes | — | `^[A-Z][A-Za-z0-9]*(\.[A-Z][A-Za-z0-9]*)*$` |
+| `organization` | yes | — | `^[A-Z][A-Za-z0-9]*$` |
+| `topic` | yes | — | `^[a-z][a-z0-9-]*$` |
+| `contract` | **yes** | — | `^[A-Z][A-Za-z0-9]*$` |
+| `empty` | no | `false` | boolean |
+
+`shared-contracts/template.yaml`: `name` (required), `empty` (optional, default false).
+
+So `intropy int create extractor -n OrderExtractor -s organization=Fluxia -s topic=orders` will **prompt for `contract`** (or fail under `--no-input`). The fixtures `extractor/examples/minimal.yaml` and `loader/examples/minimal.yaml` all include `contract: Order`.
+
+Derived `spec.values` (not parameters, but present in the value map and in `scaffold.json`): `appId`, `contracts` (`Contracts`), `pubsub` (`pubsub`), `connector` (`&lt;appId&gt;-source` / `&lt;appId&gt;-destination`). Note both templates' own `README.md` parameter tables **omit `contract`** — the READMEs are stale relative to `template.yaml`.
+
+### 3. `shared-contracts` dependency scaffolding `Contracts/` with `Contracts.csproj`, `Order.cs`, `OrderLine.cs` — **SUPPORTED**
+`extractor/template.yaml:68-73` and `loader/template.yaml:68-73`:
+```yaml
+dependencies:
+  - template: shared-contracts
+    output: '{{ .contracts }}'
+    values: { name: '{{ .contracts }}', empty: '{{ .empty }}' }
+```
+`internal/template/dependencies.go:52,66` resolves `depDir = filepath.Dir(abs(outputDir)) / "Contracts"` — a true **sibling of the integration dir**, and records `dependsOn[].dir = "../Contracts"`.
+
+Rendered files (`shared-contracts/skeleton/`): `Contracts.csproj`, `Order.cs`, `OrderLine.cs`, plus **`AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore`** (tutorial omits these). `Order` = `(string OrderId, string CustomerId, DateTimeOffset OrderDate, IReadOnlyList&lt;OrderLine&gt; Lines)`; `OrderLine` = `(string Sku, int Quantity, decimal UnitPrice)`. With `empty: true`, `OrderLine.cs` renders **empty** and `Order` becomes `public record Order();`.
+
+Also relevant: the second component's render **skips** an existing `Contracts/` (`dependencies.go:81-90`, action `"exists"`, with drift warnings).
+
+### 4. Extractor rendered layout — **PARTIAL / two claims MISSING**
+
+| Tutorial claim | Actual |
+|---|---|
+| `Taskfile.yml` | ✅ `extractor/skeleton/Taskfile.yml.tmpl` |
+| `docker-compose.yml` | ✅ `extractor/skeleton/docker-compose.yml.tmpl` |
+| `local/dapr-components/poll.yaml` (cron binding, 5s) | ❌ **MISSING — no such file, and no cron binding anywhere.** Polling is an **in-process `PeriodicTimer`** in `src/ExtractorRunner.cs` driven by `Constants.PollIntervalSeconds = 5` |
+| `local/dapr-components/inbound.yaml` (folder binding) | ⚠️ **PARTIAL** — file is `inbound.yaml`, but the component's `metadata.name` is **`binding.{{ .connector }}`** (e.g. `binding.order-extractor-source`), not `inbound` |
+| `local/dapr-components/pubsub.yaml` (in-memory, named `pubsub`) | ✅ `type: pubsub.in-memory`, `metadata.name: pubsub` |
+| `local/sample-data/sample-order.json` | ✅ |
+| `src/` with `src/Model/In.cs` | ✅ private `In` record; imports `OrderLine` from `Contracts` |
+| `test/` | ✅ `test/{{ .name }}.Test.csproj` + `test/Process/{Deserializer,Serializer,Transformer,Validator}Tests.cs` |
+
+**Rendered but omitted by the tutorial tree:** `Dockerfile`, `.dockerignore`, `.gitignore`, `AGENTS.md`, `CLAUDE.md`, `README.md`, `local/dapr-components/idempotency-service.yaml` + `business-incident-service.yaml` (Dapr `HTTPEndpoint`s), the whole `local/platform-services/` subtree (compose + 5 component yamls for Idempotency and Business Incident services), `src/appsettings.json`, `src/Configuration/Constants.cs`, `src/ExtractorRunner.cs`, `src/Program.cs`, `src/Process/{Deserializer,Serializer,Transformer,Validator,ServiceCollectionExtensions}.cs`.
+
+### 5. Loader rendered layout — **PARTIAL** (same `destination` naming issue)
+- `Taskfile.yml` ✅, `docker-compose.yml` ✅
+- `local/dapr-components/pubsub.yaml` ✅ in-memory, named `pubsub`
+- `local/dapr-components/destination.yaml` ⚠️ file exists, but component `metadata.name: binding.{{ .connector }}` (e.g. `binding.order-loader-destination`), not `destination`. `"destination"` is only the **DI keyed-service key** (`Constants.DestinationFileAdapterKey`)
+- `src/Model/Out.cs` ✅, `test/` ✅ (`test/Process/{Deserializer,Sender,Transformer,Validator}Tests.cs`)
+- Same omissions as #4, plus loader-specific `src/LoaderRunner.cs`. The loader has **no `local/sample-data/`** (by design — `loader/README.md` explains verification is via `dapr publish`).
+
+### 6. Extractor sample logic — **PARTIAL** (behavior supported; one log string wrong)
+`/Users/robinhultman/dev/intropy/tooling/intropy-templates/extractor/skeleton/src/ExtractorRunner.cs.tmpl`:
+- Every tick lists inbound folder ✅ (`fileAdapter.ListAsync()`)
+- Transforms private `In` → shared `Order` ✅ (`Process/Transformer.cs.tmpl`)
+- Publishes as CloudEvent to `Constants.TopicName` on `Constants.PubSubName` ✅ (`.WithDaprTopicPublisher(...)` in `Process/ServiceCollectionExtensions.cs.tmpl`)
+- Deletes source file ✅ — on `Success` **and** on `Cancelled` (idempotent duplicate). Failures are left for the next tick (tutorial omits this)
+- Runs until stopped ✅ (`PeriodicTimer` + `WaitForNextTickAsync(ct)`, Ctrl+C via `Console.CancelKeyPress`)
+- Logger category ✅ — `loggerFactory.CreateLogger("{{ .name }}.Pipeline")` → `OrderExtractor.Pipeline`
+- `"Published ORD-1001 to topic orders (pubsub)"` ✅ — template `"Published {Subject} to topic {Topic} ({PubSub})"`, `Subject` = `input.OrderId`
+- ❌ `"Swept 1 file from inbound"` — actual template is **`"Swept {Count} file(s) from inbound"`**, so it renders `Swept 1 file(s) from inbound` (the template's own `README.md.tmpl` shows exactly this)
+
+Also present but unmentioned: a startup line `"Polling inbound every 5s — stop with Ctrl+C"`, a `"Cancelled {FileName} as a duplicate (idempotency check)"` path, sidecar wait/shutdown, and idempotency + Business Incident Service wiring in the pipeline.
+
+### 7. Loader sample logic — **PARTIAL**
+`loader/skeleton/src/LoaderRunner.cs.tmpl` + `src/Process/`:
+- Subscribes to topic on `pubsub` ✅ — Dapr **streaming** subscription (`pubSubClient.SubscribeAsync`)
+- Deserializes to shared `Order` ✅, validates ✅, maps to private `Out` ✅
+- Writes `{orderId}.json` via the destination adapter ✅ (`Process/Sender.cs.tmpl`: `fileAdapter.WriteAsync($"{input.OrderId}.json", ...)`)
+- ⚠️ Destination path is **`local/storage/{{ .connector }}/`** (e.g. `local/storage/order-loader-destination/`), **not** `local/storage/destination/`
+- `"Subscribed to topic orders (pubsub)"` ✅ exact match
+- Output shape ✅ — `Out(string OrderId, string CustomerId, DateTimeOffset LoadedAt, string Status)`, `Status: "Loaded"`, serialized with default `System.Text.Json` (PascalCase)
+
+Unmentioned: `Loaded {Subject} from topic ... (pubsub)` success log, ack/retry mapping (`TopicResponseAction`), 60s message-processing timeout, `retrycount`-driven `isRetry`, `Deserializer` back-stamping `cloudevent.subject`/`cloudevent.time` from `OrderId`/`OrderDate` for idempotency.
+
+### 8. `ProjectReference ../../Contracts/Contracts.csproj` — **SUPPORTED**
+`extractor/skeleton/src/{{ .name }}.csproj.tmpl` and `loader/skeleton/src/{{ .name }}.csproj.tmpl`:
+```xml
+&lt;ProjectReference Include="../../{{ .contracts }}/{{ .contracts }}.csproj" /&gt;
+```
+With `contracts = Contracts` → `../../Contracts/Contracts.csproj`, resolving from `&lt;integration&gt;/src/` to `&lt;parent&gt;/Contracts/` — consistent with `dependencies.go` placing the dep as a sibling of the integration dir. The test csproj references `../src/{{ .name }}.csproj`.
+
+### 9. `task run` behavior — **PARTIAL**
+**Extractor** (`extractor/skeleton/Taskfile.yml.tmpl`): `run` has `deps: [seed, services:up]`. `seed` does `mkdir -p ./local/storage/{{ .connector }}` + `cp local/sample-data/sample-order.json` into it ✅ (but into the **connector** folder, not `inbound`). `--resources-path ./local/dapr-components` ✅. Unmentioned: `services:up` runs `docker compose up -d --wait` (requires Docker: lgtm + Idempotency + Business Incident services), `DOTNET_ENVIRONMENT=Development`, `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317`, `--dapr-http-port 3500`, `--dapr-grpc-port 50001`, `--placement-host-address=""`, `--scheduler-host-address=""`, no `--app-port`, then `dotnet run --project ./src`.
+
+**Loader** (`loader/skeleton/Taskfile.yml.tmpl`): `run` has `deps: [services:up]` only — **no seeding at all** (there is no `seed` task and no `sample-data/`). Same `--resources-path ./local/dapr-components` ✅. Extra task `publish` runs `dapr publish --publish-app-id &lt;appId&gt; --pubsub pubsub --topic &lt;topic&gt; --data '{"orderId":"ORD-2001",...}'`. Both also expose `build`, `test`, `services:up`, `services:down`, `clean`.
+
+### 10. Sample order data &amp; accepted JSON shape — **SUPPORTED**
+`extractor/skeleton/local/sample-data/sample-order.json.tmpl` renders (when `empty=false`; **the whole file renders blank when `empty=true`**):
+```json
+{ "orderId": "ORD-1001", "customerId": "CUST-42", "orderDate": "2026-05-13T09:30:00Z",
+  "lines": [ { "sku": "SKU-AAA", "quantity": 2, "unitPrice": 19.95 },
+             { "sku": "SKU-BBB", "quantity": 1, "unitPrice": 49.00 } ] }
+```
+✅ `ORD-1001`, ✅ `CUST-42`, ✅ `sku`/`quantity`/`unitPrice`. The tutorial's shape `{orderId, customerId, orderDate, lines:[{sku,quantity,unitPrice}]}` matches both the extractor's `In` and the loader's `Order`; both deserialize with `PropertyNameCaseInsensitive = true`, so camelCase JSON is accepted on both sides. Note the sample has **two** lines, not one.
+
+### 11. Storage paths `local/storage/inbound/` and `local/storage/destination/` — **MISSING**
+Both are `./local/storage/{{ .connector }}`:
+- `extractor/skeleton/local/dapr-components/inbound.yaml.tmpl`: `name: binding.{{ .connector }}`, `type: bindings.localstorage`, `rootPath: "./local/storage/{{ .connector }}"` → `./local/storage/order-extractor-source`
+- `loader/skeleton/local/dapr-components/destination.yaml.tmpl`: identical shape → `./local/storage/order-loader-destination`
+
+`local/storage/inbound` exists **only in the older `transactional` template** (`transactional/skeleton/local/dapr-components/inbound-storage.yaml.tmpl:10`, `transactional/skeleton/Taskfile.yml.tmpl:18`) — a likely source of the tutorial's stale paths. `local/storage/` is gitignored in both new templates.
+
+### 12. Topic/component names from runtime configuration — **MISSING (contradicted)**
+`extractor/skeleton/src/Configuration/Constants.cs.tmpl` and the loader's equivalent are **compile-time `const string`s** baked at scaffold time:
+```csharp
+public const string PubSubName = "pubsub";              // literal, not even from .pubsub
+public const string TopicName = "{{ .topic }}";         // baked at render
+public const string InboundBindingName = "binding.{{ .connector }}";
+public const int PollIntervalSeconds = 5;
+```
+No `IConfiguration`, no `IOptions&lt;&gt;`, no env-var reads for topic/pubsub/binding anywhere in `extractor/skeleton/src` or `loader/skeleton/src` — the only `GetEnvironmentVariable` call is `DOTNET_ENVIRONMENT` in `Program.cs`, and `appsettings.json` contains only a `Logging` section.
+
+The actual injection mechanism is different and worth correcting in the tutorial: **the Dapr component name is the seam, not app config**. The binding is deliberately named `binding.&lt;connector&gt;` so `sys create` / system-host can emit a **same-named component pointing at a different folder** in the staged overlay (see the comments in `inbound.yaml.tmpl`, `destination.yaml.tmpl`, `Constants.cs.tmpl`, and `system-host/skeleton/Connectors.cs.tmpl`). Pub/sub is always literally `pubsub` "so a component runs the same standalone or under this host" (`system-host/template.yaml`).
+
+### 13. `.intropy/scaffold.json` content — **SUPPORTED** (written by the CLI, not the template)
+Written by `internal/template/create.go:115-127` via `WriteScaffold` (`internal/template/scaffold.go:104`) to `&lt;projectRoot&gt;/.intropy/scaffold.json`. Schema (`scaffold.go:58-89`): `schemaVersion`, `template`, `owner`, `repo`, `version`, `values`, `role`, `blockKind`, `dataFlow`, `dependsOn[]{template,dir}`.
+
+For `extractor` with `name=OrderExtractor organization=Fluxia topic=orders contract=Order` it records:
+- `blockKind: "extractor"`, `dataFlow: "in"` (from labels `intropy.dev/block-kind`, `intropy.dev/data-flow`); loader → `"loader"` / `"out"`
+- `values`: all parameters **plus** the derived `spec.values` (`values.go:62` `renderDerivedValues`) — `topic: "orders"`, `contract: "Order"`, `organization: "Fluxia"`, `empty: false`, `appId: "order-extractor"`, `contracts: "Contracts"`, `pubsub: "pubsub"`, `connector: "order-extractor-source"`
+- `dependsOn: [{ "template": "shared-contracts", "dir": "../Contracts" }]`
+- no `role` for extractor/loader; the sibling `Contracts/.intropy/scaffold.json` gets `role: "shared-library"` and no `blockKind`
+
+`sys create` consumes exactly this: `internal/system/assemble.go:47` skips records whose `blockKind` is neither `extractor` nor `loader`; `assemble.go:110` errors if no `RoleSharedLibrary` project is found because `Topics.cs` needs the contract type.
+
+---
+
+## Additional things the templates render that the tutorial's trees omit
+
+1. **Platform-service dependencies are mandatory, not optional.** Both pipelines call `.WithIdempotency(...)` and `.WithBusinessIncidents(...)`, and `Program.cs` registers `AddIdempotencyServiceClient()` / `AddBusinessIncidentServiceClient()`. `task run` therefore needs Docker up (`local/platform-services/compose.yaml` + 5 component yamls + two `HTTPEndpoint` components on `127.0.0.1:8080` / `:8081`).
+2. **Idempotency behavior visible in the happy path**: re-seeding/re-publishing the same order **cancels** instead of duplicating, logging `Cancelled ORD-1001 as a duplicate (idempotency check)`.
+3. **CloudEvent envelope constants** — `EventSource = urn:Fluxia:order-extractor`, `EventType = fluxia.orders.extracted`.
+4. **`Dockerfile` requires a named build context**: `docker build --build-context contracts=../Contracts -t order-extractor .` (chiseled .NET 10 runtime).
+5. **`AGENTS.md` + `CLAUDE.md`** are rendered in every template (`CLAUDE.md` is just `@AGENTS.md`) and document the component to coding agents.
+6. **`empty: true` mode** — all step bodies become `NotImplementedException`, `sample-order.json` renders blank, `OrderLine.cs` renders blank, `Order`/`In`/`Out` become empty records.
+7. **`--version` matters** — extractor/loader/shared-contracts do not exist on `main`; the examples' documented `--version main` is wrong for these templates.
+8. **`system-host` template + `intropy sys create`** exist and generate `Topics.cs` / `Connectors.cs` / `&lt;Name&gt;System.cs` from the scaffold records; `.intropy/scaffold.json`'s `contract` and `connector` values are exactly what that codegen reads.
+9. Test frameworks pinned: xUnit 2.9.3 + NSubstitute 5.3.0, `net10.0`; app packages `Intropy.Framework.Blocks` 0.2.3, `Intropy.Framework.Adapters` 0.2.3, `Dapr.Client` 1.17.9 (loader adds `Dapr.Messaging` 1.17.9).</result>
+<usage><subagent_tokens>95841</subagent_tokens><tool_uses>32</tool_uses><duration_ms>242025</duration_ms></usage>
+</task-notification>
