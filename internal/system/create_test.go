@@ -190,7 +190,7 @@ public sealed class OrderFlowSystem : ISystemDefinition
 
     public void Define(SystemBuilder builder)
     {
-        builder.AddExtractor("order-extractor").From(Connectors.OrderExtractorSource).Publishes(Topics.Orders);
+        builder.AddExtractor("order-extractor").From(Connectors.OrderExtractorSource).Publishes(Topics.Orders).WithSchedule("* * * * *");
         builder.AddLoader("order-loader").Subscribes(Topics.Orders).To(Connectors.OrderLoaderDestination);
     }
 }

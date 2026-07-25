@@ -52,11 +52,18 @@ public sealed class {{ .SystemClass }} : ISystemDefinition
     public void Define(SystemBuilder builder)
     {
 {{- range .Components }}
-        builder.{{ .Add }}("{{ .AppID }}"){{ .From }}.{{ .Edge }}(Topics.{{ .Field }}){{ .To }};
+        builder.{{ .Add }}("{{ .AppID }}"){{ .From }}.{{ .Edge }}(Topics.{{ .Field }}){{ .To }}{{ .Schedule }};
 {{- end }}
     }
 }
 `
+
+// defaultExtractorSchedule is the cron every generated extractor starts with:
+// once every minute. Extractors are run-to-completion jobs, so the host re-runs
+// them on this schedule (CronJob emulation locally, a real CronJob in
+// production). The generated file is the user's after `sys create` — edit the
+// cron in place.
+const defaultExtractorSchedule = "* * * * *"
 
 var (
 	topicsFile      = template.Must(template.New("Topics.cs").Parse(topicsFileTmpl))
@@ -67,12 +74,13 @@ var (
 // componentView is a Component with its builder call, topic field and
 // connector calls resolved for the system class template.
 type componentView struct {
-	AppID string
-	Add   string // AddExtractor | AddLoader
-	Edge  string // Publishes | Subscribes
-	Field string // the Topics.cs field the component touches
-	From  string // `.From(Connectors.X)` for an extractor with a connector, else empty
-	To    string // `.To(Connectors.X)` for a loader with a connector, else empty
+	AppID    string
+	Add      string // AddExtractor | AddLoader
+	Edge     string // Publishes | Subscribes
+	Field    string // the Topics.cs field the component touches
+	From     string // `.From(Connectors.X)` for an extractor with a connector, else empty
+	To       string // `.To(Connectors.X)` for a loader with a connector, else empty
+	Schedule string // `.WithSchedule("...")` for an extractor, else empty
 }
 
 // writeTopicsFile overwrites <dir>/Topics.cs with the assembled topic
@@ -125,6 +133,12 @@ func writeSystemClassFile(dir string, m *Model, withConnectors bool) error {
 			v.Add, v.Edge = "AddExtractor", "Publishes"
 			if hasConnector {
 				v.From = ".From(Connectors." + field + ")"
+			}
+			// Gated on the same signal as From/To: a template release that
+			// predates Connectors.cs also pins an Intropy.Topology without
+			// WithSchedule, so the degraded shape must not call it.
+			if withConnectors {
+				v.Schedule = `.WithSchedule("` + defaultExtractorSchedule + `")`
 			}
 		} else {
 			v.Add, v.Edge = "AddLoader", "Subscribes"
