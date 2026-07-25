@@ -1,0 +1,1 @@
+Can you rename internal/blueprint to internal/template?
