@@ -1,0 +1,1 @@
+b) Add intropy int list — walk down from cwd (or the git root), collect every .intropy/scaffold.json, print a table of path / blueprint / version, with -o json for machines. Skip .git, node_modules, bin, dist, and don't descend into a directory once it's matched (projects don't nest). This is the discovery primitive; everything else composes on top of it.
