@@ -1,0 +1,1 @@
+I think we should do this now: "a CLI release pointing defaultBlueprintRepo at the new name — optionally bundled with the scaffold.json/describe-JSON key renames since that's the natural breaking-change moment."
