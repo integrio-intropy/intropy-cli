@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>b400jqjan</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/5bbffed9-6155-4724-a838-4e6b26a54ac9/tasks/b400jqjan.output</output-file>
+<status>completed</status>
+<summary>Background command "Rebuild binary and restart dashboard on fixture workspace" completed (exit code 0)</summary>
+</task-notification>
