@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bepzrr9ux</task-id>
+<tool-use-id>toolu_01ARYmQtBBf6Vrvm92JwfY28</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/5bbffed9-6155-4724-a838-4e6b26a54ac9/tasks/bepzrr9ux.output</output-file>
+<status>completed</status>
+<summary>Background command "Restart dashboard on fixture workspace" completed (exit code 0)</summary>
+</task-notification>
