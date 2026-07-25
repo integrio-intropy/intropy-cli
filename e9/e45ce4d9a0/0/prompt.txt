@@ -1,0 +1,1 @@
+what is the easiest way of testing this locally without replacing my actual installation with homebrew?
