@@ -1,0 +1,1 @@
+You dont see any conflict in using blueprints to describe what is in the blueprint repo at all?
