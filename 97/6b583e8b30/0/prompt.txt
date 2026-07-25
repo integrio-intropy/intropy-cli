@@ -1,0 +1,1 @@
+I dont think we can hardcode Contract to 'Order', that is a very specific entity. Either we should prompt the user or make it neutral so that the developer must refactor it later. Like EventModel or something better fitting
