@@ -1,0 +1,96 @@
+<task-notification>
+<task-id>af5fc68daf6dd7e31</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/174cfbae-6a0b-4cfb-a561-e3d273629151/tasks/af5fc68daf6dd7e31.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore manifests and system model" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have a complete picture. Here is my report.
+
+## Summary: existing manifest/config surface in intropy-cli
+
+**Key upfront finding:** The CLI itself only ever writes ONE machine-readable per-project file — `.intropy/scaffold.json`. Everything else (AGENTS.md, Taskfile, Dapr components, C# source, README) is rendered from a *remote* template skeleton (fetched from `integrio-intropy/intropy-templates`), not emitted by CLI Go code. There is no `template.yaml` in this repo. There is currently **no** `topology.json`, no `dapr.yaml` multi-app run file, and no cron/workload concept anywhere in generated output.
+
+---
+
+### 1. What `int create` generates + scaffold.json structure
+
+`Create()` at `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/create.go` (lines 66-110) does: resolve GitHub release → download template tarball → render `&lt;template&gt;/skeleton/` into `--output` dir → write `.intropy/scaffold.json`. Optionally writes a `CreateResult` JSON only when `--output-json` is passed (lines 40-47; carries `outputDir`, not persisted in project).
+
+The scaffold record struct is in `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/scaffold.go` (lines 32-44):
+
+```go
+type Scaffold struct {
+	SchemaVersion int    `json:"schemaVersion"` // ScaffoldSchemaVersion = 1
+	Template      string `json:"template"`      // dir name in template library repo
+	Owner         string `json:"owner"`         // GitHub owner, e.g. "integrio-intropy"
+	Repo          string `json:"repo"`          // e.g. "intropy-templates"
+	Version       string `json:"version"`       // release tag
+	DataFlow      string `json:"dataFlow,omitempty"` // NEW (uncommitted): in|out|both|internal
+	Values        map[string]any `json:"values"`
+}
+```
+- Path constant `ScaffoldRelPath = ".intropy/scaffold.json"` (line 18).
+- Actual on-disk example (from `dashboard_test.go:19`): `{"schemaVersion":1,"template":"...","owner":"integrio-intropy","repo":"intropy-templates","version":"...","dataFlow":"both","values":{"appId":"int1"}}`.
+- `values` typically holds `name`, `appId`, `appPort` (see `scaffold_test.go`: `{"name":"Orders","appPort":5001}`).
+
+**The uncommitted git change** is small: it adds the `DataFlow` field, populated at create time from a template metadata label `intropy.dev/data-flow` (`DataFlowLabel`, scaffold.go lines 23, 42, 49-56). Valid values: `in`, `out`, `both`, `internal`; unrecognized → `""`. `create.go:103` sets `DataFlow: dataFlowFromLabels(tmpl.Metadata.Labels)`. Tests added: `TestDataFlowFromLabels` in scaffold_test.go. This is the *only* substantive behavior change in the modified files — it is a precedent for exactly the kind of derived-metadata-in-a-manifest the topology proposal wants.
+
+Per-project files (AGENTS.md, Taskfile, Dapr YAMLs) are NOT hardcoded in Go — no matches for `Taskfile`/`dapr.yaml` as generated output. They come from the template skeleton. AGENTS.md/README.md/`local/dapr-components/` are only *read back* by the dashboard.
+
+### 2. "match.json" / pipeline_steps
+
+There is **no** `match.json` parser and no `pipeline_steps`/`PipelineStep` struct anywhere. The only "pipeline steps" notion is derived at runtime by the dashboard by listing filenames in a directory:
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/handlers.go:50` — `PipelineSteps []string \`json:"pipelineSteps,omitempty"\``, populated by `listNames(filepath.Join(dir, "src", "Process", "Steps"))` (lines 133, 161). It just reads C# step class filenames; there is no structured pipeline manifest.
+
+### 3. Notions of system / owner / integration id / entity / contract / visibility
+
+- **System / Domain:** exist ONLY as *derived, non-persisted* dashboard fields inferred from directory nesting — `integrationSummary` in `handlers.go:35-40` (`System` = parent dir name, `Domain` = grandparent). Not stored in any file.
+- **Owner:** exists only as the *GitHub repo owner* (`integrio-intropy`) in `Scaffold`, `CreateResult`, `deploy.CreateResult`, `describe.go`. There is NO owner-as-person/team concept.
+- **Integration id:** closest is `values.appId` (e.g. `"int1"`) and C# `Constants.ComponentName`/app-id (e.g. `orders`). No `INT-042`-style identifier anywhere.
+- **entity / contract / visibility:** **zero** occurrences as domain concepts in Go or generated files.
+- **DataFlow** (in/out/both/internal) is the only semantic edge-direction concept — new, per section 1.
+- Dapr component **Direction** (input/output) and **Category** (pubsub/state/binding/other) are derived by the dashboard from component YAML in `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/components.go` (`DaprComponent`, lines 17-27; `classify()` and `direction()`), but again only at read time, not persisted.
+
+### 4. Demo/ and Orders/ untracked directories
+
+Both are generated example integration systems — **.NET 10 ASP.NET Minimal API + Dapr** projects (C#, not Go). Neither contains a `.intropy/scaffold.json`, `dapr.yaml`, `topology.json`, or any manifest — the only `*.json` files are `appsettings.json`, `appsettings.Development.json`, `launchSettings.json`. Shallow tree (identical shape):
+```
+{Demo,Orders}/
+  README.md  AGENTS.md(Orders)/agent.md(Demo)  CLAUDE.md(Orders)  .gitignore
+  local/dapr-components/{pubsub.yaml, local-storage.yaml}
+  src/  (Program.cs, *.csproj, *.http, appsettings*.json,
+         Configuration/Constants.cs, Ingest/Endpoints.cs,
+         Model/{OrderIn,OrderOut}.cs,
+         Process/{OrderSendPipeline,OrderSendPipelineBuilder,ServiceCollectionExtensions}.cs,
+         Process/Steps/{Deserialize,Validate,Transform,Serialize,Send}Step.cs,
+         Properties/launchSettings.json)
+```
+Dapr component file (`Demo/local/dapr-components/pubsub.yaml`):
+```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: pubsub
+spec:
+  type: pubsub.in-memory
+  version: v1
+```
+`local-storage.yaml` uses `type: bindings.localstorage` with `metadata: [{name: rootPath, value: "/tmp/demo"}]`.
+
+The topology-relevant info that IS captured, but only in unstructured/prose form: `Orders/AGENTS.md` documents app id (`orders`), app port (`5001`), pubsub component (`pubsub`, in-memory), **topic** (`messages`), output binding (`local-storage`), and a run command. `Orders/src/Configuration/Constants.cs` holds `ComponentName="orders"`, `PubSubName="pubsub"`, `TopicName="messages"`, `LocalStorageBindingName="local-storage"`, plus a `CustomerName="Entrovia"`. These names (topics, connectors/bindings, app id) are exactly what a topology.json would formalize — today they live only in C# constants and prose AGENTS.md.
+
+### 5. Dapr multi-app run / workload types / cron
+
+- **No `dapr.yaml` multi-app run file** is generated or referenced. `int run` (`/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/int_run.go`) does NOT start Dapr — it launches the local web *dashboard* (`dashboard.Serve`) only. AGENTS.md shows a manual single-app `dapr run --app-id orders ...` command; no orchestration file.
+- **Workload types (cronjob vs deployment):** the only deployment concept is `internal/deploy/create.go` which renders a template's `manifests/skeleton/` into a kustomize base+overlays tree (`defaultOutputDirName = "deploy"`), but the manifest content lives in the remote template, not this repo. No `cronjob`/`workload`/`schedule` keywords appear in generator code.
+- **Cron bindings / schedule triggers:** none in generated output or Go code. The dashboard's `classify()` (`components.go:87`) recognizes only `pubsub`, `state`, `bindings`(→binding), else `other` — it does not model cron/schedule bindings specifically.
+
+---
+
+### Bottom line for the topology.json proposal
+Already captured somewhere: template identity/version/owner + arbitrary `values` (scaffold.json); data-flow direction of the whole component (new `DataFlow` field); Dapr component name/type/category/direction and pipeline step names (dashboard, *derived at read-time, never persisted*); topic/binding/app-id names (C# `Constants.cs` + prose AGENTS.md only). Would be genuinely NEW: a persisted structured nodes/edges/ports graph; explicit topics/connectors/external-systems as first-class entities; any integration id (INT-042), entity, contract, or visibility fields; and any cross-component/multi-app relationships (there is currently no multi-app or cron modeling at all).
+
+Relevant paths: `internal/template/scaffold.go`, `internal/template/create.go`, `internal/template/scaffold_list.go`, `internal/template/manifest.go`, `internal/deploy/create.go`, `internal/dashboard/handlers.go`, `internal/dashboard/components.go`, `cmd/intropy/int_run.go`, `Orders/AGENTS.md`, `Orders/src/Configuration/Constants.cs`, `Orders/local/dapr-components/*.yaml`.</result>
+<usage><subagent_tokens>43689</subagent_tokens><tool_uses>19</tool_uses><duration_ms>126741</duration_ms></usage>
+</task-notification>
