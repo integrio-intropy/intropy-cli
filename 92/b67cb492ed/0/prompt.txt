@@ -1,0 +1,2 @@
+I have a feeling that Intropy.Topology is quite bloated now with features that we are not currently using. Can you analyze what a minimal version supporting this tutorial would look like http://127.0.0.1:8000/tutorials/system/?
+We should keep the current version in a separate branch so that we can reapply it later
