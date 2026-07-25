@@ -1,0 +1,1 @@
+can you tell me a again how I can create an alias, intropy-test that is the locally built intropy cli and work in parallell with the homebrew installed
