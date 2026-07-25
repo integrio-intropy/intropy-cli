@@ -1,0 +1,1 @@
+I have previously installed the cli with go install. How can I remove that before I download with homebrew?
