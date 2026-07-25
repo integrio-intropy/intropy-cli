@@ -1,0 +1,155 @@
+<task-notification>
+<task-id>ae76429d2acca40f1</task-id>
+<tool-use-id>toolu_015MgRpokaXufvhMeyktbp4G</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/a73b4cf5-052c-4d7c-bd82-cb2846d01710/tasks/ae76429d2acca40f1.output</output-file>
+<status>completed</status>
+<summary>Agent "Inspect materialized system output" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Root cause (confirmed)
+
+`order-loader/.intropy/scaffold.json` is **missing the `blockKind` and `dataFlow` fields**. `intropy sys create` silently skips any scaffold record without a `blockKind`, so the loader never made it into `OrderFlowSystem.cs`. The extractor's record has both fields; the loader's does not. The two records were written by **different CLI builds** (details in section 4).
+
+---
+
+## 1. Directory tree
+
+`/Users/robinhultman/dev/intropy/customers/fluxia/integrations/domains/orders/order-flow` (build output elided):
+
+```
+order-flow/
+├── Contracts/                 (.intropy/scaffold.json, Order.cs, OrderLine.cs, Contracts.csproj)
+├── order-extractor/           (.intropy/scaffold.json, src/{Program.cs,ExtractorRunner.cs,Process/*,Model/In.cs}, test/, local/, Dockerfile, Taskfile.yml)
+├── order-loader/              (.intropy/scaffold.json, src/{Program.cs,LoaderRunner.cs,Process/*,Model/Out.cs}, test/, local/, Dockerfile, Taskfile.yml)
+└── system-host/
+    ├── .intropy/scaffold.json
+    ├── OrderFlow.SystemHost.csproj
+    ├── OrderFlowSystem.cs
+    ├── Program.cs
+    ├── Topics.cs
+    ├── Properties/launchSettings.json
+    ├── README.md, AGENTS.md, CLAUDE.md, Taskfile.yml
+```
+
+Notably absent: there is **no** `order-flow/.intropy/` at the workspace root, no `match.json`, no system manifest, no generated topology/`out/` directory (those only appear after `dotnet run -- generate ./out`). The only records in the workspace are the four `.intropy/scaffold.json` files.
+
+## 2. The registration code — the loader is missing
+
+`/Users/robinhultman/dev/intropy/customers/fluxia/integrations/domains/orders/order-flow/system-host/OrderFlowSystem.cs` (whole file body):
+
+```csharp
+public sealed class OrderFlowSystem : ISystemDefinition
+{
+    public string SystemName =&gt; "order-flow";
+
+    public void Define(SystemBuilder builder)
+    {
+        builder.AddExtractor("order-extractor").Publishes(Topics.Orders);
+    }
+}
+```
+
+Registered: `order-extractor` (extractor, `Publishes`).
+Missing: `builder.AddLoader("order-loader").Subscribes(Topics.Orders);` — exactly the line the tutorial shows at `/Users/robinhultman/dev/intropy/intropy-techdocs/docs/tutorials/system/03-systemhost.md:82-95`.
+
+`Topics.cs` is complete and correct (the topic was assembled from a record, and the extractor alone defines it):
+
+```csharp
+public static readonly TopicRef&lt;Order&gt; Orders = TopicRef&lt;Order&gt;.Define("pubsub", "orders");
+```
+
+`Program.cs` contains no registration at all — it is discovery-based (`Assembly.GetExecutingAssembly()` → `IntropyAspire.RunAsync` / `IntropyGenerate.RunAsync`), so `OrderFlowSystem.Define()` is the single registration point. `OrderFlow.SystemHost.csproj` references only `../Contracts/Contracts.csproj`; components are not `ProjectReference`d, so the csproj is not implicated.
+
+## 3. Scaffold records
+
+**`/Users/robinhultman/dev/intropy/customers/fluxia/integrations/domains/orders/order-flow/order-loader/.intropy/scaffold.json` (full):**
+
+```json
+{
+  "schemaVersion": 1,
+  "template": "loader",
+  "owner": "integrio-intropy",
+  "repo": "intropy-templates",
+  "version": "v0.2.1-beta.5",
+  "values": {
+    "appId": "order-loader",
+    "contract": "Order",
+    "contracts": "Contracts",
+    "empty": false,
+    "name": "OrderLoader",
+    "organization": "Fluxia",
+    "pubsub": "pubsub",
+    "topic": "orders"
+  },
+  "dependsOn": [
+    { "template": "shared-contracts", "dir": "../Contracts" }
+  ]
+}
+```
+
+**`.../order-extractor/.intropy/scaffold.json` (full, for comparison):**
+
+```json
+{
+  "schemaVersion": 1,
+  "template": "extractor",
+  "owner": "integrio-intropy",
+  "repo": "intropy-templates",
+  "version": "v0.2.1-beta.5",
+  "values": {
+    "appId": "order-extractor",
+    "contract": "Order",
+    "contracts": "Contracts",
+    "empty": false,
+    "name": "OrderExtractor",
+    "organization": "Fluxia",
+    "pubsub": "pubsub",
+    "topic": "orders"
+  },
+  "blockKind": "extractor",
+  "dataFlow": "in",
+  "dependsOn": [
+    { "template": "shared-contracts", "dir": "../Contracts" }
+  ]
+}
+```
+
+The other two: `Contracts/.intropy/scaffold.json` has `"role": "shared-library"`, `system-host/.intropy/scaffold.json` has `"role": "system-host"` with values `name: order-flow`, `projectName: OrderFlow`, `systemClass: OrderFlowSystem`. Both correct.
+
+## 4. What is off about the loader specifically
+
+**Only difference: the two missing keys.** Every `values` entry is present and correctly cased (`appId: order-loader`, `contract: Order`, `topic: orders`, `pubsub: pubsub`, `name: OrderLoader`) — naming, casing, and `dependsOn` are all identical in form to the extractor. Nothing else differs.
+
+**Why that kills registration** — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/assemble.go:43`:
+
+```go
+case e.BlockKind == "":
+    warnf("skipping %s: scaffold record has no block kind — re-scaffold with a newer template release to include it", e.Path)
+    continue
+```
+
+The warning goes to stderr as `warning: skipping order-loader: ...` (`internal/system/create.go:104-106`) — easy to miss in the create output. `internal/system/codegen.go:85` then only emits `AddLoader`/`Subscribes` for components that survived that filter.
+
+**Why the field is missing — not a template bug.** The label exists in the templates repo at the exact version recorded (`v0.2.1-beta.5` = commit `dd78568`, local HEAD, clean tree) — `/Users/robinhultman/dev/intropy/tooling/intropy-templates/loader/template.yaml:12-15`:
+
+```yaml
+  labels:
+    intropy.io/template-level: example
+    intropy.dev/block-kind: loader
+    intropy.dev/data-flow: "out"
+```
+
+The cause is **which binary wrote each record**:
+
+| | mtime | writer |
+|---|---|---|
+| `/opt/homebrew/Caskroom/intropy/0.7.0/intropy` (what `intropy` on PATH resolves to) | installed 11:07 | `strings` contains `intropy.dev/template-role` and `dependsOn` but **zero** hits for `intropy.dev/block-kind`, `AddLoader`, `no block kind` — this build cannot record `blockKind`/`dataFlow` and has no `sys create` codegen |
+| `/Users/robinhultman/dev/intropy/tooling/intropy-cli/bin/intropy` (local dev build) | built 12:22 | contains `intropy.dev/block-kind`, `no block kind`, `AddLoader` |
+| `order-extractor/.intropy/scaffold.json` | 12:23 | has `blockKind` → dev build |
+| `order-loader/.intropy/scaffold.json` | 12:24 | no `blockKind` → Homebrew 0.7.0 |
+| `system-host/.intropy/scaffold.json` | 12:25 | dev build (0.7.0 has no `sys` verb) |
+
+So chapter 2's command was run as the tutorial literally prints it (`intropy int create loader ...` → stale 0.7.0 from PATH), while chapters 1 and 3 were run with `./bin/intropy`. `blockKind`/`dataFlow` support is still **uncommitted** in the CLI working tree (`git status`: modified `internal/template/{create.go,scaffold.go,dependencies.go}`, untracked `internal/system/`, `cmd/intropy/sys*.go`), which is why the released 0.7.0 lacks it.
+
+Two independent things worth noting for a fix: (a) adding `"blockKind": "loader"` and `"dataFlow": "out"` to the loader record makes `sys create` pick it up; (b) `writeSystemClassFile` (`internal/system/codegen.go:71-74`) overwrites an existing `OrderFlowSystem.cs` and refuses to create one, so re-running `sys create` over the existing `system-host/` will need the force path for the already-populated output dir.</result>
+<usage><subagent_tokens>62079</subagent_tokens><tool_uses>45</tool_uses><duration_ms>359667</duration_ms></usage>
+</task-notification>
