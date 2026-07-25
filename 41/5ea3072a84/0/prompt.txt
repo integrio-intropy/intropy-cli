@@ -1,0 +1,1 @@
+~/dev/intropy/customers/lovenskiold/integrations was not scaffolded with the cli. Could you add .intropy folders to the integrations there so that I can test the dashboard with a larger solution?
