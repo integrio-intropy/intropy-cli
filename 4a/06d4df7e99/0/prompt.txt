@@ -1,0 +1,1 @@
+For the dashboards flow part. Since an integrations type (golden-record, transactional etc) are relative few and well-known should we consider giving them different styles in the flow diagram?
