@@ -1,0 +1,1 @@
+Do we have term inconsistencies in the cli if you look at our docs? https://docs.intropy.io/concepts/intropy-model/
