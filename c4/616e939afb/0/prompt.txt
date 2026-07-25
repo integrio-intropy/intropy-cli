@@ -1,0 +1,177 @@
+Base directory for this skill: /Users/robinhultman/.claude/skills/intropy-docs
+
+# Intropy Documentation
+
+The shared foundation for writing any Intropy documentation in Backstage TechDocs.
+
+This skill covers writing conventions, TechDocs structure, Intropy domain model
+terminology, and templates for every type of documentation page in the Intropy
+ecosystem. Whether you're writing a block reference page, a blueprint pattern spec,
+an archetype overview, or a setup guide — start here.
+
+## When NOT to use this skill
+
+For per-blueprint golden path tutorials that walk developers through scaffolded
+Backstage template code (explaining TODOs, file-by-file walkthroughs), use the
+**blueprint-golden-path** skill instead. This skill covers the WHAT and WHY;
+blueprint-golden-path covers the HOW step-by-step.
+
+## What this skill covers
+
+| Documentation type | Template | When to use |
+|-------------------|----------|-------------|
+| **Block reference page** | `references/block-template.md` | Documenting what a generic block type IS (Extractor, Loader, etc.) |
+| **Blueprint pattern page** | `references/blueprint-template.md` | Documenting a named composition as a reusable pattern (Golden Record, etc.) |
+| **Archetype page** | `references/archetype-template.md` | Documenting an abstract behavioural model (Pub/Sub, Aggregator, API Service) |
+| **Connector concept page** | `references/connector-reference.md` | Explaining what Connectors are and how they relate to Blocks |
+| **Pattern reference catalog** | Use `scripts/scaffold.py` | Generating the complete catalog with all blocks, blueprints, archetypes |
+| **Environment setup guide** | No template — follow writing principles | Common onboarding: tools, access, prerequisites |
+| **Architecture overview** | `references/architecture-overview-template.md` | High-level explanation of how Intropy works |
+
+## Workflow
+
+### 1. Understand what you're writing
+
+Determine which type of documentation the user needs. If they say "document the
+Extractor", that's a block reference page. If they say "write up the Golden Record
+pattern", that's a blueprint pattern page. If they're unclear, ask.
+
+For the **full pattern reference catalog** (all blocks + blueprints + archetypes),
+use the scaffold script:
+
+```bash
+python scripts/scaffold.py --type catalog --output-dir ./output
+```
+
+### 2. Read the relevant references
+
+**Always read first:**
+- `references/intropy-model.md` — The authoritative domain model. Read this to use
+  terminology correctly. Blocks, Blueprints, Connectors, Systems, Integrations,
+  and Archetypes all have precise meanings.
+
+**Then read the relevant template:**
+- Block page → `references/block-template.md`
+- Blueprint page → `references/blueprint-template.md`
+- Archetype page → `references/archetype-template.md`
+- Connector explanation → `references/connector-reference.md`
+- Architecture overview → `references/architecture-overview-template.md`
+
+**For TechDocs structure and MkDocs configuration:**
+- `references/techdocs-structure.md` — File layout, mkdocs.yml patterns, catalog-info.yaml
+
+### 3. Write using Intropy conventions
+
+These principles apply to ALL Intropy documentation, regardless of type.
+
+**Use terminology precisely.** The Intropy model has specific terms with specific
+meanings. A Connector is not a "plugin" — it's accumulated organizational knowledge
+about an external system. A Blueprint is not a "template" — it's a named composition
+of Block types. Read `references/intropy-model.md` if unsure.
+
+**Describe the invariant, not the variant.** When writing about generic patterns
+(blocks, blueprints, archetypes), every sentence should be true for ALL instances.
+"An Extractor pulls data from a source system" — not "An Extractor pulls data from
+Dynamics." Specific systems belong in golden path tutorials, not reference pages.
+
+**Define responsibility boundaries clearly.** The most important thing about a block
+or blueprint doc is where responsibilities start and stop. An Extractor handles
+source system communication but does NOT transform data into the internal model.
+These boundaries are what make blocks composable.
+
+**Explain the failure model.** Edge blocks handle business errors (expected operational
+conditions). Core blocks treat bad input as bugs (unexpected). This distinction is
+fundamental. Make it prominent and concrete with generic examples.
+
+**Show the Connector contract.** For edge blocks, the Connector interface is what
+makes them reusable across systems. Document the generic interface — what any
+Connector must provide — so Connector developers know what to implement.
+
+**Use TechDocs admonitions.** Use MkDocs admonition syntax for callouts:
+
+```markdown
+!!! info "Why does this matter?"
+    Explanation of architectural reasoning.
+
+!!! warning "Common mistake"
+    What goes wrong and how to avoid it.
+
+!!! note "Prerequisites"
+    What the reader needs before continuing.
+```
+
+**Cross-reference generously.** Every block page should link to its archetype page
+and the blueprints it appears in. Every blueprint page should link to its block
+pages. Every archetype page should link to the blocks that follow it. This
+bidirectional linking reinforces the conceptual framework.
+
+### 4. Structure for TechDocs
+
+Read `references/techdocs-structure.md` for the full details. The essentials:
+
+- **techdocs-core** is the only allowed MkDocs plugin
+- **nav is required** — TechDocs uses it for the sidebar
+- Use `assets/mkdocs-template.yml` as the base configuration
+- File naming: lowercase, hyphenated (e.g., `transactional-integration.md`)
+- Every TechDocs site needs a `catalog-info.yaml` for Backstage registration
+
+### 5. Deliver the output
+
+Save the complete documentation to the output directory. For a full catalog,
+the deliverable is:
+
+```
+intropy-pattern-reference/
+├── mkdocs.yml
+├── catalog-info.yaml
+└── docs/
+    ├── index.md
+    ├── connectors.md
+    ├── archetypes/
+    │   ├── pubsub.md
+    │   ├── aggregator.md
+    │   └── api-service.md
+    ├── blocks/
+    │   ├── extractor.md
+    │   ├── loader.md
+    │   ├── reconciler.md
+    │   ├── assembler.md
+    │   └── transactional-integration.md
+    └── blueprints/
+        ├── golden-record.md
+        ├── product-sync.md
+        └── order-import.md
+```
+
+For individual pages, deliver the markdown file ready to drop into an existing
+TechDocs site.
+
+## Relationship to blueprint-golden-path
+
+This skill produces **reference documentation** — what things ARE, how they work,
+when to use them. The `blueprint-golden-path` skill produces **tutorials** — step-by-step
+guides that walk developers through scaffolded template code for a specific blueprint.
+
+The reference docs from this skill serve as context for golden path tutorials. When
+the blueprint-golden-path skill writes a tutorial for the Golden Record blueprint,
+it reads the block and blueprint reference pages produced by this skill to understand
+the architectural context.
+
+Think of it as: this skill writes the **"what and why"**, blueprint-golden-path
+writes the **"how, step by step"**.
+
+## Reference files
+
+Read these as needed during documentation work:
+
+- `references/intropy-model.md` — Complete Intropy domain model (Blocks, Blueprints, Connectors, Archetypes)
+- `references/techdocs-structure.md` — TechDocs file layout, mkdocs.yml patterns, Backstage integration
+- `references/writing-guide.md` — Writing style, tone, and structural patterns for all doc types
+- `references/block-template.md` — Template for generic block type reference pages
+- `references/blueprint-template.md` — Template for generic blueprint pattern pages
+- `references/archetype-template.md` — Template for archetype pages
+- `references/connector-reference.md` — Connector concept reference (what Connectors are)
+- `references/architecture-overview-template.md` — Template for the Intropy architecture overview page
+
+
+ARGUMENTS: Update docs/get-started/ai-assistants.md to reflect the agent.md → AGENTS.md rename and the new manifest contract
