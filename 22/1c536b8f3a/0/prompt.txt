@@ -1,0 +1,1 @@
+I am thinking of how we could implement .From on the extractor and .To on the loader. At scaffold time I do not want the developer to have to provide details on the external systems so at scaffold time it should assume file from local folders in a test folder at the system level
