@@ -1,0 +1,1 @@
+Can you check at the reference solution ~/dev/intropy/customers/fluxia/integrations/domains/product. It doesnt appear as I would expect
