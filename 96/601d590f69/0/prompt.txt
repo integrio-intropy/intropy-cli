@@ -1,0 +1,1 @@
+For TAP_GITHUB_TOKEN do I need a personal token or can we use something else?
