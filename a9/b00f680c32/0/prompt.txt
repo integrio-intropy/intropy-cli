@@ -1,0 +1,1 @@
+I have reworked the underlying structure that drives the dashboard. Use the structure available at ~/dev/intropy/customers/fluxia/integrations/domains/price and rewrite intropy run
