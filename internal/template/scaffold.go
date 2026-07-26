@@ -27,6 +27,26 @@ const (
 	// referenced by sibling components (e.g. shared models). System
 	// assembly must not treat it as a block.
 	RoleSharedLibrary = "shared-library"
+
+	// RoleSystemHost marks the scaffolded host project of an integration
+	// system. System assembly must not treat it as a block.
+	RoleSystemHost = "system-host"
+
+	// TemplateBlockKindLabel names the manifest label that declares which
+	// Intropy block a template scaffolds (e.g. "extractor"). Its value is
+	// copied into the scaffold record so `sys create` can assemble the
+	// system declaration from what each scaffold recorded.
+	TemplateBlockKindLabel = "intropy.dev/block-kind"
+
+	// TemplateDataFlowLabel names the manifest label that declares the
+	// block's data flow direction relative to the system ("in" or "out").
+	// Recorded alongside the block kind.
+	TemplateDataFlowLabel = "intropy.dev/data-flow"
+
+	// BlockKindExtractor and BlockKindLoader are the block kinds `sys
+	// create` knows how to assemble.
+	BlockKindExtractor = "extractor"
+	BlockKindLoader    = "loader"
 )
 
 var ErrScaffoldNotFound = errors.New("no " + ScaffoldRelPath + " found in current directory or any parent")
@@ -47,6 +67,14 @@ type Scaffold struct {
 	// if any (e.g. "shared-library").
 	Role string `json:"role,omitempty"`
 
+	// BlockKind is the value of the template's intropy.dev/block-kind
+	// label, if any (e.g. "extractor").
+	BlockKind string `json:"blockKind,omitempty"`
+
+	// DataFlow is the value of the template's intropy.dev/data-flow label,
+	// if any ("in" or "out").
+	DataFlow string `json:"dataFlow,omitempty"`
+
 	// DependsOn lists the sibling projects this project's template declared
 	// under spec.dependencies, whether the render created them or they
 	// already existed.
@@ -62,6 +90,14 @@ type DependencyRecord struct {
 
 func roleFromLabels(labels map[string]string) string {
 	return labels[TemplateRoleLabel]
+}
+
+func blockKindFromLabels(labels map[string]string) string {
+	return labels[TemplateBlockKindLabel]
+}
+
+func dataFlowFromLabels(labels map[string]string) string {
+	return labels[TemplateDataFlowLabel]
 }
 
 // WriteScaffold writes the scaffold record to <projectRoot>/.intropy/scaffold.json.

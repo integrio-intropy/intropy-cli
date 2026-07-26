@@ -137,6 +137,8 @@ func renderDependency(dep DependencySpec, name, depDir string, sets map[string]a
 		Version:       dc.version,
 		Values:        values,
 		Role:          roleFromLabels(depTmpl.Metadata.Labels),
+		BlockKind:     blockKindFromLabels(depTmpl.Metadata.Labels),
+		DataFlow:      dataFlowFromLabels(depTmpl.Metadata.Labels),
 		DependsOn:     subRecords,
 	}); err != nil {
 		return nil, fmt.Errorf("dependency %s: %w", dep.Template, err)

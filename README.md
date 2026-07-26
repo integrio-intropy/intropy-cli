@@ -169,6 +169,8 @@ intropy
 │   └── list [dir]             List scaffolded integrations under a directory
 ├── manifests              Manage deployment manifests
 │   └── create                 Generate Kubernetes manifests for a scaffolded integration
+├── sys                    Manage integration systems
+│   └── create                 Assemble scaffolded integrations into a system host
 ├── skills                 Manage Intropy skills
 │   ├── add [ref]              Add and install a skill from an OCI registry
 │   ├── list                   List installed skills
@@ -329,6 +331,57 @@ tag.
 
 Validate the result with `kustomize build deploy/overlays/dev` (or point your
 GitOps tooling at an overlay directly).
+
+## Systems (`intropy sys`)
+
+### Assemble a system host
+
+Run from the workspace root that holds your scaffolded integrations:
+
+```sh
+intropy sys create -n OrderFlow -o system-host
+```
+
+The command reads before it writes: it scans the workspace for the
+`.intropy/scaffold.json` records the integration scaffolds left behind,
+renders the `system-host` template (a .NET Aspire AppHost), and assembles
+the typed system declaration from what the scaffolds recorded —
+`Topics.cs` defines each topic once as a `TopicRef<T>`, `Connectors.cs`
+defines each edge block's port to the outside world, and the
+`ISystemDefinition` class wires every extractor and loader to its topic
+plus its connector (`.From(...)` on extractors, `.To(...)` on loaders).
+The workspace's shared contracts project (template role `shared-library`,
+typically `Contracts/`) is referenced from the host, never declared as a
+component.
+
+Connectors resolve to local file transports by default: each gets a drop
+folder under the host's `test/` directory (created by the command), so
+the assembled system runs end-to-end with zero external configuration —
+drop a file into `test/<name>-source/`, collect the result from
+`test/<name>-destination/`. Point a connector at a real external system
+by editing its `ConnectorRef.Define(...)` when transport details are
+known.
+
+`-n` accepts PascalCase or kebab-case — `OrderFlow` kebab-cases to
+`order-flow`, the system's name. Unlike `int create` there are no `--set`
+or values flags: the template renders with only the name, and everything
+else comes from the scaffold records.
+
+```sh
+# default output directory: the kebab-cased name (./order-flow)
+intropy sys create -n OrderFlow
+
+# pin the system-host template release
+intropy sys create -n OrderFlow -o system-host --version v1.5.0
+
+# machine-readable result document with the assembled model
+intropy sys create -n OrderFlow -o system-host --output-json -
+```
+
+Records without a `blockKind` (scaffolded by an older CLI) or with a block
+kind other than extractor/loader are skipped with a warning; records
+without a `connector` value keep their component but get no `From`/`To`.
+Validate the result from the host directory with `dotnet run -- check`.
 
 ## Skills (`intropy skills`)
 

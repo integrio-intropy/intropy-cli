@@ -16,6 +16,9 @@ const depComponentYAML = `apiVersion: intropy.dev/v1
 kind: Template
 metadata:
   name: component
+  labels:
+    intropy.dev/block-kind: extractor
+    intropy.dev/data-flow: "in"
 spec:
   parameters:
     type: object
@@ -116,10 +119,16 @@ func TestCreateRendersMissingDependency(t *testing.T) {
 	if depScaffold.Template != "shared" || depScaffold.Role != RoleSharedLibrary || depScaffold.Version != "v1" {
 		t.Errorf("dependency scaffold = %+v", depScaffold)
 	}
+	if depScaffold.BlockKind != "" || depScaffold.DataFlow != "" {
+		t.Errorf("shared library should have no block kind, got %q/%q", depScaffold.BlockKind, depScaffold.DataFlow)
+	}
 
 	compScaffold, err := LoadScaffold(filepath.Join(outDir, filepath.FromSlash(ScaffoldRelPath)))
 	if err != nil {
 		t.Fatalf("component scaffold: %v", err)
+	}
+	if compScaffold.BlockKind != BlockKindExtractor || compScaffold.DataFlow != "in" {
+		t.Errorf("component block kind = %q/%q, want %q/\"in\"", compScaffold.BlockKind, compScaffold.DataFlow, BlockKindExtractor)
 	}
 	want := DependencyRecord{Template: "shared", Dir: "../Acme.Models"}
 	if len(compScaffold.DependsOn) != 1 || compScaffold.DependsOn[0] != want {
