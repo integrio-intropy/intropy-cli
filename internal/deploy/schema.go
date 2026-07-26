@@ -198,7 +198,7 @@ func (c *ComponentConfig) validate(path string) error {
 		if img.Name == "" {
 			return fmt.Errorf("%s: images[%d] has no name", path, i)
 		}
-		if strings.ContainsAny(img.Name, "@:") {
+		if hasTagOrDigest(img.Name) {
 			return fmt.Errorf("%s: images[%d] name %q must be a bare repository, without a tag or digest", path, i, img.Name)
 		}
 	}
@@ -211,6 +211,20 @@ func (c *ComponentConfig) validate(path string) error {
 // SupportsEnvironment reports whether the component declares env.
 func (c *ComponentConfig) SupportsEnvironment(env string) bool {
 	return slices.Contains(c.Environments, env)
+}
+
+// hasTagOrDigest reports whether an image reference carries a tag or digest.
+//
+// Only the final path segment is examined, because a colon earlier in the
+// reference is a registry port: localhost:5555/integrations/app and
+// harbor.example.com:8443/app are perfectly ordinary repositories, and
+// rejecting them would rule out every registry not on the default port.
+func hasTagOrDigest(image string) bool {
+	last := image
+	if i := strings.LastIndex(image, "/"); i >= 0 {
+		last = image[i+1:]
+	}
+	return strings.ContainsAny(last, ":@")
 }
 
 func checkSchemaVersion(path string, got int) error {

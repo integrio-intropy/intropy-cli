@@ -214,6 +214,37 @@ func TestLoadComponentConfig(t *testing.T) {
 	}
 }
 
+// A colon in a registry host is a port, not a tag. Rejecting it would rule out
+// every registry not on the default port, local ones included.
+func TestImageNameAcceptsRegistryPort(t *testing.T) {
+	cases := []struct {
+		image string
+		want  bool // carries a tag or digest
+	}{
+		{"harbor.intropy.io/integrations/order-extractor", false},
+		{"localhost:5555/integrations/order-extractor", false},
+		{"harbor.example.com:8443/integrations/order-extractor", false},
+		{"order-extractor", false},
+		{"harbor.intropy.io/integrations/order-extractor:latest", true},
+		{"localhost:5555/integrations/order-extractor:v1.2.3", true},
+		{"harbor.intropy.io/integrations/order-extractor@sha256:abc", true},
+		{"localhost:5555/order-extractor@sha256:abc", true},
+	}
+	for _, tc := range cases {
+		if got := hasTagOrDigest(tc.image); got != tc.want {
+			t.Errorf("hasTagOrDigest(%q) = %v, want %v", tc.image, got, tc.want)
+		}
+	}
+
+	// And the full validation path accepts a ported registry.
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, ComponentFileName),
+		"schemaVersion: 1\nname: c\nimages: [{name: 'localhost:5555/integrations/c'}]\nenvironments: [dev]\n")
+	if _, err := LoadComponentConfig(dir); err != nil {
+		t.Errorf("a registry with an explicit port should be accepted: %v", err)
+	}
+}
+
 func TestLoadComponentConfigRejections(t *testing.T) {
 	cases := []struct {
 		name    string

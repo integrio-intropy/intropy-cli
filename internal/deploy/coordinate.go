@@ -216,3 +216,9 @@ func listOverlays(root string, c Coordinate) []string {
 	slices.Sort(out)
 	return out
 }
+
+// joinRel joins a slash-separated repository-relative path onto a filesystem
+// root.
+func joinRel(root, rel string) string {
+	return filepath.Join(root, filepath.FromSlash(rel))
+}

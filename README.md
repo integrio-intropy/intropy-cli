@@ -169,6 +169,7 @@ intropy
 │   └── list [dir]             List scaffolded integrations under a directory
 ├── sys                    Manage integration systems
 │   └── create                 Assemble scaffolded integrations into a system host
+├── deploy <component>     Pin a component's image digest into an environment
 ├── skills                 Manage Intropy skills
 │   ├── add [ref]              Add and install a skill from an OCI registry
 │   ├── list                   List installed skills
@@ -325,6 +326,99 @@ kind other than extractor/loader are skipped with a warning; records
 without a `connector` value keep their component but get no `From`/`To`.
 Validate the result from the host directory with `dotnet run -- check`.
 
+## Deployment (`intropy deploy`)
+
+Pin the image digest that CI built for your current commit into one
+environment's kustomize overlay in the GitOps repository.
+
+Run it inside the component's source repository:
+
+```sh
+intropy deploy order-extractor --env dev --plan
+```
+
+`--plan` renders the overlay before and after the change and prints a diff
+without writing anything. Drop it to apply.
+
+### Configuration
+
+The GitOps repository is a per-user setting, read from
+`~/.config/intropy/config.yaml` (or `$XDG_CONFIG_HOME/intropy/config.yaml`):
+
+```yaml
+gitopsRepo: git@gitlab.com:integrio/intropy/customers/acme/gitops.git
+```
+
+Override it with `--gitops-repo` or `INTROPY_GITOPS_REPO`; flags win over the
+environment, which wins over the file. `git` and `kustomize` must be on `PATH`.
+
+### What the GitOps repository must contain
+
+A `deploy.yaml` at the root marks a repository as deployable:
+
+```yaml
+schemaVersion: 1
+registry: harbor.intropy.io
+argocd:
+  server: argocd.intropy.io
+  appNamespace: customer-acme
+environments:
+  dev: { sync: auto }
+  prod: { sync: manual, promotesFrom: [dev], requireSourceHealthy: true }
+```
+
+Components live at `domains/<domain>/<system>/<component>/`, each with a
+`component.yaml` beside `base/` and `overlays/<env>/`:
+
+```yaml
+schemaVersion: 1
+name: order-extractor
+sourcePaths: [integrations/domains/orders/order-flow/order-extractor/]
+images:
+  - name: harbor.intropy.io/integrations/order-extractor
+environments: [dev, prod]
+```
+
+The component is found by searching `domains/*/*/<component>`, so you only pass
+the name. If it occurs under more than one domain or system the error lists the
+candidates and you disambiguate with `--domain` and `--system`.
+
+### What it checks before changing anything
+
+- **The working tree is clean** under the component's `sourcePaths`. CI builds
+  the pushed commit, so uncommitted changes mean the thing about to be deployed
+  is not the thing you just tested. The check is scoped, so an unrelated dirty
+  file elsewhere in a monorepo does not block you; `--allow-dirty` waives it.
+- **HEAD is pushed.** An unpushed commit has no image in the registry.
+- **The pin actually applies.** `kustomize edit set image` silently adds an
+  `images[]` entry that matches nothing, so a pin against an image the base
+  never references would leave the render unchanged. That is reported as an
+  error rather than as "already at that digest".
+
+Re-running once a digest is already pinned prints `already at …` and exits 0
+without creating an empty commit.
+
+### Output
+
+Progress goes to stderr and the diff to stdout, so `--plan` is pipeable. Use
+`-o json` for a machine-readable result instead of the diff:
+
+```sh
+intropy deploy order-extractor --env dev --plan -o json | jq .appName
+```
+
+Exit codes: `0` success or no-op, `1` failure, `2` usage, `127` a required
+binary is missing, `130` interrupted.
+
+### A note on the source-commit annotation
+
+Alongside the digest, the overlay records
+`deploy.internal/source-commit` in `commonAnnotations`. kustomize propagates
+common annotations onto pod templates, so a deploy whose digest is unchanged but
+whose commit moved still restarts the pods. That is deliberate — an annotation
+named `source-commit` that did not track the source commit would be worse — and
+the plan says so explicitly when it is the only change.
+
 ## Skills (`intropy skills`)
 
 Skills are stored as OCI artifacts following the
@@ -466,6 +560,8 @@ internal/skill/oci/  OCI client wrappers, pack/push/pull, references
 - `0` — success
 - `1` — runtime error
 - `2` — usage error (unknown command, missing required flag, bad argument)
+- `127` — a required external binary is missing from `PATH` (`git`, `kustomize`)
+- `130` — interrupted (Ctrl-C)
 
 ## Troubleshooting
 

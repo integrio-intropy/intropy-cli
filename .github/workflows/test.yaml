@@ -18,6 +18,15 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # The deploy tests drive the real kustomize binary. Without it those tests
+      # skip, which would leave the render and diff logic — the part most likely
+      # to break silently — untested.
+      - name: Install kustomize
+        run: |
+          curl -sSfL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" \
+            | bash -s -- 5.8.1 /usr/local/bin
+          kustomize version
+
       - name: Build
         run: go build -v ./...
 
