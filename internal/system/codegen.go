@@ -52,7 +52,10 @@ public sealed class {{ .SystemClass }} : ISystemDefinition
     public void Define(SystemBuilder builder)
     {
 {{- range .Components }}
-        builder.{{ .Add }}("{{ .AppID }}"){{ .From }}.{{ .Edge }}(Topics.{{ .Field }}){{ .To }}{{ .Schedule }};
+        builder.{{ .Add }}("{{ .AppID }}")
+{{- range .Calls }}
+            {{ . }}
+{{- end }};
 {{- end }}
     }
 }
@@ -71,16 +74,12 @@ var (
 	systemClassFile = template.Must(template.New("SystemClass.cs").Parse(systemClassFileTmpl))
 )
 
-// componentView is a Component with its builder call, topic field and
-// connector calls resolved for the system class template.
+// componentView is a Component with its builder call and chained wiring calls
+// resolved for the system class template. Each call renders on its own line.
 type componentView struct {
-	AppID    string
-	Add      string // AddExtractor | AddLoader
-	Edge     string // Publishes | Subscribes
-	Field    string // the Topics.cs field the component touches
-	From     string // `.From(Connectors.X)` for an extractor with a connector, else empty
-	To       string // `.To(Connectors.X)` for a loader with a connector, else empty
-	Schedule string // `.WithSchedule("...")` for an extractor, else empty
+	AppID string
+	Add   string   // AddExtractor | AddLoader
+	Calls []string // the chained calls in order, e.g. `.From(...)`, `.Publishes(...)`, `.WithSchedule(...)`
 }
 
 // writeTopicsFile overwrites <dir>/Topics.cs with the assembled topic
@@ -126,24 +125,27 @@ func writeSystemClassFile(dir string, m *Model, withConnectors bool) error {
 		connectorField[c.Name] = c.Field
 	}
 	for i, c := range m.Components {
-		v := componentView{AppID: c.AppID, Field: fieldByKey[c.Topic]}
+		v := componentView{AppID: c.AppID}
+		topicField := fieldByKey[c.Topic]
 		field, hasConnector := connectorField[c.Connector]
 		hasConnector = hasConnector && withConnectors
 		if c.Kind == intropytemplate.BlockKindExtractor {
-			v.Add, v.Edge = "AddExtractor", "Publishes"
+			v.Add = "AddExtractor"
 			if hasConnector {
-				v.From = ".From(Connectors." + field + ")"
+				v.Calls = append(v.Calls, ".From(Connectors."+field+")")
 			}
+			v.Calls = append(v.Calls, ".Publishes(Topics."+topicField+")")
 			// Gated on the same signal as From/To: a template release that
 			// predates Connectors.cs also pins an Intropy.Topology without
 			// WithSchedule, so the degraded shape must not call it.
 			if withConnectors {
-				v.Schedule = `.WithSchedule("` + defaultExtractorSchedule + `")`
+				v.Calls = append(v.Calls, `.WithSchedule("`+defaultExtractorSchedule+`")`)
 			}
 		} else {
-			v.Add, v.Edge = "AddLoader", "Subscribes"
+			v.Add = "AddLoader"
+			v.Calls = append(v.Calls, ".Subscribes(Topics."+topicField+")")
 			if hasConnector {
-				v.To = ".To(Connectors." + field + ")"
+				v.Calls = append(v.Calls, ".To(Connectors."+field+")")
 			}
 		}
 		views[i] = v

@@ -190,8 +190,13 @@ public sealed class OrderFlowSystem : ISystemDefinition
 
     public void Define(SystemBuilder builder)
     {
-        builder.AddExtractor("order-extractor").From(Connectors.OrderExtractorSource).Publishes(Topics.Orders).WithSchedule("* * * * *");
-        builder.AddLoader("order-loader").Subscribes(Topics.Orders).To(Connectors.OrderLoaderDestination);
+        builder.AddExtractor("order-extractor")
+            .From(Connectors.OrderExtractorSource)
+            .Publishes(Topics.Orders)
+            .WithSchedule("* * * * *");
+        builder.AddLoader("order-loader")
+            .Subscribes(Topics.Orders)
+            .To(Connectors.OrderLoaderDestination);
     }
 }
 `
@@ -220,8 +225,10 @@ public sealed class OrderFlowSystem : ISystemDefinition
 
     public void Define(SystemBuilder builder)
     {
-        builder.AddExtractor("order-extractor").Publishes(Topics.Orders);
-        builder.AddLoader("order-loader").Subscribes(Topics.Orders);
+        builder.AddExtractor("order-extractor")
+            .Publishes(Topics.Orders);
+        builder.AddLoader("order-loader")
+            .Subscribes(Topics.Orders);
     }
 }
 `
@@ -371,10 +378,10 @@ func TestCreateWithRecordMissingConnectorOmitsItsFromTo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(system), `builder.AddExtractor("order-extractor").From(Connectors.OrderExtractorSource)`) {
+	if !strings.Contains(string(system), ".From(Connectors.OrderExtractorSource)") {
 		t.Errorf("extractor should keep its From:\n%s", system)
 	}
-	if !strings.Contains(string(system), `builder.AddLoader("order-loader").Subscribes(Topics.Orders);`) {
+	if !strings.Contains(string(system), ".Subscribes(Topics.Orders);") {
 		t.Errorf("loader without a connector should have no To:\n%s", system)
 	}
 	if !strings.Contains(stderr.String(), "has no connector") {
