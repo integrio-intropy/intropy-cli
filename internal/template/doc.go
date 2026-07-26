@@ -8,12 +8,6 @@
 //   - Create: fetch a template, resolve parameter values, and render files.
 //
 // Create also writes a scaffold record (.intropy/scaffold.json) into the
-// output directory, pinning the template, version, and resolved values.
-//
-// A template may additionally carry a manifests/ directory — a second
-// template.yaml + skeleton/ pair with the same contract — holding Kubernetes
-// deployment manifest templates. It is consumed by the deploy package
-// (`intropy manifests create`), which re-fetches the pinned version from the
-// scaffold record and renders manifests/skeleton with values seeded from the
-// record.
+// output directory, pinning the template, version, and resolved values, so
+// later commands can re-fetch the exact template a project was built from.
 package template
