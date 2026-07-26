@@ -22,6 +22,12 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+        # GoReleaser's before-hook runs `npm ci && npm run build` in web/ to
+        # embed the dashboard SPA; Node must be available for that hook.
+
       - name: Verify tag matches go.mod
         run: |
           TAG="${GITHUB_REF#refs/tags/}"

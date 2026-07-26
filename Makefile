@@ -6,6 +6,7 @@
 BINARY      := intropy
 CMD_DIR     := ./cmd/intropy
 BUILD_DIR   := ./bin
+WEB_DIR     := ./web
 
 VERSION     := $(shell git describe --tags --always 2>/dev/null || echo dev)
 COMMIT      := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
@@ -35,6 +36,28 @@ install: ## Install the binary to $GOPATH/bin
 .PHONY: clean
 clean: ## Remove build artifacts
 	rm -rf $(BUILD_DIR)
+
+# ---------------------------------------------------------------------------
+# Dashboard SPA (embedded by `intropy dashboard`)
+# ---------------------------------------------------------------------------
+# The Go `web` package embeds web/dist via go:embed. A committed placeholder
+# lets `go build`/`test` work without Node; `make web` produces the real SPA.
+
+.PHONY: web
+web: ## Build the dashboard SPA into web/dist
+	cd $(WEB_DIR) && npm ci && npm run build
+
+.PHONY: web-dev
+web-dev: ## Run the dashboard SPA dev server (proxies /api to a running `intropy dashboard`)
+	cd $(WEB_DIR) && npm run dev
+
+.PHONY: web-clean
+web-clean: ## Remove built SPA assets and restore the placeholder index.html
+	rm -rf $(WEB_DIR)/dist/assets
+	git checkout -- $(WEB_DIR)/dist/index.html
+
+.PHONY: bundle
+bundle: web build ## Build the SPA then the CLI with the real dashboard embedded
 
 # ---------------------------------------------------------------------------
 # Test

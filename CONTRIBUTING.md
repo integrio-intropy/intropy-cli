@@ -46,6 +46,44 @@ Verify the build:
 make run ARGS="version"
 ```
 
+### The dashboard SPA (`intropy dashboard`)
+
+`intropy dashboard` serves a local web dashboard. The frontend is a Vite +
+React + TypeScript app under [`web/`](web/); its production build (`web/dist`)
+is embedded into the Go binary via `//go:embed` (see `web/embed.go`).
+
+A minimal placeholder `web/dist/index.html` is committed so `go build` and
+`go test` work **without** a Node toolchain. The real assets are built on
+demand — locally with `make web`, and in CI / GoReleaser before the Go build —
+and are **not** committed (`web/.gitignore` excludes them).
+
+To build the CLI with the real dashboard embedded:
+
+```bash
+make bundle    # = make web && make build
+```
+
+Frontend dev loop (hot reload, talks to a running CLI):
+
+```bash
+# terminal 1 — the CLI serves the JSON API on :8730
+./bin/intropy dashboard --no-browser
+
+# terminal 2 — Vite dev server proxies /api to the CLI
+make web-dev   # or: cd web && npm run dev
+```
+
+> Note: a local `npm run build` overwrites `web/dist/index.html` and adds
+> `web/dist/assets/`. Don't commit the modified index.html — `make web-clean`
+> (or `git checkout web/dist/index.html`) restores the placeholder.
+
+The flow view renders each system's declared topology, which the server
+obtains by running the system host's `graph` verb (`dotnet build` followed by
+`dotnet run --no-build --no-launch-profile --project <host> -- graph`, the
+invocation the Intropy.Topology library documents). The verb must print the
+`topology.intropy.io/v1` record as JSON on stdout (logs go to stderr); the
+result is cached until the dashboard's "Refresh topology" action re-runs it.
+
 ## Development Workflow
 
 We use a **feature-branch workflow** with pull requests to `main`.
@@ -192,10 +230,14 @@ go test -race ./...
 ### Project layout
 
 ```
-cmd/intropy/         Cobra commands — one file per command + tests
-internal/template/  Template download, validation, describe, render
-internal/skill/      skills.json/lockfile, install/update/add, collection cache
-internal/skill/oci/  OCI client wrappers, pack/push/pull, references
+cmd/intropy/          Cobra commands — one file per command + tests
+internal/template/    Template download, validation, describe, render
+internal/system/      `sys create` — assemble scaffolds into a system host
+internal/dashboard/   Local `intropy dashboard`: HTTP server + JSON API
+internal/topology/    topology.intropy.io/v1 schema + decoder (host graph verb output)
+internal/skill/       skills.json/lockfile, install/update/add, collection cache
+internal/skill/oci/   OCI client wrappers, pack/push/pull, references
+web/                  Dashboard SPA (Vite + React + TS), embedded via go:embed
 ```
 
 ### Version stamping

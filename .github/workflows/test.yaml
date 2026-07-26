@@ -18,6 +18,14 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build dashboard SPA
+        run: npm ci && npm run build
+        working-directory: web
+
       - name: Build
         run: go build -v ./...
 

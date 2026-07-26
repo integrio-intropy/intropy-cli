@@ -12,6 +12,9 @@ project_name: intropy
 before:
   hooks:
     - go mod tidy
+    # Build the dashboard SPA so the released binaries embed the real assets
+    # (web/dist) via go:embed rather than the committed placeholder.
+    - bash -c "cd web && npm ci && npm run build"
     - go test ./...
 
 builds:
