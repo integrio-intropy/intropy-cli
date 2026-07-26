@@ -85,7 +85,7 @@ export function DetailPanel({ detail, hasSelection }: Props) {
   )
 }
 
-function Meta({ label, value }: { label: string; value: string }) {
+export function Meta({ label, value }: { label: string; value: string }) {
   return (
     <div className="meta">
       <span className="meta-label">{label}</span>
@@ -94,7 +94,7 @@ function Meta({ label, value }: { label: string; value: string }) {
   )
 }
 
-function Section({
+export function Section({
   title,
   icon: Icon,
   children,

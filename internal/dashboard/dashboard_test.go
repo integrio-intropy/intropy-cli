@@ -333,6 +333,88 @@ func TestTopologyErrorsSurfaced(t *testing.T) {
 	}
 }
 
+// TestTopologyMessageDocs checks that authored message descriptions beside a
+// system are served keyed by connector name, that a doc naming an undeclared
+// connector is withheld and reported, and that docs are read fresh per
+// request — an edit shows up without re-running the cached graph provider.
+func TestTopologyMessageDocs(t *testing.T) {
+	tmp := t.TempDir()
+	t.Chdir(tmp)
+	system := "product-distribution"
+	msgs := filepath.Join(system, "messages")
+	if err := os.MkdirAll(msgs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	doc := "---\nformat: csv\ndelimiter: \";\"\n---\nNightly ERP export.\n"
+	if err := os.WriteFile(filepath.Join(msgs, "erp.md"), []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(msgs, "ghost.md"), []byte("orphan\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	calls := 0
+	provider := func(context.Context) ([]topology.Entry, []string) {
+		calls++
+		return []topology.Entry{{
+			Path: system,
+			Topology: topology.Topology{
+				APIVersion: topology.APIVersion,
+				System:     system,
+				Connectors: []topology.Connector{{
+					Name:      "erp",
+					Transport: topology.Transport{Type: "file", SupportsInput: true, SupportsOutput: true},
+				}},
+			},
+		}}, nil
+	}
+	h := testHandlerWithTopo(t, ".", provider)
+
+	var report struct {
+		Topologies []struct {
+			MessageDocs map[string]messageDoc `json:"messageDocs"`
+		} `json:"topologies"`
+		Errors []string `json:"errors"`
+	}
+	decode := func() {
+		t.Helper()
+		rec := get(t, h, "/api/topology")
+		if err := json.Unmarshal(rec.Body.Bytes(), &report); err != nil {
+			t.Fatalf("body not JSON: %v\n%s", err, rec.Body.String())
+		}
+		if len(report.Topologies) != 1 {
+			t.Fatalf("topologies = %d, want 1", len(report.Topologies))
+		}
+	}
+
+	decode()
+	got := report.Topologies[0].MessageDocs["erp"]
+	if got.Format != "csv" || got.Delimiter != ";" || got.Body != "Nightly ERP export." {
+		t.Errorf("erp doc = %+v", got)
+	}
+	if _, ok := report.Topologies[0].MessageDocs["ghost"]; ok {
+		t.Error("undeclared connector doc must be withheld")
+	}
+	if len(report.Errors) != 1 ||
+		!strings.Contains(report.Errors[0], "product-distribution/messages/ghost.md") ||
+		!strings.Contains(report.Errors[0], `no connector "ghost"`) {
+		t.Errorf("errors = %v, want one undeclared-connector error", report.Errors)
+	}
+
+	// Edit the doc; a plain GET (no refresh) serves the new content from the
+	// cached provider result.
+	if err := os.WriteFile(filepath.Join(msgs, "erp.md"), []byte("---\nformat: xml\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	decode()
+	if got := report.Topologies[0].MessageDocs["erp"]; got.Format != "xml" {
+		t.Errorf("edited doc format = %q, want xml", got.Format)
+	}
+	if calls != 1 {
+		t.Errorf("provider calls = %d, want 1 (docs must not invalidate the cache)", calls)
+	}
+}
+
 // TestTopologyCachedUntilRefresh checks that the provider — which runs a
 // dotnet build per host — is called once for any number of GETs, and again
 // only on an explicit refresh.

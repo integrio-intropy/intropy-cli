@@ -34,6 +34,7 @@ import {
   SyncAltIcon,
 } from '../icons'
 import { Combobox, type ComboOption } from './Combobox'
+import { FlowDetail, type FlowSelection } from './FlowDetail'
 
 interface Props {
   selected: string | null
@@ -108,10 +109,16 @@ interface ExtNodeData extends Record<string, unknown> {
   name: string
   type: string
   direction?: DaprComponent['direction']
+  /** Declared connector name — the inspector's join key to the topology's
+   *  connectors[] and messageDocs. */
+  connector?: string
 }
 
 interface TopicNodeData extends Record<string, unknown> {
   name: string
+  /** Pub/sub component the topic lives on — with name, the inspector's join
+   *  key into the topology's topics[]. */
+  pubsub?: string
   /** Data entity carried on the topic, e.g. "RawProduct". */
   entity?: string
   /** Contract ref when the topic is a declared API (contract surface). */
@@ -151,6 +158,11 @@ export function FlowView({ selected, onSelect, theme }: Props) {
   const [refreshing, setRefreshing] = useState(false)
   const [system, setSystem] = useState<string | null>(null)
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
+  // What the inspector panel shows: a clicked topic or connector node.
+  const [inspect, setInspect] = useState<FlowSelection | null>(null)
+
+  // A different system means different topics/connectors — drop the inspector.
+  useEffect(() => setInspect(null), [system])
 
   useEffect(() => {
     const fail = (e: unknown) => setError(e instanceof Error ? e.message : String(e))
@@ -269,10 +281,18 @@ export function FlowView({ selected, onSelect, theme }: Props) {
               edges={built.edges}
               onNodesChange={onNodesChange}
               onSelect={onSelect}
+              onInspect={setInspect}
               fitSignal={system ?? ''}
               theme={theme}
             />
           </ReactFlowProvider>
+          {inspect && (
+            <FlowDetail
+              selection={inspect}
+              topology={declared}
+              onClose={() => setInspect(null)}
+            />
+          )}
         </div>
       ) : (
         <p className="empty">
@@ -292,6 +312,7 @@ function FlowCanvas({
   edges,
   onNodesChange,
   onSelect,
+  onInspect,
   fitSignal,
   theme,
 }: {
@@ -299,6 +320,7 @@ function FlowCanvas({
   edges: Edge[]
   onNodesChange: Parameters<typeof ReactFlow>[0]['onNodesChange']
   onSelect: (path: string) => void
+  onInspect: (selection: FlowSelection | null) => void
   fitSignal: string
   theme: 'light' | 'dark'
 }) {
@@ -320,7 +342,16 @@ function FlowCanvas({
       proOptions={{ hideAttribution: true }}
       onNodeClick={(_, node) => {
         if (node.type === 'integration') onSelect(node.id)
+        if (node.type === 'topic') {
+          const d = node.data as TopicNodeData
+          if (d.pubsub) onInspect({ kind: 'topic', pubsub: d.pubsub, topic: d.name })
+        }
+        if (node.type === 'external') {
+          const d = node.data as ExtNodeData
+          if (d.connector) onInspect({ kind: 'connector', name: d.connector })
+        }
       }}
+      onPaneClick={() => onInspect(null)}
     >
       <Background gap={20} />
       <Controls showInteractive={false} />
@@ -473,6 +504,7 @@ function buildDeclaredGraph(
       style: { width: INFRA_W, height: INFRA_H },
       data: {
         name: ref.topic,
+        pubsub: ref.pubsub,
         contract: meta?.contract,
       } satisfies TopicNodeData,
     })
@@ -560,6 +592,7 @@ function buildDeclaredGraph(
         name: conn?.externalSystem ? refName(conn.externalSystem) : use.connector,
         type: conn?.transport.type ?? 'connector',
         direction: isInput ? 'input' : undefined,
+        connector: use.connector,
       }
       if (isInput) {
         pushExternal(extId, data, anchor.x - EXT_W - EXT_GAP, anchor.y)

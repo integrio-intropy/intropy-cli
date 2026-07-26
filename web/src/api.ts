@@ -134,6 +134,69 @@ export interface TopologyConnector {
   usedBy?: string[]
 }
 
+/** A message contract in the system's registry, keyed by `name` — the same
+ *  fully-qualified type name TopologyTopic.contract references. */
+export interface Contract {
+  name: string
+  /** "event" for pub/sub message contracts. */
+  kind?: string
+  /** Bare type name — the join key to a scaffold record's values.contract. */
+  shortName?: string
+  mediaType?: string
+  /** Hash of the schema's canonical form; equal fingerprints mean equal
+   *  shapes across systems. */
+  fingerprint?: string
+  /** JSON Schema as the host emitted it, passed through verbatim. */
+  schema?: JsonSchema
+}
+
+/** The subset of JSON Schema the contract field tree renders. Anything it
+ *  does not recognize falls back to a raw type label, never an error. */
+export interface JsonSchema {
+  type?: string | string[]
+  format?: string
+  properties?: Record<string, JsonSchema>
+  required?: string[]
+  items?: JsonSchema
+  enum?: unknown[]
+  $ref?: string
+  $defs?: Record<string, JsonSchema>
+}
+
+/** One field or column of an external payload, as its author described it.
+ *  `type` is loose by design — documentation, not a validatable schema. */
+export interface MessageDocField {
+  name: string
+  position?: number
+  type?: string
+  required?: boolean
+  notes?: string
+}
+
+/** A short inline payload excerpt. The server only serves samples whose
+ *  author explicitly asserted the redaction check. */
+export interface MessageDocSample {
+  inline: string
+  redacted?: boolean
+}
+
+/** An authored description of the payload a connector carries (the flat file
+ *  from an SFTP drop, the ad-hoc CSV export), read from the system's
+ *  messages/<connector>.md sidecar. Documentation, not enforcement. */
+export interface MessageDoc {
+  format?: string
+  delimiter?: string
+  encoding?: string
+  filePattern?: string
+  frequency?: string
+  contact?: string
+  lastReviewed?: string
+  fields?: MessageDocField[]
+  sample?: MessageDocSample
+  /** Free prose from the doc's Markdown body. */
+  body?: string
+}
+
 export interface Topology {
   /** Root-relative system directory, same identifier space as Integration.path. */
   path: string
@@ -144,8 +207,15 @@ export interface Topology {
   components?: TopologyComponent[]
   topics?: TopologyTopic[]
   connectors?: TopologyConnector[]
+  /** Message contract registry topics reference by contract name. Absent
+   *  until the system host's topology library emits it. */
+  contracts?: Contract[]
   /** Contract surfaces — parsed but not yet rendered (shape not finalized). */
   apis?: unknown[]
+  /** Authored connector payload descriptions, keyed by connector name.
+   *  CLI-merged enrichment from messages/<connector>.md — not part of the
+   *  host-declared topology, and re-read on every request. */
+  messageDocs?: Record<string, MessageDoc>
 }
 
 /** The /api/topology payload: every declared topology plus the per-host

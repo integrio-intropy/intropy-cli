@@ -628,12 +628,150 @@ body {
 }
 
 .flow-canvas {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
   background: var(--bg);
+}
+
+/* Flow inspector: message detail for a clicked topic or connector node,
+   floating over the canvas' right edge. */
+.flow-detail {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  width: min(400px, calc(100% - 24px));
+  overflow-y: auto;
+  padding: 16px 18px 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  z-index: 10;
+}
+
+.flow-detail .section {
+  margin-top: 22px;
+}
+
+.flow-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.flow-detail-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  word-break: break-all;
+}
+
+.flow-detail-close {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.flow-detail-close:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.flow-detail-contract {
+  margin: 0 0 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.flow-detail-fingerprint {
+  margin: 10px 0 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.flow-detail-reviewed {
+  margin: 0 0 10px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.flow-detail-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+/* Contract field tree / authored fields table */
+.schema-tree {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.schema-tree td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  font-size: 12.5px;
+}
+
+.schema-tree tr:last-child td {
+  border-bottom: none;
+}
+
+.schema-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.schema-type {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.schema-req {
+  white-space: nowrap;
+}
+
+.schema-notes {
+  color: var(--text-muted);
+}
+
+.badge-required {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: var(--surface-2);
 }
 
 /* Searchable system selector */

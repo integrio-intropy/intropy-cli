@@ -40,6 +40,13 @@ const validRecord = `{
     {"name": "price-master", "externalSystem": "price-master",
      "transport": {"type": "sftp", "supportsInput": true, "supportsOutput": true},
      "directions": ["in"], "usedBy": ["extractor"]}
+  ],
+  "contracts": [
+    {"name": "Price.Contracts.B2BPrice", "kind": "event", "shortName": "B2BPrice",
+     "mediaType": "application/json", "fingerprint": "sha256:9f2a41c803de11ab",
+     "schema": {"type": "object",
+                "properties": {"sku": {"type": "string"}},
+                "required": ["sku"]}}
   ]
 }`
 
@@ -76,6 +83,29 @@ func TestDecodeValid(t *testing.T) {
 	if cn := got.Connectors[1]; cn.Name != "price-master" || cn.Transport.Type != "sftp" ||
 		!cn.Transport.SupportsInput || !cn.Transport.SupportsOutput {
 		t.Errorf("connector = %+v", cn)
+	}
+	if len(got.Contracts) != 1 {
+		t.Fatalf("contracts = %d, want 1", len(got.Contracts))
+	}
+	if c := got.Contracts[0]; c.Name != "Price.Contracts.B2BPrice" || c.Kind != "event" ||
+		c.ShortName != "B2BPrice" || c.Fingerprint != "sha256:9f2a41c803de11ab" {
+		t.Errorf("contract = %+v", c)
+	}
+	// The schema is passed through verbatim, not interpreted.
+	if s := string(got.Contracts[0].Schema); !strings.Contains(s, `"required"`) {
+		t.Errorf("schema not preserved: %s", s)
+	}
+}
+
+// A record without contracts[] (an older host) still decodes; the section is
+// simply absent.
+func TestDecodeWithoutContracts(t *testing.T) {
+	got, err := Decode(strings.NewReader(`{"apiVersion": "topology.intropy.io/v1", "system": "x"}`))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if got.Contracts != nil {
+		t.Errorf("contracts = %+v, want nil", got.Contracts)
 	}
 }
 

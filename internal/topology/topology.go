@@ -37,6 +37,7 @@ type Topology struct {
 	Components []Component `json:"components,omitempty"`
 	Topics     []Topic     `json:"topics,omitempty"`
 	Connectors []Connector `json:"connectors,omitempty"`
+	Contracts  []Contract  `json:"contracts,omitempty"`
 	// APIs, and each component's Provides/Consumes below, are the contract
 	// (request/response) surfaces. Their element shape is not yet finalized,
 	// so they are parsed opaquely: preserved for round-tripping to the
@@ -89,6 +90,22 @@ type Topic struct {
 	Contract    string   `json:"contract,omitempty"`
 	Publishers  []string `json:"publishers,omitempty"`
 	Subscribers []string `json:"subscribers,omitempty"`
+}
+
+// Contract is a message contract in the system's registry, keyed by Name —
+// the same fully-qualified type name Topic.Contract references. ShortName is
+// the bare type name (the join key to a scaffold record's values.contract).
+// Schema is the contract's JSON Schema as the host emitted it; the CLI passes
+// it through to the frontend without interpreting it. Fingerprint identifies
+// the schema shape (a hash over its canonical form), so equal fingerprints
+// mean equal shapes across systems.
+type Contract struct {
+	Name        string          `json:"name"`
+	Kind        string          `json:"kind,omitempty"`
+	ShortName   string          `json:"shortName,omitempty"`
+	MediaType   string          `json:"mediaType,omitempty"`
+	Fingerprint string          `json:"fingerprint,omitempty"`
+	Schema      json.RawMessage `json:"schema,omitempty"`
 }
 
 // Transport describes how a connector moves data. SupportsInput/SupportsOutput

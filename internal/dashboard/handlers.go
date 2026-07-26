@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -28,17 +29,27 @@ type apiServer struct {
 	// graph verbs (a dotnet build on first run), so the result is computed
 	// once — on the first /api/topology request — and reused until an
 	// explicit refresh.
-	topoMu     sync.Mutex
-	topoLoaded bool
-	topoCache  topologyReport
+	topoMu      sync.Mutex
+	topoLoaded  bool
+	topoEntries []topology.Entry
+	topoErrs    []string
 }
 
 // topologyReport is the /api/topology payload: every declared topology plus
 // the per-host failures the UI renders. Topologies is always an array (never
 // null) even when empty.
 type topologyReport struct {
-	Topologies []topology.Entry `json:"topologies"`
-	Errors     []string         `json:"errors,omitempty"`
+	Topologies []topologyEntry `json:"topologies"`
+	Errors     []string        `json:"errors,omitempty"`
+}
+
+// topologyEntry is one system's declared topology plus the authored
+// enrichment read from its directory: message descriptions keyed by connector
+// name. The docs ride beside the Topology rather than inside it — the
+// topology stays exactly what the host declared.
+type topologyEntry struct {
+	topology.Entry
+	MessageDocs map[string]messageDoc `json:"messageDocs,omitempty"`
 }
 
 // fileDoc is a text document surfaced in an integration's detail view.
@@ -223,22 +234,75 @@ func (s *apiServer) refreshTopologies(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.topologyReport(r.Context(), true))
 }
 
-// topologyReport returns the cached provider result, computing it on first
-// use or when force is set. Concurrent requests share one computation.
+// topologyReport assembles the /api/topology payload: the cached provider
+// result plus the message docs read fresh from disk on every request, so an
+// edited doc shows up on a browser refresh without re-running the hosts'
+// graph verbs.
 func (s *apiServer) topologyReport(ctx context.Context, force bool) topologyReport {
+	entries, errs := s.cachedTopologies(ctx, force)
+	report := topologyReport{
+		Topologies: make([]topologyEntry, 0, len(entries)),
+		Errors:     append([]string(nil), errs...),
+	}
+	for _, e := range entries {
+		docs, docErrs := s.messageDocs(e)
+		report.Topologies = append(report.Topologies, topologyEntry{Entry: e, MessageDocs: docs})
+		report.Errors = append(report.Errors, docErrs...)
+	}
+	return report
+}
+
+// cachedTopologies returns the provider result — computed on first use or
+// when force is set, reused otherwise. Concurrent requests share one
+// computation. Entry paths are normalized to root-relative identifiers.
+func (s *apiServer) cachedTopologies(ctx context.Context, force bool) ([]topology.Entry, []string) {
 	s.topoMu.Lock()
 	defer s.topoMu.Unlock()
-	if s.topoLoaded && !force {
-		return s.topoCache
+	if !s.topoLoaded || force {
+		entries, errs := s.topo(ctx)
+		s.topoEntries = make([]topology.Entry, 0, len(entries))
+		for _, e := range entries {
+			e.Path = s.relPath(e.Path)
+			s.topoEntries = append(s.topoEntries, e)
+		}
+		s.topoErrs, s.topoLoaded = errs, true
 	}
-	entries, errs := s.topo(ctx)
-	report := topologyReport{Topologies: make([]topology.Entry, 0, len(entries)), Errors: errs}
-	for _, e := range entries {
-		e.Path = s.relPath(e.Path)
-		report.Topologies = append(report.Topologies, e)
+	return s.topoEntries, s.topoErrs
+}
+
+// messageDocs reads the authored connector payload descriptions beside a
+// system, keyed by connector name. A doc naming a connector the topology does
+// not declare is surfaced as an error and withheld — never guessed around.
+// Error messages carry the doc's workspace-relative path.
+func (s *apiServer) messageDocs(e topology.Entry) (map[string]messageDoc, []string) {
+	docs, errs := readMessageDocs(filepath.Join(s.root, filepath.FromSlash(e.Path)))
+	prefix := ""
+	if e.Path != "." {
+		prefix = e.Path + "/"
 	}
-	s.topoCache, s.topoLoaded = report, true
-	return report
+	for i, msg := range errs {
+		errs[i] = prefix + msg
+	}
+	known := map[string]bool{}
+	for _, c := range e.Connectors {
+		known[c.Name] = true
+	}
+	var unknown []string
+	for name := range docs {
+		if !known[name] {
+			unknown = append(unknown, name)
+			delete(docs, name)
+		}
+	}
+	sort.Strings(unknown)
+	for _, name := range unknown {
+		errs = append(errs, fmt.Sprintf("%s%s/%s.md: no connector %q declared by system %q",
+			prefix, messagesDirName, name, name, e.System))
+	}
+	if len(docs) == 0 {
+		docs = nil
+	}
+	return docs, errs
 }
 
 func (s *apiServer) getIntegration(w http.ResponseWriter, r *http.Request) {
