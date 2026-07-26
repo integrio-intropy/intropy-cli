@@ -10,7 +10,6 @@ import (
 	"syscall"
 
 	"github.com/integrio-intropy/intropy-cli/internal/skill"
-	"github.com/integrio-intropy/intropy-cli/internal/skill/oci"
 	"github.com/spf13/cobra"
 )
 
@@ -70,7 +69,7 @@ is created in the current directory.`,
 			}
 		}
 
-		client, err := oci.NewClient()
+		client, err := newSkillRegistry()
 		if err != nil {
 			return fmt.Errorf("add: %w", err)
 		}

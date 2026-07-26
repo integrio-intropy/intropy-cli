@@ -1,4 +1,4 @@
-package oci
+package registry
 
 import "testing"
 
@@ -45,5 +45,26 @@ func TestParseReference(t *testing.T) {
 func TestParseReferenceErrors(t *testing.T) {
 	if _, err := ParseReference("no-slash-anywhere"); err == nil {
 		t.Errorf("expected error for reference without registry/repo separator")
+	}
+}
+
+func TestReferenceTagOrDigest(t *testing.T) {
+	cases := []struct {
+		name string
+		ref  Reference
+		want string
+	}{
+		{name: "tag only", ref: Reference{Tag: "1.2.0"}, want: "1.2.0"},
+		{name: "digest only", ref: Reference{Digest: "sha256:abc123"}, want: "sha256:abc123"},
+		{name: "tag wins over digest", ref: Reference{Tag: "1.2.0", Digest: "sha256:abc123"}, want: "1.2.0"},
+		{name: "neither", ref: Reference{}, want: ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.ref.TagOrDigest(); got != tc.want {
+				t.Errorf("TagOrDigest() = %q; want %q", got, tc.want)
+			}
+		})
 	}
 }

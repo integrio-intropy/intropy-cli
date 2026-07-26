@@ -8,7 +8,6 @@ import (
 	"syscall"
 
 	"github.com/integrio-intropy/intropy-cli/internal/skill"
-	"github.com/integrio-intropy/intropy-cli/internal/skill/oci"
 	"github.com/spf13/cobra"
 )
 
@@ -49,7 +48,7 @@ Pass --all to reconcile every installed skill at once.`,
 			return fmt.Errorf("update: %w", err)
 		}
 
-		client, err := oci.NewClient()
+		client, err := newSkillRegistry()
 		if err != nil {
 			return fmt.Errorf("update: %w", err)
 		}

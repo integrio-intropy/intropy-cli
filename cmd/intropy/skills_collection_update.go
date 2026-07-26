@@ -68,7 +68,7 @@ version tag to another.`,
 			ref = skillsCollectionUpdateOpts.ref
 		}
 
-		client, err := oci.NewClient()
+		client, err := newSkillRegistry()
 		if err != nil {
 			return fmt.Errorf("collection update: %w", err)
 		}

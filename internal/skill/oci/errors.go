@@ -1,9 +1,13 @@
 package oci
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/integrio-intropy/intropy-cli/internal/registry"
+)
 
 var (
-	ErrNotFound     = errors.New("skill: artifact not found")
+	ErrNotFound     = registry.ErrNotFound
 	ErrNotSkill     = errors.New("skill: artifact is not a skill.v1")
-	ErrUnauthorized = errors.New("skill: unauthorized")
+	ErrUnauthorized = registry.ErrUnauthorized
 )

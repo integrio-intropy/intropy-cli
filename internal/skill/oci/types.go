@@ -1,6 +1,10 @@
 package oci
 
-import "io"
+import (
+	"io"
+
+	"github.com/integrio-intropy/intropy-cli/internal/registry"
+)
 
 const (
 	MediaTypeSkillArtifact = "application/vnd.agentskills.skill.v1"
@@ -21,13 +25,7 @@ type Artifact struct {
 	Tag     string
 }
 
-type Descriptor struct {
-	MediaType    string
-	ArtifactType string
-	Digest       string
-	Size         int64
-	Annotations  map[string]string
-}
+type Descriptor = registry.Descriptor
 
 type Index struct {
 	Annotations map[string]string `json:"annotations,omitempty"`

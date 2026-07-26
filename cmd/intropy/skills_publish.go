@@ -44,7 +44,7 @@ Example:
 		}
 		defer art.Content.Close()
 
-		client, err := oci.NewClient()
+		client, err := newSkillRegistry()
 		if err != nil {
 			return fmt.Errorf("publish: %w", err)
 		}
