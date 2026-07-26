@@ -134,19 +134,39 @@ docs(readme): update install instructions for macOS
 
 ### CLI patterns
 
-This project uses Cobra + Viper. When adding or modifying commands:
+This project uses Cobra. It deliberately does **not** use Viper — the
+dependency list is kept short, and configuration layering is a few lines in
+`internal/config`. When adding or modifying commands:
 
 - Set `SilenceUsage: true` and `SilenceErrors: true` on the command.
 - Return errors from `RunE` — never call `os.Exit()` inside commands.
 - Write diagnostic output to `cmd.ErrOrStderr()`, program output to `cmd.OutOrStdout()`.
-- Bind flags to Viper with `viper.BindPFlag` for env/config support.
 - Use `cobra.ExactArgs`, `cobra.MinimumNArgs`, etc. for argument validation.
 - Provide `RegisterFlagCompletionFunc` for flag value completion.
+- Do not add `PersistentPreRunE` to a subcommand. Cobra runs only the closest
+  one in the chain, so a subcommand's would shadow the root's — which is where
+  `-C/--directory` changes the working directory — and break that flag for
+  that command alone.
+
+### Configuration
+
+Precedence is **flag > environment > file > zero**, resolved with `cmp.Or`.
+
+- Per-user settings live in `internal/config` (`~/.config/intropy/config.yaml`,
+  honouring `XDG_CONFIG_HOME`). A missing file is not an error; a malformed one
+  is, and unknown keys are rejected so a typo cannot look like an unset value.
+- Project-scoped state is found by walking up from the working directory
+  (`skills.json`, `.intropy/scaffold.json`).
+- Environment variables this CLI owns are prefixed `INTROPY_`. The only
+  exceptions are variables borrowed from another tool, where honouring its name
+  means an existing setup works unchanged (e.g. `ARGOCD_SERVER`) — document
+  them as borrowed.
 
 ### Error handling
 
 - Return wrapped errors with context: `fmt.Errorf("resolving template: %w", err)`
-- Use exit code `2` for usage errors (invalid flags/args), `1` for runtime errors.
+- Exit codes: `2` usage errors (invalid flags/args), `1` runtime errors, `127`
+  a required external binary is missing from `PATH`, `130` interrupted.
 
 ## Testing
 
