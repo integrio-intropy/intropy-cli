@@ -1,0 +1,1 @@
+Without changing any code analyze how we could implement intropy sys deploy that would deploy the system to a local k3s
