@@ -59,7 +59,7 @@ name via 'intropy skills add --name <skill-name>'.`,
 			}
 		}
 
-		client, err := oci.NewClient()
+		client, err := newSkillRegistry()
 		if err != nil {
 			return fmt.Errorf("collection add: %w", err)
 		}

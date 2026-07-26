@@ -1,17 +1,13 @@
 package oci
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"time"
 
-	"github.com/opencontainers/go-digest"
-	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"oras.land/oras-go/v2"
-	"oras.land/oras-go/v2/content/memory"
+	"github.com/integrio-intropy/intropy-cli/internal/registry"
 )
 
 // Push uploads a packed skill Artifact to the registry at ref. The ref must
@@ -26,11 +22,6 @@ func (c *Client) Push(ctx context.Context, ref string, art Artifact) (Descriptor
 		return Descriptor{}, fmt.Errorf("ref must include a tag")
 	}
 
-	repo, err := c.repository(parsed)
-	if err != nil {
-		return Descriptor{}, err
-	}
-
 	art.Config.Version = parsed.Tag
 
 	layerBytes, err := io.ReadAll(art.Content)
@@ -38,55 +29,17 @@ func (c *Client) Push(ctx context.Context, ref string, art Artifact) (Descriptor
 		return Descriptor{}, fmt.Errorf("read layer: %w", err)
 	}
 
-	store := memory.New()
-
-	layerDesc := ocispec.Descriptor{
-		MediaType: MediaTypeSkillContent,
-		Digest:    digest.FromBytes(layerBytes),
-		Size:      int64(len(layerBytes)),
-	}
-	if err := store.Push(ctx, layerDesc, bytes.NewReader(layerBytes)); err != nil {
-		return Descriptor{}, fmt.Errorf("stage layer: %w", err)
-	}
-
 	configBytes, err := json.Marshal(art.Config)
 	if err != nil {
 		return Descriptor{}, fmt.Errorf("marshal config: %w", err)
 	}
-	configDesc := ocispec.Descriptor{
-		MediaType: MediaTypeSkillConfig,
-		Digest:    digest.FromBytes(configBytes),
-		Size:      int64(len(configBytes)),
-	}
-	if err := store.Push(ctx, configDesc, bytes.NewReader(configBytes)); err != nil {
-		return Descriptor{}, fmt.Errorf("stage config: %w", err)
-	}
 
-	manifestDesc, err := oras.PackManifest(ctx, store, oras.PackManifestVersion1_1, MediaTypeSkillArtifact,
-		oras.PackManifestOptions{
-			Layers:              []ocispec.Descriptor{layerDesc},
-			ConfigDescriptor:    &configDesc,
-			ManifestAnnotations: buildSkillAnnotations(art.Config),
-		})
-	if err != nil {
-		return Descriptor{}, fmt.Errorf("pack manifest: %w", err)
-	}
-
-	if err := store.Tag(ctx, manifestDesc, parsed.Tag); err != nil {
-		return Descriptor{}, fmt.Errorf("tag: %w", err)
-	}
-
-	if _, err := oras.Copy(ctx, store, parsed.Tag, repo, parsed.Tag, oras.DefaultCopyOptions); err != nil {
-		return Descriptor{}, mapError(err, ref)
-	}
-
-	return Descriptor{
-		MediaType:    manifestDesc.MediaType,
+	return c.reg.PushArtifact(ctx, ref, registry.Artifact{
 		ArtifactType: MediaTypeSkillArtifact,
-		Digest:       manifestDesc.Digest.String(),
-		Size:         manifestDesc.Size,
-		Annotations:  manifestDesc.Annotations,
-	}, nil
+		Config:       registry.Blob{MediaType: MediaTypeSkillConfig, Data: configBytes},
+		Layers:       []registry.Blob{{MediaType: MediaTypeSkillContent, Data: layerBytes}},
+		Annotations:  buildSkillAnnotations(art.Config),
+	})
 }
 
 func buildSkillAnnotations(cfg Config) map[string]string {

@@ -7,7 +7,6 @@ import (
 	"syscall"
 
 	"github.com/integrio-intropy/intropy-cli/internal/skill"
-	"github.com/integrio-intropy/intropy-cli/internal/skill/oci"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -40,7 +39,7 @@ Example spec file:
 			return fmt.Errorf("collection publish: %w", err)
 		}
 
-		client, err := oci.NewClient()
+		client, err := newSkillRegistry()
 		if err != nil {
 			return fmt.Errorf("collection publish: %w", err)
 		}

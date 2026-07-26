@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 
 	"github.com/integrio-intropy/intropy-cli/internal/skill"
-	"github.com/integrio-intropy/intropy-cli/internal/skill/oci"
 	"github.com/integrio-intropy/intropy-cli/internal/template"
 	"golang.org/x/term"
 )
@@ -70,7 +69,7 @@ func maybeInstallSkills(ctx context.Context, in io.Reader, errW io.Writer, force
 	if err != nil {
 		return err
 	}
-	client, err := oci.NewClient()
+	client, err := newSkillRegistry()
 	if err != nil {
 		return err
 	}

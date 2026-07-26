@@ -1,28 +1,19 @@
 package oci
 
 import (
-	"fmt"
-
-	"oras.land/oras-go/v2/registry/remote/auth"
-	"oras.land/oras-go/v2/registry/remote/credentials"
-	"oras.land/oras-go/v2/registry/remote/retry"
+	"github.com/integrio-intropy/intropy-cli/internal/registry"
 )
 
+// Client publishes and fetches agent skills. It applies the agent-skills
+// artifact rules on top of the generic registry client.
 type Client struct {
-	auth *auth.Client
+	reg *registry.Client
 }
 
-func NewClient() (*Client, error) {
-	store, err := credentials.NewStoreFromDocker(credentials.StoreOptions{})
+func NewClient(opts ...registry.Option) (*Client, error) {
+	reg, err := registry.NewClient(opts...)
 	if err != nil {
-		return nil, fmt.Errorf("load docker credentials: %w", err)
+		return nil, err
 	}
-
-	client := &auth.Client{
-		Client:     retry.DefaultClient,
-		Cache:      auth.NewCache(),
-		Credential: credentials.Credential(store),
-	}
-
-	return &Client{auth: client}, nil
+	return &Client{reg: reg}, nil
 }
