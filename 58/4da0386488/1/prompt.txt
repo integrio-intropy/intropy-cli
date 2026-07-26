@@ -1,0 +1,1355 @@
+One of the most value-adding things we can give developers in the dashboard is the ability to inspect message contracts of the different messages that flow through a system. I am just not sure how. The internal contracts is one thing. They will always be be in a cloudevent format and I guess we could generate asyncapis or something like that and incorporate that into the dashboard somehow? The real value is if we could somehow describe messages that are flowing from/to external systems but there rarely exists something like an api spec and it might aswell just be a flatfile from an sftp server
+
+---
+
+<task-notification>
+<task-id>a79ee5348f6f396ad</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/5bca53b9-3ca9-4570-9b0c-22e405658876/tasks/a79ee5348f6f396ad.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore dashboard v2 rendering" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## 1. The `intropy dashboard` command
+
+**`/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/dashboard.go`** — root-level cobra command, registered in its own `init()` via `rootCmd.AddCommand(dashboardCmd)` (root is `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/root.go`).
+
+- `Use: "dashboard [dir]"`, `Args: cobra.MaximumNArgs(1)`, default root `"."`, validates it's a directory (returns `usageError` → exit 2 for a file).
+- Flags: `--addr` (default `127.0.0.1`), `-p/--port` (default `8730`, `0` = free port), `--no-browser`.
+- Wraps `cmd.Context()` in `signal.NotifyContext(SIGINT, SIGTERM)` then calls `dashboard.Serve(ctx, dashboard.Options{...})`.
+- Tests: `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/dashboard_cmd_test.go` (only arg-validation tests).
+
+Server: **`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/server.go`** — plain stdlib `net/http`, `Serve()` builds the handler with `newHandler(root, opts.Version, hostGraphProvider(root))`, listens, prints the URL, optionally opens the browser (`internal/dashboard/browser.go`), graceful shutdown with a 5s timeout.
+
+Whole commit is `ec3f2ef0 "Initial dashboard"` — everything below is new in that single commit; working tree is clean (only untracked agent dirs).
+
+## 2. How the UI is built
+
+Embedded SPA, **not** a TUI:
+
+- **`/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/embed.go`** — `//go:embed all:dist` → `web.Assets`.
+- **`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/static.go`** — `fs.Sub(web.Assets, "dist")` + `http.FileServerFS`, with index.html fallback for SPA routing. A placeholder `web/dist/index.html` is committed so Go builds without Node; real assets built by `make web` (`cd web &amp;&amp; npm ci &amp;&amp; npm run build`), `make bundle` = web + build.
+- Stack: **Vite 5 + React 18 + TypeScript**, graph rendered with **`@xyflow/react` v12 (React Flow)** — `web/package.json`. Icons are Material Symbols SVGs via `vite-plugin-svgr` (`web/src/icons.ts`). Dev loop proxies `/api` → `127.0.0.1:8730` (`web/vite.config.ts`).
+
+Frontend files:
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/App.tsx` — two views: `catalog` (Sidebar + DetailPanel) and `flow` (FlowView). Shared `selected` string (an integration path) + theme.
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/components/FlowView.tsx` (678 lines) — **the topology renderer**.
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/components/DetailPanel.tsx` — catalog-only detail article.
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/components/Sidebar.tsx`, `Combobox.tsx`, `web/src/index.css` (1023 lines, `.rf-*` node styling).
+
+## 3. The topology data model
+
+### Go — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/topology/topology.go`
+
+Important correction to your framing: the v1 document is **not** a `nodes[]`/`edges[]` document. It is `components[]` with **wiring inlined on each component** (that's the "inline-edge schema"), plus top-level `topics[]`/`connectors[]` as lookup tables. React Flow's nodes/edges are derived client-side.
+
+```go
+const (
+	APIVersion = "topology.intropy.io/v1"
+	Kind       = "SystemTopology"
+)
+
+type Topology struct {
+	APIVersion string      `json:"apiVersion"`
+	Kind       string      `json:"kind,omitempty"`
+	System     string      `json:"system"`
+	Components []Component `json:"components,omitempty"`
+	Topics     []Topic     `json:"topics,omitempty"`
+	Connectors []Connector `json:"connectors,omitempty"`
+	// APIs, and each component's Provides/Consumes below, are the contract
+	// (request/response) surfaces. Their element shape is not yet finalized,
+	// so they are parsed opaquely: preserved for round-tripping to the
+	// frontend without asserting a schema the CLI does not yet render.
+	APIs []json.RawMessage `json:"apis,omitempty"`
+}
+
+type Component struct {
+	Name       string         `json:"name"`
+	Kind       string         `json:"kind"`
+	Subscribes []TopicRef     `json:"subscribes,omitempty"`
+	Publishes  []Publication  `json:"publishes,omitempty"`
+	Connectors []ConnectorUse `json:"connectors,omitempty"`
+	// Provides/Consumes are contract surfaces, parsed opaquely (see APIs).
+	Provides []json.RawMessage `json:"provides,omitempty"`
+	Consumes []json.RawMessage `json:"consumes,omitempty"`
+}
+
+type TopicRef struct {                 // subscribe edge
+	PubSub string `json:"pubsub"`
+	Topic  string `json:"topic"`
+}
+
+type Publication struct {              // publish edge
+	Port   string `json:"port,omitempty"`   // component output port
+	PubSub string `json:"pubsub"`
+	Topic  string `json:"topic"`
+}
+
+type ConnectorUse struct {
+	Connector string `json:"connector"`
+	Direction string `json:"direction"` // "in" | "out"
+}
+
+type Topic struct {
+	PubSub      string   `json:"pubsub"`
+	Topic       string   `json:"topic"`
+	Contract    string   `json:"contract,omitempty"`   // &lt;-- the ONLY message/contract field today
+	Publishers  []string `json:"publishers,omitempty"`
+	Subscribers []string `json:"subscribers,omitempty"`
+}
+
+type Transport struct {
+	Type           string `json:"type"`
+	SupportsInput  bool   `json:"supportsInput"`
+	SupportsOutput bool   `json:"supportsOutput"`
+}
+
+type Connector struct {
+	Name           string    `json:"name"`
+	ExternalSystem string    `json:"externalSystem,omitempty"`
+	Transport      Transport `json:"transport"`
+	Directions     []string  `json:"directions,omitempty"`
+	UsedBy         []string  `json:"usedBy,omitempty"`
+}
+
+// Entry = one system's topology + the workspace dir, flattened for the API.
+type Entry struct {
+	Path string `json:"path"`
+	Topology
+}
+
+func Decode(r io.Reader) (*Topology, error) // strict: apiVersion mismatch = error, leading noise = error
+```
+
+**Contract/message-related surface today:** exactly one typed field — `Topic.Contract` (a C# type name string, e.g. `"Price.Contracts.B2BPrice"`; see the fixture at `internal/topology/topology_test.go:31`). Everything else contract-ish (`Topology.APIs`, `Component.Provides`, `Component.Consumes`) is `[]json.RawMessage` — decoded, cached, re-serialized to the browser, and **never read by any Go or TS code**. Those three fields are the intended growth points for a finalized contract schema.
+
+### TypeScript mirror — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/api.ts` (lines 70–157)
+
+`TopicRef`, `Publication`, `ConnectorUse`, `TopologyComponent`, `TopologyTopic`, `TopologyTransport`, `TopologyConnector`, `Topology`, `TopologyReport` — field-for-field mirror. The opaque bits:
+
+```ts
+export interface TopologyComponent {
+  name: string
+  kind: string
+  subscribes?: TopicRef[]
+  publishes?: Publication[]
+  connectors?: ConnectorUse[]
+  /** Contract surfaces — parsed but not yet rendered (shape not finalized). */
+  provides?: unknown[]
+  consumes?: unknown[]
+}
+
+export interface Topology {
+  path: string          // root-relative system dir, same id space as Integration.path
+  apiVersion: string
+  kind?: string
+  system: string
+  components?: TopologyComponent[]
+  topics?: TopologyTopic[]
+  connectors?: TopologyConnector[]
+  /** Contract surfaces — parsed but not yet rendered (shape not finalized). */
+  apis?: unknown[]
+}
+
+export interface TopologyReport { topologies: Topology[]; errors?: string[] }
+```
+
+Also relevant, separate model: `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/model.go` — `sys create`'s assembly model, where `Topic{TopicKey, Contract string}` is the C# contract type pulled from each scaffold's `values.contract` (`internal/system/assemble.go:60`). That's where the contract string that eventually shows up in the topology originates on the .NET side.
+
+## 4. Data flow: `graph` verb stdout → rendered view
+
+Plain HTTP JSON, **no websockets, no SSE, no JSON inlined into the HTML**. Chain:
+
+1. **`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/topology.go`** — `hostGraphProvider(root)` walks `template.ListScaffolds(root)`, keeps entries with `Role == template.RoleSystemHost`, and per host runs `runGraphVerb`:
+   ```go
+   build := exec.CommandContext(ctx, "dotnet", "build", hostDir, "-v", "q")
+   cmd := exec.CommandContext(ctx, "dotnet", "run", "--no-build", "--no-launch-profile",
+                              "--project", hostDir, "--", "graph")
+   ...
+   t, err := topology.Decode(&amp;stdout)   // JSON only on stdout; logs on stderr
+   ```
+   `graphTimeout = 5 * time.Minute`; failures become strings (`"&lt;relpath&gt;: &lt;err&gt;"` + last 2048 bytes of stderr) instead of aborting. Result: `topology.Entry{Path: filepath.Dir(h.Path), Topology: *t}` — i.e. the system dir is the host's *parent*.
+   Provider type is injectable: `type topologyProvider func(ctx) ([]topology.Entry, []string)` — tests substitute a fake (`internal/dashboard/dashboard_test.go:261`).
+
+2. **`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/handlers.go`** — routes:
+   ```go
+   mux.HandleFunc("GET /api/health", api.health)
+   mux.HandleFunc("GET /api/integrations", api.listIntegrations)
+   mux.HandleFunc("GET /api/integrations/{path...}", api.getIntegration)
+   mux.HandleFunc("GET /api/flow", api.flow)
+   mux.HandleFunc("GET /api/topology", api.topologies)
+   mux.HandleFunc("POST /api/topology/refresh", api.refreshTopologies)
+   mux.Handle("/", static)
+   ```
+   `topologyReport{Topologies []topology.Entry; Errors []string}` is the payload; cached under `topoMu`/`topoLoaded` after the first GET (because the verb builds), recomputed only by the POST. Each `Entry.Path` is rewritten to root-relative slash form via `s.relPath` so it shares the identifier space of `/api/flow` integration paths.
+
+3. **`web/src/api.ts`** — thin `fetch` wrapper:
+   ```ts
+   flow: () =&gt; getJSON&lt;IntegrationDetail[]&gt;('/api/flow'),
+   topologies: () =&gt; getJSON&lt;TopologyReport&gt;('/api/topology'),
+   refreshTopologies: () =&gt; requestJSON&lt;TopologyReport&gt;('/api/topology/refresh', { method: 'POST' }),
+   ```
+
+4. **`web/src/components/FlowView.tsx:155`** — one-shot load on mount, plus the "Refresh topology" button:
+   ```ts
+   useEffect(() =&gt; {
+     const fail = (e: unknown) =&gt; setError(e instanceof Error ? e.message : String(e))
+     api.flow().then(setGraph).catch(fail)
+     // The first topology fetch runs each host's graph verb (a dotnet build) …
+     api.topologies().then(setReport).catch(fail)
+   }, [])
+   ```
+   `topologyFor(items, topologies)` matches a topology to a system group by path containment; `report.errors` render in a `.banner.error`; no topology ⇒ "No declared topology for this system…" empty state (no inferred fallback — that's the deleted heuristic path).
+
+5. **`buildDeclaredGraph(topo, items)`** (`FlowView.tsx:346–591`) is the sole translator from the v1 document into React Flow `Node[]`/`Edge[]`:
+   - node ids: `component:&lt;name&gt;` (remapped to the matching scaffold path when one exists, so clicks can select an integration) and `topic:&lt;pubsub&gt;/&lt;topic&gt;`; externals `ext:&lt;connector&gt;`.
+   - `topicMeta = new Map(topics.map(t =&gt; [`${t.pubsub}/${t.topic}`, t]))` and `connMeta` are the lookups.
+   - edges are built directly from inline wiring: `e:pub:&lt;comp&gt;:&lt;pubsub&gt;/&lt;topic&gt;`, `e:sub:&lt;pubsub&gt;/&lt;topic&gt;:&lt;comp&gt;`, `e:conn:&lt;comp&gt;:&lt;connector&gt;`, all with `className: 'rf-edge-ext'` and `MarkerType.ArrowClosed`. **Edges carry no `data` payload at all today** and there is no `edgeTypes` map.
+   - layout is deterministic longest-path layering (Kahn relaxation) over the internal component⇄topic edges.
+   - node components: `GroupNode`, `IntegrationNode`, `ExternalNode`, `TopicNode`, registered in `const NODE_TYPES` at the bottom of the file.
+
+## 5. Existing interaction / where per-message detail could attach
+
+**Node click** — the only interaction, `FlowView.tsx:321`:
+```tsx
+onNodeClick={(_, node) =&gt; {
+  if (node.type === 'integration') onSelect(node.id)
+}}
+```
+It bubbles up to `App.tsx`'s `selected` state, which triggers `api.getIntegration(selected)` → `detail`. **But `DetailPanel` is only rendered in the catalog view** (`App.tsx:145-149`: `view === 'catalog' ? &lt;DetailPanel …/&gt; : &lt;FlowView …/&gt;`), so clicking a flow node currently has no visible effect beyond the `.rf-int.selected` outline. There is **no detail panel, no side drawer, and no `onEdgeClick`/`onPaneClick`/`onSelectionChange` anywhere in the flow view** — I grepped `web/src` for all of them; `onNodeClick` is the single hit.
+
+Concrete attachment points, in order of least friction:
+
+- **Topic node already has an unused contract/message slot.** `TopicNodeData` declares three fields but `buildDeclaredGraph` only populates two (`name`, `contract` from `topicMeta`) — `entity` is dead:
+  ```ts
+  interface TopicNodeData extends Record&lt;string, unknown&gt; {
+    name: string
+    /** Data entity carried on the topic, e.g. "RawProduct". */
+    entity?: string
+    /** Contract ref when the topic is a declared API (contract surface). */
+    contract?: string
+  }
+  ```
+  `TopicNode` (`FlowView.tsx:631`) renders `primary = entity ?? name`, `secondary = contract ?? name`, and a `title` tooltip `${name}\n${contract}` — that tooltip is today's only "message detail" UI.
+- **`IntNodeData.trigger`** (`FlowView.tsx:99`) is likewise declared, rendered as a badge in `IntegrationNode`, and never populated — a second pre-cut slot for topology-derived per-node metadata.
+- **Edge data**: the three `edges.push({...})` sites (`FlowView.tsx:502`, `:515`, `:566`/`:578`) are where a `data: { contract, messageType, schemaRef, … }` object and an `edgeTypes` custom edge / label would go. `Publication.Port` and `Topic.Contract` are already in hand at those exact lines and currently discarded (`Port` is parsed and never used anywhere in the frontend).
+- **Go side**: add typed fields to `Topic` (beyond the bare `Contract string`) and/or replace `[]json.RawMessage` on `Topology.APIs` / `Component.Provides` / `Component.Consumes` in `internal/topology/topology.go`, mirror in `web/src/api.ts` (lines 100–149), and they flow through `/api/topology` untouched — `handlers.go` only rewrites `Entry.Path`, so no serialization work is needed.
+- **Panel**: `DetailPanel.tsx`'s `Section`/`Meta` primitives and `.detail`/`.section`/`.chips`/`.kv` CSS (`web/src/index.css:440+`, `:775`) are reusable for a flow-side inspector, but it currently takes only `IntegrationDetail` — a topology-node/edge inspector would need a new prop shape (or a sibling component) plus rendering it in the `flow` branch of `App.tsx`.</result>
+<usage><subagent_tokens>73857</subagent_tokens><tool_uses>29</tool_uses><duration_ms>158968</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a52313a72371f9cf1</task-id>
+<tool-use-id>toolu_01JQXeC3HyYbRzbK37CHhBuz</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/5bca53b9-3ca9-4570-9b0c-22e405658876/tasks/a52313a72371f9cf1.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore external message schemas" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Important first finding: the migration code is not on `feature/dashboard-v2`
+
+The checked-out branch has **no `internal/migrate/`, no `cmd/intropy/migrate*.go`, no `references/`, no `skills/`**. `grep -ri biztalk` over the worktree returns nothing. The BizTalk migration path lives on two **local-only** branches (not pushed to origin):
+
+- `feature-migration` — the current/most advanced one: v0.4 `SchemaVersion`, pluggable source plugins, `references/`, `skills/`. **This is the branch everything below comes from unless noted.**
+- `feature-biztalk-migration` — older prototype (`internal/migrate/{btproj,binding,discover,flow,pipeline,transform,schema}.go`, `migrate discover` + `migrate match`).
+
+`feature/dashboard-v2` diverged: it added `internal/system`, `internal/template`, `internal/topology`, `web/` and **deleted** `internal/migrate`, `references/`, `skills/`. The two lines have never been merged. Read files with `git show feature-migration:&lt;path&gt;`.
+
+---
+
+## 1. What the pipeline extracts about message shapes
+
+### Walkers (`internal/migrate/sources/biztalk/`)
+
+| Artifact | Walker | Lands in |
+|---|---|---|
+| `Src/&lt;Module&gt;/Schemas/*.xsd` | `schemas.go::walkSchemas` | `inventory.schemas[]` |
+| `Src/&lt;Module&gt;/Pipelines/*.btp` | `pipelines.go::walkPipelines` | `inventory.pipelines[]` |
+| `.btm` `SrcTree`/`TrgTree` | `transforms_io_schemas.go` | flow `input_schema_ref` / `output_schema_ref` |
+| `.odx` | `orchestrations.go` | `inventory.orchestration_shapes[]` |
+
+### The key design decision (v0.4): message-shape metadata is parsed but deliberately **not** surfaced
+
+`internal/migrate/sources/biztalk/schemas.go` — everything a message-shape feature would want (format, namespace, root element, kind) is parsed into a *plugin-private* struct that never leaves the plugin:
+
+```go
+type SchemaIndex struct {
+	Artifacts      []migrate.SchemaArtifact
+	Entries        []schemaIndexEntry
+	ByID           map[string]int
+	ByMessageType  map[string]int // "namespace#rootElement" → index into Artifacts
+	PropertyByName map[string]int // promoted property name → index into Artifacts
+}
+
+// schemaIndexEntry is the BizTalk-private companion to SchemaArtifact.
+// It carries everything the parser reads from the XSD body that we used
+// to leak through to the inventory...
+type schemaIndexEntry struct {
+	Kind        string
+	Format      string
+	Namespace   string
+	RootElement string
+}
+```
+
+And the public record (`internal/migrate/inventory.go`) is intentionally narrow:
+
+```go
+// SchemaArtifact is the inventory-visible record for one source schema
+// file. Kept deliberately narrow: id (stable reference), Location (path
+// the matcher / agent reads), optional PromotedProperties (filter-routing
+// reference), optional LineCount (Deserializer model-strategy input).
+//
+// Format/namespace/root-element/kind details are parsed by source
+// plugins for their own internal indexing but are intentionally NOT
+// surfaced — every downstream consumer that needed them in 0.3 has
+// since switched to per-flow signals (PipelineRefs, InputSchemaRef,
+// OutputSchemaRef, transport-normalized gaps).
+type SchemaArtifact struct {
+	ID                 string   `json:"id"`
+	Location           string   `json:"location"`
+	PromotedProperties []string `json:"promoted_properties,omitempty"`
+	LineCount          int      `json:"line_count,omitempty"`
+}
+```
+
+**So: `format` (`xml`/`flat-file`), `kind` (`message`/`property`/`envelope`), target namespace and root element ARE computed today — they are just dropped at the inventory boundary.** Re-exposing them is a one-line change per field.
+
+Classification logic worth knowing:
+- `classifySchemaFormat(body)` — byte-probe: `schemas.microsoft.com/BizTalk/2003` + (`groupInfo` | `recordInfo`) ⇒ `flat-file`, else `xml`.
+- `classifySchema(parsed)` — reads `&lt;b:schemaInfo schema_type="property|envelope"/&gt;`; absent ⇒ `message`. Property schemas put every top-level `&lt;xs:element&gt;` into `promoted_properties[]` and suppress `root_element`.
+- Encoding-aware: `toUTF8` / `decodeUTF16` handle BizTalk's UTF-16-BOM XSDs; failures become `schema-parse-failure` gaps.
+- `xsdSchema` parses only `targetNamespace`, annotations, top-level element names — the **XSD body is never lifted**, only a `location` pointer.
+
+Message *type* survives only indirectly, as a filter clause value:
+
+```json
+"filter": [{ "property": "BTS.MessageType", "operator": "equals",
+             "value": "http://messagingdemo/OrderIn#Order" }]
+```
+(`internal/migrate/sources/biztalk/testdata/fixture-02-messaging-with-transform/expected-parse-result.json`) — `ByMessageType` (`namespace#rootElement`) is the plugin's internal resolver for these.
+
+Format also leaks through pipeline components (`pipelines.go`):
+
+```go
+func pipelineSerializationFormat(componentName string) string {
+	n := strings.ToLower(componentName)
+	switch {
+	case strings.Contains(n, "ffdasmcomp"), strings.Contains(n, "ffasmcomp"):
+		return migrate.SchemaFormatFlatFile
+	case strings.Contains(n, "mime_smime"):
+		return "mime"
+	case strings.Contains(n, ".edi."):
+		return "edi"
+	}
+	return ""
+}
+```
+MIME/EDI ⇒ high-severity `unsupported-serialization-format` gap. Flat-file ⇒ no gap; the matcher derives the pattern.
+
+Constants live in `internal/migrate/inventory.go`: `SchemaKindMessage|Property|Envelope`, `SchemaFormatXML = "xml"`, `SchemaFormatFlatFile = "flat-file"` (only `SchemaFormat*` still has runtime consumers).
+
+Flat-file raw material example (`feature-biztalk-migration:internal/migrate/testdata/project_flatfile/Schemas/Customer/PDB.xsd`):
+```xml
+&lt;b:schemaInfo schema_type="document" root_reference="Order" /&gt;
+...
+&lt;b:recordInfo structure="delimited" child_delimiter_type="hex" child_delimiter="0x0D 0x0A" /&gt;
+```
+
+---
+
+## 2. match.json v0.4 — `pipeline_steps[]`
+
+`internal/migrate/match.go`:
+
+```go
+type MatchReport struct {
+	SchemaVersion string           `json:"schema_version"`  // "0.4.0"
+	Source        string           `json:"source"`
+	InventoryPath string           `json:"inventory_path"`
+	Matches       []Recommendation `json:"matches"`
+	Gaps          []Gap            `json:"gaps,omitempty"`
+}
+
+type Recommendation struct {
+	FlowID        string         `json:"flow_id"`
+	Kind          string         `json:"kind"`       // blueprint | blocks | out-of-scope
+	Blueprint     string         `json:"blueprint,omitempty"`
+	Blocks        []string       `json:"blocks,omitempty"`
+	Confidence    string         `json:"confidence"`
+	Trigger       *SystemRef     `json:"trigger,omitempty"`
+	Destinations  []SystemRef    `json:"destinations,omitempty"`
+	PipelineSteps []PipelineStep `json:"pipeline_steps,omitempty"`
+}
+
+type PipelineStep struct {
+	Step         string        `json:"step"`
+	Pattern      string        `json:"pattern"`
+	SourceRefs   []string      `json:"source_refs,omitempty"`
+	Transform    *Transform    `json:"transform,omitempty"`
+	DecisionHint *DecisionHint `json:"decision_hint,omitempty"`
+	LinkedGap    string        `json:"linked_gap,omitempty"`
+}
+
+type Transform struct {            // XSL shipped as csproj &lt;EmbeddedResource&gt;
+	Kind     string `json:"kind"`     // "xsl"
+	Location string `json:"location"`
+}
+
+type DecisionHint struct {          // today only Deserializer model-strategy
+	Type                 string `json:"type"`                    // "model-strategy"
+	InputSchemaSizeLines int    `json:"input_schema_size_lines,omitempty"`
+	Recommended          string `json:"recommended,omitempty"`   // dom | stream-through
+}
+```
+
+Fixed five-step plan, always emitted in this order for `kind=blueprint` (`buildPipelineSteps`): **Deserializer, Extractor, Validator, Transformer, Serializer**.
+
+Pattern vocabulary — **this is the only per-step "message format" signal that exists today**:
+
+```go
+PatternPassThrough            = "pass-through"
+PatternXMLStreamDeserialize   = "xml-stream-through-deserialize"
+PatternXMLStreamSerialize     = "xml-stream-through-serialize"
+PatternFlatfileDeserialize    = "flatfile-deserialize"
+PatternFlatfileSerialize      = "flatfile-serialize"
+PatternXSLCompiledTransformEm = "xsl-compiled-transform-embedded"
+```
+
+Derivation:
+- `buildDeserializerStep` — `source_refs = [inventory.schemas[input_schema_ref].id]`; pattern = `flatfile-deserialize` if `flowUsesFlatFile(receive)` (i.e. a *receive* pipeline in the flow's own `pipeline_refs` has a stage component containing `ffdasmcomp`), else `xml-stream-through-deserialize` + a `decision_hint` from the schema's `line_count` (threshold 2000 lines ⇒ `stream-through`).
+- `buildSerializerStep` — mirror, on `output_schema_ref` and `ffasmcomp`.
+- `buildValidatorStep` — `source_refs = flow.pipeline_refs`, `linked_gap` = first `pipeline-custom-component[-missing-source]` gap touching them. Pattern always `pass-through`; no XSD validation is ever derived.
+- `buildTransformerStep` — `pass-through` unless a transformation's language is `xsl`/`xslt`.
+- `MatchInventory` copies transports **verbatim** onto `trigger` / `destinations[]` and emits one low-severity `transport-normalized` gap per non-`FILE` transport.
+
+Illustrative v0.4 payload (assembled from the structs + `renderMatchMarkdown`):
+
+```json
+{
+  "schema_version": "0.4.0",
+  "source": "biztalk",
+  "inventory_path": "/abs/inventory.json",
+  "matches": [{
+    "flow_id": "OrderFileReceive",
+    "kind": "blueprint",
+    "blueprint": "transactional",
+    "confidence": "high",
+    "trigger": { "name": "OrderFileReceive", "transport": "FILE" },
+    "destinations": [{ "name": "OrderHttpSend", "transport": "HTTP",
+      "filter": [{ "property": "BTS.MessageType", "operator": "equals",
+                   "value": "http://messagingdemo/OrderIn#Order" }] }],
+    "pipeline_steps": [
+      { "step": "Deserializer", "pattern": "xml-stream-through-deserialize",
+        "source_refs": ["schema-MessagingDemo.Maps-OrderIn"],
+        "decision_hint": { "type": "model-strategy",
+                           "input_schema_size_lines": 13, "recommended": "dom" } },
+      { "step": "Extractor",   "pattern": "pass-through" },
+      { "step": "Validator",   "pattern": "pass-through",
+        "source_refs": ["pipeline-MessagingDemo.Maps-RecvXml"] },
+      { "step": "Transformer", "pattern": "xsl-compiled-transform-embedded",
+        "transform": { "kind": "xsl",
+                       "location": "Src/…/Transforms/OrderInToOrderOut.xsl" } },
+      { "step": "Serializer",  "pattern": "xml-stream-through-serialize" }
+    ]
+  }],
+  "gaps": [ { "id": "gap-transport-normalized-…", "category": "transport-normalized",
+              "severity": "low",
+              "source_feature": "flow OrderFileReceive: send transport \"HTTP\" normalized to \"file\" for local runtime" } ]
+}
+```
+
+**Nothing on a step names a content type, media type, encoding, delimiter set, or record layout.** Format is implied only by the pattern id, and only for `xml` vs `flat-file`. There is no per-step schema *content* — just an id pointing at `inventory.schemas[].location`.
+
+Other files: `internal/migrate/match_run.go` (`RunMatch`, format `markdown|json`, validates inventory first), `internal/migrate/match_report.go` (`renderMatchMarkdown` + `renderPipelineStep`), `cmd/intropy/migrate_match.go` (flags `--inventory --output --format --validate`).
+
+---
+
+## 3. inventory.json structure + the reference doc
+
+`internal/migrate/inventory.json` is a draft-07 JSON Schema, `//go:embed`-ed by `internal/migrate/schema.go` and enforced by `migrate.Validate()`. Top level: `schema_version` (`^0\.\d+\.\d+$`), `source`, `source_export_path`, `plugin_version`, `flows[]`, `schemas[]`, `pipelines[]`, `orchestration_shapes[]`, `gaps[]`. `additionalProperties: false` everywhere — **adding any message-shape field requires editing this schema too**.
+
+Go structs (`internal/migrate/inventory.go`): `Inventory`, `InventoriedFlow`, `SystemRef`, `FilterClause`, `Transformation{Language,Location,Notes}`, `SchemaArtifact`, `PipelineArtifact{ID,Direction,Location,Stages}`, `PipelineStage{Order,Category,Component,ConfigRefs}`, `OrchestrationShape`, `Gap`.
+
+Schema-relevant `InventoriedFlow` fields: `schema_refs[]` (unordered union), `input_schema_ref` / `output_schema_ref` (resolved from BTM `SrcTree`/`TrgTree`), `pipeline_refs[]`, `shape_refs[]`, `matcher_hints[]`.
+
+`references/biztalk-component-mapping.md` (209 lines, kept in sync by `internal/migrate/sources/biztalk/references_sync_test.go`) — §1 Discovery, §2 Transports→connectors, §3 Pipeline stage GUIDs, **§4 Schemas** (the `schema_type` → kind table, the `format` xml/flat-file rule, and the explicit statement below), §5 Orchestrations, §6 Matcher hints + derived pipeline steps, §7 Gap catalogue, "Not yet covered".
+
+§4, verbatim — the load-bearing sentence for your "runtime never validates against XSDs" note:
+
+&gt; The XSD body itself is not lifted into the inventory — the artifact carries a `location` pointer. Downstream codegen reads the XSD at Phase 4 to build the flat-file Deserialize/Serialize step (for `format="flat-file"` schemas, the `b:groupInfo` / `b:recordInfo` annotations are the structural spec). **XSDs do not ship with the generated component.** The framework's `ValidateStep` holds business-rule checks the integration needs — it is not derived from XSDs and does not consume them.
+
+⚠️ **The reference doc and the `source-to-intropy-mapping/biztalk` skill are stale relative to v0.4 code.** They document `SchemaArtifact.format`, `NormalizedIO`, `io[]`, `codegen_pattern_id`, `required_connectors`, `embedded_resources[]`, `supporting_hints`, `rationale`, `ambiguities`, and step names `deserialize-flatfile`/`serialize-flatfile` — none of which exist in the current `match.go` / `inventory.go`. Any design work must go off the Go structs, not the docs. (`references_sync_test.go` only gates the transport table, not §4/§6.)
+
+Also: `references/migrate-inventory-sequence.md` (walk order, §4 = `walkSchemas`), and skills `skills/source-to-intropy-mapping/biztalk/SKILL.md` §6 "Schema format (XML vs flat-file)", `skills/intropy-best-practices/SKILL.md` (Rule 4: "MUST NOT load XSDs at runtime via `XmlSchemaSet`… Intropy components do not validate against XSDs"), `skills/conversion-task-plan-rules/SKILL.md`, `skills/execute-migration-task-plan/SKILL.md`.
+
+---
+
+## 4. How connectors are modelled (current branch)
+
+Pipeline: template value `connector` → `.intropy/scaffold.json` → `sys create` assembles → C# codegen.
+
+1. **`int create`** (`cmd/intropy/int_create.go`) — no connector flag; it arrives as a generic template value (`--set connector=…`). `internal/template/scaffold.go` records it in `Scaffold.Values` (a bare `map[string]any`), alongside label-derived `Role`, `BlockKind` (`extractor`/`loader`), `DataFlow` (`in`/`out`).
+
+2. **`sys create`** (`internal/system/assemble.go`) reads the value by name:
+```go
+connector := ""
+if _, ok := e.Values["connector"]; ok { ... } else {
+    warnf("%s: scaffold record has no connector — re-scaffold with a newer template release to wire From/To", e.Path)
+}
+```
+Dedup: one connector per component (duplicate ⇒ error). Model (`internal/system/model.go`):
+```go
+type Connector struct {
+	Name  string `json:"name"`
+	Field string `json:"-"`
+}
+type Component struct {
+	AppID string; Kind string; Topic TopicKey
+	Connector string `json:"connector,omitempty"`
+	Path string
+}
+```
+
+3. **Codegen** (`internal/system/codegen.go`) hardcodes the transport:
+```go
+public static readonly ConnectorRef {{ $c.Field }} =
+    ConnectorRef.Define("{{ $c.Name }}", Transport.File("./test/{{ $c.Name }}"));
+```
+with the doc comment "Point it at a real external system and transport when known."
+
+**Answer to your question: no.** A connector today is a *name* plus (at codegen time) an unconditional `Transport.File(./test/&lt;name&gt;)`. There is no field anywhere for payload format, content type, encoding, filename pattern, schema, or direction (direction is inferred from `BlockKind`: extractor ⇒ `.From()`, loader ⇒ `.To()`). Contract types exist only on **topics** (`Topic.Contract` → `TopicRef&lt;T&gt;` in `Topics.cs`) — i.e. the *internal* message shape is typed, the *external* one is not modelled at all.
+
+---
+
+## 5. Existing notion of "external system"
+
+**One place, read-only, and it comes from outside the CLI:** `internal/topology/topology.go` decodes the `topology.intropy.io/v1` `SystemTopology` record printed by the system host's `graph` verb. The CLI never derives it.
+
+```go
+// Transport describes how a connector moves data. SupportsInput/SupportsOutput
+// declare the directions the transport itself can carry.
+type Transport struct {
+	Type           string `json:"type"`
+	SupportsInput  bool   `json:"supportsInput"`
+	SupportsOutput bool   `json:"supportsOutput"`
+}
+
+// Connector is an external system integration point. ExternalSystem is the
+// system it fronts, Directions the directions it is wired in, and UsedBy the
+// components that use it.
+type Connector struct {
+	Name           string    `json:"name"`
+	ExternalSystem string    `json:"externalSystem,omitempty"`
+	Transport      Transport `json:"transport"`
+	Directions     []string  `json:"directions,omitempty"`
+	UsedBy         []string  `json:"usedBy,omitempty"`
+}
+```
+
+Wire example (`internal/topology/topology_test.go`):
+```json
+"connectors": [
+  {"name": "erp", "externalSystem": "erp",
+   "transport": {"type": "http", "supportsInput": false, "supportsOutput": true},
+   "directions": ["out"], "usedBy": ["erp-loader"]},
+  {"name": "price-master", "externalSystem": "price-master",
+   "transport": {"type": "sftp", "supportsInput": true, "supportsOutput": true},
+   "directions": ["in"], "usedBy": ["extractor"]}
+]
+```
+
+Total metadata an external system carries: **a name string** (an entity ref like `system:default/pim` — `web/src/components/FlowView.tsx::refName` strips the prefix) plus its connector's `transport.type` and direction booleans. No format/schema/payload.
+
+Consumers: `internal/dashboard/topology.go` + `handlers.go` (`/api/topology`, `/api/topology/refresh`), `web/src/api.ts` (`TopologyConnector`, `TopologyTransport`), `web/src/components/FlowView.tsx::buildDeclaredGraph` which renders external systems as nodes **outside** the system boundary with `data = { name, type: conn?.transport.type ?? 'connector', direction }`.
+
+Notably: `ExternalSystem` is never *written* by this CLI — `sys create` emits no `externalSystem` in `ConnectorRef.Define`, so a CLI-assembled system produces topology records where every connector has an empty `externalSystem` and `transport.type = "file"`.
+
+Nothing named "external system" exists on the migration branch at all — `hasExternalSystems(flow)` there just means "flow has ≥1 source AND ≥1 destination" (`match.go:392`).
+
+---
+
+## Raw material summary
+
+| Need | Exists today? | Where |
+|---|---|---|
+| Schema file location per flow leg | ✅ | `input_schema_ref` / `output_schema_ref` → `schemas[].location` |
+| Format xml vs flat-file | ⚠️ computed, dropped at inventory boundary; survives as a `pipeline_steps[].pattern` | `schemaIndexEntry.Format`; `PatternFlatfile*` |
+| Message type (ns#root) | ⚠️ plugin-internal (`ByMessageType`); visible only as a `BTS.MessageType` filter value | `schemas.go`, `filter[]` |
+| Schema kind (message/property/envelope) | ⚠️ computed, dropped | `classifySchema` |
+| Promoted properties | ✅ | `schemas[].promoted_properties[]` |
+| Schema size (for DOM vs streaming) | ✅ | `line_count` → `decision_hint` |
+| EDI / MIME | ❌ gap only (`unsupported-serialization-format`, high) | `pipelines.go` |
+| Flat-file delimiters / record layout | ❌ not extracted — the agent re-reads the XSD's `b:groupInfo`/`b:recordInfo` at codegen time | reference doc §4 |
+| Encoding / charset of the wire payload | ❌ (only XSD file encoding is handled) | — |
+| Format/payload on a connector | ❌ | `system/model.go`, `topology.go` |
+| External system as an entity | ⚠️ name + transport type only, decoded from host `graph`, never authored by the CLI | `internal/topology/topology.go` |
+| Cross-branch link migration ↔ topology/connectors | ❌ none | — |</result>
+<usage><subagent_tokens>116557</subagent_tokens><tool_uses>36</tool_uses><duration_ms>240720</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a47828216dcd9267b</task-id>
+<tool-use-id>toolu_018mCAtCuWeZ1u3eSkPpy7yu</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/5bca53b9-3ca9-4570-9b0c-22e405658876/tasks/a47828216dcd9267b.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore contract concept in CLI" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Bottom line
+
+In this codebase a **"message contract" is nothing but a C# type *name* — a bare string**. There is no contract file, no schema document, no version, no fields, no registry. The only physical artifact is a **shared .NET class library** (the `shared-contracts` template, rendered as `Contracts/`, scaffold role `shared-library`) that holds a hand-written `record`. Everything the CLI knows about a contract is one `string` in two shapes: short PascalCase in `scaffold.json`, fully-qualified in the topology record.
+
+Note upfront: ~60% of textual "contract" hits in the Go code are unrelated prose ("the JSON output contract", "the stdout contract", "wire contract"). The domain concept lives in exactly three places: `internal/template/scaffold.go` (values), `internal/system/*` (assembly + codegen), `internal/topology/topology.go` (the graph record).
+
+---
+
+## 1. What a contract IS — the two representations
+
+### A. `values.contract` in the scaffold record — short type name
+Declared as a **required, never-defaulted** template parameter in the *templates* repo (not this repo):
+
+`/Users/robinhultman/dev/intropy/tooling/intropy-templates/extractor/template.yaml` (identical block in `loader/template.yaml`):
+```yaml
+spec:
+  parameters:
+    type: object
+    required: [name, organization, topic, contract]
+    properties:
+      topic:
+        type: string
+        description: The pub/sub topic the extractor publishes to. This is the extractor's
+          half of the system contract — scaffold the consuming loader with the same value.
+        pattern: "^[a-z][a-z0-9-]*$"
+      contract:
+        type: string
+        title: Contract type
+        description: PascalCase name of the shared-contracts record the topic carries — the
+          other half of the system contract, recorded in .intropy/scaffold.json for
+          `intropy sys create` to type the topic with. ...
+        pattern: "^[A-Z][A-Za-z0-9]*$"
+  values:
+    appId: '{{ .name | kebabcase | replace "." "-" }}'
+    contracts: 'Contracts'        # &lt;- the *project* name, not a contract
+    pubsub: 'pubsub'
+    connector: '{{ .name | kebabcase | replace "." "-" }}-source'
+  dependencies:
+    - template: shared-contracts
+      output: '{{ .contracts }}'
+      values:
+        name: '{{ .contracts }}'
+        empty: '{{ .empty }}'
+```
+So the domain model is: **`contract` = a single identifier constrained to `^[A-Z][A-Za-z0-9]*$`** (no dots — deliberately not a namespace), plus a separate `contracts` value naming the sibling project that must contain a type with that name.
+
+### B. `topics[].contract` in the topology record — fully-qualified type name
+`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/topology/topology.go:83-92`
+```go
+// Topic is a declared pub/sub topic: the metadata for a (PubSub, Topic) pair
+// components reference. Contract is the message contract it carries;
+// Publishers/Subscribers name the components on each end.
+type Topic struct {
+	PubSub      string   `json:"pubsub"`
+	Topic       string   `json:"topic"`
+	Contract    string   `json:"contract,omitempty"`
+	Publishers  []string `json:"publishers,omitempty"`
+	Subscribers []string `json:"subscribers,omitempty"`
+}
+```
+The producer (`intropy-topology`) fills it from .NET reflection — `TopicResource.ContractTypeName`, i.e. `Type.FullName`: `"Price.Contracts.B2BPrice"`, `"Integrio.Contracts.RawProduct"`.
+
+**Mismatch worth knowing:** scaffold.json says `"Order"`, the topology record says `"Contracts.Order"`. Nothing reconciles the two; there is no join key from a topology topic back to a scaffold's `values.contract`.
+
+### C. The actual payload type (the only "schema")
+`/Users/robinhultman/dev/intropy/tooling/intropy-templates/shared-contracts/skeleton/Order.cs.tmpl`
+```csharp
+namespace {{ .name }};
+
+// The canonical order contract: the extractor publishes exactly this shape
+// and the consuming loader deserializes it.
+public record Order(
+    string OrderId,
+    string CustomerId,
+    DateTimeOffset OrderDate,
+    IReadOnlyList&lt;OrderLine&gt; Lines);
+```
+`OrderLine.cs.tmpl`: `public record OrderLine(string Sku, int Quantity, decimal UnitPrice);`
+With `empty: true` it degrades to `public record Order();` — "so a migration agent can fill in the real contract". **The C# record is the schema. There is no machine-readable projection of it anywhere.**
+
+---
+
+## 2. `.intropy/scaffold.json` — the struct and the JSON
+
+`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/scaffold.go`
+```go
+const (
+	ScaffoldSchemaVersion  = 1
+	ScaffoldRelPath        = ".intropy/scaffold.json"
+	TemplateRoleLabel      = "intropy.dev/template-role"
+	RoleSharedLibrary      = "shared-library"
+	RoleSystemHost         = "system-host"
+	TemplateBlockKindLabel = "intropy.dev/block-kind"
+	TemplateDataFlowLabel  = "intropy.dev/data-flow"
+	BlockKindExtractor     = "extractor"
+	BlockKindLoader        = "loader"
+)
+
+type Scaffold struct {
+	SchemaVersion int            `json:"schemaVersion"`
+	Template      string         `json:"template"` // directory name in the template library repo
+	Owner         string         `json:"owner"`
+	Repo          string         `json:"repo"`
+	Version       string         `json:"version"`
+	Values        map[string]any `json:"values"`
+
+	Role      string `json:"role,omitempty"`      // intropy.dev/template-role
+	BlockKind string `json:"blockKind,omitempty"` // intropy.dev/block-kind
+	DataFlow  string `json:"dataFlow,omitempty"`  // intropy.dev/data-flow ("in"|"out")
+
+	DependsOn []DependencyRecord `json:"dependsOn,omitempty"`
+}
+
+type DependencyRecord struct {
+	Template string `json:"template"`
+	Dir      string `json:"dir"` // slash-separated, relative to component root
+}
+```
+Key point: **`contract` is not a field on `Scaffold`.** It is an untyped entry inside the opaque `Values map[string]any`, populated straight from resolved template parameters (`create.go:116-129`), and read back by string key with runtime type assertions. `Role`/`BlockKind`/`DataFlow` come from template *labels*, not parameters.
+
+Concrete record an extractor produces (assembled from `internal/system/create_test.go:126-143` + the real template's `spec.values`):
+```json
+{
+  "schemaVersion": 1,
+  "template": "extractor",
+  "owner": "integrio-intropy",
+  "repo": "intropy-templates",
+  "version": "v0.1.6",
+  "blockKind": "extractor",
+  "dataFlow": "in",
+  "values": {
+    "name": "OrderExtractor",
+    "organization": "Fluxia",
+    "topic": "orders",
+    "contract": "Order",
+    "empty": false,
+    "appId": "order-extractor",
+    "contracts": "Contracts",
+    "pubsub": "pubsub",
+    "connector": "order-extractor-source"
+  },
+  "dependsOn": [{ "template": "shared-contracts", "dir": "../Contracts" }]
+}
+```
+And the shared library's record (no contract at all — just a project name):
+```json
+{
+  "schemaVersion": 1, "template": "shared-contracts", "owner": "o", "repo": "r",
+  "version": "v1", "role": "shared-library", "values": { "name": "Contracts" }
+}
+```
+Discovery: `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/scaffold_list.go` — `ScaffoldEntry{Path string; Scaffold}` (embedded, flattens into JSON), walk skips `.git/.intropy/node_modules/bin/dist`, doesn't descend into a matched dir.
+
+---
+
+## 3. How `sys create` uses contracts to derive topology
+
+`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/assemble.go` is the whole derivation. Model at `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/model.go`:
+```go
+type TopicKey struct {                    // "Two scaffolds naming the same key declare
+	Pubsub string `json:"pubsub"`         //  the two halves of one contract."
+	Name   string `json:"topic"`
+}
+type Topic struct {
+	TopicKey
+	Contract string `json:"contract"`     // the C# type name
+	Field    string `json:"-"`            // PascalCase identifier in Topics.cs
+}
+type Component struct {
+	AppID     string   `json:"name"`
+	Kind      string   `json:"kind"`      // extractor | loader
+	Topic     TopicKey `json:"-"`
+	Connector string   `json:"connector,omitempty"`
+	Path      string   `json:"path"`
+}
+type SharedLibrary struct{ Path, Name string } // the "contract project"
+type Model struct {
+	Name, ProjectName, SystemClass string
+	Components []Component
+	Topics     []Topic     // sorted by (Pubsub, Name)
+	Connectors []Connector // sorted by Name
+	Shared     SharedLibrary
+}
+```
+Rules enforced (`assemble.go:32-152`):
+- `role: shared-library` → becomes `Model.Shared`, never a component. **Exactly one required**: zero → `"no shared contracts project found (template role \"shared-library\"): Topics.cs needs the contract types"`; two+ → `"found N shared contract projects (...); a system host references exactly one"`.
+- `role: system-host` skipped; empty/unknown `blockKind` skipped with a warning.
+- `values.contract` is **hard-required, no fallback** (unlike `pubsub`, which defaults to `"pubsub"` via `stringValueDefault`, and `connector`, which is optional):
+```go
+contract, err := stringValue(e, "contract")
+if err != nil {
+	return nil, fmt.Errorf("%w\nRe-scaffold this integration with a template release that records the contract type, or add \"contract\": \"&lt;TypeName&gt;\" to the record's values.", err)
+}
+```
+- **The edge is derived purely from `(pubsub, topic)` equality, not from the contract.** The contract is only a consistency check on that edge:
+```go
+key := TopicKey{Pubsub: pubsub, Name: topic}
+if seen, ok := byTopic[key]; ok {
+	if seen.Contract != contract {
+		return nil, fmt.Errorf("topic %q on pubsub %q has conflicting contracts: %q (%s) vs %q (%s)", ...)
+	}
+} else {
+	byTopic[key] = Topic{TopicKey: key, Contract: contract, Field: pascalIdent(topic)}
+}
+```
+- Also enforced: unique `appId`, unique `connector`, and no two topics colliding on the same PascalCase `Field`.
+
+Then codegen (`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/codegen.go:16-29`) turns the contract name into a generic type argument — this is the only consumer:
+```go
+const topicsFileTmpl = `using Intropy.Topology;
+using {{ .Shared.Name }};
+public static class Topics
+{
+    /// &lt;summary&gt;{{ $t.Contract }} messages on topic '{{ $t.Name }}' (pubsub '{{ $t.Pubsub }}').&lt;/summary&gt;
+    public static readonly TopicRef&lt;{{ $t.Contract }}&gt; {{ $t.Field }} = TopicRef&lt;{{ $t.Contract }}&gt;.Define("{{ $t.Pubsub }}", "{{ $t.Name }}");
+}
+`
+```
+Rendered (expected output, `internal/system/create_test.go:172-181`):
+```csharp
+using Intropy.Topology;
+using Contracts;
+public static class Topics
+{
+    public static readonly TopicRef&lt;Order&gt; Orders = TopicRef&lt;Order&gt;.Define("pubsub", "orders");
+}
+```
+The contract project is wired in as a `ProjectReference` by `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/csproj.go` (`contractsInclude` = relpath from host dir to `Shared.Path`, injected before `&lt;/Project&gt;` with comment `&lt;!-- Shared contracts project, referenced by 'intropy sys create'. --&gt;`). So compile-time type identity is the *only* enforcement mechanism across blocks.
+
+`Summary` in `create.go:61-67` re-exports `Topics []Topic` (with contract) in `--output-json`.
+
+---
+
+## 4. Existing schema artifacts — essentially none
+
+Searched the whole repo for `asyncapi`, `avro`, `xsd`, `openapi`, `protobuf`, `*.schema.json`, sample payloads: **zero hits** outside `go.sum`/`package-lock.json` noise. Findings:
+
+- **JSON Schema exists, but only for template parameters**, not messages: `spec.parameters` is a raw JSON Schema map validated with `santhosh-tekuri/jsonschema/v5` in `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/values.go:202-230`; projected to `FieldSpec` in `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/manifest.go:113-164`.
+- **No schema for `scaffold.json` itself** — just `schemaVersion: 1` and the Go struct.
+- **CloudEvents envelope is hand-built C# in the template skeletons, not a definition file.** `/Users/robinhultman/dev/intropy/tooling/intropy-templates/extractor/skeleton/src/Process/Serializer.cs.tmpl`:
+```csharp
+public class Serializer : SerializeStep&lt;Order, Context&gt;
+{
+    var cloudEvent = new CloudEvent {
+        Id = Guid.NewGuid().ToString(),
+        Subject = input.OrderId,          // mandatory: Dapr publisher throws without it
+        Time = input.OrderDate,           // mandatory
+        DataContentType = "application/json",
+        Data = input                      // the contract instance; publisher's formatter encodes
+    };
+}
+```
+`source` and `type` come from constants, `/Users/robinhultman/dev/intropy/tooling/intropy-templates/extractor/skeleton/src/Configuration/Constants.cs.tmpl`:
+```csharp
+public const string PubSubName = "pubsub";
+public const string TopicName  = "{{ .topic }}";
+public const string InboundBindingName = "binding.{{ .connector }}";
+// CloudEvent envelope: where the data came from and what kind of event it is.
+public const string EventSource = "urn:{{ .organization }}:{{ .name | kebabcase }}";
+public const string EventType   = "{{ .organization | lower }}.{{ .topic }}.extracted";
+```
+So a CloudEvent **`type` is derived, `&lt;organization-lower&gt;.&lt;topic&gt;.extracted`** (e.g. `fluxia.orders.extracted`) — and it is *not* recorded in `scaffold.json` and *not* present in the topology record. It exists only as a compiled constant. Nothing links `type` ↔ `contract`.
+- Consumer side: `/Users/robinhultman/dev/intropy/tooling/intropy-templates/loader/skeleton/src/Process/Deserializer.cs.tmpl` does `JsonSerializer.Deserialize&lt;Order&gt;(json, PropertyNameCaseInsensitive = true)` — **no envelope `type` check, no schema validation**; failures become `BusinessIncidentData`. `/Users/robinhultman/dev/intropy/tooling/intropy-templates/loader/skeleton/src/Endpoints/LoaderEndpoints.cs.tmpl` hand-parses the `application/cloudevents+json` envelope (`id`, `type`, `data`, `datacontenttype`, `source`, `subject`, `time`).
+- The nearest thing to a message-shape *record* is the topology interchange document. Canonical example, `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/topology/topology_test.go:8-44`:
+```json
+{
+  "apiVersion": "topology.intropy.io/v1",
+  "kind": "SystemTopology",
+  "system": "distribution",
+  "components": [
+    { "name": "extractor", "kind": "extractor", "subscribes": [],
+      "publishes": [ {"port": "b2c", "pubsub": "price-pubsub", "topic": "price-b2c"},
+                     {"port": "b2b", "pubsub": "price-pubsub", "topic": "price-b2b"} ],
+      "connectors": [{"connector": "price-master", "direction": "in"}] },
+    { "name": "erp-loader", "kind": "loader",
+      "subscribes": [{"pubsub": "price-pubsub", "topic": "price-b2b"}],
+      "connectors": [{"connector": "erp", "direction": "out"}] }
+  ],
+  "topics": [
+    {"pubsub": "price-pubsub", "topic": "price-b2b", "contract": "Price.Contracts.B2BPrice",
+     "publishers": ["extractor"], "subscribers": ["erp-loader"]},
+    {"pubsub": "price-pubsub", "topic": "price-b2c", "contract": "Price.Contracts.B2CPrice",
+     "publishers": ["extractor"], "subscribers": ["wms-loader"]}
+  ],
+  "connectors": [
+    {"name": "erp", "externalSystem": "erp",
+     "transport": {"type": "http", "supportsInput": false, "supportsOutput": true},
+     "directions": ["out"], "usedBy": ["erp-loader"]}
+  ]
+}
+```
+- **Reserved-but-unused contract surface**: `internal/topology/topology.go:40-59` declares `Topology.APIs`, `Component.Provides`, `Component.Consumes` as `[]json.RawMessage` — deliberately opaque ("element shape is not yet finalized"), mirrored in `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/api.ts:107-109,147-148`. The producer never emits them (verified in `/Users/robinhultman/dev/intropy/tooling/intropy-topology/src/Intropy.Topology.Generation/IntropyGenerate.cs:71-140` — `GraphDocument` has only `apiVersion/kind/system/components/topics/connectors`). Same for `Connector.ExternalSystem`: declared in Go, never emitted. **These are the pre-cut sockets for request/response contracts.**
+- The UI has a dangling slot too: `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/components/FlowView.tsx:113-119` defines `TopicNodeData { name, entity?, contract? }` — "Data entity carried on the topic, e.g. RawProduct" — but `buildDeclaredGraph` (line ~476) only ever sets `{ name, contract: meta?.contract }`, so `entity` is permanently undefined and `TopicNode` (line 632) always falls back to `primary = name`.
+
+---
+
+## 5. Do blueprints reference contract *files* or *names*? — Names only
+
+Three references, all name-level, zero paths to a contract artifact:
+1. `contract` parameter → a bare type name, interpolated nowhere into a path; used in C# source as a type (`SerializeStep&lt;Order, Context&gt;`, `Loader&lt;Order, Out, Context&gt;`) — actually the skeletons **hardcode `Order`** and the description tells you to rename it yourself if `contract != Order`: *"a different value means renaming the record in Contracts (and the sample pipeline code, unless empty=true) to match."* So the parameter is recorded for `sys create` but is not actually threaded through the skeleton.
+2. `contracts` value (`'Contracts'`) → a *project* name; drives `using {{ .contracts }};`, the `spec.dependencies[0].output` directory, and a `ProjectReference` in the skeleton csproj.
+3. `spec.dependencies` → renders the whole `shared-contracts` template once as a sibling; recorded as `dependsOn: [{template, dir}]`. Dependency machinery: `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/dependencies.go`, spec at `manifest.go:49-61`.
+
+The `system-host` template takes **only `name`** (`sys create` passes `NoInput: true`, `SetValues: {"name": kebab}` — `internal/system/create.go:119-135`) and derives `projectName`/`systemClass`/`pubsub` in `spec.values`; the host's `Topics.cs.tmpl` is a compilable placeholder the CLI overwrites.
+
+---
+
+## Gaps / risks in the current model (relevant if you're about to extend it)
+
+1. **A contract has no identity beyond a string.** No namespace (pattern forbids dots in `values.contract`), no version, no owner, no schema, no `$id`. Renaming a C# record silently desynchronizes every scaffold record; nothing validates that `values.contract` names a type that actually exists in `Contracts/`.
+2. **Short vs. fully-qualified name split** between `scaffold.json` (`"Order"`) and the topology record (`"Contracts.Order"`) with no normalizer. Any future join between the catalog and the topology view needs one.
+3. **Contract is not the edge key** — `(pubsub, topic)` is. The contract is a post-hoc equality assertion (`assemble.go:93-100`), duplicated at runtime by `TopicContractConflictRule` in `/Users/robinhultman/dev/intropy/tooling/intropy-topology/src/Intropy.Topology/Validation/Rules/TopicAndConnectorRules.cs` (diagnostic ITP103).
+4. **CloudEvent `type`/`source` are invisible to the CLI.** They're derived constants in generated C#, so the topology graph cannot tell you what event type flows on a topic — only which CLR type does.
+5. **`apis`/`provides`/`consumes` are the designed-in extension point** for request/response contracts and are currently no-ops end to end (Go opaque → TS `unknown[]` → never emitted, never rendered).
+6. Stale checkout warning: `/Users/robinhultman/dev/intropy/tooling/Intropy.Topology` (an older copy) emits `systemName` + `topics[].name` with **no `apiVersion`**, which `topology.Decode` rejects outright; the current producer is `/Users/robinhultman/dev/intropy/tooling/intropy-topology` (`feat(generate): emit versioned graph documents`). If you test the dashboard against the wrong local library you'll get `unsupported topology apiVersion ""`.
+
+Docs worth reading for prose framing: `/Users/robinhultman/dev/intropy/tooling/intropy-cli/README.md:335-384` (`sys create`, shared contracts project), `/Users/robinhultman/dev/intropy/tooling/intropy-cli/CONTRIBUTING.md:80-85,237`, and `/Users/robinhultman/dev/intropy/tooling/intropy-templates/extractor/skeleton/AGENTS.md.tmpl:21-40`.</result>
+<usage><subagent_tokens>102073</subagent_tokens><tool_uses>52</tool_uses><duration_ms>284934</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>ad9e92811957a2c6d</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/5bca53b9-3ca9-4570-9b0c-22e405658876/tasks/ad9e92811957a2c6d.output</output-file>
+<status>completed</status>
+<summary>Agent "Design incremental contract inspection" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>The Write tool is not available in this read-only context, so I will deliver the plan directly as my response.
+
+# Contract Inspection for the Intropy Dashboard — v1 Plan
+
+Perspective applied: ship value on `feature/dashboard-v2` soon, minimize cross-repo surface. The plan is split so **everything except internal schema bodies ships CLI-only**; the single cross-repo change (emit `contracts[]` from the graph verb) lights up automatically when it lands because the CLI side is built to accept it from day one.
+
+---
+
+## 1. Internal messages: data model
+
+### Recommendation: a top-level `contracts[]` lookup table in the topology doc, in a simple native shape. Not AsyncAPI, not JSON Schema.
+
+The topology doc already has exactly this pattern: `topics[]` and `connectors[]` are lookup tables that inline references resolve against, and `Topic.Contract` is already the join key (the full CLR type name). `contracts[]` is the third table, keyed by that same name. No apiVersion bump — the field is additive, `encoding/json` ignores unknown fields in old CLIs, and old hosts that don't emit it degrade to today's name-only display.
+
+**Why not AsyncAPI:** it's a document *about* channels/servers/operations — the topology doc already is that document, natively. Generating AsyncAPI in the .NET verb means the dashboard parses AsyncAPI back into render data, a round-trip through a foreign vocabulary for zero v1 benefit. AsyncAPI is an *export* derivable later from `contracts[]` + `topics[]` (e.g. `intropy export asyncapi`). Defer.
+
+**Why not JSON Schema:** C# event records occupy a tiny structural subset (records, primitives, collections, nullability). Rendering arbitrary JSON Schema well (`$ref`, `oneOf`, `allOf`) is far more frontend work than the subset warrants, and "deterministic over complexity" favors a shape the dashboard renders with a plain table. JSON Schema is also derivable later from the native shape if a consumer needs it.
+
+### Shape (emitted by the .NET graph verb via reflection)
+
+```json
+{
+  "apiVersion": "topology.intropy.io/v1",
+  "kind": "SystemTopology",
+  "system": "price-sync",
+  "topics": [
+    { "pubsub": "pubsub", "topic": "b2b-prices", "contract": "Price.Contracts.B2BPrice", "publishers": ["price-extractor"] }
+  ],
+  "contracts": [
+    {
+      "name": "Price.Contracts.B2BPrice",
+      "kind": "record",
+      "fields": [
+        { "name": "sku",      "type": "string" },
+        { "name": "amount",   "type": "decimal" },
+        { "name": "currency", "type": "string", "nullable": true },
+        { "name": "lines",    "type": "array", "item": { "type": "ref", "ref": "Price.Contracts.PriceLine" } }
+      ]
+    },
+    {
+      "name": "Price.Contracts.PriceLine",
+      "kind": "record",
+      "fields": [
+        { "name": "quantity",  "type": "int" },
+        { "name": "unitPrice", "type": "decimal" }
+      ]
+    }
+  ]
+}
+```
+
+Rules for the .NET emitter (small, deterministic):
+- Collect the distinct `ContractType`s from all `TopicRef`s; walk each type's public properties. Nested record types become their own `contracts[]` entries referenced by `ref` (cycle-safe via a visited set; the table is flat, so depth is never a problem).
+- CLR → wire type names: `string`, `int`, `long`, `decimal`, `double`, `bool`, `dateTime`, `dateTimeOffset`, `guid`, `array` (+`item`), `map` (+`item`), `enum` (+`values: []`), `ref` (+`ref`). Anything else falls back to `{ "type": "unknown", "clrType": "..." }` — never fail the graph verb over a weird property.
+- `nullable` from NRT annotations / `Nullable&lt;T&gt;`. Field names camelCased to match the wire form CloudEvents data serializes as.
+- No doc strings in v1 (would require shipping/reading the XML documentation file — defer).
+
+**Concrete .NET touch points** (in `/Users/robinhultman/dev/intropy/tooling/intropy-topology`): `TopologyMaterializer.cs` currently throws the `Type` away at line 110 (`TopicAccumulator(topic.ContractType.FullName …)`) — keep the `Type` on `TopicResource` (or a parallel `SystemTopology.Contracts` table), then add `GraphContract`/`GraphField` records + a reflection walker in `IntropyGenerate.cs` next to the existing `GraphTopic`/`GraphConnector` mappers. That is the entire cross-repo ask for internal messages.
+
+### CloudEvents envelope metadata (type/source): defer
+
+The graph verb reflects over the *system host's* model (Topics.cs/Connectors.cs); the CE `type`/`source` constants are compiled into each *block's* generated code, invisible to the host. Surfacing them means changing the declaration site (e.g. an optional `eventType` on `TopicRef&lt;T&gt;.Define`), a real design decision with migration implications, for envelope plumbing that isn't what developers ask "what's in this message?" about. Reserve an optional `eventType` field on the `Topic` wire record for later; emit nothing in v1.
+
+---
+
+## 2. External messages: authored sidecar docs, merged by the CLI
+
+### Recommendation: option (b) — a per-system doc convention read by the CLI at request time. Reject (a) and (c).
+
+- **(a) metadata on `ConnectorRef.Define`**: worst ergonomics for the actual authoring job (prose, 12 field notes, a sample snippet don't belong in C# string constants — `Define` is even `[ConstantExpected]`), requires cross-repo API design *and* a host rebuild per edit, and can't carry sample files. Rejected for v1; could later become the place for one machine-checked field (`format:`) if drift ever matters.
+- **(c) scaffold.json values**: scaffold records are write-once template inputs ("scaffold records never lie"); a living payload description edited over time is exactly what they must not become. Rejected.
+- **(b) sidecar** wins because there is *no source of truth to drift from* — no spec exists; the authored doc **is** the spec. That is a declared/recorded fact, not inference, so it fits the project's declared-topology-only stance. It also matches the dashboard's existing "best-effort on-disk enrichment" pattern (`readDoc` for AGENTS.md/README.md in handlers.go).
+
+### The convention
+
+One Markdown file per connector, YAML frontmatter + free prose, in the **system directory** (connectors are system-owned; `topology.Entry.Path` is already that directory):
+
+```
+&lt;system-dir&gt;/docs/connectors/&lt;connector-name&gt;.md
+```
+
+```markdown
+---
+format: csv            # csv | fixed-width | xml | json | edifact | other
+delimiter: ";"
+encoding: iso-8859-1
+sample: samples/prices-2026-07-01.csv   # relative to this file, optional
+fields:
+  - name: ArticleNo
+    type: string
+    notes: ERP article number, zero-padded to 10
+  - name: PriceAmount
+    type: decimal
+    notes: comma decimal separator
+  # … 10 more
+---
+Nightly full snapshot from the ERP, dropped over SFTP around 02:00 CET.
+Not a delta — the loader must diff against current state.
+```
+
+Everything is optional except that the file joins to a connector by filename. The dev who knows "semicolon-separated, 12 columns, nightly ERP export" writes exactly that, in the shape they'd have written in a wiki — but it now lives beside the code and renders in the flow view. `gopkg.in/yaml.v3` is already a dependency; frontmatter split is ~15 lines of Go.
+
+**Sample display:** if `sample:` names a file, the CLI reads its head (cap ~8 KB / first ~40 lines, reuse the `maxDocBytes` truncation idea) and serves it as a text snippet rendered in a `&lt;pre&gt;`. No parsing, no interpretation of the sample — display only.
+
+**Merge point:** attach docs at the `topology.Entry` level (`messageDocs: { "&lt;connector-name&gt;": {…} }`), *not* inside the `Topology` struct — keeps "the topology is exactly what the host declared" true, with authored enrichment visibly separate. Crucially, merge at **request time** in `topologyReport` (after the cache), so editing a doc + browser refresh updates the panel without re-running the 5-minute dotnet graph pipeline.
+
+The same mechanism trivially extends to `docs/topics/&lt;topic&gt;.md` later for prose about internal messages — note it, don't build it. The BizTalk XSD parser (other branch) can later *bootstrap* these files (format/root element pre-filled); at most leave a comment, no dependency.
+
+---
+
+## 3. Dashboard UI
+
+**Node click, not edge click.** Edges are thin targets and carry no data today; the contract belongs to the topic node and the connector belongs to the external node — both already first-class, clickable-sized nodes. Add a **flow-side detail panel** (right side of the canvas, dismissable), since `DetailPanel` currently only renders in catalog view.
+
+- **Topic node click** → panel: topic name, pubsub, contract name, publishers/subscribers (already in `topics[]` meta, currently only a tooltip), and — when `contracts[]` is present — a field table with expandable `ref` rows resolved against the flat contracts table. Without `contracts[]`, the panel still ships value (today a topic click does nothing at all).
+- **External node click** → panel: connector name, external system, transport, directions, usedBy, then the message doc: format/delimiter/encoding meta row, fields table with notes, prose (markdown-as-text is fine for v1), sample snippet. Empty state shows the file path convention + a copyable frontmatter template — that *is* the authoring onboarding.
+- Integration node click keeps its current behavior.
+
+### File-level changes (this repo)
+
+| File | Change |
+|---|---|
+| `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/topology/topology.go` | Add `Contract`/`Field` structs + `Contracts []Contract` on `Topology` (additive; typed now so it decodes the moment hosts emit it). |
+| `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/messagedocs.go` (new) | Scan `&lt;entry.Path&gt;/docs/connectors/*.md`, frontmatter+body parse, sample-head read with cap. Plus `messagedocs_test.go`. |
+| `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/handlers.go` | `topologyReport` merges `messageDocs` per entry at request time (cache untouched); extend `topology.Entry` serialization accordingly (field on `Entry` in topology.go or a wrapper here). |
+| `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/api.ts` | `Contract`, `ContractField`, `MessageDoc` types; `Topology.contracts?`, entry-level `messageDocs?`. |
+| `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/components/FlowView.tsx` | Track a flow selection `{kind: 'topic'\|'connector', id}`; extend `onNodeClick` for `topic`/`external` node types; add `connector` name to `ExtNodeData` (needed as the doc join key — today the node only carries the display name); pass topology + docs to the panel. |
+| `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/components/FlowDetail.tsx` (new) | `ContractView` (recursive field table over the flat contracts table) + `ConnectorMessageView` (meta, fields, prose, sample `&lt;pre&gt;`, empty-state template). |
+| `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/components/DetailPanel.tsx` | Export `Section`/`Meta` (currently module-private) for reuse. |
+| `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/index.css` | Flow-detail panel + schema-table styles. |
+| `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/dashboard_test.go` | Fixture topology JSON gains `contracts[]` + a docs dir to cover decode/merge. |
+
+---
+
+## 4. Sequencing
+
+**Phase 1 — this branch, CLI-only, no .NET dependency (ships end-to-end value):**
+1. Flow-side detail panel + topic/connector click handling. Topic panel shows contract name, pubsub, publishers/subscribers (all available today).
+2. Connector message-doc convention: parser, request-time merge, connector panel with fields/prose/sample, empty-state authoring template. This is the whole external-messages feature — the higher-value half — with zero cross-repo surface.
+3. `contracts[]` decoding in Go + rendering in the topic panel, tested against a fixture; renders "No schema published by this host" until Phase 2 lands.
+
+**Phase 2 — the one cross-repo ask (intropy-topology):**
+- Preserve `ContractType` through `TopologyMaterializer`; add the reflection walker + `GraphContract` records to `IntropyGenerate.cs`; emit `contracts[]`. When a rebuilt host runs, existing dashboards render schemas with no further CLI change.
+
+**Deferred (explicitly out of v1):**
+- AsyncAPI as an export from `contracts[]`+`topics[]`.
+- CloudEvents `type`/`source` in the doc (needs a declaration-site change; reserve optional `Topic.eventType`).
+- Field docs from XML doc comments; markdown rendering of prose.
+- `intropy connector describe` / doc-scaffolding command and BizTalk-XSD bootstrap of authored docs.
+- `docs/topics/*.md` prose for internal messages; scaffold short-name↔full-name normalization (moot — `contracts[]` joins on the exact `Topic.Contract` full name).
+
+### Critical Files for Implementation
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/topology/topology.go
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/handlers.go
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/components/FlowView.tsx
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/api.ts
+- /Users/robinhultman/dev/intropy/tooling/intropy-topology/src/Intropy.Topology.Generation/IntropyGenerate.cs (cross-repo, Phase 2)</result>
+<usage><subagent_tokens>64981</subagent_tokens><tool_uses>19</tool_uses><duration_ms>205406</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>ad9fbcd9cdf029772</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/5bca53b9-3ca9-4570-9b0c-22e405658876/tasks/ad9fbcd9cdf029772.output</output-file>
+<status>completed</status>
+<summary>Agent "Design long-term contract model" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>All exploration done — I verified the interchange model on both sides (Go decoder, TS mirror, C# emitter), the materializer (where the CLR `Type` is dropped today), the example system, and the project's stated values (dependency-free core, byte-exact snapshot tests, minimal model with `full-topology` branch held in reserve). Here is the design.
+
+---
+
+# Contract data model for topology.intropy.io/v1
+
+## 0. The one organizing decision
+
+The topology doc already has a pattern: **top-level lookup tables that inline refs resolve against** (`topics[]`, `connectors[]`). Contracts become the third lookup table: a top-level `contracts[]` registry, keyed by name. This is the move we won't regret because:
+
+- `Topic.contract` **already holds the registry key** ("Contracts.Order"). Making `contracts[]` a table keyed by that exact string means the topic shape doesn't change at all — the existing string field silently becomes a resolvable ref. Zero migration for topics.
+- The future `apis[]`/`provides`/`consumes` sockets reference the same table with the same string-ref convention.
+- External connector message descriptions live in the same table with a `kind` discriminator, so the dashboard renders "what flows on this edge" through one code path for topic edges and connector edges.
+
+One registry, two kinds of entry:
+
+| `kind` | What it is | Produced by | Has `schema` | Has `description` |
+|---|---|---|---|---|
+| `event` | CLR record on a pub/sub topic | graph verb (reflection) | yes (JSON Schema) | no |
+| `document` | external payload with no spec | authored sidecar file, merged by CLI | no | yes |
+
+Deliberately **not** unified into one fake super-schema: an `event` is generated truth (the serializer's own metadata), a `document` is human documentation. Same registry, different honesty guarantees, and the model says which is which via `kind` + `provenance`.
+
+## 1. Contract identity, schema, fingerprint
+
+**Identity.** `name` is the registry key, unique within the doc. For events it is the fully-qualified CLR name (`Contracts.Order` — matches what `TopologyMaterializer.AccumulateTopic` already emits via `ContractType.FullName`). For documents it is `&lt;connector&gt;/&lt;message-name&gt;`. `shortName` (`Type.Name`, "Order") is carried explicitly — that is the join key to `.intropy/scaffold.json`'s PascalCase `values.contract`, closing the currently-missing scaffold↔topology join without inventing anything.
+
+**Schema: JSON Schema via the in-box exporter, not NJsonSchema, not a custom field list.**
+
+- .NET 10 ships `System.Text.Json.Schema.JsonSchemaExporter` (`JsonSerializerOptions.GetJsonSchemaAsNode(type)`). Zero new dependencies — this matters because Intropy.Topology and Intropy.Topology.Generation are documented as dependency-free, and NJsonSchema would break that for no gain.
+- It reflects the **same serializer metadata that will serialize the message at runtime**, so the schema matches the wire shape by construction (nullability, property naming policy, converters). A hand-rolled field list would be a second reflection implementation that drifts.
+- Nested records (`OrderLine` inside `Order`) come out as `$defs` automatically; one registry entry per topic root type.
+- Generation site: the graph verb, inside `Intropy.Topology.Generation`. This requires one internal-model change: `TopicResource`/`TopicAccumulator` currently reduce `TopicRef&lt;T&gt;.ContractType` to a string (`/Users/robinhultman/dev/intropy/tooling/intropy-topology/src/Intropy.Topology/Building/TopologyMaterializer.cs:110`). Keep the `Type` on the internal model (`ContractType Type` alongside `ContractTypeName`) so Generation can export the schema. The core model stays dependency-free; only Generation calls the exporter.
+
+**Fingerprint.** `fingerprint: "sha256:&lt;first 16 hex&gt;"` over the *canonicalized* schema JSON (sorted keys, no whitespace, stable `$defs` order). This is the version — no semver, no manual bumping; the fingerprint changes exactly when the shape changes. Cross-system drift detection is then a string comparison: two systems both carrying `Contracts.Order` with different fingerprints = drift, render a warning. Caveat to document: exporter output could vary across .NET SDK versions, so fingerprint comparisons are only meaningful within a workspace built on one SDK — acceptable for a local-first tool, and canonicalization absorbs cosmetic churn.
+
+**CloudEvents envelope.** Envelope metadata is a property of the *topic*, not the contract (the same record could ride two topics under different event types). Today the CE `type` is a compiled constant in scaffolded component code, invisible to topology — that's two sources of truth waiting to disagree. Fix at the declaration site, per the deterministic-over-inference value:
+
+```csharp
+public static readonly TopicRef&lt;Order&gt; Orders =
+    TopicRef&lt;Order&gt;.Define("pubsub", "orders", eventType: "orderflow.orders.extracted");
+```
+
+and the scaffolded component code consumes `Topics.Orders.EventType` instead of its private constant — single declaration, graph verb emits it for free. Topic gains `eventType` and `datacontenttype` (constant `application/json` for now; publishers = CE `source`, already present, don't duplicate). This is a release-2 item because it touches the CLI's golden scaffold templates (`internal/system/create_test.go` byte-exact outputs) and the examples that mirror them verbatim.
+
+## 2. AsyncAPI: honest verdict — no as the model, later as an export
+
+**Do not make AsyncAPI the internal format.** The impedance is real:
+
+- AsyncAPI 3.0's channel/operation/message model maps *tolerably* to pubsub topics (channel=topic, message=contract, send/receive operations=publishers/subscribers), but the **highest-value part of this problem — connectors, flat files over SFTP, EDI — has no AsyncAPI home at all.** There is no file/SFTP binding in the spec; everything would be `x-intropy-*` extensions, i.e., you'd be writing the native model anyway, wearing an AsyncAPI costume.
+- An AsyncAPI document is scoped to *one application*; Intropy's doc is scoped to a *system of components*. You'd need one AsyncAPI doc per component plus stitching — a shape mismatch with the existing single-doc-per-system pipeline.
+- The dashboard needs custom rendering for connectors/blocks regardless, so the AsyncAPI React component only covers the fraction of the UI that is easiest anyway.
+- It's a second format to keep true, violating "the topology doc is the interchange".
+
+**What AsyncAPI is good for:** ecosystem tooling (Backstage AsyncAPI plugin, docs portals, code generators) for the *internal event* subset. So: native model in the topology doc; `intropy topology export --format asyncapi` as a **derived, lossy-by-design export** in release 3, *if and when a concrete consumer exists*. The proposed model makes that export mechanical: `contracts[]` (kind=event) → `components.messages` with JSON Schema payloads, `topics[]` → channels, `eventType` → CE binding. Nothing in the model needs to change later to enable it — which is the test that the model is right.
+
+## 3. External message descriptions (`kind: "document"`)
+
+**Design stance: this is documentation, not enforcement, and the model says so out loud.** The runtime never validates against it (consistent with ValidateStep being business-rules-only); its job is to make a developer opening the dashboard understand "what actually arrives in that folder" without archaeology. Fields are chosen to be checkable-by-eyeball, not machine-validatable — that's why there is no `schema` on documents and no pretend-XSD.
+
+**Authoring: sidecar file, not C#.** `ConnectorRef` is deliberately minimal and prose/samples/column tables don't belong in code constants. Sidecar files live next to the declaration site: `&lt;SystemHost&gt;/messages/&lt;connector&gt;.&lt;direction&gt;.&lt;name&gt;.message.json`.
+
+**Transport into the doc: merged by the CLI, not the graph verb.** The graph verb is pure reflection over the assembly with no reliable cwd (`internal/dashboard/topology.go` runs it via `dotnet run --project`); teaching it file I/O is fragile. The CLI already owns the system directory (`Entry.Path`) — `hostGraphProvider` reads `messages/*.message.json`, appends `kind:document` entries to `contracts[]`, and attaches refs to the named connector. This does not violate "the CLI never derives a topology": nothing is inferred — the sidecar is a declared artifact, and a sidecar naming an unknown connector/direction is surfaced in `errors[]`, not guessed around. It also positions the BizTalk branch perfectly: its XSD parser (format, delimiters from `b:recordInfo`, root element) becomes a *bootstrap generator of sidecar files* (`provenance.source: "imported-biztalk-xsd"`), not a runtime dependency.
+
+**Sidecar format** (own apiVersion so it can evolve independently):
+
+```json
+{
+  "apiVersion": "message.intropy.io/v1",
+  "kind": "MessageDescription",
+  "name": "pim-order-file",
+  "connector": "order-extractor-source",
+  "direction": "in",
+  "summary": "Nightly order export pushed by PIM.",
+  "format": "csv",
+  "encoding": "iso-8859-1",
+  "delimiters": { "field": ";", "record": "\r\n" },
+  "hasHeader": true,
+  "filePattern": "ORDERS_*.csv",
+  "frequency": "nightly ~02:00 CET, pushed by PIM batch job",
+  "fields": [
+    { "name": "ORDER_ID",  "position": 1, "type": "string",  "required": true,  "notes": "PIM order key, zero-padded 10" },
+    { "name": "CUST_NO",   "position": 2, "type": "string",  "required": true },
+    { "name": "ORDER_DATE","position": 3, "type": "date",    "required": true,  "notes": "yyyyMMdd" },
+    { "name": "QTY",       "position": 5, "type": "integer", "required": false, "notes": "empty means 1 (per PIM ops)" }
+  ],
+  "sample": { "inline": "1000000042;C1234;20260725;SKU-1;3", "redacted": true },
+  "contact": "PIM operations — anna.b@customer.example (source of truth)",
+  "notes": "PIM occasionally re-sends the whole file after a failed run; ORDER_ID is the dedupe key.",
+  "provenance": { "source": "authored", "lastReviewed": "2026-07-26" }
+}
+```
+
+Design notes, opinionated:
+- `format` is a small open enum: `csv | flat-file | xml | json | edifact | x12 | binary | other`. `type` on fields is deliberately loose (`string|integer|decimal|date|boolean|other`) — "type-ish", because that's all anyone actually knows about a PIM export.
+- `sample.inline` only, one-to-few lines, with a **required** `redacted` boolean so the author must assert they thought about PII before the dashboard displays it. No file refs in v1 — a path into someone's SFTP dump is a stale link and a data-leak vector; inline-snippet-or-nothing keeps it honest and portable.
+- `frequency` is prose, not cron — the schedule belongs to the *external* system; pretending precision we don't have is the fake-schema trap in another field.
+- `provenance.lastReviewed` is the staleness mechanism: the dashboard renders a "reviewed N months ago" badge. That plus `contact` is the entire honesty story — social, not mechanical, stated explicitly in the model docs.
+
+## 4. The proposed topology.intropy.io/v1 document (extension in place)
+
+Everything below is **additive**; unmarked parts are today's doc, unchanged.
+
+```json
+{
+  "apiVersion": "topology.intropy.io/v1",
+  "kind": "SystemTopology",
+  "system": "order-flow",
+  "components": [
+    {
+      "name": "order-extractor",
+      "kind": "extractor",
+      "publishes": [{ "pubsub": "pubsub", "topic": "orders" }],
+      "connectors": [{ "connector": "order-extractor-source", "direction": "in" }]
+    },
+    {
+      "name": "order-loader",
+      "kind": "loader",
+      "subscribes": [{ "pubsub": "pubsub", "topic": "orders" }],
+      "connectors": [{ "connector": "order-loader-destination", "direction": "out" }],
+      "provides": [{ "api": "order-status" }]
+    }
+  ],
+  "topics": [
+    {
+      "pubsub": "pubsub",
+      "topic": "orders",
+      "contract": "Contracts.Order",
+      "eventType": "orderflow.orders.extracted",
+      "datacontenttype": "application/json",
+      "publishers": ["order-extractor"],
+      "subscribers": ["order-loader"]
+    }
+  ],
+  "connectors": [
+    {
+      "name": "order-extractor-source",
+      "transport": { "type": "file", "supportsInput": true, "supportsOutput": true },
+      "directions": ["in"],
+      "usedBy": ["order-extractor"],
+      "messages": [{ "direction": "in", "contract": "order-extractor-source/pim-order-file" }]
+    },
+    {
+      "name": "order-loader-destination",
+      "transport": { "type": "file", "supportsInput": true, "supportsOutput": true },
+      "directions": ["out"],
+      "usedBy": ["order-loader"]
+    }
+  ],
+  "contracts": [
+    {
+      "name": "Contracts.Order",
+      "kind": "event",
+      "shortName": "Order",
+      "clrType": "Contracts.Order",
+      "mediaType": "application/json",
+      "fingerprint": "sha256:9f2a41c803de11ab",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "orderId": { "type": "string" },
+          "customerId": { "type": "string" },
+          "orderDate": { "type": "string", "format": "date-time" },
+          "lines": { "type": "array", "items": { "$ref": "#/$defs/OrderLine" } }
+        },
+        "required": ["orderId", "customerId", "orderDate", "lines"],
+        "$defs": {
+          "OrderLine": {
+            "type": "object",
+            "properties": {
+              "sku": { "type": "string" },
+              "quantity": { "type": "integer" },
+              "unitPrice": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "order-extractor-source/pim-order-file",
+      "kind": "document",
+      "summary": "Nightly order export pushed by PIM.",
+      "format": "csv",
+      "encoding": "iso-8859-1",
+      "delimiters": { "field": ";", "record": "\r\n" },
+      "hasHeader": true,
+      "filePattern": "ORDERS_*.csv",
+      "frequency": "nightly ~02:00 CET, pushed by PIM batch job",
+      "fields": [
+        { "name": "ORDER_ID", "position": 1, "type": "string", "required": true, "notes": "PIM order key" }
+      ],
+      "sample": { "inline": "1000000042;C1234;20260725;SKU-1;3", "redacted": true },
+      "contact": "PIM operations — anna.b@customer.example",
+      "provenance": { "source": "authored", "lastReviewed": "2026-07-26" }
+    },
+    {
+      "name": "Contracts.OrderStatus",
+      "kind": "event",
+      "shortName": "OrderStatus",
+      "clrType": "Contracts.OrderStatus",
+      "mediaType": "application/json",
+      "fingerprint": "sha256:1b7d0e5a44c2f9d3",
+      "schema": { "type": "object" }
+    }
+  ],
+  "apis": [
+    {
+      "name": "order-status",
+      "kind": "http",
+      "operations": [
+        { "name": "get-order", "method": "GET", "path": "/orders/{id}",
+          "request": null, "response": "Contracts.OrderStatus" }
+      ]
+    }
+  ]
+}
+```
+
+**Point 4 answered concretely:** the sockets stop being opaque by adopting the same string-ref convention — `apis[].operations[].request/response` are `contracts[]` keys; `component.provides/consumes` are `{ "api": &lt;name&gt; }` refs into `apis[]` (consumes may add `"system"` for cross-system later). When the `full-topology` branch's APIs/Provides/Consumes get reapplied, request/response records flow through the *identical* exporter path as topic contracts — one registry, as designed. The Go/TS side keeps parsing them as `json.RawMessage`/`unknown[]` until the release that renders them; nothing forces earlier commitment.
+
+## 5. Cross-system view: design now (two fields), build later
+
+The design cost is exactly `fingerprint` + stable `name` — both already in the model above for their own reasons (drift detection, registry identity). The workspace-level join is pure dashboard logic over data the CLI already aggregates (`TopologyReport.topologies[]`): group `contracts[]` entries by `name` across entries; equal fingerprints → "same contract flows through systems A and B" (a genuinely great overview affordance); unequal → drift warning. **Do not** build a cross-system UI in v1, and do not add any cross-system structure to the per-system doc (it must stay a statement about one system). The model is ready; the feature is a release-2/3 pull.
+
+## 6. Migration &amp; versioning
+
+- **Stay on `topology.intropy.io/v1`. Purely additive.** Go's `encoding/json` ignores unknown fields, so old CLI + new host is safe; new CLI + old host just sees no `contracts[]` and the UI falls back to rendering `Topic.contract` as a bare string (today's behavior). The strict apiVersion gate in `topology.Decode` is untouched. Reserve a v2 bump for genuinely breaking shape changes; this isn't one.
+- `messages[]` on connector and `eventType`/`datacontenttype` on topic: additive, `omitempty` throughout.
+- The C# `EndToEndTests` byte-exact snapshot changes deliberately (documented workflow) — internal model gains the retained `Type`, graph doc gains `contracts`.
+- The sidecar format versions independently (`message.intropy.io/v1`) with the same strict-gate policy as the topology decoder.
+- Contract *entries* have no version field: the fingerprint is the version.
+
+## 7. What ships when (be ruthless)
+
+**Release 1 (v1 — cut to the two things with user value):**
+1. `contracts[]` registry: `kind:event` entries generated by the graph verb via `JsonSchemaExporter` + fingerprint (C# side: retain `Type` in materializer, extend `IntropyGenerate` GraphDocument; Go/TS: new `Contract` type; UI: topic detail panel rendering schema as a field table, filling the dead `TopicNodeData.contract/entity` slots).
+2. `kind:document` sidecars + CLI merge + connector `messages[]` + connector detail panel. This is the highest-value item by the user's own statement and touches no .NET code at all — it can even land first.
+
+**Release 2:** `eventType` on `TopicRef.Define` + scaffold template unification (kill the duplicate CE constant); scaffold↔contract join surfaced in the integration detail view via `shortName`; cross-system fingerprint match/drift view.
+
+**Cut from v1 but held in the model design (this document):** `apis[]`/`provides`/`consumes` concrete rendering (waits for `full-topology` branch reapplication — but the ref convention is fixed now so that branch conforms to it); AsyncAPI export (release 3, only against a named consumer); sample-file refs, machine schedules for external messages, any external-message validation (never, on principle).
+
+### Critical Files for Implementation
+- /Users/robinhultman/dev/intropy/tooling/intropy-topology/src/Intropy.Topology.Generation/IntropyGenerate.cs (GraphDocument gains `contracts[]`, topic `eventType`; schema export + fingerprint live here)
+- /Users/robinhultman/dev/intropy/tooling/intropy-topology/src/Intropy.Topology/Building/TopologyMaterializer.cs (retain `ContractType` `Type` on `TopicResource`, with /Users/robinhultman/dev/intropy/tooling/intropy-topology/src/Intropy.Topology/Model/Resources.cs)
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/topology/topology.go (new `Contract` type, connector `Messages`, topic `EventType`; refs stay strings)
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/topology.go (sidecar `messages/*.message.json` discovery + merge into `Entry`, errors for unknown connectors)
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/api.ts and /Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/components/FlowView.tsx (TS mirror types; contract/message rendering in the detail panel and node labels)</result>
+<usage><subagent_tokens>52007</subagent_tokens><tool_uses>21</tool_uses><duration_ms>258751</duration_ms></usage>
+</task-notification>
+
+---
+
+To keep it simple from the start I wonder if we should just render the POCO. The internal events are easier because they will always be encoded as a cloudevent and we can base it on asyncapi since we now the distribution channel aswell
+
+---
+
+When I said render POCO I did not mean render public string Name {get; set} I meant render Name,  hiearchy and if it has a required modifier

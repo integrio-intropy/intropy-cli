@@ -3,7 +3,7 @@
   "checkpoint_id": "584da0386488",
   "strategy": "manual-commit",
   "branch": "feature/dashboard-v2",
-  "checkpoints_count": 1,
+  "checkpoints_count": 9,
   "files_touched": [
     ".pi-subagents/artifacts/18b6785c_ce-repo-research-analyst_0_input.md",
     ".pi-subagents/artifacts/18b6785c_ce-repo-research-analyst_0_meta.json",
@@ -16,7 +16,19 @@
     ".pi-subagents/artifacts/3587cda3_ce-best-practices-researcher_0_input.md",
     ".pi-subagents/artifacts/3587cda3_ce-best-practices-researcher_0_meta.json",
     ".pi-subagents/artifacts/3587cda3_ce-best-practices-researcher_0_output.md",
-    ".pi-subagents/artifacts/3587cda3_ce-best-practices-researcher_0_transcript.jsonl"
+    ".pi-subagents/artifacts/3587cda3_ce-best-practices-researcher_0_transcript.jsonl",
+    "internal/dashboard/dashboard_test.go",
+    "internal/dashboard/handlers.go",
+    "internal/dashboard/messagedocs.go",
+    "internal/dashboard/messagedocs_test.go",
+    "internal/topology/topology.go",
+    "internal/topology/topology_test.go",
+    "web/dist/index.html",
+    "web/src/api.ts",
+    "web/src/components/DetailPanel.tsx",
+    "web/src/components/FlowDetail.tsx",
+    "web/src/components/FlowView.tsx",
+    "web/src/index.css"
   ],
   "sessions": [
     {
@@ -25,13 +37,20 @@
       "compact_transcript": "/58/4da0386488/0/transcript.jsonl",
       "content_hash": "/58/4da0386488/0/content_hash.txt",
       "prompt": "/58/4da0386488/0/prompt.txt"
+    },
+    {
+      "metadata": "/58/4da0386488/1/metadata.json",
+      "transcript": "/58/4da0386488/1/full.jsonl",
+      "compact_transcript": "/58/4da0386488/1/transcript.jsonl",
+      "content_hash": "/58/4da0386488/1/content_hash.txt",
+      "prompt": "/58/4da0386488/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 81257,
-    "cache_creation_tokens": 0,
-    "cache_read_tokens": 528896,
-    "output_tokens": 4464,
-    "api_call_count": 11
+    "input_tokens": 81410,
+    "cache_creation_tokens": 222279,
+    "cache_read_tokens": 13808369,
+    "output_tokens": 90911,
+    "api_call_count": 89
   }
 }

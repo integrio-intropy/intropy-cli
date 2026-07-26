@@ -1,0 +1,114 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "584da0386488",
+  "session_id": "5bca53b9-3ca9-4570-9b0c-22e405658876",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-26T18:46:59.871585Z",
+  "branch": "feature/dashboard-v2",
+  "checkpoints_count": 8,
+  "save_step_count": 1,
+  "files_touched": [
+    "internal/dashboard/dashboard_test.go",
+    "internal/dashboard/handlers.go",
+    "internal/dashboard/messagedocs.go",
+    "internal/dashboard/messagedocs_test.go",
+    "internal/topology/topology.go",
+    "internal/topology/topology_test.go",
+    "web/dist/index.html",
+    "web/src/api.ts",
+    "web/src/components/DetailPanel.tsx",
+    "web/src/components/FlowDetail.tsx",
+    "web/src/components/FlowView.tsx",
+    "web/src/index.css"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "fa9688620a4d",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 153,
+    "cache_creation_tokens": 222279,
+    "cache_read_tokens": 13279473,
+    "output_tokens": 86447,
+    "api_call_count": 78
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_014Lk5F3czbW5nuzKkQSK8Lk",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "golang-cli"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "fa9688620a4d",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 140,
+        "end": 141,
+        "entry_ids": [
+          "35b6bec9-41b9-41e3-a14b-f3c65513c608"
+        ],
+        "tool_use_id": "toolu_014Lk5F3czbW5nuzKkQSK8Lk"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_014Lk5F3czbW5nuzKkQSK8Lk"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: golang-cli",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 8
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-26T18:46:59.779721Z",
+    "agent_lines": 1134,
+    "agent_removed": 20,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1134,
+    "total_lines_changed": 1154,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 1380,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.json": 84,
+        ".claude/settings.local.json": 51,
+        ".codex/config.toml": 3,
+        ".codex/hooks.json": 52,
+        ".opencode/plugins/entire.ts": 267,
+        ".pi-subagents/artifacts/18b6785c_ce-repo-research-analyst_0_input.md": 54,
+        ".pi-subagents/artifacts/18b6785c_ce-repo-research-analyst_0_meta.json": 131,
+        ".pi-subagents/artifacts/18b6785c_ce-repo-research-analyst_0_output.md": 79,
+        ".pi-subagents/artifacts/18b6785c_ce-repo-research-analyst_0_transcript.jsonl": 139,
+        ".pi-subagents/artifacts/28542a77_ce-cli-agent-readiness-reviewer_0_input.md": 54,
+        ".pi-subagents/artifacts/28542a77_ce-cli-agent-readiness-reviewer_0_meta.json": 89,
+        ".pi-subagents/artifacts/28542a77_ce-cli-agent-readiness-reviewer_0_output.md": 1,
+        ".pi-subagents/artifacts/28542a77_ce-cli-agent-readiness-reviewer_0_transcript.jsonl": 90,
+        ".pi-subagents/artifacts/3587cda3_ce-best-practices-researcher_0_input.md": 54,
+        ".pi-subagents/artifacts/3587cda3_ce-best-practices-researcher_0_meta.json": 89,
+        ".pi-subagents/artifacts/3587cda3_ce-best-practices-researcher_0_output.md": 1,
+        ".pi-subagents/artifacts/3587cda3_ce-best-practices-researcher_0_transcript.jsonl": 14,
+        ".pi/extensions/entire/index.ts": 127
+      }
+    }
+  ]
+}
