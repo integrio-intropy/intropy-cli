@@ -1,0 +1,464 @@
+I would like you to analyze how the branch feature/dashboard could be ported to a new branch based on an up-to-date main. Main have moved along quite a bit so I want you to highlight gaps along with suggestions on if we should drop the feature. Update the dashboard logic or update the cli. The intropy sys(tem) have already been created so I am only interested in the dashboard part
+
+---
+
+<task-notification>
+<task-id>a1d2b0418d5c72160</task-id>
+<tool-use-id>toolu_01CLVMtnzNLXCcBY7wnKYNMJ</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/16dbac38-5d4e-438a-83e5-662b9d8081b9/tasks/a1d2b0418d5c72160.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore main's system model" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>All questions answered from the current main working tree. Report follows.
+
+# Report: main's `sys create` system model
+
+## 1. Command surface — `cmd/intropy/sys.go`, `sys_create.go`
+
+The command is **`intropy sys create`** (parent `sys`, not `system`), attached to `rootCmd` in `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/sys.go`.
+
+Flags (`/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/sys_create.go`):
+- `--name / -n` (required) — system name, PascalCase or kebab-case (equivalent)
+- `--output / -o` — destination dir, default = kebab-cased name
+- `--version` — system-host template release tag, default latest
+- `--force` — allow non-empty output dir
+- `--output-json &lt;path|-&gt;` — write a machine-readable `CreateResult` JSON
+
+It calls `system.Create(...)`. Short description: "Assemble scaffolded integrations into a system host." It scans the workspace for `.intropy/scaffold.json` records, renders the `system-host` template from GitHub, and generates typed C# declaration files.
+
+## 2. `internal/system/` — the full flow
+
+Flow in `Create()` (`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/create.go`):
+
+1. Kebab-case the name (`xstrings.ToKebabCase`).
+2. `template.ListScaffolds(StartDir)` — walk the tree from cwd for every dir containing `.intropy/scaffold.json` (skips `.git`, `.intropy`, `node_modules`, `bin`, `dist`; does not descend into project roots).
+3. `Assemble(entries, warnf)` → `*Model` (see below).
+4. `template.Create(...)` renders the **`system-host`** template (constant `hostTemplate = "system-host"`) into OutputDir with the single value `{"name": kebab}` (NoInput). This itself writes a `.intropy/scaffold.json` into the host dir; the CLI reads `projectName` and `systemClass` back from that record so CLI/template derivation cannot drift.
+5. Writes generated C# files into OutputDir (overwriting template placeholders):
+   - `Topics.cs` — `public static class Topics` with `TopicRef&lt;Contract&gt; Field = TopicRef&lt;Contract&gt;.Define("&lt;pubsub&gt;", "&lt;topic&gt;")` per topic.
+   - `Connectors.cs` (only if the rendered template left a placeholder; otherwise degrades with a warning) — `ConnectorRef Field = ConnectorRef.Define("&lt;name&gt;", Transport.File("./test/&lt;name&gt;"))` per connector.
+   - `&lt;SystemClass&gt;.cs` — `ISystemDefinition` implementation; per component: `builder.AddExtractor("&lt;appId&gt;").From(Connectors.X).Publishes(Topics.Y).WithSchedule("* * * * *");` or `builder.AddLoader("&lt;appId&gt;").Subscribes(Topics.Y).To(Connectors.X);` (refuses to create the file if the placeholder is missing).
+6. `mkdir -p &lt;out&gt;/test/&lt;connectorName&gt;` for each connector (drop folders behind the default file transports).
+7. Inserts a `&lt;ProjectReference Include="..." IsAspireProjectResource="false"/&gt;` to the shared contracts csproj into `&lt;out&gt;/&lt;ProjectName&gt;.SystemHost.csproj` (textual insert before `&lt;/Project&gt;`, `csproj.go`).
+8. Optionally writes the `--output-json` result.
+
+**Inputs consumed per scaffold record** (from `Values`): `appId`, `topic`, `contract` (required — hard error with re-scaffold hint), `pubsub` (default `"pubsub"`), `connector` (optional, no default — a missing connector just yields no From/To). Records with `role: shared-library` become the contracts project (exactly one required); `role: system-host` is skipped; `blockKind` must be `extractor` or `loader`, everything else is skipped with warnings. Duplicate appIds, duplicate connectors, conflicting contracts on the same topic, and Topics.cs/Connectors.cs field collisions are hard errors.
+
+**Key structs — `model.go`** (full file, `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/model.go`):
+
+```go
+type TopicKey struct {
+	Pubsub string `json:"pubsub"`
+	Name   string `json:"topic"`
+}
+
+type Topic struct {
+	TopicKey
+	Contract string `json:"contract"`
+	Field    string `json:"-"`
+}
+
+type Component struct {
+	AppID     string   `json:"name"` // the AddExtractor/AddLoader argument
+	Kind      string   `json:"kind"` // template.BlockKindExtractor or BlockKindLoader
+	Topic     TopicKey `json:"-"`
+	Connector string   `json:"connector,omitempty"`
+	Path      string   `json:"path"` // scaffold directory
+}
+
+type Connector struct {
+	Name  string `json:"name"`
+	Field string `json:"-"`
+}
+
+type SharedLibrary struct {
+	Path string
+	Name string
+}
+
+type Model struct {
+	Name        string // kebab-case system name
+	ProjectName string
+	SystemClass string
+	Components  []Component
+	Topics      []Topic     // sorted by (Pubsub, Name)
+	Connectors  []Connector // sorted by Name
+	Shared      SharedLibrary
+}
+```
+
+**The only JSON record `sys create` writes** is the optional `--output-json` document (`create.go`):
+
+```go
+type CreateResult struct {
+	Template  string         `json:"template"`
+	Owner     string         `json:"owner"`
+	Repo      string         `json:"repo"`
+	Version   string         `json:"version"`
+	OutputDir string         `json:"outputDir"`
+	Values    map[string]any `json:"values"`
+	System    Summary        `json:"system"`
+}
+
+// "loosely mirrors the model the host's `graph` verb prints"
+type Summary struct {
+	Name          string      `json:"name"`
+	Components    []Component `json:"components"`
+	Topics        []Topic     `json:"topics"`
+	Connectors    []Connector `json:"connectors,omitempty"`
+	SharedLibrary string      `json:"sharedLibrary"`
+}
+```
+
+Note the JSON asymmetry: `Component.Topic` has `json:"-"`, so the serialized Summary's components carry **name/kind/connector/path but not their topic** — topic-to-component edges are not present in the JSON, only in the generated C# (`Publishes`/`Subscribes` calls). Also `Topic.Field` and `Connector.Field` are omitted. So a dashboard consuming `--output-json` today gets nodes (components, topics, connectors) but not the component↔topic edges.
+
+## 3. scaffold.json format — `internal/template/scaffold.go`
+
+Path constant: `ScaffoldRelPath = ".intropy/scaffold.json"`; `ScaffoldSchemaVersion = 1`.
+
+```go
+type Scaffold struct {
+	SchemaVersion int            `json:"schemaVersion"`
+	Template      string         `json:"template"`
+	Owner         string         `json:"owner"`
+	Repo          string         `json:"repo"`
+	Version       string         `json:"version"`
+	Values        map[string]any `json:"values"`
+	Role          string         `json:"role,omitempty"`      // intropy.dev/template-role label ("shared-library" | "system-host")
+	BlockKind     string         `json:"blockKind,omitempty"` // intropy.dev/block-kind label ("extractor" | "loader")
+	DataFlow      string         `json:"dataFlow,omitempty"`  // intropy.dev/data-flow label ("in" | "out")
+	DependsOn     []DependencyRecord `json:"dependsOn,omitempty"`
+}
+
+type DependencyRecord struct {
+	Template string `json:"template"`
+	Dir      string `json:"dir"` // slash-separated, relative to component root, e.g. "../Acme.Models"
+}
+```
+
+`ScaffoldEntry` (scaffold_list.go) is `{Path string json:"path"` + embedded Scaffold, flattened}. Manifest labels (`manifest.go`) come from `metadata.labels` in `template.yaml` (`apiVersion: intropy.dev/v1`, `kind: Template`); `spec.values` and `spec.parameters` feed `Values` — that's where `appId`, `topic`, `contract`, `pubsub`, `connector` live (template-derived, not CLI-defaulted).
+
+## 4. dependencies.go (PR #5)
+
+Templates can declare `spec.dependencies` (`DependencySpec{Template, Output, Values}` — Output/Values are Go-template expressions over the parent's resolved values). During `int create`, each dependency is rendered **as a sibling directory** of the component (single path segment enforced), recursively up to depth 5, deduped by a visited set, skipped if the target already carries a scaffold record from the same template (with value-drift warnings), refused for foreign/unmanaged non-empty dirs, and `--force` never propagates. Each rendered dependency gets its own scaffold.json; the parent records them in `dependsOn`. Effect on discovery: this is how a component auto-creates the shared Contracts project — so `sys create`'s workspace scan finds the `shared-library` scaffold as a sibling. It does not change the scan itself.
+
+## 5. Topology file / graph on main?
+
+**No.** Nothing on main writes a `topology.json` or any graph/edge file. All matches for topology/edge/graph in non-test Go code are: comments, the C# `using Intropy.Topology;` in the generated files, `oras.CopyGraph` in the OCI skill code, and the comment in create.go saying Summary "loosely mirrors the model the host's `graph` verb prints" — i.e., graph printing is expected to live in the **.NET host runtime** (a `graph` verb), not the CLI. The graph semantics on main are encoded in generated C# (`ISystemDefinition`/`SystemBuilder` calls) plus the optional `--output-json` Summary. (This matches the memory note that the .NET topology library + dashboard consume `topology.intropy.io/v1` produced on the .NET side.)
+
+There is an untracked `web/` directory in the working tree (not on main — `?? web/` in git status), currently containing only `node_modules`.
+
+## 6. Command tree (main.go / root.go)
+
+`rootCmd "intropy"` with persistent flags `--verbose/-v`, `--quiet/-q`, `--no-color`, `--directory/-C`. Subcommands wired via `init()`:
+
+- `int` → `create`, `describe`, `list`
+- `sys` → `create`
+- `skills` → `add`, `list`, `publish`, `update`, `collection` (→ `add`, `publish`, `update`)
+- `manifests` → `create`
+- `completions`, `version` (plus cobra built-ins)
+
+**No `run` and no `dashboard` command exists on main.** A `run` command would attach as a new `rootCmd.AddCommand` (or under `sys`). Exit codes: 0 success, 1 runtime, 2 usage (main.go).
+
+## 7. Commits 823f4686 and 5f377e8e
+
+- **823f4686 "Add schedule"** (codegen.go only): introduced `const defaultExtractorSchedule = "* * * * *"` and appended `.WithSchedule("* * * * *")` to every generated extractor chain (gated on `withConnectors` — the same template-generation signal — because older template releases pin an `Intropy.Topology` without `WithSchedule`). Rationale in the comment: extractors are run-to-completion jobs; the host re-runs them on this cron (CronJob emulation locally, real CronJob in production); the generated file is the user's to edit afterward.
+- **5f377e8e "Fix system contract"** (codegen.go only): refactored `componentView` from fixed fields (`Edge/Field/From/To/Schedule`) to `Calls []string` rendered one-per-line, fixing the **call order in the generated system class** — extractor: `.From(...)` then `.Publishes(...)` then `.WithSchedule(...)`; loader: `.Subscribes(...)` then `.To(...)`. "Contract" here means the shape of the generated `ISystemDefinition` code against the `SystemBuilder` fluent API — distinct from `Topic.Contract`, which is the C# message contract type name recorded in scaffold `values.contract`.
+
+## Dashboard-relevance summary
+
+Main's `sys create` produces: generated C# (`Topics.cs`, `Connectors.cs`, `&lt;SystemClass&gt;.cs`), a csproj reference, `test/&lt;connector&gt;/` folders, a host `.intropy/scaffold.json` — and, only on request via `--output-json`, one JSON document whose `system` object is the closest thing to a topology record. That JSON has components/topics/connectors as flat lists but **omits component→topic linkage** (`Topic TopicKey json:"-"`), so it is not directly consumable as an edge graph; edge information would have to come from the .NET host's `graph` verb or a change to the Summary serialization.</result>
+<usage><subagent_tokens>54857</subagent_tokens><tool_uses>21</tool_uses><duration_ms>125851</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>aa95f14adff8f8954</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/16dbac38-5d4e-438a-83e5-662b9d8081b9/tasks/aa95f14adff8f8954.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore dashboard branch stack" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have everything needed. Here is the full report.
+
+# Dashboard feature on `feature/dashboard`
+
+Branch state: 3 commits on top of merge-base `e651f9c6` — `2cdfc4e6` "Implement run subcommand to launch dashboard", `e740ce3f` "Implement dashboard", `9ea6aaea` "System". Main has since diverged (PR #6 `feature/system`), so the `system` command exists **in two different implementations** on the two branches (details in §5). All paths below are relative to `/Users/robinhultman/dev/intropy/tooling/intropy-cli` and read via `git show feature/dashboard:&lt;path&gt;`.
+
+## 1. `cmd/intropy/int_run.go` — the `run` command
+
+- `intropy int run [dir]` (subcommand of `intCmd`), `Args: cobra.MaximumNArgs(1)`, `dir` defaults to `"."`.
+- Flags: `--addr` (default `"127.0.0.1"`), `-p/--port` (default `8730`, `0` picks a free port), `--no-browser`.
+- Validates `dir` exists (`os.Stat` error → plain error) and is a directory (file → `usageError`, exit 2). Those are the only two tests in `int_run_test.go` (`TestIntRunRejectsMissingDir`, `TestIntRunRejectsFile`).
+- Wires SIGINT/SIGTERM via `signal.NotifyContext`, then calls `dashboard.Serve(ctx, dashboard.Options{Root, Addr, Port, OpenBrowser: !noBrowser, Version, Stdout, Stderr})`. It starts no integration processes — visualization only.
+
+## 2. `internal/dashboard/`
+
+**server.go** — `Serve(ctx, Options)` builds the handler, `net.Listen("tcp", addr)`, prints `Intropy dashboard running at &lt;url&gt;` to stderr, optionally opens the browser, and blocks until ctx cancel (graceful `srv.Shutdown` with 5s `shutdownTimeout`, returns nil) or server error. `displayURL` rewrites wildcard hosts to `localhost` and uses the actual bound port.
+
+**handlers.go** — routes registered in `newHandler(root, version)` on a stdlib `http.ServeMux` (Go 1.22 method patterns):
+
+```
+GET /api/health                   → {"status":"ok","version":...}
+GET /api/integrations             → []integrationSummary
+GET /api/integrations/{path...}   → integrationDetail | 404 {"error": "..."}
+GET /api/flow                     → []integrationDetail (components+pipelineSteps, no docs)
+GET /api/topology                 → []topology.Entry
+/                                 → embedded SPA (fallback to index.html)
+```
+
+Data read from disk (all relative to `Root`):
+- **Integrations**: `template.ListScaffolds(root)` — walks for `.intropy/scaffold.json` (skips `.git`, `.intropy`, `node_modules`, `bin`, `dist`; matched dirs not descended). `integrationSummary` embeds `template.ScaffoldEntry` and adds `name` (dir basename), `system` (parent dir, omitted at root), `domain` (grandparent, omitted when system is at root). `Path` is normalized root-relative slash-separated (`relPath`); an integration at the workspace root has identifier `"."` and the detail handler treats an empty `{path...}` as `"."`.
+- **Detail enrichment** (`enrich`): `AGENTS.md` and `README.md` (truncated to `maxDocBytes = 128*1024`), Dapr components from `&lt;dir&gt;/local/dapr-components/*.yaml|yml`, pipeline step file names from `&lt;dir&gt;/src/Process/Steps` (sorted, files only). All best-effort → omitted when absent.
+- **Topologies**: `topology.List(root)` — walks for `.intropy/topology.json`, Path normalized the same way so the flow canvas can match a topology to the integrations beneath it.
+
+**components.go** — parses each Dapr component YAML into:
+
+```go
+type DaprComponent struct {
+	Name      string `json:"name"`     // metadata.name
+	Type      string `json:"type"`     // spec.type, e.g. "pubsub.in-memory"
+	Category  string `json:"category"` // "pubsub" | "state" | "binding" | "other"
+	Direction string `json:"direction,omitempty"` // "input" | "output" | "input,output" | ""
+	File      string `json:"file"`
+}
+```
+`classify` maps the `spec.type` prefix (`bindings` → `binding`); `direction` normalizes the `spec.metadata` `direction` entry, unknown → `""` (never guessed). Uses `gopkg.in/yaml.v3`. Sorted by Name; unreadable/unparseable files skipped.
+
+**static.go** — `fs.Sub(web.Assets, "dist")`; serves real files via `http.FileServerFS`, everything else (including `/`, `.`, and any non-existent path) falls back to the embedded `index.html` for SPA routing. Errors at construction if `dist/index.html` missing.
+
+**browser.go** — `openBrowser(url)`: `open` (darwin), `rundll32 url.dll,FileProtocolHandler` (windows), `xdg-open` (else). Best-effort, error → warning.
+
+**web/embed.go**:
+
+```go
+//go:embed all:dist
+var Assets embed.FS
+```
+A minimal placeholder `web/dist/index.html` is **committed** so `go build`/`go test` compile without Node; `make web` overwrites it. Note: the branch also commits a full built bundle (`web/dist/assets/index-Dr1DUVrr.js`, `index-DDvlZz2K.css`) — the committed dist/index.html is a real Vite build with an inline theme-resolution script, not just a stub.
+
+## 3. `internal/topology/topology.go` — schema the dashboard consumes
+
+Constants:
+
+```go
+APIVersion = "topology.intropy.io/v1"
+Kind       = "SystemTopology"
+RelPath    = ".intropy/topology.json"
+```
+
+Key structs (exact JSON keys):
+
+```go
+type Topology struct {
+	APIVersion string      `json:"apiVersion"`
+	Kind       string      `json:"kind,omitempty"`
+	System     string      `json:"system"`
+	Components []Component `json:"components,omitempty"`
+	Topics     []Topic     `json:"topics,omitempty"`
+	Connectors []Connector `json:"connectors,omitempty"`
+	APIs []json.RawMessage `json:"apis,omitempty"`   // opaque, round-tripped only
+}
+
+type Component struct {
+	Name       string         `json:"name"`
+	Kind       string         `json:"kind"` // extractor, loader, transactionalIntegration, …
+	Subscribes []TopicRef     `json:"subscribes,omitempty"`
+	Publishes  []Publication  `json:"publishes,omitempty"`
+	Connectors []ConnectorUse `json:"connectors,omitempty"`
+	Provides []json.RawMessage `json:"provides,omitempty"` // opaque
+	Consumes []json.RawMessage `json:"consumes,omitempty"` // opaque
+}
+
+type TopicRef struct { PubSub string `json:"pubsub"`; Topic string `json:"topic"` }
+type Publication struct { Port string `json:"port,omitempty"`; PubSub string `json:"pubsub"`; Topic string `json:"topic"` }
+type ConnectorUse struct { Connector string `json:"connector"`; Direction string `json:"direction"` } // "in"|"out"
+
+type Topic struct {
+	PubSub      string   `json:"pubsub"`
+	Topic       string   `json:"topic"`
+	Contract    string   `json:"contract,omitempty"`
+	Publishers  []string `json:"publishers,omitempty"`
+	Subscribers []string `json:"subscribers,omitempty"`
+}
+
+type Transport struct {
+	Type           string `json:"type"`
+	SupportsInput  bool   `json:"supportsInput"`
+	SupportsOutput bool   `json:"supportsOutput"`
+}
+
+type Connector struct {
+	Name           string    `json:"name"`
+	ExternalSystem string    `json:"externalSystem,omitempty"`
+	Transport      Transport `json:"transport"`
+	Directions     []string  `json:"directions,omitempty"`
+	UsedBy         []string  `json:"usedBy,omitempty"`
+}
+
+type Entry struct { Path string `json:"path"`; Topology } // flattened
+```
+
+Semantics: wiring is **inlined on each component**; top-level `topics[]`/`connectors[]` are lookup tables. `Load` rejects any other `apiVersion` as an error ("not a guess"). `List` walks like `ListScaffolds` (same skip-dirs, systems don't nest, malformed record → warning + SkipDir). Package doc states explicitly: **the CLI only consumes this file; it never writes one — the system's AppHost project emits it**. A component joins to its scaffold.json project by its Name relative to the system root.
+
+**Caveat found**: the branch commits a sample `Orders/.intropy/topology.json` that is an **older, incompatible schema** (`schemaVersion: 1`, `generator`, `system` as an object, `resources[]`, `edges[]`, no `apiVersion`) — `topology.Load` would reject it. It's stale relative to the v1 inline-edge reader; don't port it as-is. There's also a committed `tmp/testint/` scaffolded test project on the branch.
+
+## 4. `web/src/api.ts` — frontend contract
+
+Full TS types (endpoint paths in `api` at bottom):
+
+```ts
+export interface Integration {
+  path: string
+  schemaVersion: number
+  template: string
+  owner: string
+  repo: string
+  version: string
+  dataFlow?: 'in' | 'out' | 'both' | 'internal'
+  values: Record&lt;string, unknown&gt;
+  name: string
+  system?: string
+  domain?: string
+}
+
+export interface FileDoc { name: string; content: string }
+
+export interface DaprComponent {
+  name: string
+  type: string
+  category: 'pubsub' | 'state' | 'binding' | 'other'
+  direction?: 'input' | 'output' | 'input,output'
+  file: string
+}
+
+export interface IntegrationDetail extends Integration {
+  agents?: FileDoc
+  readme?: FileDoc
+  components?: DaprComponent[]
+  pipelineSteps?: string[]
+}
+
+export interface Health { status: string; version: string }
+
+export interface TopicRef { pubsub: string; topic: string }
+export interface Publication { port?: string; pubsub: string; topic: string }
+export interface ConnectorUse { connector: string; direction: 'in' | 'out' }
+
+export interface TopologyComponent {
+  name: string
+  kind: string
+  subscribes?: TopicRef[]
+  publishes?: Publication[]
+  connectors?: ConnectorUse[]
+  provides?: unknown[]
+  consumes?: unknown[]
+}
+
+export interface TopologyTopic {
+  pubsub: string; topic: string; contract?: string
+  publishers?: string[]; subscribers?: string[]
+}
+
+export interface TopologyTransport { type: string; supportsInput: boolean; supportsOutput: boolean }
+
+export interface TopologyConnector {
+  name: string; externalSystem?: string; transport: TopologyTransport
+  directions?: Array&lt;'in' | 'out'&gt;; usedBy?: string[]
+}
+
+export interface Topology {
+  path: string
+  apiVersion: string
+  kind?: string
+  system: string
+  components?: TopologyComponent[]
+  topics?: TopologyTopic[]
+  connectors?: TopologyConnector[]
+  apis?: unknown[]
+}
+
+export const api = {
+  listIntegrations: () =&gt; getJSON&lt;Integration[]&gt;('/api/integrations'),
+  getIntegration: (path) =&gt; getJSON&lt;IntegrationDetail&gt;(`/api/integrations/${path}`),
+  flow: () =&gt; getJSON&lt;IntegrationDetail[]&gt;('/api/flow'),
+  topologies: () =&gt; getJSON&lt;Topology[]&gt;('/api/topology'),
+  health: () =&gt; getJSON&lt;Health&gt;('/api/health'),
+}
+```
+
+`getJSON` throws with the server's `{error}` body when present, otherwise the status line. Note `Integration` mirrors `template.ScaffoldEntry` — the Go `Scaffold` on this branch also has `blockKind,omitempty`, which api.ts does **not** declare (only `dataFlow` made it into the TS type).
+
+**App.tsx** (175 lines): two views — `catalog` (Sidebar + DetailPanel) and `flow` (FlowView). Loads `api.listIntegrations()` and `api.health()` on mount; theme cycling light→dark→system persisted in `localStorage` keys `intropy.theme` / `intropy.sidebar.collapsed`, applied via `document.documentElement.dataset.theme`.
+
+**FlowView.tsx** (849 lines, `@xyflow/react` v12): deterministic grid layout — integration cards inside a system boundary group, shared infra (pubsub/state) in a row beneath, external bindings stacked outside (sources left when `direction: input`, sinks right). Fetches `api.flow()` and `api.topologies()`; a failing topology endpoint is tolerated (fallback heuristics). `topologyFor(items, topologies)` matches a declared topology to a group when the topology's root-relative `path` covers the integrations' paths; a covered system renders `buildDeclaredGraph` (v1 components/topics/connectors), otherwise heuristics from Dapr components + `dataFlow` (with `TEMPLATE_DATA_FLOW` fallback map: extractor→in, loader→out, transactional/transactionalintegration→both, aggregator→internal).
+
+## 5. `system create` on the branch — and its relation to the topology
+
+Important: **`system create` on feature/dashboard does NOT write topology.json.** `git grep topology.json` on the branch matches only `internal/topology` and api.ts. The dashboard's topology record is emitted by the .NET AppHost/SystemHost side; the CLI is read-only for it.
+
+- `cmd/intropy/system.go`: bare `systemCmd` (`Use: "system"`) added to root.
+- `cmd/intropy/system_create.go`: `intropy system create` with flags `-n/--name` (required, DNS-1123), `--dir` (default `.`), `--version`, `--force`, `--no-link-contracts`, `--no-input`, `--output-json` (path or `-`). Delegates to `system.Create`.
+- `internal/system/create.go` — `Create` pipeline: `Discover(dir)` → `BuildGraph(name, "pubsub", components)` → `resolveConnectorTransports` (interactive prompt for connectors without transport, offering only direction-valid ones; non-interactive leaves them unresolved with a warning / ITP107) → render `system-host` template into `&lt;Dir&gt;/&lt;Pascal&gt;.SystemHost` → write graph-derived files (`HostFiles`: `&lt;Class&gt;System.cs`, Topics.cs, Apis.cs, Connectors.cs per codegen.go goldens) → write `&lt;Pascal&gt;.Contracts` project → `linkContracts` inserts a ProjectReference into component csprojs. `--output-json` writes `CreateResult{projectName, hostDir, contractsDir, ...Graph}` — that JSON (`Graph` with `system, pubsub, components, topics, apis, connectors, warnings`) is the machine-readable topology output, distinct in shape from `topology.intropy.io/v1`.
+- `internal/system/discover.go` — `Discover` uses `template.ListScaffolds`, keeps only direct children of the scan root, skips the scan root itself, existing `system-host` scaffolds, non-DNS-1123 folder names; warns about missing `&lt;name&gt;/&lt;name&gt;.csproj`; calls `edgesFromScaffold`.
+- `internal/system/edges.go` — `EdgeIntent` derived from `Scaffold.BlockKind` + `Values` per-kind conventions (extractor: sourceSystem/connectorName/publishesTopic…; loader: subscribesTopic/targetSystem…; aggregator: subscribesTopics/publishesPort…; transactional-integration: providesApi/targetSystem…). Nothing persists EdgeIntent.
+- `internal/system/graph.go` — `BuildGraph` joins EdgeIntents: same topic name ⇒ one shared topic (contract disagreement → warning, first publisher wins), one provider per API (two providers → hard error ITP501), same connector name must agree on external system + transport. Legacy components (no blockKind) get `legacyKind(dataFlow)` + TODO comments.
+
+**Porting hazard**: main renamed the command surface — main has `cmd/intropy/sys.go` / `sys_create.go` / `sys_create_test.go` and a different `internal/system` (assemble.go, csproj.go, model.go; no discover/edges/graph). feature/dashboard has `cmd/intropy/system.go` / `system_create.go` and internal/system with discover/edges/graph/codegen. The diff `git diff --stat main feature/dashboard -- internal/system` is ~2000 insertions / ~1300 deletions — these are two divergent `system create` implementations, so porting the dashboard means reconciling only the **dashboard-side consumers** (`internal/topology`, `internal/dashboard`, `web/`, `int_run`) which have no dependency on `internal/system` at all (handlers.go imports only `internal/template` and `internal/topology`). The dashboard also depends on `Scaffold.DataFlow` and `ScaffoldEntry` in `internal/template/scaffold_list.go`/`scaffold.go`, both of which exist on the branch.
+
+## 6. Build wiring
+
+- **Makefile**: `web` (`cd web &amp;&amp; npm ci &amp;&amp; npm run build`), `web-dev` (Vite dev server proxying `/api` to a running `intropy int run`), `web-clean` (removes `web/dist/assets`, keeps placeholder), `bundle` (= `web build` — SPA then CLI with real dashboard embedded).
+- **.goreleaser.yaml** `before.hooks`: `go mod tidy` → `bash -c "cd web &amp;&amp; npm ci &amp;&amp; npm run build"` (comment: embed real assets instead of the placeholder) → `go test ./...`.
+- **.github/workflows/release.yaml**: adds `actions/setup-node@v4` (node 20) so GoReleaser's before-hook can build the SPA.
+- **.github/workflows/test.yaml**: adds setup-node 20 + a "Build dashboard SPA" step (`npm ci &amp;&amp; npm run build`, `working-directory: web`) before `go build`/`go test`.
+- **web/vite.config.ts**: `outDir: 'dist'`, `emptyOutDir: true`, dev server port 5173 with `proxy: { '/api': 'http://127.0.0.1:8730' }`; plugins react + svgr (Material Symbols `.svg?react` imports). **web/package.json**: deps `@xyflow/react ^12.11.2`, `react ^18.3.1`; build = `tsc -b &amp;&amp; vite build`.
+
+## 7. `topology.intropy.io` grep results
+
+- **feature/dashboard**: 5 hits — `internal/topology/topology.go` (`APIVersion = "topology.intropy.io/v1"`), `internal/topology/topology_test.go` (2: valid v1 fixture + a rejected `topology.intropy.io/v99`), `internal/dashboard/dashboard_test.go` (v1 fixture), `web/src/api.ts` (comment).
+- **main**: **zero hits.** Neither the string, `internal/topology/`, `internal/dashboard/`, `web/`, nor `cmd/intropy/int_run.go` exists on main — the entire dashboard stack is net-new to port.</result>
+<usage><subagent_tokens>64658</subagent_tokens><tool_uses>20</tool_uses><duration_ms>196298</duration_ms></usage>
+</task-notification>
+
+---
+
+What about if we modify the .net systemhost so that it has a command that would emit the topology just to system out? A fall back wouldnt be necessary so it would save us some code?
+
+---
+
+Could you create a prompt for implementing the graph verb on the topology library?
+
+---
+
+would it make sense to not take dependency on the dotnet project from the cli and rather pipe it in? like intropy dashboard ... | dotnet run ...
+
+---
+
+I have an implementation of the topology library here: https://github.com/integrio-intropy/intropy-topology/pull/3
+But I guess it should also be implemented in the system host template
+
+---
+
+Can you bump the local nuget packages of Intropy.Topology.*?
+
+---
+
+Should we do anything about these? 
+- Invocation: the PR documents that plain dotnet run leaks build/launch-profile messages onto stdout (and the template ships a launchSettings.json, so it would). The provider now runs dotnet build <host> -v q first, then dotnet run --no-build --no-launch-profile --project <host> -- graph, with build failures reported separately from verb failures.
+- Kind casing: the library kebab-cases component kinds (TransactionalIntegration → transactional-integration), which the flow view's icon lookup would have missed; it now normalizes hyphens.
+
+---
+
+Can you bump the local nuget packages of Intropy.Topology.*?
+
+---
+
+Hmm launching the dashboard gives me: This is the placeholder dashboard bundle. Build the real one with make web (or cd web && npm ci && npm run build) and rebuild the CLI.
+
+Wasnt there a real dashboard?
+
+---
+
+In the integration catalog can you make the system visible as a parent to the components?

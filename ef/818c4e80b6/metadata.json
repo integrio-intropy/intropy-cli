@@ -1,0 +1,62 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "ef818c4e80b6",
+  "strategy": "manual-commit",
+  "branch": "feature/dashboard-v2",
+  "checkpoints_count": 11,
+  "files_touched": [
+    ".github/workflows/release.yaml",
+    ".github/workflows/test.yaml",
+    ".goreleaser.yaml",
+    "CONTRIBUTING.md",
+    "Makefile",
+    "cmd/intropy/dashboard.go",
+    "cmd/intropy/dashboard_cmd_test.go",
+    "internal/dashboard/browser.go",
+    "internal/dashboard/components.go",
+    "internal/dashboard/components_test.go",
+    "internal/dashboard/dashboard_test.go",
+    "internal/dashboard/handlers.go",
+    "internal/dashboard/server.go",
+    "internal/dashboard/static.go",
+    "internal/dashboard/topology.go",
+    "internal/topology/topology.go",
+    "internal/topology/topology_test.go",
+    "web/.gitignore",
+    "web/dist/index.html",
+    "web/embed.go",
+    "web/index.html",
+    "web/package-lock.json",
+    "web/package.json",
+    "web/src/App.tsx",
+    "web/src/api.ts",
+    "web/src/components/Combobox.tsx",
+    "web/src/components/DetailPanel.tsx",
+    "web/src/components/FlowView.tsx",
+    "web/src/components/Sidebar.tsx",
+    "web/src/icons.ts",
+    "web/src/index.css",
+    "web/src/main.tsx",
+    "web/src/vite-env.d.ts",
+    "web/tsconfig.app.json",
+    "web/tsconfig.json",
+    "web/tsconfig.node.json",
+    "web/vite.config.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ef/818c4e80b6/0/metadata.json",
+      "transcript": "/ef/818c4e80b6/0/full.jsonl",
+      "compact_transcript": "/ef/818c4e80b6/0/transcript.jsonl",
+      "content_hash": "/ef/818c4e80b6/0/content_hash.txt",
+      "prompt": "/ef/818c4e80b6/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 285,
+    "cache_creation_tokens": 250156,
+    "cache_read_tokens": 24553470,
+    "output_tokens": 122319,
+    "api_call_count": 147
+  }
+}
