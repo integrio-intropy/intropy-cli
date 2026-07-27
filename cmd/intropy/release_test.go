@@ -17,6 +17,7 @@ func resetReleaseState(t *testing.T, stdout, stderr *bytes.Buffer) {
 	resetRootIO(t, stdout, stderr)
 	reset := func() {
 		releaseCreateOpts = releaseCreateFlags{output: release.OutputPlain}
+		releaseViewOpts = releaseViewFlags{output: release.OutputPlain}
 	}
 	reset()
 	t.Cleanup(reset)
@@ -50,17 +51,40 @@ func TestReleaseCreateRequiresVersion(t *testing.T) {
 	}
 }
 
+func TestReleaseViewRequiresComponentAndVersion(t *testing.T) {
+	for _, args := range [][]string{
+		{"view"},
+		{"view", "order-extractor"},
+		{"view", "order-extractor", "1.4.2", "extra"},
+	} {
+		_, _, err := runRelease(t, args...)
+		if err == nil {
+			t.Errorf("release %v should be a usage error", args)
+			continue
+		}
+		if code := exitCode(err); code != 2 {
+			t.Errorf("release %v: exit code = %d, want 2", args, code)
+		}
+	}
+}
+
 func TestReleaseRejectsUnknownOutputFormat(t *testing.T) {
-	_, _, err := runRelease(t, "create", "order-extractor", "--version", "1.4.2", "--output", "yaml")
-	if err == nil {
-		t.Fatal("expected an error for an unsupported output format")
-	}
-	var ue *usageError
-	if !errors.As(err, &ue) {
-		t.Errorf("error %q should be a usageError", err)
-	}
-	if !strings.Contains(err.Error(), "json") {
-		t.Errorf("error %q should list the supported formats", err)
+	for _, args := range [][]string{
+		{"create", "order-extractor", "--version", "1.4.2", "--output", "yaml"},
+		{"view", "order-extractor", "1.4.2", "--output", "yaml"},
+	} {
+		_, _, err := runRelease(t, args...)
+		if err == nil {
+			t.Errorf("release %v should reject the output format", args)
+			continue
+		}
+		var ue *usageError
+		if !errors.As(err, &ue) {
+			t.Errorf("error %q should be a usageError", err)
+		}
+		if !strings.Contains(err.Error(), "json") {
+			t.Errorf("error %q should list the supported formats", err)
+		}
 	}
 }
 
@@ -100,7 +124,7 @@ func TestReleaseIsRegistered(t *testing.T) {
 		t.Fatal("release is not registered on the root command")
 	}
 
-	want := map[string]bool{"create": false}
+	want := map[string]bool{"create": false, "view": false}
 	for _, c := range releaseCmd.Commands() {
 		if _, ok := want[c.Name()]; ok {
 			want[c.Name()] = true
