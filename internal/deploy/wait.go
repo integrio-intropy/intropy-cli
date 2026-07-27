@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -12,25 +13,59 @@ import (
 )
 
 // NewArgoClient builds the production ArgoCD client. Replaced in tests.
-var NewArgoClient = func(opts argocd.Options) (ArgoWaiter, error) {
+var NewArgoClient = func(opts argocd.Options) (ArgoClient, error) {
 	return argocd.NewClient(opts)
 }
 
-// ArgoWaiter is the part of the ArgoCD client this package needs.
-type ArgoWaiter interface {
+// ArgoClient is the part of the ArgoCD client this package needs: a deploy
+// waits, a promotion reads the source application's health, and a sync applies
+// a revision.
+type ArgoClient interface {
+	Get(ctx context.Context, app string) (*argocd.Application, error)
+	Sync(ctx context.Context, app, revision string) error
 	Wait(ctx context.Context, opts argocd.WaitOptions) (*argocd.Application, error)
+}
+
+// connect builds a client for the ArgoCD instance that reconciles this
+// repository, resolving the server the same way everywhere: the flag wins, then
+// ARGOCD_SERVER, then deploy.yaml, and finally the user's configuration file.
+//
+// deploy.yaml beats the user configuration on purpose — it travels with the
+// repository the overlays live in.
+func connect(deployCfg *gitops.DeployConfig, serverFlag, configServer, userAgent string) (ArgoClient, argocd.Credentials, error) {
+	creds, err := argocd.LoadCredentials(argocd.ResolveServer(serverFlag, cmp.Or(deployCfg.Argocd.Server, configServer)))
+	if err != nil {
+		return nil, creds, err
+	}
+	client, err := NewArgoClient(argocd.Options{
+		Credentials:  creds,
+		AppNamespace: deployCfg.Argocd.AppNamespace,
+		UserAgent:    userAgent,
+	})
+	if err != nil {
+		return nil, creds, err
+	}
+	return client, creds, nil
 }
 
 // WaitOptions configures WaitForSync.
 type WaitOptions struct {
-	Repository   *gitops.Repository
-	DeployCfg    *gitops.DeployConfig
-	AppName      string
-	Revision     string
-	Timeout      time.Duration
+	Repository *gitops.Repository
+	DeployCfg  *gitops.DeployConfig
+	AppName    string
+	Revision   string
+	Timeout    time.Duration
+
+	// ArgocdServer is the --argocd-server flag, which wins over everything.
 	ArgocdServer string
-	UserAgent    string
-	Stderr       io.Writer
+
+	// ConfigServer is argocdServer from the user's configuration file. It is
+	// the last resort: deploy.yaml wins over it, because that file travels
+	// with the repository the overlays live in.
+	ConfigServer string
+
+	UserAgent string
+	Stderr    io.Writer
 }
 
 // WaitForSync waits for ArgoCD to apply the pushed revision.
@@ -39,19 +74,10 @@ type WaitOptions struct {
 // nil error means it could not be reached — which is not a deployment failure:
 // the commit is the deployment, and being unable to watch does not undo it.
 func WaitForSync(ctx context.Context, opts WaitOptions) (*argocd.Application, bool, error) {
-	creds, err := argocd.LoadCredentials(argocd.ResolveServer(opts.ArgocdServer, opts.DeployCfg.Argocd.Server))
+	client, creds, err := connect(opts.DeployCfg, opts.ArgocdServer, opts.ConfigServer, opts.UserAgent)
 	if err != nil {
-		// No credentials is a setup problem, not a failed deployment.
-		fmt.Fprintf(opts.Stderr, "warning: not waiting for ArgoCD: %v\n", err)
-		return nil, false, nil
-	}
-
-	client, err := NewArgoClient(argocd.Options{
-		Credentials:  creds,
-		AppNamespace: opts.DeployCfg.Argocd.AppNamespace,
-		UserAgent:    opts.UserAgent,
-	})
-	if err != nil {
+		// No credentials, or a client that cannot be built, is a setup problem
+		// rather than a failed deployment.
 		fmt.Fprintf(opts.Stderr, "warning: not waiting for ArgoCD: %v\n", err)
 		return nil, false, nil
 	}

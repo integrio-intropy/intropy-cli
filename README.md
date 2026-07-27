@@ -170,6 +170,8 @@ intropy
 ├── sys                    Manage integration systems
 │   └── create                 Assemble scaffolded integrations into a system host
 ├── deploy <component>     Pin a component's image digest into an environment
+│   ├── promote <component>    Copy the digests one environment runs into another
+│   └── sync <component>       Apply an environment's pending change through ArgoCD
 ├── release                Publish and inspect immutable release manifests
 │   ├── create <component>     Publish a release manifest and push a git tag
 │   └── view <component> <ver> Read a published release manifest
@@ -349,7 +351,18 @@ intropy deploy order-extractor --env dev
 
 That stages only the overlay's `kustomization.yaml`, commits it with trailers
 recording what was deployed, and pushes to the GitOps repository's default
-branch. If someone else pushed first the push is rejected, and the commit is
+branch.
+
+To ship a published release rather than the current commit, pass its version:
+
+```sh
+intropy deploy order-extractor 1.4.2 --env staging
+```
+
+The release manifest already records the digests, so nothing reads the source
+repository — no `HEAD`, no cleanliness check, no registry tag lookup — and the
+command works from any directory. Everything after that is identical: the same
+plan, diff, commit, push and ArgoCD wait. If someone else pushed first the push is rejected, and the commit is
 rebased onto their work and retried — up to five times, with jittered backoff.
 
 A rebase *conflict* means someone deployed the same component to the same
@@ -366,10 +379,13 @@ For `intropy deploy order-extractor --env dev`, the CLI:
 2. Locks and refreshes its cached local GitOps checkout, so two local deploys
    cannot edit, reset, or revert the same checkout concurrently.
 3. Reads the `dev` and `order-extractor` metadata, then checks that the current
-   source checkout is clean for that component and that `HEAD` was pushed.
-4. Resolves the image digest CI published for that commit, temporarily updates
-   the Kustomize overlay, renders it before and after, and verifies that the
-   requested image pin reached the rendered manifests.
+   source checkout is clean for that component and that `HEAD` was pushed. With
+   a version given, both checks are skipped: the release already recorded what
+   was built, so there is no working tree to vet.
+4. Resolves the image digest CI published for that commit — or reads the digests
+   the release recorded — temporarily updates the Kustomize overlay, renders it
+   before and after, and verifies that the requested image pin reached the
+   rendered manifests.
 5. With `--plan`, prints the diff and reverts the temporary edit. Without it,
    commits only the changed `kustomization.yaml` and pushes that commit to the
    GitOps repository's default branch.
@@ -381,13 +397,135 @@ For an environment with `sync: manual`, deploy commits and stops without
 waiting — the gate is in ArgoCD, so it prints the `deploy sync` follow-up rather
 than waiting for a sync that will never start on its own.
 
+### Are these the bits that were tested?
+
+When the target environment declares `promotesFrom`, the plan also reports what
+those environments currently have pinned:
+
+```
+orders/order-flow/order-extractor → staging (release 1.4.2, commit 197a3ae)
+  harbor.intropy.io/integrations/order-extractor
+    :latest → sha256:ad22d6f2ecbc03e79f…
+  dev already runs this digest (commit 197a3ae) — you are shipping the tested bits
+```
+
+If the digests differ, it says so instead — naming the digest that environment
+runs. If it pins a tag rather than a digest, or the component is not onboarded
+there, it says there is nothing to compare.
+
+This is reporting, not a gate: a digest an upstream environment never ran still
+deploys. Refusing is promotion policy, and belongs to `deploy promote`.
+
+## Promotion (`intropy deploy promote`)
+
+A deploy resolves a digest — from a registry tag, or from a release manifest. A
+promotion resolves nothing:
+
+```sh
+intropy deploy promote order-extractor --from staging --to prod
+```
+
+It reads the digests staging currently pins and writes those exact values into
+prod. It does not look `1.4.2` up in the registry, so a release tag that has
+since been moved, or a registry that answers differently than it did an hour
+ago, cannot substitute different bits for the ones staging tested. That is the
+property that lets you say production runs the bytes staging ran.
+
+```
+orders/order-flow/order-extractor → prod (release 1.4.2, commit 197a3ae)
+  harbor.intropy.io/integrations/order-extractor
+    sha256:9f1c0b8ae4d2… → sha256:ad22d6f2ecbc…
+  copied from staging, which runs release 1.4.2 (commit 197a3ae)
+  orders-order-flow-order-extractor-staging is synced and healthy at 7c30d81
+
+committed 7c30d81 to prod. prod syncs manually — run
+'intropy deploy sync order-extractor --env prod' to apply it
+```
+
+Everything after the digests are chosen is the deploy path: the same plan and
+diff, the same `--plan`, the same rebase-and-retry push, the same ArgoCD wait.
+The source environment's `source-commit` and release annotations are copied too
+— they answer "which commit produced these bits", and that answer does not
+change because the bits moved environments.
+
+### What promotion enforces
+
+Two fields in `deploy.yaml` that a deploy only reports on are enforced here.
+Both refuse before anything is written.
+
+**The edge must be declared.** `prod` promoting from `staging` means `dev → prod`
+is refused, and the error names the legal sources:
+
+```
+error: prod does not promote from dev.
+deploy.yaml allows: staging
+```
+
+**`requireSourceHealthy` must hold.** The source's ArgoCD application must be
+`Synced` and `Healthy` — *and* at the revision its current digests were pinned
+by. That second half is the substance. `staging` syncs automatically, so it can
+advance between its overlay being read and its health being asked about; a
+`Healthy` answer on its own might describe a later deployment of entirely
+different bits:
+
+```
+error: orders-order-flow-order-extractor-staging is healthy, but at revision
+4f8ac21 — not at 7c30d81, which is where its current digests were pinned.
+Nothing was written: a healthy application at another revision does not show
+that these bits ran
+```
+
+A promotion also refuses a source that pins a tag rather than a digest, or pins
+nothing at all: there is no fixed set of bits to copy, and inventing one is the
+thing promotion exists to avoid.
+
+Unlike a deploy, an unreachable ArgoCD is **fatal** here. A deploy that has
+already pushed treats it as a warning, because the commit is the deployment.
+For a promotion, health is a precondition — and "I could not check" is not "it
+is fine". There is no override flag; clear `requireSourceHealthy` in
+`deploy.yaml` if that is really what you want.
+
+## The production gate (`intropy deploy sync`)
+
+An environment with `sync: manual` is applied by ArgoCD, not by pushing. A
+deploy or a promotion into it records intent and stops; this applies it:
+
+```sh
+intropy deploy sync order-extractor --env prod
+```
+
+The revision synced is the commit that last changed that environment's overlay
+— not the branch head. Those are usually the same, but when they are not,
+syncing the head would apply commits nobody reviewed. Name the commit whose diff
+you actually read and the sync is refused if the pending change is a different
+one:
+
+```sh
+intropy deploy sync order-extractor --env prod --revision 7c30d81
+```
+
+```
+error: prod's pending change is 9a1f4c2, not 7c30d81.
+domains/orders/order-flow/order-extractor/overlays/prod has advanced since you
+reviewed it — read the new diff before syncing
+```
+
+Nothing is written to git, and `kubectl` is never invoked. ArgoCD evaluates the
+caller through its own RBAC and records who did it, which is why the gate lives
+there rather than in a forge-specific approval on a YAML edit — the approver
+inspects the rendered resources, in the system that applies them. An
+application already holding that revision is reported as a no-op rather than
+synced again, and a denied sync fails with ArgoCD's own reason.
+
 ### Waiting for ArgoCD
 
 Credentials come from the argocd CLI's own configuration, so if you have run
 `argocd login` this needs no extra setup. `ARGOCD_SERVER` and
 `ARGOCD_AUTH_TOKEN` override it — those are argocd's variable names, honoured
 deliberately so an existing CI setup works unchanged. Precedence for the server
-is `--argocd-server` flag, then the environment, then `deploy.yaml`.
+is the `--argocd-server` flag, then `ARGOCD_SERVER`, then `deploy.yaml`, and
+finally `argocdServer` in the user configuration. `deploy.yaml` beats the user
+configuration on purpose: it travels with the repository the overlays live in.
 
 The wait is defined in terms of the pushed revision, not just sync status.
 Polling for `Synced`/`Healthy` alone reads the *previous* revision's perfectly
@@ -433,6 +571,25 @@ The subject abbreviates the digest so a log stays readable; the trailer carries
 it in full. These keys are a format rather than prose — `deploy history` reads
 them back — so renaming one is a breaking change.
 
+A deployment from a release adds `Deploy-Release: 1.4.2` after `Deploy-Env`, and
+names the version in the subject instead of the digest — a release is immutable,
+so the version identifies those digests exactly:
+
+```
+deploy(order-extractor): staging → 1.4.2 (197a3ae)
+```
+
+A promotion adds `Deploy-Promoted-From: staging`, and where both versions are
+known the subject names the transition instead:
+
+```
+deploy(order-extractor): prod 1.4.1 → 1.4.2
+```
+
+The prefix stays `deploy(` deliberately: a promotion makes the same edit to the
+same file, so a different prefix would split one history in two. The trailer is
+what tells them apart.
+
 ### Configuration
 
 The GitOps repository is a per-user setting, read from
@@ -457,8 +614,18 @@ argocd:
   appNamespace: customer-acme
 environments:
   dev: { sync: auto }
-  prod: { sync: manual, promotesFrom: [dev], requireSourceHealthy: true }
+  staging: { sync: auto, promotesFrom: [dev] }
+  prod: { sync: manual, promotesFrom: [staging], requireSourceHealthy: true }
 ```
+
+`promotesFrom` is the promotion graph: `deploy promote --to prod` accepts only
+`--from staging`. `deploy` reads it too, but only to report whether the digests
+it is about to pin are what those environments already run.
+
+`sync: manual` means ArgoCD applies the change rather than reconciling it
+automatically, so a deploy or promotion into that environment stops after
+recording intent and prints the
+[`deploy sync`](#the-production-gate-intropy-deploy-sync) follow-up.
 
 Components live at `domains/<domain>/<system>/<component>/`, each with a
 `component.yaml` beside `base/` and `overlays/<env>/`:
@@ -469,7 +636,7 @@ name: order-extractor
 sourcePaths: [integrations/domains/orders/order-flow/order-extractor/]
 images:
   - name: harbor.intropy.io/integrations/order-extractor
-environments: [dev, prod]
+environments: [dev, staging, prod]
 ```
 
 The component is found by searching `domains/*/*/<component>`, so you only pass
@@ -503,14 +670,29 @@ intropy deploy order-extractor --env dev --plan -o json | jq .appName
 Exit codes: `0` success or no-op, `1` failure, `2` usage, `127` a required
 binary is missing, `130` interrupted.
 
-### A note on the source-commit annotation
+### What the overlay records
 
-Alongside the digest, the overlay records
-`deploy.internal/source-commit` in `commonAnnotations`. kustomize propagates
-common annotations onto pod templates, so a deploy whose digest is unchanged but
-whose commit moved still restarts the pods. That is deliberate — an annotation
-named `source-commit` that did not track the source commit would be worse — and
-the plan says so explicitly when it is the only change.
+Alongside the digest, the overlay carries two annotations in
+`commonAnnotations`:
+
+```yaml
+commonAnnotations:
+  deploy.internal/source-commit: 197a3ae981068c375be77cb03e8c85e5ce304612
+  deploy.internal/release: 1.4.2
+```
+
+`deploy.internal/release` is present only when the digests came from a release,
+and a deploy of the current commit **removes** it — a version left beside an
+unrelated digest would be read as fact by `deploy promote`, which would then
+promote a version that environment never ran. It exists because promotion copies
+digests, and a digest does not say which release it belongs to; without it a
+promotion could not report `prod 1.4.1 → 1.4.2`.
+
+kustomize propagates common annotations onto pod templates, so a deploy whose
+digest is unchanged but whose commit moved still restarts the pods. That is
+deliberate — an annotation named `source-commit` that did not track the source
+commit would be worse — and the plan says so explicitly when it is the only
+change.
 
 ## Releases (`intropy release`)
 
@@ -539,6 +721,22 @@ For `intropy release create component-x --version 1.4.2`, the CLI:
 Re-running for a version that already exists compares the intended manifest to
 the published one. An identical release is left in place and a missing Git tag
 is repaired; a different release is refused because versions are immutable.
+
+Inspect a published release before shipping it:
+
+```sh
+intropy release view component-x 1.4.2
+```
+
+This command changes no source repository, GitOps remote, or environment. It
+refreshes the local GitOps cache to locate component metadata, then resolves
+that version's OCI manifest and prints its source commit, image digests,
+comparison basis, and generated notes. Use `-o json` to receive the manifest
+itself. It verifies that the requested OCI tag and the manifest's declared
+version agree.
+
+Ship the inspected release with
+`intropy deploy <component> <version> --env <env>`.
 
 ## Skills (`intropy skills`)
 

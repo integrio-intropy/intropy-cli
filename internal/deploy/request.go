@@ -6,12 +6,31 @@ import (
 	"time"
 
 	"github.com/integrio-intropy/intropy-cli/internal/command"
+	"github.com/integrio-intropy/intropy-cli/internal/kustomize"
 )
 
 const (
 	OutputPlain = "plain"
 	OutputJSON  = "json"
 )
+
+// output is where a command writes, and in what form. Every command in this
+// package reports the same way, so the reporting takes this rather than one of
+// the three Options types.
+type output struct {
+	Format string
+	Color  bool
+	Stdout io.Writer
+	Stderr io.Writer
+}
+
+// palette picks the diff colouring.
+func (o output) palette() kustomize.Palette {
+	if o.Color {
+		return kustomize.ColorPalette
+	}
+	return kustomize.PlainPalette
+}
 
 // Options configures Run.
 type Options struct {
@@ -23,6 +42,15 @@ type Options struct {
 
 	// Environment is the target environment. Required.
 	Environment string
+
+	// Version selects a published release to deploy. Empty means the current
+	// commit in SourceDir.
+	//
+	// With a version the release manifest is authoritative: it already records
+	// the digests, so no source repository is read at all and the command works
+	// from any directory. AllowDirty is meaningless in that mode, and the
+	// command rejects the combination rather than ignoring it.
+	Version string
 
 	// GitopsRepo overrides the configured GitOps repository URL.
 	GitopsRepo string
@@ -61,12 +89,155 @@ type Options struct {
 	Stderr    io.Writer
 }
 
+func (o Options) output() output {
+	return output{Format: o.OutputFormat, Color: o.Color, Stdout: o.Stdout, Stderr: o.Stderr}
+}
+
+func (o Options) session() sessionOptions {
+	return sessionOptions{
+		GitopsRepo:   o.GitopsRepo,
+		ArgocdServer: o.ArgocdServer,
+		CacheRoot:    o.CacheRoot,
+		Runner:       o.Runner,
+		Stderr:       o.Stderr,
+	}
+}
+
 func (o *Options) applyDefaults() {
 	if o.Runner == nil {
 		o.Runner = command.ExecRunner{}
 	}
 	if o.SourceDir == "" {
 		o.SourceDir = "."
+	}
+	if o.OutputFormat == "" {
+		o.OutputFormat = OutputPlain
+	}
+	if o.UserAgent == "" {
+		o.UserAgent = "intropy-cli"
+	}
+	if o.Stdout == nil {
+		o.Stdout = os.Stdout
+	}
+	if o.Stderr == nil {
+		o.Stderr = os.Stderr
+	}
+}
+
+// PromoteOptions configures Promote.
+//
+// Deliberately narrower than Options: there is no Version, no SourceDir and no
+// AllowDirty, because a promotion reads neither a source repository nor a
+// registry. That absence is the feature — it is what makes it impossible for a
+// promotion to pin bits the source environment never ran.
+type PromoteOptions struct {
+	Component string
+	Domain    string
+	System    string
+
+	// From is the environment to copy the pinned digests out of, and To the one
+	// to write them into. Both required.
+	From string
+	To   string
+
+	GitopsRepo string
+
+	// PlanOnly stops after the diff, writing nothing to git.
+	PlanOnly bool
+
+	// NoWait skips the ArgoCD wait after pushing. A manual-sync target never
+	// waits regardless.
+	NoWait bool
+
+	Timeout      time.Duration
+	ArgocdServer string
+	OutputFormat string
+	Color        bool
+	CacheRoot    string
+
+	Runner    command.Runner
+	UserAgent string
+	Stdout    io.Writer
+	Stderr    io.Writer
+}
+
+func (o PromoteOptions) output() output {
+	return output{Format: o.OutputFormat, Color: o.Color, Stdout: o.Stdout, Stderr: o.Stderr}
+}
+
+func (o PromoteOptions) session() sessionOptions {
+	return sessionOptions{
+		GitopsRepo:   o.GitopsRepo,
+		ArgocdServer: o.ArgocdServer,
+		CacheRoot:    o.CacheRoot,
+		Runner:       o.Runner,
+		Stderr:       o.Stderr,
+	}
+}
+
+func (o *PromoteOptions) applyDefaults() {
+	if o.Runner == nil {
+		o.Runner = command.ExecRunner{}
+	}
+	if o.OutputFormat == "" {
+		o.OutputFormat = OutputPlain
+	}
+	if o.UserAgent == "" {
+		o.UserAgent = "intropy-cli"
+	}
+	if o.Stdout == nil {
+		o.Stdout = os.Stdout
+	}
+	if o.Stderr == nil {
+		o.Stderr = os.Stderr
+	}
+}
+
+// SyncOptions configures Sync.
+type SyncOptions struct {
+	Component string
+	Domain    string
+	System    string
+
+	// Environment is the environment to apply. Required.
+	Environment string
+
+	// Revision, when set, is the commit the caller reviewed. The sync is refused
+	// if the environment's pending change is a different one, which is what
+	// stops an approval being spent on a diff nobody looked at.
+	Revision string
+
+	GitopsRepo string
+	NoWait     bool
+
+	Timeout      time.Duration
+	ArgocdServer string
+	OutputFormat string
+	CacheRoot    string
+
+	Runner    command.Runner
+	UserAgent string
+	Stdout    io.Writer
+	Stderr    io.Writer
+}
+
+func (o SyncOptions) output() output {
+	return output{Format: o.OutputFormat, Stdout: o.Stdout, Stderr: o.Stderr}
+}
+
+func (o SyncOptions) session() sessionOptions {
+	return sessionOptions{
+		GitopsRepo:   o.GitopsRepo,
+		ArgocdServer: o.ArgocdServer,
+		CacheRoot:    o.CacheRoot,
+		Runner:       o.Runner,
+		Stderr:       o.Stderr,
+	}
+}
+
+func (o *SyncOptions) applyDefaults() {
+	if o.Runner == nil {
+		o.Runner = command.ExecRunner{}
 	}
 	if o.OutputFormat == "" {
 		o.OutputFormat = OutputPlain

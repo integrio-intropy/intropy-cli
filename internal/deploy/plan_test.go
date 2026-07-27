@@ -350,3 +350,36 @@ func (f *repoFixture) buildPlan(t *testing.T, digest string) *Plan {
 	}
 	return plan
 }
+
+// A release deploy names the version alongside the commit, so the plan says
+// what is being shipped rather than only which bits it resolved to.
+func TestSummaryNamesTheRelease(t *testing.T) {
+	plan := &Plan{
+		Coordinate:     gitops.Coordinate{Domain: "orders", System: "order-flow", Component: "order-extractor"},
+		Environment:    "staging",
+		Source:         source.State{Commit: testReleaseCommit},
+		ReleaseVersion: "1.4.2",
+		Pins:           []source.Pin{{Image: "harbor.intropy.io/integrations/order-extractor", Digest: testDigest}},
+		Previous:       map[string]string{"harbor.intropy.io/integrations/order-extractor": ":latest"},
+	}
+
+	got := plan.Summary()
+	want := "orders/order-flow/order-extractor → staging (release 1.4.2, commit 197a3ae)"
+	if !strings.HasPrefix(got, want) {
+		t.Errorf("Summary()\n got: %s\nwant prefix: %s", got, want)
+	}
+}
+
+func TestSummaryOmitsTheReleaseForACommitDeploy(t *testing.T) {
+	plan := &Plan{
+		Coordinate:  gitops.Coordinate{Domain: "orders", System: "order-flow", Component: "order-extractor"},
+		Environment: "dev",
+		Source:      source.State{Commit: testReleaseCommit},
+		Pins:        []source.Pin{{Image: "img", Digest: testDigest}},
+		Previous:    map[string]string{},
+	}
+
+	if got := plan.Summary(); !strings.HasPrefix(got, "orders/order-flow/order-extractor → dev (commit 197a3ae)") {
+		t.Errorf("a commit deploy should not mention a release:\n%s", got)
+	}
+}

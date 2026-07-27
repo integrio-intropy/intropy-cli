@@ -1,6 +1,7 @@
 package argocd
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -143,6 +144,38 @@ func (c *Client) Refresh(ctx context.Context, app string) error {
 	return c.do(ctx, http.MethodGet, c.appURL(app, "", url.Values{"refresh": {"hard"}}), nil, nil)
 }
 
+// Sync asks ArgoCD to apply a specific git revision.
+//
+// The revision is the point of the call. Syncing whatever the branch happens to
+// hold would apply commits nobody reviewed, which for a manual-sync production
+// application is the one thing the gate exists to prevent.
+//
+// Prune stays off: a sync triggered from here applies a reviewed image pin, and
+// deleting resources that no longer appear in the render is a separate decision
+// with a much larger blast radius.
+func (c *Client) Sync(ctx context.Context, app, revision string) error {
+	body := syncRequest{Name: app, AppNamespace: c.appNamespace, Revision: revision}
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("encode sync request: %w", err)
+	}
+	return c.do(ctx, http.MethodPost, c.appURL(app, "/sync", nil), bytes.NewReader(encoded), nil)
+}
+
+// syncRequest is ArgoCD's ApplicationSyncRequest, narrowed to the fields this
+// CLI sets.
+//
+// appNamespace is sent in the body as well as the query because that is where
+// ArgoCD defines it for this endpoint; omitting it against a per-customer
+// installation returns a 404 indistinguishable from a missing application.
+type syncRequest struct {
+	Name         string `json:"name"`
+	AppNamespace string `json:"appNamespace,omitempty"`
+	Revision     string `json:"revision"`
+	Prune        bool   `json:"prune"`
+	DryRun       bool   `json:"dryRun"`
+}
+
 // Event is one Kubernetes event about an application.
 type Event struct {
 	Reason  string `json:"reason"`
@@ -192,6 +225,9 @@ func (c *Client) do(ctx context.Context, method, path string, body io.Reader, ou
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
 	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 
 	resp, err := c.http.Do(req)
 	if err != nil {

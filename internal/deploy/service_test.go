@@ -58,14 +58,24 @@ type runFixture struct {
 
 func newRunFixture(t *testing.T) runFixture {
 	t.Helper()
+	return newRunFixtureWithImage(t, "harbor.intropy.io/integrations/order-extractor")
+}
+
+// newRunFixtureWithImage is newRunFixture with the image repository chosen, so
+// a release test can host it on an in-memory registry.
+//
+// The staging overlay exists but is left unpinned: gitopstest applies
+// OverlayImages to the first environment only, which is exactly the shape the
+// promotesFrom tests want — dev pinned, staging not.
+func newRunFixtureWithImage(t *testing.T, image string) runFixture {
+	t.Helper()
 	requireKustomize(t)
 
-	image := "harbor.intropy.io/integrations/order-extractor"
 	coord := gitops.Coordinate{Domain: "orders", System: "order-flow", Component: "order-extractor"}
 	origin := gitopstest.NewRepo(t, gitopstest.Component{
 		Coordinate:    coord.String(),
 		Image:         image,
-		Environments:  []string{"dev", "prod"},
+		Environments:  []string{"dev", "staging", "prod"},
 		OverlayImages: "images:\n  - name: " + image + "\n    newTag: latest\n",
 	})
 
@@ -429,4 +439,205 @@ func decodeResult(t *testing.T, b []byte) Result {
 		t.Fatalf("stdout is not valid JSON: %v\n%s", err, b)
 	}
 	return res
+}
+
+// pinOverlay commits a digest pin plus the source-commit annotation into one
+// environment's overlay on the GitOps origin. It stands in for an earlier
+// deployment to that environment.
+//
+// It works through its own clone rather than the deploy cache, so it never
+// races the cache's lock.
+func (f runFixture) pinOverlay(t *testing.T, env, digest, commit string) {
+	t.Helper()
+	f.pinOverlayRelease(t, env, digest, commit, "")
+}
+
+// pinTag leaves an overlay pinned to a tag rather than a digest — the state most
+// existing overlays are in, and one a promotion has to refuse.
+func (f runFixture) pinTag(t *testing.T, env, tag string) {
+	t.Helper()
+	clone := f.cloneOrigin(t)
+	gittest.Run(t, clone, "config", "user.email", "test@example.com")
+	gittest.Run(t, clone, "config", "user.name", "Test")
+	gittest.Run(t, clone, "config", "commit.gpgsign", "false")
+
+	rel := filepath.Join("domains", "orders", "order-flow", "order-extractor", "overlays", env, "kustomization.yaml")
+	gittest.WriteFile(t, filepath.Join(clone, rel),
+		"apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nnamespace: integrations\nresources:\n  - ../../base\n"+
+			"images:\n  - name: "+f.image+"\n    newTag: "+tag+"\n")
+
+	gittest.Run(t, clone, "add", "-A")
+	gittest.Run(t, clone, "commit", "--quiet", "-m", "deploy("+env+"): tag")
+	gittest.Run(t, clone, "push", "--quiet", "origin", "main")
+}
+
+// requireNothingWritten asserts that the GitOps branch did not move. Every
+// refusal in this package must leave the repository exactly as it found it, and
+// a command that refuses after committing would be worse than one that never
+// refused.
+func (f runFixture) requireNothingWritten(t *testing.T) {
+	t.Helper()
+	log := gittest.Run(t, f.gitopsOrigin, "log", "--format=%s", "main")
+	for line := range strings.SplitSeq(log, "\n") {
+		if strings.HasPrefix(line, "deploy(order-extractor):") {
+			t.Errorf("a refusal must write nothing, but the origin carries %q", line)
+		}
+	}
+}
+
+// pinOverlayRelease is pinOverlay for an overlay deployed from a release, which
+// carries the version annotation as well. Promotion reads that annotation, so a
+// fixture without it cannot exercise the version-to-version path.
+func (f runFixture) pinOverlayRelease(t *testing.T, env, digest, commit, version string) {
+	t.Helper()
+	clone := f.cloneOrigin(t)
+	gittest.Run(t, clone, "config", "user.email", "test@example.com")
+	gittest.Run(t, clone, "config", "user.name", "Test")
+	gittest.Run(t, clone, "config", "commit.gpgsign", "false")
+
+	annotations := "commonAnnotations:\n  " + kustomize.AnnotationSourceCommit + ": " + commit + "\n"
+	if version != "" {
+		annotations += "  " + kustomize.AnnotationRelease + ": " + version + "\n"
+	}
+
+	rel := filepath.Join("domains", "orders", "order-flow", "order-extractor", "overlays", env, "kustomization.yaml")
+	gittest.WriteFile(t, filepath.Join(clone, rel),
+		"apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nnamespace: integrations\nresources:\n  - ../../base\n"+
+			"images:\n  - name: "+f.image+"\n    digest: "+digest+"\n"+annotations)
+
+	gittest.Run(t, clone, "add", "-A")
+	gittest.Run(t, clone, "commit", "--quiet", "-m", "deploy("+env+"): pin")
+	gittest.Run(t, clone, "push", "--quiet", "origin", "main")
+}
+
+// The reassurance the staging step exists for.
+func TestRunStagingReportsTheUpstreamMatch(t *testing.T) {
+	f := newRunFixture(t)
+	stubDigest(t, testDigest)
+	f.pinOverlay(t, "dev", testDigest, testReleaseCommit)
+
+	var stdout, stderr bytes.Buffer
+	opts := f.options(&stdout, &stderr)
+	opts.Environment = "staging"
+	opts.PlanOnly = true
+	if err := Run(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(stdout.String(), "dev already runs this digest") {
+		t.Errorf("the plan should say the digest matches dev:\n%s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "tested bits") {
+		t.Errorf("the plan should say these are the tested bits:\n%s", stdout.String())
+	}
+}
+
+func TestRunStagingReportsAnUpstreamDifference(t *testing.T) {
+	f := newRunFixture(t)
+	stubDigest(t, testDigest)
+	f.pinOverlay(t, "dev", upstreamDigest, testReleaseCommit)
+
+	var stdout, stderr bytes.Buffer
+	opts := f.options(&stdout, &stderr)
+	opts.Environment = "staging"
+	opts.PlanOnly = true
+	if err := Run(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(stdout.String(), "runs a different digest") {
+		t.Errorf("the plan should report the mismatch:\n%s", stdout.String())
+	}
+}
+
+// The comparison is informational: a mismatch reports, it does not refuse.
+func TestRunUpstreamMismatchStillDeploys(t *testing.T) {
+	f := newRunFixture(t)
+	stubDigest(t, testDigest)
+	f.pinOverlay(t, "dev", upstreamDigest, testReleaseCommit)
+
+	var stdout, stderr bytes.Buffer
+	opts := f.options(&stdout, &stderr)
+	opts.Environment = "staging"
+	opts.NoWait = true
+	if err := Run(context.Background(), opts); err != nil {
+		t.Fatalf("a digest dev never ran must still deploy: %v", err)
+	}
+
+	trailers := gittest.Run(t, f.gitopsOrigin, "log", "-1", "--format=%(trailers:only=true)", "main")
+	if !strings.Contains(trailers, TrailerEnvironment+": staging") {
+		t.Errorf("the staging deploy should have landed:\n%s", trailers)
+	}
+}
+
+func TestRunJSONCarriesUpstreams(t *testing.T) {
+	f := newRunFixture(t)
+	stubDigest(t, testDigest)
+	f.pinOverlay(t, "dev", testDigest, testReleaseCommit)
+
+	var stdout, stderr bytes.Buffer
+	opts := f.options(&stdout, &stderr)
+	opts.Environment = "staging"
+	opts.PlanOnly = true
+	opts.OutputFormat = OutputJSON
+	if err := Run(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+
+	res := decodeResult(t, stdout.Bytes())
+	if len(res.Upstreams) != 1 {
+		t.Fatalf("want one upstream in the JSON result, got %+v", res.Upstreams)
+	}
+	if res.Upstreams[0].Environment != "dev" || res.Upstreams[0].Status != UpstreamMatch {
+		t.Errorf("upstream = %+v, want dev/%s", res.Upstreams[0], UpstreamMatch)
+	}
+	if res.Release != "" {
+		t.Errorf("Release = %q, want empty for a commit deploy", res.Release)
+	}
+}
+
+// Steps 1 and 2 must be untouched: dev promotes from nothing.
+func TestRunDevHasNoUpstreamLine(t *testing.T) {
+	f := newRunFixture(t)
+	stubDigest(t, testDigest)
+
+	var stdout, stderr bytes.Buffer
+	opts := f.options(&stdout, &stderr)
+	opts.PlanOnly = true
+	if err := Run(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, unwanted := range []string{"already runs", "nothing to compare", "different digest"} {
+		if strings.Contains(stdout.String(), unwanted) {
+			t.Errorf("dev has no promotesFrom, so %q should not appear:\n%s", unwanted, stdout.String())
+		}
+	}
+}
+
+// A no-op re-run still answers the question that prompted the command.
+func TestRunNoOpStillReportsTheUpstream(t *testing.T) {
+	f := newRunFixture(t)
+	stubDigest(t, testDigest)
+	// The annotation must match the commit being deployed too, or the plan is
+	// provenance-only rather than empty.
+	head := currentHEAD(t, f.sourceDir)
+	f.pinOverlay(t, "dev", testDigest, head)
+	f.pinOverlay(t, "staging", testDigest, head)
+
+	var stdout, stderr bytes.Buffer
+	opts := f.options(&stdout, &stderr)
+	opts.Environment = "staging"
+	opts.PlanOnly = true
+	if err := Run(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, "already at") {
+		t.Fatalf("staging is already at that digest:\n%s", out)
+	}
+	if !strings.Contains(out, "dev already runs this digest") {
+		t.Errorf("a no-op should still report the upstream comparison:\n%s", out)
+	}
 }

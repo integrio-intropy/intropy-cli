@@ -1,9 +1,13 @@
 package kustomize
 
 import (
+	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/integrio-intropy/intropy-cli/internal/command"
 )
 
 // writeOverlay writes a kustomization file with the given trailing block.
@@ -37,6 +41,50 @@ func TestReadKustomization(t *testing.T) {
 	}
 	if k.CommonAnnotations[AnnotationSourceCommit] != "deadbeef" {
 		t.Errorf("CommonAnnotations = %v", k.CommonAnnotations)
+	}
+}
+
+// The round trip promote depends on: a version written here has to be readable
+// back, and removable, through the kustomize binary rather than a hand edit.
+func TestSetAndRemoveTheReleaseAnnotation(t *testing.T) {
+	requireKustomize(t)
+
+	dir := t.TempDir()
+	writeOverlay(t, dir, "commonAnnotations:\n  "+AnnotationSourceCommit+": deadbeef\n")
+	k := Client{Runner: command.ExecRunner{}}
+	ctx := context.Background()
+
+	if err := k.SetAnnotation(ctx, dir, AnnotationRelease, "1.4.2"); err != nil {
+		t.Fatal(err)
+	}
+	got, _, err := ReadKustomization(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.CommonAnnotations[AnnotationRelease] != "1.4.2" {
+		t.Fatalf("CommonAnnotations = %v", got.CommonAnnotations)
+	}
+
+	if err := k.RemoveAnnotation(ctx, dir, AnnotationRelease); err != nil {
+		t.Fatal(err)
+	}
+	got, _, err = ReadKustomization(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, found := got.CommonAnnotations[AnnotationRelease]; found {
+		t.Errorf("release annotation should be gone, got %v", got.CommonAnnotations)
+	}
+	// Removing one annotation must not take the other with it.
+	if got.CommonAnnotations[AnnotationSourceCommit] != "deadbeef" {
+		t.Errorf("source-commit annotation was lost: %v", got.CommonAnnotations)
+	}
+}
+
+func requireKustomize(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("kustomize"); err != nil {
+		t.Skip("kustomize is not installed")
 	}
 }
 

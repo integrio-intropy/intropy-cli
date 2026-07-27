@@ -21,6 +21,15 @@ var KustomizationFileNames = []string{"kustomization.yaml", "kustomization.yml",
 // from. Read back by `deploy status` and `deploy history`.
 const AnnotationSourceCommit = "deploy.internal/source-commit"
 
+// AnnotationRelease records which release version an overlay was pinned from,
+// absent when the digests came from a commit rather than a release.
+//
+// Read back by `deploy promote`, which is the reason it exists: promotion
+// copies digests, so without this the version staging runs would be knowable
+// only from a commit trailer. A promotion cannot name what it is promoting
+// otherwise.
+const AnnotationRelease = "deploy.internal/release"
+
 // Client drives the kustomize binary against an overlay directory.
 type Client struct {
 	Runner command.Runner
@@ -58,6 +67,19 @@ func (k Client) SetImage(ctx context.Context, dir, image, digest string) error {
 func (k Client) SetAnnotation(ctx context.Context, dir, key, value string) error {
 	if _, _, err := k.Runner.Run(ctx, dir, "kustomize", "edit", "set", "annotation", key+":"+value); err != nil {
 		return fmt.Errorf("set annotation %s: %w", key, err)
+	}
+	return nil
+}
+
+// RemoveAnnotation deletes a common annotation.
+//
+// Callers should check that the key is present first, using the Kustomization
+// they have already read: whether kustomize treats removing an absent
+// annotation as an error is its business, and depending on the answer either
+// way would be fragile.
+func (k Client) RemoveAnnotation(ctx context.Context, dir, key string) error {
+	if _, _, err := k.Runner.Run(ctx, dir, "kustomize", "edit", "remove", "annotation", key); err != nil {
+		return fmt.Errorf("remove annotation %s: %w", key, err)
 	}
 	return nil
 }

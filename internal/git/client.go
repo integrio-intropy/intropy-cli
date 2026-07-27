@@ -235,6 +235,23 @@ type LogCommit struct {
 	Subject string
 }
 
+// LastCommit returns the sha of the most recent commit on rev that changed path,
+// and whether there was one.
+//
+// Merges are not excluded here, unlike Log: this answers "which commit put the
+// file in its current state", and a merge that resolved the file really is that
+// commit.
+func (g Client) LastCommit(ctx context.Context, rev, path string) (string, bool, error) {
+	out, err := g.run(ctx, "log", "-1", "--format=%H", rev, "--", path)
+	if err != nil {
+		return "", false, fmt.Errorf("read last commit for %s: %w", path, err)
+	}
+	if out == "" {
+		return "", false, nil
+	}
+	return out, true, nil
+}
+
 // Log lists the commits in revRange, most recent first, limited to paths when
 // any are given.
 //

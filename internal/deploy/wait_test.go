@@ -12,27 +12,55 @@ import (
 	"github.com/integrio-intropy/intropy-cli/internal/gittest"
 )
 
-// stubWaiter stands in for the ArgoCD client.
-type stubWaiter struct {
+// stubArgoClient stands in for the ArgoCD client.
+type stubArgoClient struct {
+	// app and err are what Wait returns; seen records what it was asked for.
 	app  *argocd.Application
 	err  error
 	seen argocd.WaitOptions
+
+	// get answers Get per application name, and getErr overrides it. An
+	// application with no entry is reported missing, as ArgoCD would.
+	get    map[string]*argocd.Application
+	getErr error
+
+	// syncErr fails Sync; synced records every revision it was asked to apply,
+	// which is what proves a sync targeted the reviewed commit.
+	syncErr error
+	synced  []syncCall
 }
 
-func (s *stubWaiter) Wait(_ context.Context, opts argocd.WaitOptions) (*argocd.Application, error) {
+type syncCall struct{ app, revision string }
+
+func (s *stubArgoClient) Wait(_ context.Context, opts argocd.WaitOptions) (*argocd.Application, error) {
 	s.seen = opts
 	return s.app, s.err
 }
 
+func (s *stubArgoClient) Get(_ context.Context, app string) (*argocd.Application, error) {
+	if s.getErr != nil {
+		return nil, s.getErr
+	}
+	if got, found := s.get[app]; found {
+		return got, nil
+	}
+	return nil, fmt.Errorf("%w: %s", argocd.ErrAppNotFound, app)
+}
+
+func (s *stubArgoClient) Sync(_ context.Context, app, revision string) error {
+	s.synced = append(s.synced, syncCall{app: app, revision: revision})
+	return s.syncErr
+}
+
 // stubArgo replaces the client factory and supplies credentials, so these tests
 // exercise the wiring rather than the HTTP layer.
-func stubArgo(t *testing.T, w *stubWaiter) {
+func stubArgo(t *testing.T, w *stubArgoClient) {
 	t.Helper()
 	t.Setenv("ARGOCD_SERVER", "argocd.test.example.com")
 	t.Setenv("ARGOCD_AUTH_TOKEN", "test-token")
 
 	original := NewArgoClient
-	NewArgoClient = func(argocd.Options) (ArgoWaiter, error) { return w, nil }
+	NewArgoClient = func(argocd.Options) (ArgoClient, error) { return w, nil }
 	t.Cleanup(func() { NewArgoClient = original })
 }
 
@@ -48,7 +76,7 @@ func TestRunWaitsAndReportsSynced(t *testing.T) {
 	f := newRunFixture(t)
 	stubDigest(t, testDigest)
 
-	waiter := &stubWaiter{}
+	waiter := &stubArgoClient{}
 	stubArgo(t, waiter)
 
 	var stdout, stderr bytes.Buffer
@@ -78,7 +106,7 @@ func TestRunReportsArgoStateInJSON(t *testing.T) {
 	f := newRunFixture(t)
 	stubDigest(t, testDigest)
 
-	waiter := &stubWaiter{}
+	waiter := &stubArgoClient{}
 	stubArgo(t, waiter)
 	// Answer with whatever revision is asked for.
 	waiter.app = healthyApp("")
@@ -106,7 +134,7 @@ func TestRunUnreachableArgoIsAWarningNotAFailure(t *testing.T) {
 	f := newRunFixture(t)
 	stubDigest(t, testDigest)
 
-	stubArgo(t, &stubWaiter{err: fmt.Errorf("%w: dial tcp: connection refused", argocd.ErrUnreachable)})
+	stubArgo(t, &stubArgoClient{err: fmt.Errorf("%w: dial tcp: connection refused", argocd.ErrUnreachable)})
 
 	var stdout, stderr bytes.Buffer
 	if err := Run(context.Background(), f.options(&stdout, &stderr)); err != nil {
@@ -130,7 +158,7 @@ func TestRunTimeoutIsAFailure(t *testing.T) {
 	f := newRunFixture(t)
 	stubDigest(t, testDigest)
 
-	stubArgo(t, &stubWaiter{err: &argocd.TimeoutError{App: "orders-order-flow-order-extractor-dev", Revision: testCommit}})
+	stubArgo(t, &stubArgoClient{err: &argocd.TimeoutError{App: "orders-order-flow-order-extractor-dev", Revision: testCommit}})
 
 	var stdout, stderr bytes.Buffer
 	err := Run(context.Background(), f.options(&stdout, &stderr))
@@ -146,7 +174,7 @@ func TestRunNoWaitSkipsArgo(t *testing.T) {
 	f := newRunFixture(t)
 	stubDigest(t, testDigest)
 
-	waiter := &stubWaiter{err: errors.New("should not be called")}
+	waiter := &stubArgoClient{err: errors.New("should not be called")}
 	stubArgo(t, waiter)
 
 	var stdout, stderr bytes.Buffer
@@ -167,7 +195,7 @@ func TestRunManualSyncNeverWaits(t *testing.T) {
 	f := newRunFixture(t)
 	stubDigest(t, testDigest)
 
-	waiter := &stubWaiter{err: errors.New("should not be called")}
+	waiter := &stubArgoClient{err: errors.New("should not be called")}
 	stubArgo(t, waiter)
 
 	var stdout, stderr bytes.Buffer
@@ -231,5 +259,29 @@ func TestRevisionContains(t *testing.T) {
 	// a revision we cannot inspect would be worse than waiting.
 	if ok, err := contains(ctx, head, "0000000000000000000000000000000000000000"); err != nil || ok {
 		t.Errorf("contains(head, unknown) = %v, %v; want false, nil", ok, err)
+	}
+}
+
+// Staging syncs automatically, so the command waits and reports health — the
+// back half of the staging story.
+func TestRunStagingWaitsAndReportsHealth(t *testing.T) {
+	f := newRunFixture(t)
+	stubDigest(t, testDigest)
+
+	w := &stubArgoClient{app: healthyApp("")}
+	stubArgo(t, w)
+
+	var stdout, stderr bytes.Buffer
+	opts := f.options(&stdout, &stderr)
+	opts.Environment = "staging"
+	if err := Run(context.Background(), opts); err != nil {
+		t.Fatalf("staging syncs automatically, so this should converge: %v\nstderr: %s", err, stderr.String())
+	}
+
+	if w.seen.App != "orders-order-flow-order-extractor-staging" {
+		t.Errorf("waited on %q, want the staging application", w.seen.App)
+	}
+	if !strings.Contains(stdout.String(), "synced and healthy") {
+		t.Errorf("stdout should report health:\n%s", stdout.String())
 	}
 }

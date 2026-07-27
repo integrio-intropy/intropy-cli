@@ -17,10 +17,22 @@ import (
 // Trailer keys written into the deployment commit. They are a format, not just
 // a message: `deploy history` reads them back, so treat renames as breaking.
 const (
-	TrailerComponent    = "Deploy-Component"
-	TrailerDomain       = "Deploy-Domain"
-	TrailerSystem       = "Deploy-System"
-	TrailerEnvironment  = "Deploy-Env"
+	TrailerComponent   = "Deploy-Component"
+	TrailerDomain      = "Deploy-Domain"
+	TrailerSystem      = "Deploy-System"
+	TrailerEnvironment = "Deploy-Env"
+
+	// TrailerRelease is present only when the deployment came from a published
+	// release, so `deploy history` can answer "which version is in staging"
+	// from one trailer.
+	TrailerRelease = "Deploy-Release"
+
+	// TrailerPromotedFrom names the environment the digests were copied from,
+	// present only for a promotion. It is what distinguishes a promotion from a
+	// deployment in the log: both edit the same file the same way, and the
+	// subject alone cannot say which resolved its digests and which copied them.
+	TrailerPromotedFrom = "Deploy-Promoted-From"
+
 	TrailerImage        = "Deploy-Image"
 	TrailerDigest       = "Deploy-Digest"
 	TrailerSourceCommit = "Deploy-Source-Commit"
@@ -137,12 +149,33 @@ func Publish(ctx context.Context, opts PublishOptions) (string, error) {
 
 // commitSubject is the one-line summary. The digest is abbreviated: a full one
 // makes the subject unreadable in a log, and the trailer carries it in full.
+//
+// A release deploy names the version instead of the digest. A release is
+// immutable, so the version identifies those digests exactly and is the more
+// useful thing to read in a log; the trailers still carry every digest in full.
+//
+// The prefix is deploy() for a promotion too. A promotion makes the same edit to
+// the same file, so calling it something else in the subject would split one
+// history in two; TrailerPromotedFrom is what tells them apart.
 func commitSubject(plan *Plan) string {
-	digest := plan.Pins[0].Digest
-	if len(plan.Pins) > 1 {
-		return fmt.Sprintf("deploy(%s): %s → %d images at %s", plan.Coordinate.Component, plan.Environment, len(plan.Pins), plan.Source.ShortCommit())
+	component, env, commit := plan.Coordinate.Component, plan.Environment, plan.Source.ShortCommit()
+
+	if plan.ReleaseVersion != "" {
+		// Both versions known: the far more useful subject, and the only one that
+		// says what a promotion actually did.
+		if plan.PreviousRelease != "" && plan.PreviousRelease != plan.ReleaseVersion {
+			return fmt.Sprintf("deploy(%s): %s %s → %s", component, env, plan.PreviousRelease, plan.ReleaseVersion)
+		}
+		if len(plan.Pins) > 1 {
+			return fmt.Sprintf("deploy(%s): %s → %s, %d images (%s)", component, env, plan.ReleaseVersion, len(plan.Pins), commit)
+		}
+		return fmt.Sprintf("deploy(%s): %s → %s (%s)", component, env, plan.ReleaseVersion, commit)
 	}
-	return fmt.Sprintf("deploy(%s): %s → %s (%s)", plan.Coordinate.Component, plan.Environment, shortDigest(digest), plan.Source.ShortCommit())
+
+	if len(plan.Pins) > 1 {
+		return fmt.Sprintf("deploy(%s): %s → %d images at %s", component, env, len(plan.Pins), commit)
+	}
+	return fmt.Sprintf("deploy(%s): %s → %s (%s)", component, env, shortDigest(plan.Pins[0].Digest), commit)
 }
 
 func shortDigest(digest string) string {
@@ -161,6 +194,13 @@ func commitTrailers(plan *Plan, cliVersion string) string {
 		{Key: TrailerDomain, Value: plan.Coordinate.Domain},
 		{Key: TrailerSystem, Value: plan.Coordinate.System},
 		{Key: TrailerEnvironment, Value: plan.Environment},
+	}
+	// What was deployed where, before the per-image detail.
+	if plan.ReleaseVersion != "" {
+		trailers = append(trailers, git.Trailer{Key: TrailerRelease, Value: plan.ReleaseVersion})
+	}
+	if plan.PromotedFrom != "" {
+		trailers = append(trailers, git.Trailer{Key: TrailerPromotedFrom, Value: plan.PromotedFrom})
 	}
 	for _, pin := range plan.Pins {
 		trailers = append(trailers,

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/integrio-intropy/intropy-cli/internal/gitops"
 	"github.com/integrio-intropy/intropy-cli/internal/gittest"
 	"github.com/integrio-intropy/intropy-cli/internal/source"
 )
@@ -278,5 +279,98 @@ func TestJitteredBackoffGrowsAndVaries(t *testing.T) {
 	}
 	if len(seen) == 1 {
 		t.Error("backoff should be jittered, not fixed")
+	}
+}
+
+func releasePlan(version string, pins ...source.Pin) *Plan {
+	return &Plan{
+		Coordinate:     gitops.Coordinate{Domain: "orders", System: "order-flow", Component: "order-extractor"},
+		Environment:    "staging",
+		Source:         source.State{Commit: testReleaseCommit},
+		ReleaseVersion: version,
+		Pins:           pins,
+	}
+}
+
+// The version identifies the digests exactly, and is what a person scanning a
+// log wants to see; the digests stay in the trailers.
+func TestCommitSubjectNamesTheRelease(t *testing.T) {
+	one := releasePlan("1.4.2", source.Pin{Image: "img", Digest: testDigest})
+	want := "deploy(order-extractor): staging → 1.4.2 (197a3ae)"
+	if got := commitSubject(one); got != want {
+		t.Errorf("commitSubject()\n got: %s\nwant: %s", got, want)
+	}
+
+	many := releasePlan("1.4.2",
+		source.Pin{Image: "a", Digest: testDigest},
+		source.Pin{Image: "b", Digest: testDigest})
+	wantMany := "deploy(order-extractor): staging → 1.4.2, 2 images (197a3ae)"
+	if got := commitSubject(many); got != wantMany {
+		t.Errorf("commitSubject()\n got: %s\nwant: %s", got, wantMany)
+	}
+}
+
+func TestCommitTrailersCarryTheRelease(t *testing.T) {
+	got := commitTrailers(releasePlan("1.4.2", source.Pin{Image: "img", Digest: testDigest}), "intropy-cli/v0.8.0")
+	if !strings.Contains(got, TrailerRelease+": 1.4.2") {
+		t.Errorf("trailers should carry the release:\n%s", got)
+	}
+	if !strings.Contains(got, TrailerSourceCommit+": "+testReleaseCommit) {
+		t.Errorf("trailers should still carry the source commit:\n%s", got)
+	}
+}
+
+// A commit deploy must not gain an empty trailer.
+func TestCommitTrailersOmitTheReleaseForACommitDeploy(t *testing.T) {
+	plan := releasePlan("1.4.2", source.Pin{Image: "img", Digest: testDigest})
+	plan.ReleaseVersion = ""
+	if got := commitTrailers(plan, "intropy-cli/v0.8.0"); strings.Contains(got, TrailerRelease) {
+		t.Errorf("a commit deploy should have no %s trailer:\n%s", TrailerRelease, got)
+	}
+}
+
+// The subject a promotion produces, and the reason PreviousRelease is recorded:
+// "prod 1.4.1 → 1.4.2" is the whole story, where "prod → 1.4.2" leaves the
+// reader to work out what was replaced.
+func TestCommitSubjectNamesBothVersions(t *testing.T) {
+	plan := releasePlan("1.4.2", source.Pin{Image: "img", Digest: testDigest})
+	plan.Environment = "prod"
+	plan.PreviousRelease = "1.4.1"
+
+	want := "deploy(order-extractor): prod 1.4.1 → 1.4.2"
+	if got := commitSubject(plan); got != want {
+		t.Errorf("commitSubject()\n got: %s\nwant: %s", got, want)
+	}
+}
+
+// Redeploying the same version is not a version change, so the subject should
+// not read "1.4.2 → 1.4.2".
+func TestCommitSubjectDoesNotRepeatTheSameVersion(t *testing.T) {
+	plan := releasePlan("1.4.2", source.Pin{Image: "img", Digest: testDigest})
+	plan.PreviousRelease = "1.4.2"
+
+	want := "deploy(order-extractor): staging → 1.4.2 (197a3ae)"
+	if got := commitSubject(plan); got != want {
+		t.Errorf("commitSubject()\n got: %s\nwant: %s", got, want)
+	}
+}
+
+func TestCommitTrailersCarryThePromotionSource(t *testing.T) {
+	plan := releasePlan("1.4.2", source.Pin{Image: "img", Digest: testDigest})
+	plan.PromotedFrom = "staging"
+
+	got := commitTrailers(plan, "intropy-cli/v0.8.0")
+	if !strings.Contains(got, TrailerPromotedFrom+": staging") {
+		t.Errorf("trailers should name the promotion source:\n%s", got)
+	}
+}
+
+// A deployment and a promotion edit the same file the same way, so this trailer
+// is the only thing that tells them apart. An empty one would make every deploy
+// look like a promotion from nowhere.
+func TestCommitTrailersOmitThePromotionSourceForADeploy(t *testing.T) {
+	got := commitTrailers(releasePlan("1.4.2", source.Pin{Image: "img", Digest: testDigest}), "intropy-cli/v0.8.0")
+	if strings.Contains(got, TrailerPromotedFrom) {
+		t.Errorf("a deployment should have no %s trailer:\n%s", TrailerPromotedFrom, got)
 	}
 }

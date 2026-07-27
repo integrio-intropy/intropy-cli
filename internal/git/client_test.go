@@ -62,6 +62,48 @@ func TestGitStatusScopesToPaths(t *testing.T) {
 	}
 }
 
+// Which commit put a file in its current state — the question a manual sync has
+// to answer to know which revision was reviewed.
+func TestGitLastCommitIgnoresLaterUnrelatedCommits(t *testing.T) {
+	dir := gittest.NewRepo(t, "main")
+	g := testClient(dir)
+	ctx := context.Background()
+
+	gittest.Commit(t, dir, "overlays/prod/kustomization.yaml", "digest: one\n", "pin prod")
+	want, err := g.HEAD(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Later commits that do not touch the overlay must not shadow it.
+	gittest.Commit(t, dir, "unrelated.txt", "x\n", "unrelated change")
+
+	got, found, err := g.LastCommit(ctx, "HEAD", "overlays/prod/kustomization.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("LastCommit() found nothing for a path that exists")
+	}
+	if got != want {
+		t.Errorf("LastCommit() = %q, want the commit that pinned prod %q", got, want)
+	}
+}
+
+// A component onboarded but never deployed: the overlay path has no history of
+// its own. Reporting that as "not found" rather than an error is what lets sync
+// say "there is nothing pending" instead of failing obscurely.
+func TestGitLastCommitOfAnUntouchedPath(t *testing.T) {
+	dir := gittest.NewRepo(t, "main")
+
+	got, found, err := testClient(dir).LastCommit(context.Background(), "HEAD", "never/existed.yaml")
+	if err != nil {
+		t.Fatalf("an untouched path should not be an error: %v", err)
+	}
+	if found || got != "" {
+		t.Errorf("LastCommit() = %q, %v; want no commit", got, found)
+	}
+}
+
 func TestGitIsAncestor(t *testing.T) {
 	dir := gittest.NewRepo(t, "main")
 	g := testClient(dir)

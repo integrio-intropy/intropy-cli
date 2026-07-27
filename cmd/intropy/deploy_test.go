@@ -106,3 +106,58 @@ func TestDeployCompletionsAreSilentWithoutConfig(t *testing.T) {
 		t.Errorf("completion after an argument = %v, want none", got)
 	}
 }
+
+func TestDeployRejectsThreeArguments(t *testing.T) {
+	_, _, err := runDeploy(t, "order-extractor", "1.4.2", "extra", "--env", "staging")
+	if err == nil {
+		t.Fatal("expected an error for a third positional argument")
+	}
+	if code := exitCode(err); code != 2 {
+		t.Errorf("exit code = %d, want 2 for a usage error", code)
+	}
+}
+
+// --allow-dirty advertises a working-tree check, and a release deploy reads no
+// working tree. Ignoring the flag would be worse than refusing it.
+func TestDeployRejectsAllowDirtyWithAVersion(t *testing.T) {
+	_, _, err := runDeploy(t, "order-extractor", "1.4.2", "--env", "staging", "--allow-dirty")
+	if err == nil {
+		t.Fatal("expected an error for --allow-dirty with a version")
+	}
+	var ue *usageError
+	if !errors.As(err, &ue) {
+		t.Fatalf("error should be a usage error, got %T: %v", err, err)
+	}
+	if !strings.Contains(err.Error(), "--allow-dirty") {
+		t.Errorf("error should name the flag: %v", err)
+	}
+	if code := exitCode(err); code != 2 {
+		t.Errorf("exit code = %d, want 2", code)
+	}
+}
+
+// The version is accepted as a second positional argument: this must fail for
+// want of configuration, not for want of valid arguments.
+func TestDeployAcceptsAVersionArgument(t *testing.T) {
+	_, _, err := runDeploy(t, "order-extractor", "1.4.2", "--env", "staging", "--gitops-repo", "/nonexistent/repo")
+	var ue *usageError
+	if errors.As(err, &ue) {
+		t.Errorf("a version argument must not be a usage error: %v", err)
+	}
+}
+
+func TestVersionArg(t *testing.T) {
+	if got := versionArg([]string{"order-extractor"}); got != "" {
+		t.Errorf("versionArg with one arg = %q, want empty", got)
+	}
+	if got := versionArg([]string{"order-extractor", "1.4.2"}); got != "1.4.2" {
+		t.Errorf("versionArg = %q, want 1.4.2", got)
+	}
+}
+
+// The --argocd-server flag is documented in the README, so it must exist.
+func TestDeployHasArgocdServerFlag(t *testing.T) {
+	if deployCmd.Flags().Lookup("argocd-server") == nil {
+		t.Error("--argocd-server is documented but not registered")
+	}
+}

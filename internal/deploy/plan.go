@@ -19,12 +19,39 @@ type Plan struct {
 	Environment string
 	Source      source.State
 
+	// ReleaseVersion is the version the pins came from, empty when the digests
+	// were resolved from the source repository's HEAD.
+	//
+	// A version rather than the manifest: nothing here needs more than the
+	// version, and a promotion learns it from the source overlay's annotation
+	// rather than from a manifest it never reads.
+	ReleaseVersion string
+
+	// PromotedFrom is the environment the digests were copied from, empty for a
+	// deployment. A promotion resolves nothing — it copies — so this records
+	// where the bits came from in place of a registry lookup.
+	PromotedFrom string
+
 	// Pins are the digests resolved for this commit.
 	Pins []source.Pin
 
 	// Previous records how each image was pinned before the edit, keyed by
 	// image name, for a readable summary.
 	Previous map[string]string
+
+	// PreviousRelease is the version the target overlay was pinned from before
+	// the edit, empty when it carried no release annotation.
+	PreviousRelease string
+
+	// Upstreams is what each environment this one promotes from currently has
+	// pinned. Nil when the environment promotes from nothing. Informational: a
+	// mismatch is reported, never enforced.
+	Upstreams []Upstream
+
+	// Notes are extra lines to print under the summary, already phrased. A
+	// promotion uses them to say where the digests came from, which it knows
+	// exactly and so has no upstream comparison to make.
+	Notes []string
 
 	// Diff is the unified diff of the rendered output. Empty means the edit
 	// changed nothing.
@@ -52,10 +79,15 @@ func (p *Plan) Empty() bool { return p.Diff == "" }
 // deployed, which is worse than a restart.
 func (p *Plan) ProvenanceOnly() bool { return !p.Empty() && !p.DigestChanged }
 
-// Summary renders the one-line-per-image human summary.
+// Summary renders the one-line-per-image human summary, followed by one line
+// per environment this one promotes from.
 func (p *Plan) Summary() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s → %s (commit %s)\n", p.Coordinate, p.Environment, p.Source.ShortCommit())
+	if p.ReleaseVersion != "" {
+		fmt.Fprintf(&b, "%s → %s (release %s, commit %s)\n", p.Coordinate, p.Environment, p.ReleaseVersion, p.Source.ShortCommit())
+	} else {
+		fmt.Fprintf(&b, "%s → %s (commit %s)\n", p.Coordinate, p.Environment, p.Source.ShortCommit())
+	}
 	for _, pin := range p.Pins {
 		was := p.Previous[pin.Image]
 		if was == "" {
@@ -63,7 +95,35 @@ func (p *Plan) Summary() string {
 		}
 		fmt.Fprintf(&b, "  %s\n    %s → %s\n", pin.Image, was, pin.Digest)
 	}
+	b.WriteString(p.noteLines())
 	return b.String()
+}
+
+// noteLines renders the plan's own notes and the promotesFrom comparison,
+// indented to sit under the summary. Empty when there is neither — silence is
+// the right output for an environment with no upstream.
+func (p *Plan) noteLines() string {
+	var b strings.Builder
+	for _, note := range p.Notes {
+		fmt.Fprintf(&b, "  %s\n", note)
+	}
+	for _, u := range p.Upstreams {
+		fmt.Fprintf(&b, "  %s\n", u.Describe(p.Pins))
+	}
+	return b.String()
+}
+
+// pinnedAs names what the environment is already at, for the no-op message: a
+// release version when there is one, otherwise the digest.
+//
+// Pins is never empty — component.yaml requires at least one image and both
+// resolvers emit one pin per declared image — which is what makes the index
+// safe here and in commitSubject.
+func (p *Plan) pinnedAs() string {
+	if p.ReleaseVersion != "" {
+		return "release " + p.ReleaseVersion
+	}
+	return p.Pins[0].Digest
 }
 
 // PlanOptions configures BuildPlan.
@@ -73,9 +133,23 @@ type PlanOptions struct {
 	Coordinate  gitops.Coordinate
 	Environment string
 	Source      source.State
-	Pins        []source.Pin
-	OverlayDir  string
-	Palette     kustomize.Palette
+
+	// ReleaseVersion is annotated onto the overlay. Empty means the digests
+	// came from a commit, and any release annotation already there is removed.
+	ReleaseVersion string
+
+	// PromotedFrom is the environment the digests were copied from, empty for a
+	// deployment.
+	PromotedFrom string
+
+	Pins      []source.Pin
+	Upstreams []Upstream
+
+	// Notes are extra summary lines, already phrased.
+	Notes []string
+
+	OverlayDir string
+	Palette    kustomize.Palette
 }
 
 // BuildPlan edits the overlay, renders before and after, and diffs them.
@@ -120,8 +194,13 @@ func BuildPlan(ctx context.Context, opts PlanOptions) (*Plan, error) {
 		Coordinate:        opts.Coordinate,
 		Environment:       opts.Environment,
 		Source:            opts.Source,
+		ReleaseVersion:    opts.ReleaseVersion,
+		PromotedFrom:      opts.PromotedFrom,
 		Pins:              opts.Pins,
 		Previous:          previous,
+		PreviousRelease:   current.CommonAnnotations[kustomize.AnnotationRelease],
+		Upstreams:         opts.Upstreams,
+		Notes:             opts.Notes,
 		DigestChanged:     digestChanged,
 		OverlayDir:        opts.OverlayDir,
 		KustomizationPath: kustPath,
@@ -131,7 +210,7 @@ func BuildPlan(ctx context.Context, opts PlanOptions) (*Plan, error) {
 		return opts.Repository.Git.CheckoutPaths(ctx, overlayRel)
 	}
 
-	if err := applyEdits(ctx, opts); err != nil {
+	if err := applyEdits(ctx, opts, current); err != nil {
 		return nil, withRevert(err, revert)
 	}
 
@@ -164,13 +243,31 @@ func BuildPlan(ctx context.Context, opts PlanOptions) (*Plan, error) {
 	return plan, nil
 }
 
-func applyEdits(ctx context.Context, opts PlanOptions) error {
+// applyEdits pins every digest and records where they came from.
+//
+// current is the overlay as it was before the edit, used only to decide whether
+// there is a release annotation to remove.
+func applyEdits(ctx context.Context, opts PlanOptions, current *kustomize.Kustomization) error {
 	for _, pin := range opts.Pins {
 		if err := opts.Kustomize.SetImage(ctx, opts.OverlayDir, pin.Image, pin.Digest); err != nil {
 			return err
 		}
 	}
-	return opts.Kustomize.SetAnnotation(ctx, opts.OverlayDir, kustomize.AnnotationSourceCommit, opts.Source.Commit)
+	if err := opts.Kustomize.SetAnnotation(ctx, opts.OverlayDir, kustomize.AnnotationSourceCommit, opts.Source.Commit); err != nil {
+		return err
+	}
+
+	if opts.ReleaseVersion != "" {
+		return opts.Kustomize.SetAnnotation(ctx, opts.OverlayDir, kustomize.AnnotationRelease, opts.ReleaseVersion)
+	}
+	// These digests came from a commit, so any version recorded here describes a
+	// deployment that is being replaced. Leaving it would be worse than having
+	// no annotation at all: a stale version beside an unrelated digest is read
+	// as fact by promote, and would promote a version prod never ran.
+	if _, found := current.CommonAnnotations[kustomize.AnnotationRelease]; found {
+		return opts.Kustomize.RemoveAnnotation(ctx, opts.OverlayDir, kustomize.AnnotationRelease)
+	}
+	return nil
 }
 
 // assertPinsRendered checks that every pin reached the rendered output as the

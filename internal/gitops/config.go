@@ -73,7 +73,9 @@ type EnvironmentConfig struct {
 	Sync string `yaml:"sync"`
 
 	// PromotesFrom lists environments a promotion into this one may draw
-	// from. Parsed and validated here; enforced by the promote command.
+	// from. Deploy reads it to report whether the digests being deployed are
+	// what those environments already run; enforcing it is the promote
+	// command's job.
 	PromotesFrom []string `yaml:"promotesFrom"`
 
 	// RequireSourceHealthy demands the source environment be healthy before a
