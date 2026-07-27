@@ -47,17 +47,9 @@ func Sync(ctx context.Context, opts SyncOptions) error {
 	}
 
 	overlayRel := coord.OverlayRelPath(opts.Environment)
-	revision, found, err := repo.Git.LastCommit(ctx, "HEAD", overlayRel)
+	revision, err := pendingRevision(ctx, repo, coord, opts.Environment)
 	if err != nil {
 		return err
-	}
-	// Defensive: an overlay that resolved must have been committed, so this
-	// should not happen. It matters anyway, because ArgoCD reads an empty
-	// revision as "whatever the branch holds" — precisely the behaviour this
-	// command exists to prevent.
-	if !found {
-		return fmt.Errorf("no commit in %s has ever changed %s, so there is no reviewed revision to apply.\nDeploy or promote to %s first",
-			repo.Branch, overlayRel, opts.Environment)
 	}
 
 	// The reviewed-revision guard. If the branch has moved on since the diff was
@@ -116,6 +108,29 @@ func Sync(ctx context.Context, opts SyncOptions) error {
 		synced = nil
 	}
 	return reportSync(out, coord, opts.Environment, env, revision, synced, true)
+}
+
+// pendingRevision is the commit a sync would apply: the one that last changed
+// the environment's overlay, not the branch head.
+//
+// diff and sync must derive this identically. A diff of a revision other than the
+// one that will be applied is worse than no diff at all, so both call this rather
+// than each running the same log.
+func pendingRevision(ctx context.Context, repo *gitops.Repository, coord gitops.Coordinate, environment string) (string, error) {
+	overlayRel := coord.OverlayRelPath(environment)
+	revision, found, err := repo.Git.LastCommit(ctx, "HEAD", overlayRel)
+	if err != nil {
+		return "", err
+	}
+	// Defensive: an overlay that resolved must have been committed, so this
+	// should not happen. It matters anyway, because ArgoCD reads an empty
+	// revision as "whatever the branch holds" — precisely the behaviour the sync
+	// gate exists to prevent.
+	if !found {
+		return "", fmt.Errorf("no commit in %s has ever changed %s, so there is no reviewed revision to apply.\nDeploy or promote to %s first",
+			repo.Branch, overlayRel, environment)
+	}
+	return revision, nil
 }
 
 // sameRevision compares a reviewed revision with the pending one, accepting an

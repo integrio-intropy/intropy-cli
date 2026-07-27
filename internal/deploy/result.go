@@ -74,6 +74,55 @@ type SyncResult struct {
 	SyncedRevision string `json:"syncedRevision,omitempty"`
 }
 
+// DiffResult is the machine-readable outcome of a diff. Its own type for the same
+// reason SyncResult is: nothing here is pinned, planned or applied.
+type DiffResult struct {
+	Component   string `json:"component"`
+	Domain      string `json:"domain"`
+	System      string `json:"system"`
+	Environment string `json:"environment"`
+	AppName     string `json:"appName"`
+	OverlayPath string `json:"overlayPath"`
+
+	// Pending is the full sha a sync would apply — full rather than abbreviated
+	// because it is meant to be handed straight to `sync --revision`, whose
+	// comparison is a prefix match that an abbreviation only weakens.
+	Pending string `json:"pending"`
+
+	// Synced is the revision ArgoCD reports it has applied, and the baseline the
+	// diff is against. Empty when the application has never been synced, in which
+	// case every resource below is new.
+	Synced string `json:"synced,omitempty"`
+
+	// Applied reports that ArgoCD already holds the pending revision, or a
+	// descendant of it.
+	Applied bool `json:"applied"`
+
+	// Changed reports whether the two renders differ at all.
+	Changed bool `json:"changed"`
+
+	// Diff is the unified diff of the two renders, never coloured in this form.
+	Diff string `json:"diff,omitempty"`
+
+	// RemovedResources are the resources the baseline renders and the pending
+	// revision does not. They will not leave the cluster: a sync from here does
+	// not prune.
+	RemovedResources []string `json:"removedResources,omitempty"`
+
+	// Subject, Release, PromotedFrom, SourceCommit and DeployedBy are what the
+	// pending commit says about itself, read from its trailers. An approver's
+	// other question is who asked for this, and from what.
+	Subject      string `json:"subject,omitempty"`
+	Release      string `json:"release,omitempty"`
+	PromotedFrom string `json:"promotedFrom,omitempty"`
+	SourceCommit string `json:"sourceCommit,omitempty"`
+	DeployedBy   string `json:"deployedBy,omitempty"`
+
+	SyncPolicy   string `json:"syncPolicy"`
+	SyncStatus   string `json:"syncStatus,omitempty"`
+	HealthStatus string `json:"healthStatus,omitempty"`
+}
+
 // ResultPin is one image's before and after state.
 type ResultPin struct {
 	Image    string `json:"image"`

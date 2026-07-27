@@ -28,6 +28,13 @@ type stubArgoClient struct {
 	// which is what proves a sync targeted the reviewed commit.
 	syncErr error
 	synced  []syncCall
+
+	// manifests answers Manifests per revision, and manifestsErr overrides it.
+	// rendered records every revision asked for, which is what proves a diff
+	// rendered the pending commit rather than the branch head.
+	manifests    map[string][]string
+	manifestsErr error
+	rendered     []syncCall
 }
 
 type syncCall struct{ app, revision string }
@@ -50,6 +57,16 @@ func (s *stubArgoClient) Get(_ context.Context, app string) (*argocd.Application
 func (s *stubArgoClient) Sync(_ context.Context, app, revision string) error {
 	s.synced = append(s.synced, syncCall{app: app, revision: revision})
 	return s.syncErr
+}
+
+func (s *stubArgoClient) Manifests(_ context.Context, app, revision string) (*argocd.ManifestResponse, error) {
+	s.rendered = append(s.rendered, syncCall{app: app, revision: revision})
+	if s.manifestsErr != nil {
+		return nil, s.manifestsErr
+	}
+	// A revision with no entry renders nothing, which is what an environment that
+	// did not exist then looks like.
+	return &argocd.ManifestResponse{Manifests: s.manifests[revision], Revision: revision}, nil
 }
 
 // stubArgo replaces the client factory and supplies credentials, so these tests

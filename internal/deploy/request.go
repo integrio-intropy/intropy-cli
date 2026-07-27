@@ -193,6 +193,73 @@ func (o *PromoteOptions) applyDefaults() {
 	}
 }
 
+// DiffOptions configures Diff.
+//
+// There is no NoWait, Timeout, PlanOnly or Revision here: this command reads two
+// renders and prints the difference. It waits for nothing, writes nothing, and
+// has no revision of its own to reconcile — the revision it reports is the one
+// the environment already has pending.
+type DiffOptions struct {
+	Component string
+	Domain    string
+	System    string
+
+	// Environment is the environment to review. Required.
+	Environment string
+
+	GitopsRepo   string
+	ArgocdServer string
+	OutputFormat string
+
+	// Color enables ANSI colour in the diff.
+	Color bool
+
+	CacheRoot string
+
+	Runner    command.Runner
+	UserAgent string
+	Stdout    io.Writer
+	Stderr    io.Writer
+}
+
+func (o DiffOptions) output() output {
+	return output{Format: o.OutputFormat, Color: o.Color, Stdout: o.Stdout, Stderr: o.Stderr}
+}
+
+func (o DiffOptions) session() sessionOptions {
+	return sessionOptions{
+		GitopsRepo:   o.GitopsRepo,
+		ArgocdServer: o.ArgocdServer,
+		CacheRoot:    o.CacheRoot,
+		Runner:       o.Runner,
+		Stderr:       o.Stderr,
+	}
+}
+
+func (o *DiffOptions) applyDefaults() {
+	if o.Runner == nil {
+		o.Runner = command.ExecRunner{}
+	}
+	if o.OutputFormat == "" {
+		o.OutputFormat = OutputPlain
+	}
+	if o.UserAgent == "" {
+		o.UserAgent = "intropy-cli"
+	}
+	if o.Stdout == nil {
+		o.Stdout = os.Stdout
+	}
+	if o.Stderr == nil {
+		o.Stderr = os.Stderr
+	}
+	// Unlike every other command here, the diff text travels inside the JSON
+	// rather than beside it, and ANSI escapes in a JSON string are not a diff
+	// anyone can read.
+	if o.OutputFormat == OutputJSON {
+		o.Color = false
+	}
+}
+
 // SyncOptions configures Sync.
 type SyncOptions struct {
 	Component string

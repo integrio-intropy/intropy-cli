@@ -20,7 +20,41 @@ import (
 // map, which preserves the key order as authored: decoding into map[string]any
 // would reorder every key on every render and bury the one line that changed.
 func Normalize(manifests []byte) ([]byte, error) {
-	docs, err := splitDocuments(manifests)
+	return normalize(manifests, false)
+}
+
+// NormalizeJSON canonicalises manifests that arrive as one JSON document each,
+// which is how ArgoCD's render endpoint returns them.
+//
+// JSON is valid YAML, so the documents parse without conversion — but yaml.v3
+// records the flow style it decoded them from and would re-encode every resource
+// onto a single line. The style is therefore cleared, which yields block YAML
+// comparable line by line with anything Normalize produces. Key order survives:
+// it is the order the JSON carried.
+func NormalizeJSON(docs []string) ([]byte, error) {
+	return normalize([]byte(strings.Join(docs, "\n---\n")), true)
+}
+
+// Identities names the resources in a normalised stream, in stream order.
+//
+// The name is built from the same apiVersion/kind/namespace/name tuple documents
+// are sorted by, so it identifies a resource uniquely and two streams can be
+// compared as sets — but it is written to be read, because a caller comparing two
+// renders reports the difference to someone.
+func Identities(normalized []byte) ([]string, error) {
+	docs, err := splitDocuments(normalized, false)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(docs))
+	for _, doc := range docs {
+		ids = append(ids, doc.name)
+	}
+	return ids, nil
+}
+
+func normalize(manifests []byte, block bool) ([]byte, error) {
+	docs, err := splitDocuments(manifests, block)
 	if err != nil {
 		return nil, err
 	}
@@ -40,11 +74,15 @@ func Normalize(manifests []byte) ([]byte, error) {
 }
 
 type document struct {
+	// key sorts, name is the same identity written for a person to read.
 	key  string
+	name string
 	text []byte
 }
 
-func splitDocuments(manifests []byte) ([]document, error) {
+// splitDocuments parses a manifest stream into re-encoded documents. block
+// forces block style, for input that was JSON.
+func splitDocuments(manifests []byte, block bool) ([]document, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(manifests))
 	var docs []document
 	for {
@@ -60,6 +98,9 @@ func splitDocuments(manifests []byte) ([]document, error) {
 		if node.Kind == 0 {
 			continue
 		}
+		if block {
+			clearFlowStyle(&node)
+		}
 
 		var buf bytes.Buffer
 		enc := yaml.NewEncoder(&buf)
@@ -69,9 +110,19 @@ func splitDocuments(manifests []byte) ([]document, error) {
 		}
 		enc.Close()
 
-		docs = append(docs, document{key: identityOf(&node), text: buf.Bytes()})
+		docs = append(docs, document{key: identityOf(&node), name: describeIdentity(&node), text: buf.Bytes()})
 	}
 	return docs, nil
+}
+
+// clearFlowStyle strips the style flags off a node and everything under it, so a
+// tree decoded from JSON re-encodes as block YAML rather than as the single line
+// it came in on.
+func clearFlowStyle(n *yaml.Node) {
+	n.Style = 0
+	for _, child := range n.Content {
+		clearFlowStyle(child)
+	}
 }
 
 // identityOf builds the sort key from a resource's identity fields. Missing
@@ -88,6 +139,22 @@ func identityOf(node *yaml.Node) string {
 	namespace := mappingValue(metadata, "namespace")
 	name := mappingValue(metadata, "name")
 	return strings.Join([]string{apiVersion, kind, namespace, name}, "\x00")
+}
+
+// describeIdentity writes a resource's identity the way kubectl does, which is
+// how anyone reading it already expects to see it named. It is still unique:
+// none of kind, namespace or name can contain a space or a slash.
+func describeIdentity(node *yaml.Node) string {
+	root := node
+	if root.Kind == yaml.DocumentNode && len(root.Content) > 0 {
+		root = root.Content[0]
+	}
+	metadata := mappingNode(root, "metadata")
+	name := mappingValue(metadata, "name")
+	if namespace := mappingValue(metadata, "namespace"); namespace != "" {
+		name = namespace + "/" + name
+	}
+	return mappingValue(root, "kind") + " " + name
 }
 
 func mappingNode(node *yaml.Node, key string) *yaml.Node {

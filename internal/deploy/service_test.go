@@ -400,8 +400,15 @@ func TestRunManualSyncStopsAfterCommit(t *testing.T) {
 	if !strings.Contains(out, "syncs manually") {
 		t.Errorf("stdout should say the environment syncs manually:\n%s", out)
 	}
-	if !strings.Contains(out, "deploy sync") {
-		t.Errorf("stdout should name the follow-up command:\n%s", out)
+	// Both halves of the gate: read the rendered change, then apply it.
+	if !strings.Contains(out, "deploy diff") || !strings.Contains(out, "deploy sync") {
+		t.Errorf("stdout should name both follow-up commands:\n%s", out)
+	}
+	// The sha --revision wants. Without it the approver has to find the revision
+	// they are approving for themselves, and the guard goes unused.
+	pushed := gittest.Run(t, f.gitopsOrigin, "rev-parse", "main")
+	if !strings.Contains(out, "--revision "+pushed) {
+		t.Errorf("stdout should offer the pushed revision %s:\n%s", pushed, out)
 	}
 	// Committed all the same.
 	if !strings.Contains(gittest.Run(t, f.gitopsOrigin, "log", "-1", "--format=%s", "main"), "deploy(order-extractor)") {

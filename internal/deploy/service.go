@@ -177,8 +177,15 @@ func report(out output, plan *Plan, coord gitops.Coordinate, env gitops.Environm
 	// A manual-sync environment is gated in ArgoCD, so the commit is as far as
 	// a deploy can take it. Waiting would hang on a sync that never starts.
 	if env.Sync == gitops.SyncManual {
-		fmt.Fprintf(out.Stdout, "\ncommitted %s to %s. %s syncs manually — run 'intropy deploy sync %s --env %s' to apply it\n",
-			git.ShortSHA(revision), plan.Environment, plan.Environment, coord.Component, plan.Environment)
+		// Both commands, and the sha --revision wants. The gate is a second person
+		// reading the rendered change, and telling them only the command to apply it
+		// leaves them to find the revision they are approving for themselves.
+		fmt.Fprintf(out.Stdout, "\ncommitted %s to %s. %s syncs manually, so nothing is applied yet:\n"+
+			"  intropy deploy diff %s --env %s\n"+
+			"  intropy deploy sync %s --env %s --revision %s\n",
+			git.ShortSHA(revision), plan.Environment, plan.Environment,
+			coord.Component, plan.Environment,
+			coord.Component, plan.Environment, revision)
 		return nil
 	}
 

@@ -18,12 +18,13 @@ var NewArgoClient = func(opts argocd.Options) (ArgoClient, error) {
 }
 
 // ArgoClient is the part of the ArgoCD client this package needs: a deploy
-// waits, a promotion reads the source application's health, and a sync applies
-// a revision.
+// waits, a promotion reads the source application's health, a sync applies a
+// revision, and a diff renders two of them.
 type ArgoClient interface {
 	Get(ctx context.Context, app string) (*argocd.Application, error)
 	Sync(ctx context.Context, app, revision string) error
 	Wait(ctx context.Context, opts argocd.WaitOptions) (*argocd.Application, error)
+	Manifests(ctx context.Context, app, revision string) (*argocd.ManifestResponse, error)
 }
 
 // connect builds a client for the ArgoCD instance that reconciles this

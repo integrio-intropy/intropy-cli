@@ -171,6 +171,7 @@ intropy
 │   └── create                 Assemble scaffolded integrations into a system host
 ├── deploy <component>     Pin a component's image digest into an environment
 │   ├── promote <component>    Copy the digests one environment runs into another
+│   ├── diff <component>       Show the rendered change a sync would apply
 │   └── sync <component>       Apply an environment's pending change through ArgoCD
 ├── release                Publish and inspect immutable release manifests
 │   ├── create <component>     Publish a release manifest and push a git tag
@@ -394,8 +395,9 @@ After pushing, deploy waits for ArgoCD to apply the new revision and become
 healthy. `--no-wait` skips it and `--timeout` bounds it (default 5m).
 
 For an environment with `sync: manual`, deploy commits and stops without
-waiting — the gate is in ArgoCD, so it prints the `deploy sync` follow-up rather
-than waiting for a sync that will never start on its own.
+waiting — the gate is in ArgoCD, so it prints the `deploy diff` and `deploy sync`
+follow-up, with the revision to review, rather than waiting for a sync that will
+never start on its own.
 
 ### Are these the bits that were tested?
 
@@ -485,14 +487,74 @@ For a promotion, health is a precondition — and "I could not check" is not "it
 is fine". There is no override flag; clear `requireSourceHealthy` in
 `deploy.yaml` if that is really what you want.
 
-## The production gate (`intropy deploy sync`)
+## The production gate (`intropy deploy diff`, `intropy deploy sync`)
 
 An environment with `sync: manual` is applied by ArgoCD, not by pushing. A
-deploy or a promotion into it records intent and stops; this applies it:
+deploy or a promotion into it records intent and stops. A second person then
+reads what it would do, and applies it:
 
 ```sh
-intropy deploy sync order-extractor --env prod
+intropy deploy diff order-extractor --env prod    # review the rendered change
+intropy deploy sync order-extractor --env prod    # gated by ArgoCD RBAC
 ```
+
+### What am I approving? (`intropy deploy diff`)
+
+The diff is between the manifests as they render at the revision ArgoCD has
+applied, and at the revision `deploy sync` would apply next:
+
+```
+orders/order-flow/order-extractor → prod
+  pending  7c30d81  deploy(order-extractor): prod → 1.4.2
+           release 1.4.2, promoted from staging, source commit 197a3ae, by robin@example.com
+  synced   9a1f4c2  orders-order-flow-order-extractor-prod is OutOfSync and Healthy
+
+--- domains/orders/order-flow/order-extractor/overlays/prod @ 9a1f4c2 (running in prod)
++++ domains/orders/order-flow/order-extractor/overlays/prod @ 7c30d81 (will be applied)
+@@ -9,4 +9,4 @@
+     spec:
+       containers:
+         - name: app
+-          image: harbor.intropy.io/integrations/order-extractor@sha256:abc123abc123…
++          image: harbor.intropy.io/integrations/order-extractor@sha256:ad22d6f2ecbc…
+
+apply this with:
+  intropy deploy sync order-extractor --env prod --revision 7c30d81…
+```
+
+This is not `deploy --plan`. A plan diffs a hypothetical uncommitted edit against
+the current worktree, for the person writing the change, and holds everything the
+overlay refers to constant. Here both sides are commits, so everything between
+them counts — a base that moved, several deployments that stacked up unapplied,
+an environment that was never synced at all.
+
+**ArgoCD does the rendering.** The Application, not the overlay, is the whole
+input: `spec.source.kustomize` overrides and the installation's
+`kustomize.buildOptions` are invisible to a local `kustomize build`, and at an
+approval gate a diff that is not what gets applied is worse than no diff. ArgoCD
+must therefore be reachable — unlike a deploy, where it is an observation and the
+commit is the deployment, here its applied revision is an *input*, and a diff
+against a guessed baseline is not worth reading. Rendering needs only
+`applications, get`, which the approver about to sync already has.
+
+Three things it warns about, because each is a way the diff alone would mislead:
+
+| Situation | Why it matters |
+| --- | --- |
+| A resource the baseline renders and the pending revision does not | `sync` does not prune, so a resource shown as removed stays in the cluster |
+| The application is not `Synced` | Both sides come from git, so a change made with `kubectl` is invisible here — and applying will revert it |
+| ArgoCD holds the pending commit or a descendant | Syncing would render the tree as it stood then, reverting what came after |
+
+It also says so when the application renders a path other than the overlay whose
+history produced the pending revision, which usually means a hand-edited
+Application.
+
+A non-empty diff still exits 0 — this reports, it does not gate. The full sha is
+printed rather than the abbreviation, because `--revision` compares by prefix and
+an abbreviation only weakens the guard it is handed to. Nothing is written to git,
+and `kustomize` is not even required.
+
+### Applying it (`intropy deploy sync`)
 
 The revision synced is the commit that last changed that environment's overlay
 — not the branch head. Those are usually the same, but when they are not,
@@ -667,8 +729,12 @@ Progress goes to stderr and the diff to stdout, so `--plan` is pipeable. Use
 intropy deploy order-extractor --env dev --plan -o json | jq .appName
 ```
 
+`deploy diff` is the one command whose diff travels *inside* its JSON, as
+`.diff`, so `-o json` turns colour off however it was asked for — ANSI escapes in
+a JSON string are not a diff anyone can read.
+
 Exit codes: `0` success or no-op, `1` failure, `2` usage, `127` a required
-binary is missing, `130` interrupted.
+binary is missing, `130` interrupted. A non-empty diff is not a failure.
 
 ### What the overlay records
 
@@ -908,6 +974,7 @@ own; `deploy` holds the policy that combines them. Test fixtures live in
 | `intropy skills add` fails with "unauthorized" | Missing or expired registry credentials. | Run `docker login <registry>` or `gh auth login` (for `ghcr.io`) and retry. |
 | `intropy skills add --name <skill>` fails with "not found" | The skill name is not in any registered collection, or the collection cache is stale. | Run `intropy skills collection update <alias>` to refresh the cache, or install by full OCI ref. |
 | `skills.json` merge conflicts | Multiple contributors edited `skills.json` or `skills.lock.json` simultaneously. | Resolve the conflict manually (both files are plain JSON), then run `intropy skills list` to verify. |
+| `intropy deploy diff` fails to render a revision | The ArgoCD Application points at a different repository than the one being read, or the history it synced was rewritten. | Check the Application's `spec.source.repoURL` against `gitopsRepo`, and whether the revision it reports still exists. |
 | Windows native errors | Running the Linux binary directly on Windows without WSL. | Use WSL 2 — native Windows is not supported. |
 
 For issues not listed here, run the failing command with `--help` to verify flag usage, or open an issue with the output of `intropy version` and the exact command you ran.

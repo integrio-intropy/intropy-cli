@@ -96,6 +96,98 @@ func TestNormalizeRejectsMalformedYAML(t *testing.T) {
 	}
 }
 
+// The two documents above, as ArgoCD's render endpoint returns them: one JSON
+// document per resource, each on a single line.
+var renderedJSON = []string{
+	`{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"settings","namespace":"integrations"},"data":{"key":"value"}}`,
+	`{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"order-extractor","namespace":"integrations"},"spec":{"replicas":1}}`,
+}
+
+// JSON is valid YAML, but yaml.v3 remembers the flow style it decoded and would
+// re-encode each resource onto one line — unreadable, and a one-line diff for any
+// change anywhere in a resource.
+func TestNormalizeJSONEmitsBlockYAML(t *testing.T) {
+	out, err := NormalizeJSON(renderedJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(out)
+
+	if strings.Contains(text, `{"apiVersion"`) || strings.Contains(text, "{apiVersion:") {
+		t.Errorf("output should be block YAML, not flow style:\n%s", text)
+	}
+	if !strings.Contains(text, "metadata:\n  name: settings") {
+		t.Errorf("nested mappings should be indented block style:\n%s", text)
+	}
+	// Key order is the order the JSON carried, for the same reason Normalize
+	// preserves the authored order.
+	apiVersion := strings.Index(text, "apiVersion:")
+	kind := strings.Index(text, "kind:")
+	if !(apiVersion < kind) {
+		t.Errorf("keys were reordered:\n%s", text)
+	}
+}
+
+// Both sides of a review may be rendered by ArgoCD or read from a kustomize
+// build, so the two entry points have to agree on document order and shape.
+func TestNormalizeJSONMatchesNormalize(t *testing.T) {
+	fromJSON, err := NormalizeJSON(renderedJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromYAML, err := Normalize([]byte(twoDocsInOrder))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(fromJSON) != string(fromYAML) {
+		t.Errorf("the same resources should normalise identically:\n--- from JSON\n%s\n--- from YAML\n%s", fromJSON, fromYAML)
+	}
+}
+
+func TestNormalizeJSONHandlesNoDocuments(t *testing.T) {
+	out, err := NormalizeJSON(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 0 {
+		t.Errorf("nothing rendered should normalise to nothing, got %q", out)
+	}
+}
+
+// A caller comparing two renders reports the difference to someone, so the
+// identity has to be both unique and readable.
+func TestIdentitiesNamesResourcesTheWayKubectlDoes(t *testing.T) {
+	normalized, err := Normalize([]byte(twoDocsInOrder))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, err := Identities(normalized)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"Deployment integrations/order-extractor", "ConfigMap integrations/settings"}
+	if len(ids) != len(want) {
+		t.Fatalf("identities = %v, want %v", ids, want)
+	}
+	for i, w := range want {
+		if ids[i] != w {
+			t.Errorf("identities[%d] = %q, want %q", i, ids[i], w)
+		}
+	}
+}
+
+// A cluster-scoped resource has no namespace to qualify it.
+func TestIdentitiesOmitsAnAbsentNamespace(t *testing.T) {
+	ids, err := Identities([]byte("apiVersion: v1\nkind: Namespace\nmetadata:\n  name: integrations\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 1 || ids[0] != "Namespace integrations" {
+		t.Errorf("identities = %v, want [\"Namespace integrations\"]", ids)
+	}
+}
+
 func TestDiffIdenticalIsEmpty(t *testing.T) {
 	a, err := Normalize([]byte(twoDocsInOrder))
 	if err != nil {

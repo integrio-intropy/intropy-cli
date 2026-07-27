@@ -103,6 +103,16 @@ type Application struct {
 		Name      string `json:"name"`
 		Namespace string `json:"namespace"`
 	} `json:"metadata"`
+	Spec struct {
+		// Source.Path is the directory ArgoCD renders. Read only to notice that it
+		// is not the overlay whose history a caller is reasoning about; repoURL and
+		// targetRevision are deliberately not modelled, because comparing repo URLs
+		// means normalising ssh against https against a .git suffix, which
+		// false-positives more often than it catches anything.
+		Source struct {
+			Path string `json:"path"`
+		} `json:"source"`
+	} `json:"spec"`
 	Status struct {
 		Sync struct {
 			Status string `json:"status"`
@@ -160,6 +170,37 @@ func (c *Client) Sync(ctx context.Context, app, revision string) error {
 		return fmt.Errorf("encode sync request: %w", err)
 	}
 	return c.do(ctx, http.MethodPost, c.appURL(app, "/sync", nil), bytes.NewReader(encoded), nil)
+}
+
+// ManifestResponse is ArgoCD's rendered output for one revision. Each manifest is
+// a JSON document, which is the form the repo-server returns them in.
+type ManifestResponse struct {
+	Manifests []string `json:"manifests"`
+
+	// Revision is the revision ArgoCD resolved and rendered, which is worth
+	// reading back: asking for a branch or a tag returns the sha it pointed at.
+	Revision string `json:"revision"`
+}
+
+// Manifests asks ArgoCD to render the application at a revision.
+//
+// The render comes from ArgoCD rather than from a local kustomize build because
+// the Application, not the overlay, is the whole input: spec.source.kustomize
+// overrides and the installation's kustomize.buildOptions are invisible to a
+// local build, and a diff that omits them is not the change being approved.
+//
+// The revision must not be empty. ArgoCD reads that as "whatever the branch
+// holds", which for a caller comparing two revisions silently renders the same
+// tree twice.
+func (c *Client) Manifests(ctx context.Context, app, revision string) (*ManifestResponse, error) {
+	if revision == "" {
+		return nil, fmt.Errorf("render %s: no revision given", app)
+	}
+	var out ManifestResponse
+	if err := c.do(ctx, http.MethodGet, c.appURL(app, "/manifests", url.Values{"revision": {revision}}), nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // syncRequest is ArgoCD's ApplicationSyncRequest, narrowed to the fields this
