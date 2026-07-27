@@ -186,3 +186,191 @@ type failingRunner struct{}
 func (failingRunner) Run(context.Context, string, string, ...string) ([]byte, []byte, error) {
 	return nil, nil, errors.New("boom")
 }
+
+func TestCommitStagesNothingImplicitly(t *testing.T) {
+	dir := gittest.NewRepo(t, "main")
+	g := testClient(dir)
+	ctx := context.Background()
+
+	gittest.WriteFile(t, filepath.Join(dir, "staged.txt"), "in\n")
+	gittest.WriteFile(t, filepath.Join(dir, "unstaged.txt"), "out\n")
+	if err := g.Add(ctx, "staged.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Commit(ctx, "add staged"); err != nil {
+		t.Fatal(err)
+	}
+
+	// There is no -a, so the caller decides exactly what the commit contains.
+	files := gittest.Run(t, dir, "show", "--name-only", "--format=", "HEAD")
+	if strings.Contains(files, "unstaged.txt") {
+		t.Errorf("commit should contain only staged files, got:\n%s", files)
+	}
+	if !strings.Contains(files, "staged.txt") {
+		t.Errorf("commit is missing the staged file:\n%s", files)
+	}
+}
+
+// Each message becomes a paragraph, which is how a subject plus a trailer block
+// is produced without a temporary file.
+func TestCommitMessageParagraphsBecomeTrailers(t *testing.T) {
+	dir := gittest.NewRepo(t, "main")
+	g := testClient(dir)
+	ctx := context.Background()
+
+	gittest.WriteFile(t, filepath.Join(dir, "f.txt"), "x\n")
+	if err := g.Add(ctx, "f.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Commit(ctx, "subject line", "Key-One: first\nKey-Two: second"); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := gittest.Run(t, dir, "log", "-1", "--format=%s"); got != "subject line" {
+		t.Errorf("subject = %q", got)
+	}
+	trailers, err := g.Trailers(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(trailers) != 2 {
+		t.Fatalf("Trailers() = %+v, want 2", trailers)
+	}
+	if trailers[0].Key != "Key-One" || trailers[0].Value != "first" {
+		t.Errorf("trailers[0] = %+v", trailers[0])
+	}
+	if trailers[1].String() != "Key-Two: second" {
+		t.Errorf("trailers[1].String() = %q", trailers[1].String())
+	}
+}
+
+func TestCommitRequiresASubject(t *testing.T) {
+	if err := testClient(t.TempDir()).Commit(context.Background()); err == nil {
+		t.Fatal("Commit() with no message should fail")
+	}
+}
+
+func TestPushAndRejection(t *testing.T) {
+	origin := gittest.NewRepo(t, "main")
+	clone := filepath.Join(t.TempDir(), "clone")
+	ctx := context.Background()
+	if err := Clone(ctx, command.ExecRunner{}, origin, clone); err != nil {
+		t.Fatal(err)
+	}
+	gittest.Run(t, clone, "config", "user.email", "t@e.com")
+	gittest.Run(t, clone, "config", "user.name", "T")
+	gittest.Run(t, clone, "config", "commit.gpgsign", "false")
+	g := testClient(clone)
+
+	gittest.Commit(t, clone, "ours.txt", "ours\n", "our change")
+	if err := g.Push(ctx, "origin", "HEAD:main"); err != nil {
+		t.Fatalf("Push() = %v, want nil", err)
+	}
+
+	// Now diverge: the origin moves ahead and our next push must be rejected as
+	// a rejection specifically, so the caller knows a rebase can fix it.
+	gittest.Commit(t, origin, "theirs.txt", "theirs\n", "their change")
+	gittest.Commit(t, clone, "ours2.txt", "ours\n", "our second change")
+
+	err := g.Push(ctx, "origin", "HEAD:main")
+	if err == nil {
+		t.Fatal("expected the push to be rejected")
+	}
+	if _, ok := errors.AsType[*PushRejectedError](err); !ok {
+		t.Fatalf("error %v should be *PushRejectedError", err)
+	}
+}
+
+// An unreachable remote is not a rejection: retrying it cannot help, so it must
+// not be reported as something a rebase would fix.
+func TestPushUnreachableRemoteIsNotARejection(t *testing.T) {
+	dir := gittest.NewRepo(t, "main")
+	gittest.Run(t, dir, "remote", "add", "origin", filepath.Join(t.TempDir(), "absent"))
+
+	err := testClient(dir).Push(context.Background(), "origin", "HEAD:main")
+	if err == nil {
+		t.Fatal("expected a push failure")
+	}
+	if _, ok := errors.AsType[*PushRejectedError](err); ok {
+		t.Errorf("an unreachable remote should not be a *PushRejectedError: %v", err)
+	}
+}
+
+func TestRebaseReplaysCleanly(t *testing.T) {
+	origin := gittest.NewRepo(t, "main")
+	clone := filepath.Join(t.TempDir(), "clone")
+	ctx := context.Background()
+	if err := Clone(ctx, command.ExecRunner{}, origin, clone); err != nil {
+		t.Fatal(err)
+	}
+	gittest.Run(t, clone, "config", "user.email", "t@e.com")
+	gittest.Run(t, clone, "config", "user.name", "T")
+	gittest.Run(t, clone, "config", "commit.gpgsign", "false")
+	g := testClient(clone)
+
+	// Different files, so the replay cannot conflict.
+	gittest.Commit(t, origin, "theirs.txt", "theirs\n", "their change")
+	gittest.Commit(t, clone, "ours.txt", "ours\n", "our change")
+
+	if err := g.Fetch(ctx, "origin", "main"); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Rebase(ctx, "origin/main"); err != nil {
+		t.Fatalf("Rebase() = %v, want nil", err)
+	}
+	log := gittest.Run(t, clone, "log", "--format=%s")
+	if !strings.Contains(log, "our change") || !strings.Contains(log, "their change") {
+		t.Errorf("both commits should survive the rebase:\n%s", log)
+	}
+}
+
+func TestRebaseConflictIsTypedAndAbortable(t *testing.T) {
+	origin := gittest.NewRepo(t, "main")
+	clone := filepath.Join(t.TempDir(), "clone")
+	ctx := context.Background()
+	if err := Clone(ctx, command.ExecRunner{}, origin, clone); err != nil {
+		t.Fatal(err)
+	}
+	gittest.Run(t, clone, "config", "user.email", "t@e.com")
+	gittest.Run(t, clone, "config", "user.name", "T")
+	gittest.Run(t, clone, "config", "commit.gpgsign", "false")
+	g := testClient(clone)
+
+	// Both edit the same line of the same file.
+	gittest.Commit(t, origin, "shared.txt", "theirs\n", "their edit")
+	gittest.Commit(t, clone, "shared.txt", "ours\n", "our edit")
+
+	if err := g.Fetch(ctx, "origin", "main"); err != nil {
+		t.Fatal(err)
+	}
+	err := g.Rebase(ctx, "origin/main")
+	if err == nil {
+		t.Fatal("expected a rebase conflict")
+	}
+	if _, ok := errors.AsType[*RebaseConflictError](err); !ok {
+		t.Fatalf("error %v should be *RebaseConflictError", err)
+	}
+
+	// The rebase is left in progress deliberately — whether a conflict is
+	// recoverable is the caller's policy — so aborting must restore the state.
+	if err := g.RebaseAbort(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if status := gittest.Run(t, clone, "status", "--porcelain=2", "--branch"); strings.Contains(status, "rebase") {
+		t.Errorf("abort should have ended the rebase:\n%s", status)
+	}
+	if got := gittest.ReadFile(t, filepath.Join(clone, "shared.txt")); got != "ours\n" {
+		t.Errorf("shared.txt = %q, want our version restored", got)
+	}
+}
+
+func TestTrailersOnCommitWithout(t *testing.T) {
+	dir := gittest.NewRepo(t, "main")
+	trailers, err := testClient(dir).Trailers(context.Background(), "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(trailers) != 0 {
+		t.Errorf("Trailers() = %+v, want none", trailers)
+	}
+}

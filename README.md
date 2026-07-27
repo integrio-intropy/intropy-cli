@@ -338,7 +338,48 @@ intropy deploy order-extractor --env dev --plan
 ```
 
 `--plan` renders the overlay before and after the change and prints a diff
-without writing anything. Drop it to apply.
+without writing anything. Drop it to commit and push:
+
+```sh
+intropy deploy order-extractor --env dev
+```
+
+That stages only the overlay's `kustomization.yaml`, commits it with trailers
+recording what was deployed, and pushes to the GitOps repository's default
+branch. If someone else pushed first the push is rejected, and the commit is
+rebased onto their work and retried — up to five times, with jittered backoff.
+
+A rebase *conflict* means someone deployed the same component to the same
+environment in the same moment. That fails loudly and pushes nothing:
+auto-resolving would silently pick a winner and discard a deployment someone
+believes succeeded. Re-run to deploy on top of theirs.
+
+For an environment with `sync: manual`, deploy commits and stops — the gate is
+in ArgoCD, so it prints the `deploy sync` follow-up rather than waiting for a
+sync that will never start on its own.
+
+### Commit trailers
+
+Each deployment commit carries a machine-readable trailer block, readable with
+`git log --format='%(trailers:only=true)'`:
+
+```
+deploy(order-extractor): dev → sha256:ad22d6f2ecbc (197a3ae)
+
+Deploy-Component: order-extractor
+Deploy-Domain: orders
+Deploy-System: order-flow
+Deploy-Env: dev
+Deploy-Image: harbor.intropy.io/integrations/order-extractor
+Deploy-Digest: sha256:ad22d6f2ecbc03e79f…
+Deploy-Source-Commit: 197a3ae981068c375be77cb03e8c85e5ce304612
+Deploy-By: robin.hultman@integrio.se
+Deploy-Cli: intropy-cli/v0.8.0
+```
+
+The subject abbreviates the digest so a log stays readable; the trailer carries
+it in full. These keys are a format rather than prose — `deploy history` reads
+them back — so renaming one is a breaking change.
 
 ### Configuration
 

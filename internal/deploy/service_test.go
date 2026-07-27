@@ -286,3 +286,108 @@ func currentHEAD(t *testing.T, dir string) string {
 	}
 	return sha
 }
+
+// The apply path, end to end through Run: the change must reach the GitOps
+// origin, and the reported revision must be what landed there.
+func TestRunAppliesAndPushes(t *testing.T) {
+	f := newRunFixture(t)
+	stubDigest(t, testDigest)
+
+	var stdout, stderr bytes.Buffer
+	opts := f.options(&stdout, &stderr)
+	opts.OutputFormat = OutputJSON
+
+	if err := Run(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+
+	var res Result
+	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\n%s", err, stdout.String())
+	}
+	if !res.Applied {
+		t.Error("Applied should be true once the change is pushed")
+	}
+	if len(res.Revision) != 40 {
+		t.Errorf("Revision = %q, want a full sha", res.Revision)
+	}
+	if got := gittest.Run(t, f.gitopsOrigin, "rev-parse", "main"); got != res.Revision {
+		t.Errorf("origin/main = %q, want the reported revision %q", got, res.Revision)
+	}
+	if !strings.Contains(gittest.Run(t, f.gitopsOrigin, "log", "-1", "--format=%s", "main"), "deploy(order-extractor)") {
+		t.Error("the deployment commit is not on the origin")
+	}
+}
+
+// Re-running after a successful apply must be a no-op: the digest is already
+// pinned, so there is nothing to commit and no empty commit is created.
+func TestRunTwiceCreatesOneCommit(t *testing.T) {
+	f := newRunFixture(t)
+	stubDigest(t, testDigest)
+
+	var stdout, stderr bytes.Buffer
+	if err := Run(context.Background(), f.options(&stdout, &stderr)); err != nil {
+		t.Fatal(err)
+	}
+	after := gittest.Run(t, f.gitopsOrigin, "rev-list", "--count", "main")
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := Run(context.Background(), f.options(&stdout, &stderr)); err != nil {
+		t.Fatal(err)
+	}
+	if got := gittest.Run(t, f.gitopsOrigin, "rev-list", "--count", "main"); got != after {
+		t.Errorf("commit count went from %s to %s; the second run should be a no-op", after, got)
+	}
+	if !strings.Contains(stdout.String(), "already at") {
+		t.Errorf("the second run should report a no-op:\n%s", stdout.String())
+	}
+}
+
+// A manual-sync environment is gated in ArgoCD, so deploy commits but must not
+// wait for a sync that will never start on its own.
+func TestRunManualSyncStopsAfterCommit(t *testing.T) {
+	f := newRunFixture(t)
+	stubDigest(t, testDigest)
+
+	var stdout, stderr bytes.Buffer
+	opts := f.options(&stdout, &stderr)
+	opts.Environment = "prod"
+
+	if err := Run(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "syncs manually") {
+		t.Errorf("stdout should say the environment syncs manually:\n%s", out)
+	}
+	if !strings.Contains(out, "deploy sync") {
+		t.Errorf("stdout should name the follow-up command:\n%s", out)
+	}
+	// Committed all the same.
+	if !strings.Contains(gittest.Run(t, f.gitopsOrigin, "log", "-1", "--format=%s", "main"), "deploy(order-extractor)") {
+		t.Error("a manual-sync environment should still get the commit")
+	}
+}
+
+// --plan must write nothing, even now that the apply path exists.
+func TestRunPlanOnlyStillWritesNothing(t *testing.T) {
+	f := newRunFixture(t)
+	stubDigest(t, testDigest)
+	before := gittest.Run(t, f.gitopsOrigin, "rev-parse", "main")
+
+	var stdout, stderr bytes.Buffer
+	opts := f.options(&stdout, &stderr)
+	opts.PlanOnly = true
+	if err := Run(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := gittest.Run(t, f.gitopsOrigin, "rev-parse", "main"); got != before {
+		t.Errorf("origin/main moved to %q; --plan must not write", got)
+	}
+	root := gitops.CheckoutDir(f.cacheRoot, f.gitopsOrigin)
+	if dirty := gittest.Run(t, root, "status", "--porcelain"); dirty != "" {
+		t.Errorf("--plan must leave the checkout clean, got:\n%s", dirty)
+	}
+}

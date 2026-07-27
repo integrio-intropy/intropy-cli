@@ -5,6 +5,7 @@ import (
 	"github.com/integrio-intropy/intropy-cli/internal/command"
 	"github.com/integrio-intropy/intropy-cli/internal/gitops"
 	"github.com/integrio-intropy/intropy-cli/internal/gitops/gitopstest"
+	"github.com/integrio-intropy/intropy-cli/internal/gittest"
 	"github.com/integrio-intropy/intropy-cli/internal/kustomize"
 	"os/exec"
 	"strings"
@@ -286,4 +287,65 @@ func TestPlanRevertRestoresOverlay(t *testing.T) {
 	if len(dirty) != 0 {
 		t.Errorf("Revert should restore the overlay, got %v", dirty)
 	}
+}
+
+// coordFixture is the coordinate every fixture in this package uses.
+var coordFixture = gitops.Coordinate{Domain: "orders", System: "order-flow", Component: "order-extractor"}
+
+// repoFixture is a GitOps checkout with a pushable origin, for the publish
+// tests: they need to observe what actually landed on the remote.
+type repoFixture struct {
+	repo       *gitops.Repository
+	origin     string
+	image      string
+	overlayDir string
+	comp       *gitops.ComponentConfig
+}
+
+func newRepoFixture(t *testing.T) *repoFixture {
+	t.Helper()
+	requireKustomize(t)
+
+	image := "harbor.intropy.io/integrations/order-extractor"
+	origin := gitopstest.NewRepo(t, gitopstest.Component{
+		Coordinate:    coordFixture.String(),
+		Image:         image,
+		Environments:  []string{"dev", "prod"},
+		OverlayImages: "images:\n  - name: " + image + "\n    newTag: latest\n",
+	})
+
+	ctx := context.Background()
+	repo, err := gitops.Open(ctx, gitops.Options{URL: origin, Runner: command.ExecRunner{}, CacheRoot: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { repo.Close() })
+	// The checkout commits, so it needs an identity of its own.
+	gittest.Run(t, repo.Root, "config", "user.email", "deploy@example.com")
+	gittest.Run(t, repo.Root, "config", "user.name", "Deploy")
+	gittest.Run(t, repo.Root, "config", "commit.gpgsign", "false")
+
+	comp, err := gitops.LoadComponentConfig(gitops.JoinRel(repo.Root, coordFixture.RelPath()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	overlayDir, err := gitops.ResolveOverlay(repo.Root, coordFixture, comp, "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &repoFixture{repo: repo, origin: origin, image: image, overlayDir: overlayDir, comp: comp}
+}
+
+// buildPlan produces a real, applied plan: the overlay is edited on disk and
+// ready to commit.
+func (f *repoFixture) buildPlan(t *testing.T, digest string) *Plan {
+	t.Helper()
+	plan, err := BuildPlan(context.Background(), planOpts(f.repo, coordFixture, f.overlayDir, f.image, digest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Empty() {
+		t.Fatal("fixture plan is empty; there is nothing to publish")
+	}
+	return plan
 }

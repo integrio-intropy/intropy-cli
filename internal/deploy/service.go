@@ -109,25 +109,62 @@ func Run(ctx context.Context, opts Options) error {
 		return err
 	}
 
-	// Nothing here commits yet, so never leave the shared checkout dirty.
-	if !plan.Empty() {
-		defer func() {
-			if rerr := plan.Revert(ctx, repo); rerr != nil {
-				fmt.Fprintf(opts.Stderr, "warning: could not revert the overlay edit: %v\n", rerr)
-			}
-		}()
+	// An empty plan already reverted itself, and --plan must leave no trace, so
+	// only the apply path proceeds past here.
+	if plan.Empty() || opts.PlanOnly {
+		if opts.PlanOnly && !plan.Empty() {
+			defer func() {
+				if rerr := plan.Revert(ctx, repo); rerr != nil {
+					fmt.Fprintf(opts.Stderr, "warning: could not revert the overlay edit: %v\n", rerr)
+				}
+			}()
+		}
+		return report(opts, plan, coord, env, "")
 	}
 
-	return report(opts, plan, coord, env)
+	// Print the plan before writing anything, so the diff is on screen even if
+	// the push then fails. Not in JSON mode: there the encoded result is the
+	// program output, and a diff on the same stream would make it unparseable.
+	if opts.OutputFormat == OutputPlain {
+		reportPlan(opts, plan)
+	}
+
+	revision, err := Publish(ctx, PublishOptions{
+		Repository: repo,
+		Plan:       plan,
+		CliVersion: opts.UserAgent,
+		Stderr:     opts.Stderr,
+	})
+	if err != nil {
+		// Publish leaves nothing pushed on failure, but the local commit may
+		// exist; the checkout is hard-reset on the next run either way.
+		return err
+	}
+	fmt.Fprintf(opts.Stderr, "pushed %s to %s\n", revision[:7], repo.Branch)
+
+	return report(opts, plan, coord, env, revision)
 }
 
 func componentDir(root string, c gitops.Coordinate) string {
 	return gitops.JoinRel(root, c.RelPath())
 }
 
-func report(opts Options, plan *Plan, coord gitops.Coordinate, env gitops.EnvironmentConfig) error {
+// reportPlan writes the human summary and diff to stdout.
+func reportPlan(opts Options, plan *Plan) {
+	fmt.Fprint(opts.Stdout, plan.Summary())
+	if plan.ProvenanceOnly() {
+		// kustomize propagates commonAnnotations into pod templates, so this
+		// still restarts the pods. Say so rather than let it surprise anyone.
+		fmt.Fprintf(opts.Stdout, "\nno image digest changed; only the source-commit annotation moves.\nthis still restarts the pods, because kustomize applies commonAnnotations to pod templates.\n")
+	}
+	fmt.Fprintf(opts.Stdout, "\n%s", plan.Diff)
+}
+
+// report writes the final outcome. revision is the pushed sha, empty when
+// nothing was pushed.
+func report(opts Options, plan *Plan, coord gitops.Coordinate, env gitops.EnvironmentConfig, revision string) error {
 	if opts.OutputFormat == OutputJSON {
-		return writeJSON(opts, plan, coord, env)
+		return writeJSON(opts, plan, coord, env, revision)
 	}
 
 	if plan.Empty() {
@@ -136,24 +173,25 @@ func report(opts Options, plan *Plan, coord gitops.Coordinate, env gitops.Enviro
 		return nil
 	}
 
-	fmt.Fprint(opts.Stdout, plan.Summary())
-	if plan.ProvenanceOnly() {
-		// kustomize propagates commonAnnotations into pod templates, so this
-		// still restarts the pods. Say so rather than let it surprise anyone.
-		fmt.Fprintf(opts.Stdout, "\nno image digest changed; only the source-commit annotation moves.\nthis still restarts the pods, because kustomize applies commonAnnotations to pod templates.\n")
-	}
-	fmt.Fprintf(opts.Stdout, "\n%s", plan.Diff)
-
-	if opts.PlanOnly {
+	if revision == "" {
+		reportPlan(opts, plan)
 		fmt.Fprintf(opts.Stderr, "\nplan only: nothing was committed\n")
-	} else {
-		// Committing and pushing is not wired up in this step.
-		fmt.Fprintf(opts.Stderr, "\nthe overlay edit was reverted: committing and pushing is not implemented yet — use --plan to silence this\n")
+		return nil
 	}
+
+	// A manual-sync environment is gated in ArgoCD, so the commit is as far as
+	// a deploy can take it. Waiting would hang on a sync that never starts.
+	if env.Sync == gitops.SyncManual {
+		fmt.Fprintf(opts.Stdout, "\ncommitted %s to %s. %s syncs manually — run 'intropy deploy sync %s --env %s' to apply it\n",
+			revision[:7], plan.Environment, plan.Environment, coord.Component, plan.Environment)
+		return nil
+	}
+
+	fmt.Fprintf(opts.Stdout, "\ncommitted %s; ArgoCD will sync %s\n", revision[:7], coord.AppName(plan.Environment))
 	return nil
 }
 
-func writeJSON(opts Options, plan *Plan, coord gitops.Coordinate, env gitops.EnvironmentConfig) error {
+func writeJSON(opts Options, plan *Plan, coord gitops.Coordinate, env gitops.EnvironmentConfig, revision string) error {
 	res := Result{
 		Component:    coord.Component,
 		Domain:       coord.Domain,
@@ -163,7 +201,8 @@ func writeJSON(opts Options, plan *Plan, coord gitops.Coordinate, env gitops.Env
 		AppName:      coord.AppName(plan.Environment),
 		OverlayPath:  coord.OverlayRelPath(plan.Environment),
 		Changed:      !plan.Empty(),
-		Applied:      false,
+		Applied:      revision != "",
+		Revision:     revision,
 		SyncPolicy:   env.Sync,
 	}
 	for _, pin := range plan.Pins {

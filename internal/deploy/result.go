@@ -12,8 +12,15 @@ type Result struct {
 	OverlayPath  string      `json:"overlayPath"`
 	Pins         []ResultPin `json:"pins"`
 	Changed      bool        `json:"changed"`
-	Applied      bool        `json:"applied"`
-	SyncPolicy   string      `json:"syncPolicy"`
+
+	// Applied reports whether the change was committed and pushed.
+	Applied bool `json:"applied"`
+
+	// Revision is the sha that landed on the GitOps branch. Empty unless
+	// Applied. It is the post-rebase sha, which is what ArgoCD reports back.
+	Revision string `json:"revision,omitempty"`
+
+	SyncPolicy string `json:"syncPolicy"`
 }
 
 // ResultPin is one image's before and after state.
