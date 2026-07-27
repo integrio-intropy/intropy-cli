@@ -1,0 +1,82 @@
+package main
+
+import (
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/integrio-intropy/intropy-cli/internal/release"
+	"github.com/spf13/cobra"
+)
+
+type releaseCreateFlags struct {
+	version    string
+	ref        string
+	since      string
+	domain     string
+	system     string
+	gitopsRepo string
+	allowDirty bool
+	output     string
+}
+
+var releaseCreateOpts = releaseCreateFlags{output: release.OutputPlain}
+
+var releaseCreateCmd = &cobra.Command{
+	Use:   "create <component>",
+	Short: "Publish an immutable release manifest",
+	Long: "Resolve the image digests CI published for a commit and record them, with the commit and generated notes, " +
+		"as an immutable release manifest in the registry. An annotated git tag is pushed alongside it.\n\n" +
+		"This changes no environment. Whatever each environment was running, it still is — and because the version " +
+		"resolves the same commit, it resolves the same digests.\n\n" +
+		"Run it inside the component's source repository. The commit comes from HEAD, or from --ref, and must be " +
+		"pushed. Notes are generated from the commits since the previous release that this one descends from; on a " +
+		"first release there is no predecessor to measure against, and --since names a starting point explicitly.\n\n" +
+		"Re-running for a version that already exists is safe: an identical release is recognised and only a missing " +
+		"git tag is repaired. A different one is refused.",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeReleaseComponents,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := validateOutputFlag(releaseCreateOpts.output, release.OutputPlain, release.OutputJSON); err != nil {
+			return err
+		}
+		if releaseCreateOpts.version == "" {
+			return newUsageErrorf("--version is required")
+		}
+
+		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+
+		return release.Create(ctx, release.Options{
+			Component:    args[0],
+			Domain:       releaseCreateOpts.domain,
+			System:       releaseCreateOpts.system,
+			Version:      releaseCreateOpts.version,
+			Ref:          releaseCreateOpts.ref,
+			Since:        releaseCreateOpts.since,
+			GitopsRepo:   releaseCreateOpts.gitopsRepo,
+			AllowDirty:   releaseCreateOpts.allowDirty,
+			OutputFormat: releaseCreateOpts.output,
+			UserAgent:    "intropy-cli/" + version,
+			Stdout:       cmd.OutOrStdout(),
+			Stderr:       cmd.ErrOrStderr(),
+		})
+	},
+}
+
+func init() {
+	f := releaseCreateCmd.Flags()
+	f.StringVar(&releaseCreateOpts.version, "version", "", "version to publish (required)")
+	f.StringVar(&releaseCreateOpts.ref, "ref", "", "source revision to release (default: HEAD)")
+	f.StringVar(&releaseCreateOpts.since, "since", "", "start the changelog at this tag, commit or date instead of the previous release")
+	f.StringVar(&releaseCreateOpts.domain, "domain", "", "disambiguate the component by domain")
+	f.StringVar(&releaseCreateOpts.system, "system", "", "disambiguate the component by system")
+	f.StringVar(&releaseCreateOpts.gitopsRepo, "gitops-repo", "", "GitOps repository URL (default: gitopsRepo from config, or INTROPY_GITOPS_REPO)")
+	f.BoolVar(&releaseCreateOpts.allowDirty, "allow-dirty", false, "release despite uncommitted changes under the component's source paths")
+	f.StringVarP(&releaseCreateOpts.output, "output", "o", release.OutputPlain, "output format (plain, json)")
+
+	_ = releaseCreateCmd.MarkFlagRequired("version")
+	_ = releaseCreateCmd.RegisterFlagCompletionFunc("output", completeReleaseOutput)
+
+	releaseCmd.AddCommand(releaseCreateCmd)
+}

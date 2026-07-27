@@ -170,6 +170,9 @@ intropy
 ├── sys                    Manage integration systems
 │   └── create                 Assemble scaffolded integrations into a system host
 ├── deploy <component>     Pin a component's image digest into an environment
+├── release                Publish and inspect immutable release manifests
+│   ├── create <component>     Publish a release manifest and push a git tag
+│   └── view <component> <ver> Read a published release manifest
 ├── skills                 Manage Intropy skills
 │   ├── add [ref]              Add and install a skill from an OCI registry
 │   ├── list                   List installed skills
@@ -508,6 +511,34 @@ common annotations onto pod templates, so a deploy whose digest is unchanged but
 whose commit moved still restarts the pods. That is deliberate — an annotation
 named `source-commit` that did not track the source commit would be worse — and
 the plan says so explicitly when it is the only change.
+
+## Releases (`intropy release`)
+
+A release gives the images built for one source commit a durable version. It
+**does not deploy or change any environment**.
+
+### What happens
+
+For `intropy release create component-x --version 1.4.2`, the CLI:
+
+1. Verifies that `git` is available, then locks and refreshes its cached GitOps
+   checkout to find `component-x` and read its source paths and images.
+2. Checks that the relevant source paths are clean and that the commit to
+   release is pushed. The commit is `HEAD` by default; `--ref` selects another
+   pushed revision.
+3. Resolves the exact image digests CI built for that commit and generates notes
+   from the component-scoped commits since the closest ancestor release, or from
+   the explicit `--since` baseline.
+4. Publishes a versioned OCI release manifest containing the component, source
+   commit, image digests, notes, and their comparison basis. It does not update
+   any GitOps overlay.
+5. Creates and pushes the annotated Git tag `component-x/v1.4.2`. A tag-push
+   failure is a warning because the OCI manifest is the release; re-running can
+   repair a missing tag.
+
+Re-running for a version that already exists compares the intended manifest to
+the published one. An identical release is left in place and a missing Git tag
+is repaired; a different release is refused because versions are immutable.
 
 ## Skills (`intropy skills`)
 

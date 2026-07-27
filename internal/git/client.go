@@ -198,6 +198,74 @@ func (g Client) Commit(ctx context.Context, messages ...string) error {
 	return nil
 }
 
+// Tag creates an annotated tag at commit. Annotated rather than lightweight:
+// it carries the author, date and message that make the tag worth reading in
+// `git log`, which is the only reason the tag exists.
+//
+// Creating a tag that already exists is an error rather than a silent move —
+// a release tag that quietly relocates would misrepresent history.
+func (g Client) Tag(ctx context.Context, name, message, commit string) error {
+	if _, err := g.run(ctx, "tag", "--annotate", "--message", message, name, commit); err != nil {
+		return fmt.Errorf("tag %s: %w", name, err)
+	}
+	return nil
+}
+
+// TagCommit resolves an annotated or lightweight tag to the commit it points
+// at. The bool reports whether the tag exists locally at all, so a caller can
+// tell "no such tag" from a genuine failure to read it.
+func (g Client) TagCommit(ctx context.Context, name string) (string, bool, error) {
+	// ^{commit} dereferences an annotated tag to its commit; without it the
+	// answer would be the tag object's own sha, which never matches a commit.
+	sha, err := g.run(ctx, "rev-parse", "--verify", "--quiet", "refs/tags/"+name+"^{commit}")
+	if err == nil {
+		return sha, sha != "", nil
+	}
+	// --quiet makes an unknown ref exit 1 with no output, which is the answer
+	// rather than a failure.
+	if ee, ok := errors.AsType[*command.ExitError](err); ok && ee.Code == 1 {
+		return "", false, nil
+	}
+	return "", false, fmt.Errorf("resolve tag %s: %w", name, err)
+}
+
+// LogCommit is one commit in a range, reduced to what release notes need.
+type LogCommit struct {
+	SHA     string
+	Subject string
+}
+
+// Log lists the commits in revRange, most recent first, limited to paths when
+// any are given.
+//
+// The two fields are separated by a NUL and the records by a newline: a commit
+// subject may contain anything except a newline, so a printable delimiter
+// could appear inside one and split a record in the wrong place.
+func (g Client) Log(ctx context.Context, revRange string, paths ...string) ([]LogCommit, error) {
+	args := []string{"log", "--format=%H%x00%s", "--no-merges", revRange}
+	if len(paths) > 0 {
+		args = append(args, "--")
+		args = append(args, paths...)
+	}
+	out, err := g.run(ctx, args...)
+	if err != nil {
+		return nil, fmt.Errorf("read log for %s: %w", revRange, err)
+	}
+	if out == "" {
+		return nil, nil
+	}
+
+	var commits []LogCommit
+	for line := range strings.SplitSeq(out, "\n") {
+		sha, subject, ok := strings.Cut(line, "\x00")
+		if !ok {
+			continue
+		}
+		commits = append(commits, LogCommit{SHA: sha, Subject: subject})
+	}
+	return commits, nil
+}
+
 // Push pushes refspec to remote.
 //
 // A rejection is reported as *PushRejectedError so callers can rebase and retry,

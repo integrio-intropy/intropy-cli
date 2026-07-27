@@ -90,7 +90,7 @@ automated changelog generation.
 
 **Types:** `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
 
-**Scopes (common):** `int`, `skills`, `oci`, `template`, `cli`, `deps`
+**Scopes (common):** `int`, `skills`, `oci`, `template`, `deploy`, `release`, `cli`, `deps`
 
 **Examples:**
 
