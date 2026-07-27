@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/integrio-intropy/intropy-cli/internal/git"
+	"github.com/integrio-intropy/intropy-cli/internal/gitops"
 )
 
 // SourceState is what the source repository says about the commit being
@@ -21,7 +24,7 @@ type SourceState struct {
 }
 
 // ShortCommit abbreviates the commit for messages and commit subjects.
-func (s SourceState) ShortCommit() string { return short(s.Commit) }
+func (s SourceState) ShortCommit() string { return git.ShortSHA(s.Commit) }
 
 // InspectSource reads the state of the source repository at dir and checks
 // that its HEAD is a safe thing to deploy.
@@ -36,7 +39,7 @@ func (s SourceState) ShortCommit() string { return short(s.Commit) }
 // whole tree: these are monorepos holding many components, and an unrelated
 // dirty file elsewhere is no reason to refuse this deploy. allowDirty waives
 // the check but not the reporting.
-func InspectSource(ctx context.Context, g Git, sourcePaths []string, allowDirty bool) (SourceState, error) {
+func InspectSource(ctx context.Context, g git.Client, sourcePaths []string, allowDirty bool) (SourceState, error) {
 	var st SourceState
 
 	commit, err := g.HEAD(ctx)
@@ -54,7 +57,7 @@ func InspectSource(ctx context.Context, g Git, sourcePaths []string, allowDirty 
 		return st, &DirtyWorktreeError{Paths: sourcePaths, Changes: dirty}
 	}
 
-	branch, err := g.DefaultBranch(ctx, remoteName)
+	branch, err := g.DefaultBranch(ctx, gitops.RemoteName)
 	if err != nil {
 		return st, err
 	}
@@ -63,10 +66,10 @@ func InspectSource(ctx context.Context, g Git, sourcePaths []string, allowDirty 
 	// Fetch before reasoning about ancestry. A stale remote-tracking ref makes
 	// a commit that was pushed yesterday look unpushed, which is the most
 	// confusing possible version of this error.
-	if err := g.Fetch(ctx, remoteName, branch); err != nil {
+	if err := g.Fetch(ctx, gitops.RemoteName, branch); err != nil {
 		return st, err
 	}
-	remoteRef := remoteName + "/" + branch
+	remoteRef := gitops.RemoteName + "/" + branch
 	pushed, err := g.IsAncestor(ctx, commit, remoteRef)
 	if err != nil {
 		return st, err
@@ -106,5 +109,5 @@ type UnpushedCommitError struct {
 }
 
 func (e *UnpushedCommitError) Error() string {
-	return fmt.Sprintf("HEAD (%s) is not an ancestor of %s, so it has not been pushed; there is no image built from it yet — push first", short(e.Commit), e.Branch)
+	return fmt.Sprintf("HEAD (%s) is not an ancestor of %s, so it has not been pushed; there is no image built from it yet — push first", git.ShortSHA(e.Commit), e.Branch)
 }

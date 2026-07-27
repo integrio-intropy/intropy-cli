@@ -1,17 +1,9 @@
-// Package deploy pins a component's image digest into one environment's
-// kustomize overlay in a GitOps repository, commits the change, and waits for
-// ArgoCD to converge on it.
+// Package command runs external programs behind an interface.
 //
-// The GitOps repository is laid out by coordinate:
-//
-//	<repo>/deploy.yaml
-//	<repo>/domains/<domain>/<system>/<component>/component.yaml
-//	<repo>/domains/<domain>/<system>/<component>/base/
-//	<repo>/domains/<domain>/<system>/<component>/overlays/<env>/
-//
-// which mirrors the ApplicationSet git-directory generator that turns each
-// overlay into an ArgoCD Application named <domain>-<system>-<component>-<env>.
-package deploy
+// It exists so that callers of git and kustomize can be tested without either
+// binary present, and so that every subprocess in this repository is
+// context-aware by construction.
+package command
 
 import (
 	"bytes"

@@ -1,4 +1,8 @@
-package deploy
+// Package gitops models the GitOps repository: a cached, locked checkout of
+// it, the directory layout that locates a component, and the two contract
+// files (deploy.yaml and component.yaml) that describe what may be deployed
+// where.
+package gitops
 
 import (
 	"context"
@@ -11,12 +15,14 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/integrio-intropy/intropy-cli/internal/command"
 	"github.com/integrio-intropy/intropy-cli/internal/config"
+	"github.com/integrio-intropy/intropy-cli/internal/git"
 )
 
-// Worktree is a local clone of a GitOps repository, cached between runs and
+// Repository is a local clone of a GitOps repository, cached between runs and
 // held under an exclusive lock for the duration of one.
-type Worktree struct {
+type Repository struct {
 	// Root is the checkout directory.
 	Root string
 
@@ -26,20 +32,21 @@ type Worktree struct {
 	// Branch is the remote's default branch, the branch deploys land on.
 	Branch string
 
-	Git Git
+	Git git.Client
 
 	lock *os.File
 }
 
-const remoteName = "origin"
+// RemoteName is the remote deploys read from and push to.
+const RemoteName = "origin"
 
-// WorktreeOptions configures OpenWorktree.
-type WorktreeOptions struct {
+// Options configures Open.
+type Options struct {
 	// URL is the GitOps repository to clone. Required.
 	URL string
 
 	// Runner runs git. Defaults to ExecRunner.
-	Runner Runner
+	Runner command.Runner
 
 	// CacheRoot overrides where checkouts are cached. Defaults to
 	// <user cache dir>/intropy/gitops. Injectable so tests can redirect the
@@ -49,7 +56,7 @@ type WorktreeOptions struct {
 	CacheRoot string
 }
 
-// OpenWorktree returns a clean, up-to-date checkout of the GitOps repository.
+// Open returns a clean, up-to-date checkout of the GitOps repository.
 //
 // The checkout is cached and reused across runs, so a deploy does not pay for a
 // full clone every time. Because it is shared, three things are non-negotiable:
@@ -58,13 +65,13 @@ type WorktreeOptions struct {
 // through an edit must not be able to leak that edit into this one's commit.
 //
 // The caller must Close the result.
-func OpenWorktree(ctx context.Context, opts WorktreeOptions) (*Worktree, error) {
+func Open(ctx context.Context, opts Options) (*Repository, error) {
 	if opts.URL == "" {
 		return nil, errors.New("no GitOps repository URL")
 	}
 	r := opts.Runner
 	if r == nil {
-		r = ExecRunner{}
+		r = command.ExecRunner{}
 	}
 	url := opts.URL
 
@@ -75,7 +82,7 @@ func OpenWorktree(ctx context.Context, opts WorktreeOptions) (*Worktree, error) 
 			return nil, err
 		}
 	}
-	dir := worktreeDir(cacheRoot, url)
+	dir := CheckoutDir(cacheRoot, url)
 	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
 		return nil, fmt.Errorf("create cache directory: %w", err)
 	}
@@ -85,8 +92,8 @@ func OpenWorktree(ctx context.Context, opts WorktreeOptions) (*Worktree, error) 
 		return nil, err
 	}
 
-	wt := &Worktree{Root: dir, URL: url, lock: lock}
-	wt.Git = Git{Runner: r, Dir: dir}
+	wt := &Repository{Root: dir, URL: url, lock: lock}
+	wt.Git = git.Client{Runner: r, Dir: dir}
 
 	if err := wt.refresh(ctx, r); err != nil {
 		wt.Close()
@@ -95,7 +102,7 @@ func OpenWorktree(ctx context.Context, opts WorktreeOptions) (*Worktree, error) 
 	return wt, nil
 }
 
-func (w *Worktree) refresh(ctx context.Context, r Runner) error {
+func (w *Repository) refresh(ctx context.Context, r command.Runner) error {
 	if _, err := os.Stat(filepath.Join(w.Root, ".git")); err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("inspect %s: %w", w.Root, err)
@@ -105,31 +112,31 @@ func (w *Worktree) refresh(ctx context.Context, r Runner) error {
 		if err := os.RemoveAll(w.Root); err != nil {
 			return fmt.Errorf("clear %s: %w", w.Root, err)
 		}
-		if err := Clone(ctx, r, w.URL, w.Root); err != nil {
+		if err := git.Clone(ctx, r, w.URL, w.Root); err != nil {
 			return err
 		}
 	}
 
-	branch, err := w.Git.DefaultBranch(ctx, remoteName)
+	branch, err := w.Git.DefaultBranch(ctx, RemoteName)
 	if err != nil {
 		return err
 	}
 	w.Branch = branch
 
-	if err := w.Git.Fetch(ctx, remoteName, branch); err != nil {
+	if err := w.Git.Fetch(ctx, RemoteName, branch); err != nil {
 		return err
 	}
 	// Hard reset, not pull: the cache has no local history worth preserving,
 	// and a merge could leave conflict markers in a file we are about to
 	// commit.
-	if err := w.Git.ResetHard(ctx, remoteName+"/"+branch); err != nil {
+	if err := w.Git.ResetHard(ctx, RemoteName+"/"+branch); err != nil {
 		return err
 	}
 	return w.Git.Clean(ctx)
 }
 
 // Close releases the lock. The checkout itself is deliberately kept.
-func (w *Worktree) Close() error {
+func (w *Repository) Close() error {
 	if w.lock == nil {
 		return nil
 	}
@@ -149,13 +156,13 @@ func defaultCacheRoot() (string, error) {
 	return filepath.Join(base, "intropy", "gitops"), nil
 }
 
-// CachedWorktreeRoot returns the existing cached checkout for the configured
-// GitOps repository.
+// CachedRoot returns the existing cached checkout for the configured GitOps
+// repository.
 //
 // It never clones or fetches. This backs shell completion, which has to be
 // instant and must not touch the network — an unconfigured or not-yet-cloned
 // repository simply yields no suggestions.
-func CachedWorktreeRoot(gitopsRepoOverride string) (string, error) {
+func CachedRoot(gitopsRepoOverride string) (string, error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return "", err
@@ -168,18 +175,18 @@ func CachedWorktreeRoot(gitopsRepoOverride string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	dir := worktreeDir(cacheRoot, url)
+	dir := CheckoutDir(cacheRoot, url)
 	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
 		return "", fmt.Errorf("no cached checkout of %s yet", url)
 	}
 	return dir, nil
 }
 
-// worktreeDir derives a stable cache path from the remote URL. The URL is
+// CheckoutDir derives a stable cache path from the remote URL. The URL is
 // hashed rather than sanitised because the same repository can be named several
 // ways (SSH, HTTPS, with or without .git) and because URLs contain characters
 // that are awkward in paths.
-func worktreeDir(cacheRoot, url string) string {
+func CheckoutDir(cacheRoot, url string) string {
 	sum := sha256.Sum256([]byte(url))
 	return filepath.Join(cacheRoot, hex.EncodeToString(sum[:])[:16])
 }

@@ -1,4 +1,4 @@
-package deploy
+package gitops
 
 import (
 	"errors"
@@ -6,24 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-)
 
-const validDeployYAML = `schemaVersion: 1
-registry: harbor.intropy.io
-argocd:
-  server: argocd.intropy.io
-  appNamespace: customer-fluxia
-environments:
-  dev:
-    sync: auto
-  staging:
-    sync: auto
-    promotesFrom: [dev]
-  prod:
-    sync: manual
-    promotesFrom: [staging]
-    requireSourceHealthy: true
-`
+	"github.com/integrio-intropy/intropy-cli/internal/gitops/gitopstest"
+	"github.com/integrio-intropy/intropy-cli/internal/gittest"
+)
 
 const validComponentYAML = `schemaVersion: 1
 name: order-extractor
@@ -36,12 +22,12 @@ environments: [dev, staging, prod]
 
 func writeDeployYAML(t *testing.T, root, content string) {
 	t.Helper()
-	writeFile(t, filepath.Join(root, DeployFileName), content)
+	gittest.WriteFile(t, filepath.Join(root, DeployFileName), content)
 }
 
 func TestLoadDeployConfig(t *testing.T) {
 	root := t.TempDir()
-	writeDeployYAML(t, root, validDeployYAML)
+	writeDeployYAML(t, root, gitopstest.DeployYAML)
 
 	cfg, err := LoadDeployConfig(root)
 	if err != nil {
@@ -90,7 +76,7 @@ func TestLoadDeployConfigMissingFile(t *testing.T) {
 
 func TestUnknownEnvironmentListsWhatExists(t *testing.T) {
 	root := t.TempDir()
-	writeDeployYAML(t, root, validDeployYAML)
+	writeDeployYAML(t, root, gitopstest.DeployYAML)
 	cfg, err := LoadDeployConfig(root)
 	if err != nil {
 		t.Fatal(err)
@@ -197,7 +183,7 @@ func TestScratchFlagIsCarried(t *testing.T) {
 
 func TestLoadComponentConfig(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, ComponentFileName), validComponentYAML)
+	gittest.WriteFile(t, filepath.Join(dir, ComponentFileName), validComponentYAML)
 
 	cfg, err := LoadComponentConfig(dir)
 	if err != nil {
@@ -238,7 +224,7 @@ func TestImageNameAcceptsRegistryPort(t *testing.T) {
 
 	// And the full validation path accepts a ported registry.
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, ComponentFileName),
+	gittest.WriteFile(t, filepath.Join(dir, ComponentFileName),
 		"schemaVersion: 1\nname: c\nimages: [{name: 'localhost:5555/integrations/c'}]\nenvironments: [dev]\n")
 	if _, err := LoadComponentConfig(dir); err != nil {
 		t.Errorf("a registry with an explicit port should be accepted: %v", err)
@@ -285,7 +271,7 @@ func TestLoadComponentConfigRejections(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			writeFile(t, filepath.Join(dir, ComponentFileName), tc.yaml)
+			gittest.WriteFile(t, filepath.Join(dir, ComponentFileName), tc.yaml)
 			_, err := LoadComponentConfig(dir)
 			if err == nil {
 				t.Fatalf("expected an error mentioning %q", tc.wantErr)

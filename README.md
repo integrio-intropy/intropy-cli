@@ -549,11 +549,27 @@ tooling, and the CLI will pick up the credentials transparently.
 ## Project layout
 
 ```
-cmd/intropy/         Cobra command wiring (one file per command)
-internal/template/  Template download, validation, describe, render
-internal/skill/      skills.json/lockfile, install/update/add, collection cache
-internal/skill/oci/  OCI client wrappers, pack/push/pull, references
+cmd/intropy/          Cobra command wiring (one file per command)
+
+internal/template/    Template download, validation, describe, render
+internal/skill/       skills.json/lockfile, install/update/add, collection cache
+internal/skill/oci/    OCI policy wrapper over internal/registry
+internal/system/      System-host assembly and C# code generation
+
+internal/config/      Per-user configuration (~/.config/intropy/config.yaml)
+internal/command/     Runner seam over exec.CommandContext
+internal/git/         Typed wrapper over the git binary
+internal/kustomize/   kustomize edit/build, manifest normalisation and diffing
+internal/registry/    Generic OCI registry client
+internal/gitops/      GitOps repository: cached checkout, layout, contract files
+internal/deploy/      Deployment orchestration over the packages above
 ```
+
+The lower group is layered: `command` depends on nothing, `git` and `kustomize`
+on `command`, `gitops` on `git` and `config`, and `deploy` on all of them. Each
+generic package is usable on its own; `deploy` holds the policy that combines
+them. Test fixtures live in `internal/gittest`, `internal/gitops/gitopstest`
+and `internal/registry/registrytest`.
 
 ## Exit codes
 

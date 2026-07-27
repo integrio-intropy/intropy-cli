@@ -3,6 +3,9 @@ package deploy
 import (
 	"context"
 	"errors"
+	"github.com/integrio-intropy/intropy-cli/internal/command"
+	"github.com/integrio-intropy/intropy-cli/internal/git"
+	"github.com/integrio-intropy/intropy-cli/internal/gittest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,33 +14,28 @@ import (
 // newSourceClone creates an origin repository and a clone of it, returning the
 // clone. Source checks reason about the remote, so a clone with a real origin is
 // the minimum honest fixture.
-func newSourceClone(t *testing.T) (clone, origin string) {
-	t.Helper()
-	origin = newRepo(t, "main")
-	// Allow pushing to the checked-out branch of a non-bare origin.
-	runGit(t, origin, "config", "receive.denyCurrentBranch", "ignore")
-
-	clone = filepath.Join(t.TempDir(), "src")
-	if err := Clone(context.Background(), ExecRunner{}, origin, clone); err != nil {
-		t.Fatal(err)
-	}
-	runGit(t, clone, "config", "user.email", "test@example.com")
-	runGit(t, clone, "config", "user.name", "Test")
-	runGit(t, clone, "config", "commit.gpgsign", "false")
-	return clone, origin
+// sourceGit builds a client rooted at a source repository.
+func sourceGit(dir string) git.Client {
+	return git.Client{Runner: command.ExecRunner{}, Dir: dir}
 }
 
-func commitInto(t *testing.T, dir, path, content, message string) {
+func newSourceClone(t *testing.T) (clone, origin string) {
 	t.Helper()
-	writeFile(t, filepath.Join(dir, path), content)
-	runGit(t, dir, "add", ".")
-	runGit(t, dir, "commit", "--quiet", "-m", message)
+	origin = gittest.NewRepo(t, "main")
+	clone = filepath.Join(t.TempDir(), "src")
+	if err := git.Clone(context.Background(), command.ExecRunner{}, origin, clone); err != nil {
+		t.Fatal(err)
+	}
+	gittest.Run(t, clone, "config", "user.email", "test@example.com")
+	gittest.Run(t, clone, "config", "user.name", "Test")
+	gittest.Run(t, clone, "config", "commit.gpgsign", "false")
+	return clone, origin
 }
 
 func TestInspectSourceCleanAndPushed(t *testing.T) {
 	clone, _ := newSourceClone(t)
 
-	st, err := InspectSource(context.Background(), testGit(clone), []string{"component"}, false)
+	st, err := InspectSource(context.Background(), sourceGit(clone), []string{"component"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,9 +55,9 @@ func TestInspectSourceCleanAndPushed(t *testing.T) {
 
 func TestInspectSourceRefusesDirtyComponent(t *testing.T) {
 	clone, _ := newSourceClone(t)
-	writeFile(t, filepath.Join(clone, "component", "app.cs"), "// uncommitted\n")
+	gittest.WriteFile(t, filepath.Join(clone, "component", "app.cs"), "// uncommitted\n")
 
-	_, err := InspectSource(context.Background(), testGit(clone), []string{"component"}, false)
+	_, err := InspectSource(context.Background(), sourceGit(clone), []string{"component"}, false)
 	if err == nil {
 		t.Fatal("expected a dirty-worktree error")
 	}
@@ -79,10 +77,10 @@ func TestInspectSourceRefusesDirtyComponent(t *testing.T) {
 // and an unrelated dirty file is no reason to refuse this component's deploy.
 func TestInspectSourceIgnoresDirtFilesOutsideSourcePaths(t *testing.T) {
 	clone, _ := newSourceClone(t)
-	writeFile(t, filepath.Join(clone, "other-component", "app.cs"), "// someone else's work\n")
-	writeFile(t, filepath.Join(clone, "scratch.txt"), "notes\n")
+	gittest.WriteFile(t, filepath.Join(clone, "other-component", "app.cs"), "// someone else's work\n")
+	gittest.WriteFile(t, filepath.Join(clone, "scratch.txt"), "notes\n")
 
-	st, err := InspectSource(context.Background(), testGit(clone), []string{"component"}, false)
+	st, err := InspectSource(context.Background(), sourceGit(clone), []string{"component"}, false)
 	if err != nil {
 		t.Fatalf("dirt outside sourcePaths should not block a deploy: %v", err)
 	}
@@ -93,9 +91,9 @@ func TestInspectSourceIgnoresDirtFilesOutsideSourcePaths(t *testing.T) {
 
 func TestInspectSourceAllowDirtyStillReports(t *testing.T) {
 	clone, _ := newSourceClone(t)
-	writeFile(t, filepath.Join(clone, "component", "app.cs"), "// uncommitted\n")
+	gittest.WriteFile(t, filepath.Join(clone, "component", "app.cs"), "// uncommitted\n")
 
-	st, err := InspectSource(context.Background(), testGit(clone), []string{"component"}, true)
+	st, err := InspectSource(context.Background(), sourceGit(clone), []string{"component"}, true)
 	if err != nil {
 		t.Fatalf("--allow-dirty should waive the check: %v", err)
 	}
@@ -107,9 +105,9 @@ func TestInspectSourceAllowDirtyStillReports(t *testing.T) {
 
 func TestInspectSourceRefusesUnpushedCommit(t *testing.T) {
 	clone, _ := newSourceClone(t)
-	commitInto(t, clone, "component/app.cs", "// local only\n", "local work")
+	gittest.Commit(t, clone, "component/app.cs", "// local only\n", "local work")
 
-	_, err := InspectSource(context.Background(), testGit(clone), []string{"component"}, false)
+	_, err := InspectSource(context.Background(), sourceGit(clone), []string{"component"}, false)
 	if err == nil {
 		t.Fatal("expected an unpushed-commit error")
 	}
@@ -126,19 +124,19 @@ func TestInspectSourceRefusesUnpushedCommit(t *testing.T) {
 // fetches first, so a stale origin/main must not produce a false negative.
 func TestInspectSourceFetchesBeforeCheckingAncestry(t *testing.T) {
 	clone, _ := newSourceClone(t)
-	g := testGit(clone)
+	g := sourceGit(clone)
 	ctx := context.Background()
 
 	stale, err := g.HEAD(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	commitInto(t, clone, "component/app.cs", "// pushed\n", "pushed work")
-	runGit(t, clone, "push", "--quiet", "origin", "main")
+	gittest.Commit(t, clone, "component/app.cs", "// pushed\n", "pushed work")
+	gittest.Run(t, clone, "push", "--quiet", "origin", "main")
 
 	// Rewind the remote-tracking ref to simulate a clone that has not fetched
 	// since the push.
-	runGit(t, clone, "update-ref", "refs/remotes/origin/main", stale)
+	gittest.Run(t, clone, "update-ref", "refs/remotes/origin/main", stale)
 
 	st, err := InspectSource(ctx, g, []string{"component"}, false)
 	if err != nil {
@@ -157,9 +155,9 @@ func TestInspectSourceFetchesBeforeCheckingAncestry(t *testing.T) {
 // checking nothing, which would defeat the purpose of the check.
 func TestInspectSourceNoSourcePathsChecksWholeTree(t *testing.T) {
 	clone, _ := newSourceClone(t)
-	writeFile(t, filepath.Join(clone, "anywhere.txt"), "dirty\n")
+	gittest.WriteFile(t, filepath.Join(clone, "anywhere.txt"), "dirty\n")
 
-	_, err := InspectSource(context.Background(), testGit(clone), nil, false)
+	_, err := InspectSource(context.Background(), sourceGit(clone), nil, false)
 	if err == nil {
 		t.Fatal("with no source paths the whole tree should be checked")
 	}

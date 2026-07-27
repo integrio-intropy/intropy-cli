@@ -1,4 +1,4 @@
-package deploy
+package gitops
 
 import (
 	"errors"
@@ -217,8 +217,8 @@ func listOverlays(root string, c Coordinate) []string {
 	return out
 }
 
-// joinRel joins a slash-separated repository-relative path onto a filesystem
+// JoinRel joins a slash-separated repository-relative path onto a filesystem
 // root.
-func joinRel(root, rel string) string {
+func JoinRel(root, rel string) string {
 	return filepath.Join(root, filepath.FromSlash(rel))
 }

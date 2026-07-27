@@ -1,103 +1,22 @@
+// Package deploy orchestrates a deployment: it resolves which image digest a
+// commit produced, pins it into one environment's overlay in the GitOps
+// repository, and reports what changed.
+//
+// The mechanics live in narrower packages — command, git, gitops, kustomize and
+// registry — and this package is the policy that combines them.
 package deploy
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"os"
 
+	"github.com/integrio-intropy/intropy-cli/internal/command"
 	"github.com/integrio-intropy/intropy-cli/internal/config"
+	"github.com/integrio-intropy/intropy-cli/internal/git"
+	"github.com/integrio-intropy/intropy-cli/internal/gitops"
+	"github.com/integrio-intropy/intropy-cli/internal/kustomize"
 )
-
-// Options configures Run.
-type Options struct {
-	// Component is the component name; Domain and System disambiguate it when
-	// the name occurs more than once.
-	Component string
-	Domain    string
-	System    string
-
-	// Environment is the target environment. Required.
-	Environment string
-
-	// GitopsRepo overrides the configured GitOps repository URL.
-	GitopsRepo string
-
-	// SourceDir is the source repository to read HEAD from; defaults to the
-	// working directory.
-	SourceDir string
-
-	// PlanOnly stops after the diff, writing nothing to git.
-	PlanOnly bool
-
-	// AllowDirty permits uncommitted changes under the component's sourcePaths.
-	AllowDirty bool
-
-	// OutputFormat is "plain" or "json".
-	OutputFormat string
-
-	// Color enables ANSI colour in the diff.
-	Color bool
-
-	// CacheRoot overrides where GitOps checkouts are cached.
-	CacheRoot string
-
-	Runner    Runner
-	UserAgent string
-	Stdout    io.Writer
-	Stderr    io.Writer
-}
-
-// Result is the machine-readable outcome. Field names are stable and
-// additive-only.
-type Result struct {
-	Component    string      `json:"component"`
-	Domain       string      `json:"domain"`
-	System       string      `json:"system"`
-	Environment  string      `json:"environment"`
-	SourceCommit string      `json:"sourceCommit"`
-	AppName      string      `json:"appName"`
-	OverlayPath  string      `json:"overlayPath"`
-	Pins         []ResultPin `json:"pins"`
-	Changed      bool        `json:"changed"`
-	Applied      bool        `json:"applied"`
-	SyncPolicy   string      `json:"syncPolicy"`
-}
-
-// ResultPin is one image's before and after state.
-type ResultPin struct {
-	Image    string `json:"image"`
-	Previous string `json:"previous,omitempty"`
-	Digest   string `json:"digest"`
-	Tag      string `json:"tag"`
-}
-
-const (
-	OutputPlain = "plain"
-	OutputJSON  = "json"
-)
-
-func (o *Options) applyDefaults() {
-	if o.Runner == nil {
-		o.Runner = ExecRunner{}
-	}
-	if o.SourceDir == "" {
-		o.SourceDir = "."
-	}
-	if o.OutputFormat == "" {
-		o.OutputFormat = OutputPlain
-	}
-	if o.UserAgent == "" {
-		o.UserAgent = "intropy-cli"
-	}
-	if o.Stdout == nil {
-		o.Stdout = os.Stdout
-	}
-	if o.Stderr == nil {
-		o.Stderr = os.Stderr
-	}
-}
 
 // Run resolves the component's digest for the current commit and pins it into
 // one environment's overlay.
@@ -110,7 +29,7 @@ func Run(ctx context.Context, opts Options) error {
 
 	// Fail before touching the network or the cache if the tools are absent:
 	// discovering a missing kustomize after cloning wastes the user's time.
-	if err := RequireBinaries("git", "kustomize"); err != nil {
+	if err := command.RequireBinaries("git", "kustomize"); err != nil {
 		return err
 	}
 
@@ -125,13 +44,13 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	fmt.Fprintf(opts.Stderr, "refreshing %s\n", repoURL)
-	wt, err := OpenWorktree(ctx, WorktreeOptions{URL: repoURL, Runner: opts.Runner, CacheRoot: opts.CacheRoot})
+	repo, err := gitops.Open(ctx, gitops.Options{URL: repoURL, Runner: opts.Runner, CacheRoot: opts.CacheRoot})
 	if err != nil {
 		return err
 	}
-	defer wt.Close()
+	defer repo.Close()
 
-	deployCfg, err := LoadDeployConfig(wt.Root)
+	deployCfg, err := gitops.LoadDeployConfig(repo.Root)
 	if err != nil {
 		return err
 	}
@@ -140,21 +59,21 @@ func Run(ctx context.Context, opts Options) error {
 		return err
 	}
 
-	coord, err := FindComponent(wt.Root, opts.Component, opts.Domain, opts.System)
+	coord, err := gitops.FindComponent(repo.Root, opts.Component, opts.Domain, opts.System)
 	if err != nil {
 		return err
 	}
-	compDir := componentDir(wt.Root, coord)
-	comp, err := LoadComponentConfig(compDir)
+	compDir := componentDir(repo.Root, coord)
+	comp, err := gitops.LoadComponentConfig(compDir)
 	if err != nil {
 		return err
 	}
-	overlayDir, err := ResolveOverlay(wt.Root, coord, comp, opts.Environment)
+	overlayDir, err := gitops.ResolveOverlay(repo.Root, coord, comp, opts.Environment)
 	if err != nil {
 		return err
 	}
 
-	source, err := InspectSource(ctx, Git{Runner: opts.Runner, Dir: opts.SourceDir}, comp.SourcePaths, opts.AllowDirty)
+	source, err := InspectSource(ctx, git.Client{Runner: opts.Runner, Dir: opts.SourceDir}, comp.SourcePaths, opts.AllowDirty)
 	if err != nil {
 		return err
 	}
@@ -172,13 +91,13 @@ func Run(ctx context.Context, opts Options) error {
 		return err
 	}
 
-	palette := PlainPalette
+	palette := kustomize.PlainPalette
 	if opts.Color {
-		palette = ColorPalette
+		palette = kustomize.ColorPalette
 	}
 	plan, err := BuildPlan(ctx, PlanOptions{
-		Worktree:    wt,
-		Kustomize:   Kustomize{Runner: opts.Runner},
+		Repository:  repo,
+		Kustomize:   kustomize.Client{Runner: opts.Runner},
 		Coordinate:  coord,
 		Environment: opts.Environment,
 		Source:      source,
@@ -193,7 +112,7 @@ func Run(ctx context.Context, opts Options) error {
 	// Nothing here commits yet, so never leave the shared checkout dirty.
 	if !plan.Empty() {
 		defer func() {
-			if rerr := plan.Revert(ctx, wt); rerr != nil {
+			if rerr := plan.Revert(ctx, repo); rerr != nil {
 				fmt.Fprintf(opts.Stderr, "warning: could not revert the overlay edit: %v\n", rerr)
 			}
 		}()
@@ -202,11 +121,11 @@ func Run(ctx context.Context, opts Options) error {
 	return report(opts, plan, coord, env)
 }
 
-func componentDir(root string, c Coordinate) string {
-	return joinRel(root, c.RelPath())
+func componentDir(root string, c gitops.Coordinate) string {
+	return gitops.JoinRel(root, c.RelPath())
 }
 
-func report(opts Options, plan *Plan, coord Coordinate, env EnvironmentConfig) error {
+func report(opts Options, plan *Plan, coord gitops.Coordinate, env gitops.EnvironmentConfig) error {
 	if opts.OutputFormat == OutputJSON {
 		return writeJSON(opts, plan, coord, env)
 	}
@@ -234,7 +153,7 @@ func report(opts Options, plan *Plan, coord Coordinate, env EnvironmentConfig) e
 	return nil
 }
 
-func writeJSON(opts Options, plan *Plan, coord Coordinate, env EnvironmentConfig) error {
+func writeJSON(opts Options, plan *Plan, coord gitops.Coordinate, env gitops.EnvironmentConfig) error {
 	res := Result{
 		Component:    coord.Component,
 		Domain:       coord.Domain,

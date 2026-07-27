@@ -1,4 +1,7 @@
-package deploy
+// Package kustomize drives the kustomize binary and reads the parts of a
+// kustomization file the deployment commands care about, plus the normalisation
+// and diffing that make two renders comparable.
+package kustomize
 
 import (
 	"context"
@@ -6,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/integrio-intropy/intropy-cli/internal/command"
 	"gopkg.in/yaml.v3"
 )
 
@@ -13,19 +17,17 @@ import (
 // looks for them.
 var KustomizationFileNames = []string{"kustomization.yaml", "kustomization.yml", "Kustomization"}
 
-// Annotation keys written into the overlay. Both are read back by `deploy
-// status` and `deploy history`.
-const (
-	AnnotationSourceCommit = "deploy.internal/source-commit"
-)
+// AnnotationSourceCommit records which source commit an overlay was pinned
+// from. Read back by `deploy status` and `deploy history`.
+const AnnotationSourceCommit = "deploy.internal/source-commit"
 
-// Kustomize drives the kustomize binary against an overlay directory.
-type Kustomize struct {
-	Runner Runner
+// Client drives the kustomize binary against an overlay directory.
+type Client struct {
+	Runner command.Runner
 }
 
 // Build renders the overlay and returns the manifest stream.
-func (k Kustomize) Build(ctx context.Context, dir string) ([]byte, error) {
+func (k Client) Build(ctx context.Context, dir string) ([]byte, error) {
 	stdout, _, err := k.Runner.Run(ctx, dir, "kustomize", "build", ".")
 	if err != nil {
 		return nil, fmt.Errorf("kustomize build %s: %w", dir, err)
@@ -38,7 +40,7 @@ func (k Kustomize) Build(ctx context.Context, dir string) ([]byte, error) {
 // kustomize rewrites the overlay's images[] entry, replacing any newTag with a
 // digest field — which is what makes this the right tool rather than a hand
 // edit: it also handles the entry not existing yet.
-func (k Kustomize) SetImage(ctx context.Context, dir, image, digest string) error {
+func (k Client) SetImage(ctx context.Context, dir, image, digest string) error {
 	if _, _, err := k.Runner.Run(ctx, dir, "kustomize", "edit", "set", "image", image+"@"+digest); err != nil {
 		return fmt.Errorf("pin %s: %w", image, err)
 	}
@@ -53,7 +55,7 @@ func (k Kustomize) SetImage(ctx context.Context, dir, image, digest string) erro
 // digest is unchanged. That is deliberate: an annotation named source-commit
 // which does not track the source commit would be worse than a rollout, so
 // callers announce a provenance-only change rather than suppress it.
-func (k Kustomize) SetAnnotation(ctx context.Context, dir, key, value string) error {
+func (k Client) SetAnnotation(ctx context.Context, dir, key, value string) error {
 	if _, _, err := k.Runner.Run(ctx, dir, "kustomize", "edit", "set", "annotation", key+":"+value); err != nil {
 		return fmt.Errorf("set annotation %s: %w", key, err)
 	}

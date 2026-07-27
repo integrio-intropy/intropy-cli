@@ -2,8 +2,11 @@ package deploy
 
 import (
 	"context"
+	"github.com/integrio-intropy/intropy-cli/internal/command"
+	"github.com/integrio-intropy/intropy-cli/internal/gitops"
+	"github.com/integrio-intropy/intropy-cli/internal/gitops/gitopstest"
+	"github.com/integrio-intropy/intropy-cli/internal/kustomize"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -15,92 +18,59 @@ func requireKustomize(t *testing.T) {
 	}
 }
 
-const baseDeployment = `apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: order-extractor
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: order-extractor
-  template:
-    metadata:
-      labels:
-        app: order-extractor
-    spec:
-      containers:
-        - name: app
-          image: IMAGE:latest
-`
-
-// planFixture builds a GitOps repository containing one component whose base
-// references image, with the overlay pinned as given.
-func planFixture(t *testing.T, image, overlayImages string) (wt *Worktree, coord Coordinate, comp *ComponentConfig, overlayDir string) {
+// planFixture opens a GitOps repository holding one component whose base
+// references image, with the dev overlay pinned as given.
+func planFixture(t *testing.T, image, overlayImages string) (*gitops.Repository, gitops.Coordinate, *gitops.ComponentConfig, string) {
 	t.Helper()
 	requireKustomize(t)
 
-	origin := t.TempDir()
-	runGit(t, origin, "init", "--quiet", "--initial-branch=main")
-	runGit(t, origin, "config", "user.email", "test@example.com")
-	runGit(t, origin, "config", "user.name", "Test")
-	runGit(t, origin, "config", "commit.gpgsign", "false")
-
-	coord = Coordinate{Domain: "orders", System: "order-flow", Component: "order-extractor"}
-	compRel := filepath.FromSlash(coord.RelPath())
-
-	writeFile(t, filepath.Join(origin, DeployFileName), validDeployYAML)
-	writeFile(t, filepath.Join(origin, compRel, ComponentFileName),
-		"schemaVersion: 1\nname: order-extractor\nsourcePaths: [src/]\nimages:\n  - name: "+image+"\nenvironments: [dev, prod]\n")
-	writeFile(t, filepath.Join(origin, compRel, "base", "deployment.yaml"),
-		strings.ReplaceAll(baseDeployment, "IMAGE", image))
-	writeFile(t, filepath.Join(origin, compRel, "base", "kustomization.yaml"),
-		"apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nresources:\n  - deployment.yaml\n")
-	writeFile(t, filepath.Join(origin, compRel, OverlaysDirName, "dev", "kustomization.yaml"),
-		"apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nnamespace: integrations\nresources:\n  - ../../base\n"+overlayImages)
-
-	runGit(t, origin, "add", ".")
-	runGit(t, origin, "commit", "--quiet", "-m", "onboard order-extractor")
+	coord := gitops.Coordinate{Domain: "orders", System: "order-flow", Component: "order-extractor"}
+	origin := gitopstest.NewRepo(t, gitopstest.Component{
+		Coordinate:    coord.String(),
+		Image:         image,
+		Environments:  []string{"dev", "prod"},
+		OverlayImages: overlayImages,
+	})
 
 	ctx := context.Background()
-	wt, err := OpenWorktree(ctx, WorktreeOptions{URL: origin, Runner: ExecRunner{}, CacheRoot: t.TempDir()})
+	repo, err := gitops.Open(ctx, gitops.Options{URL: origin, Runner: command.ExecRunner{}, CacheRoot: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { wt.Close() })
+	t.Cleanup(func() { repo.Close() })
 
-	comp, err = LoadComponentConfig(filepath.Join(wt.Root, compRel))
+	comp, err := gitops.LoadComponentConfig(gitops.JoinRel(repo.Root, coord.RelPath()))
 	if err != nil {
 		t.Fatal(err)
 	}
-	overlayDir, err = ResolveOverlay(wt.Root, coord, comp, "dev")
+	overlayDir, err := gitops.ResolveOverlay(repo.Root, coord, comp, "dev")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return wt, coord, comp, overlayDir
+	return repo, coord, comp, overlayDir
 }
 
 const testDigest = "sha256:abc123abc123abc123abc123abc123abc123abc123abc123abc123abc123abcd"
 
-func planOpts(wt *Worktree, coord Coordinate, overlayDir, image, digest string) PlanOptions {
+func planOpts(repo *gitops.Repository, coord gitops.Coordinate, overlayDir, image, digest string) PlanOptions {
 	return PlanOptions{
-		Worktree:    wt,
-		Kustomize:   Kustomize{Runner: ExecRunner{}},
+		Repository:  repo,
+		Kustomize:   kustomize.Client{Runner: command.ExecRunner{}},
 		Coordinate:  coord,
 		Environment: "dev",
 		Source:      SourceState{Commit: testCommit, Branch: "main"},
 		Pins:        []Pin{{Image: image, Digest: digest, Tag: CommitTag(testCommit)}},
 		OverlayDir:  overlayDir,
-		Palette:     PlainPalette,
+		Palette:     kustomize.PlainPalette,
 	}
 }
 
 func TestBuildPlanPinsTagToDigest(t *testing.T) {
 	image := "harbor.intropy.io/integrations/order-extractor"
-	wt, coord, _, overlayDir := planFixture(t, image,
+	repo, coord, _, overlayDir := planFixture(t, image,
 		"images:\n  - name: "+image+"\n    newTag: latest\n")
 
-	plan, err := BuildPlan(context.Background(), planOpts(wt, coord, overlayDir, image, testDigest))
+	plan, err := BuildPlan(context.Background(), planOpts(repo, coord, overlayDir, image, testDigest))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +89,7 @@ func TestBuildPlanPinsTagToDigest(t *testing.T) {
 	if !strings.Contains(plan.Diff, testDigest) {
 		t.Errorf("diff should show the new digest:\n%s", plan.Diff)
 	}
-	if !strings.Contains(plan.Diff, AnnotationSourceCommit) {
+	if !strings.Contains(plan.Diff, kustomize.AnnotationSourceCommit) {
 		t.Errorf("diff should show the source-commit annotation:\n%s", plan.Diff)
 	}
 	if !strings.Contains(plan.Summary(), ":latest") || !strings.Contains(plan.Summary(), testDigest) {
@@ -131,10 +101,10 @@ func TestBuildPlanPinsTagToDigest(t *testing.T) {
 // shared checkout untouched so the next run starts from a known state.
 func TestBuildPlanAlreadyPinnedIsEmptyAndReverts(t *testing.T) {
 	image := "harbor.intropy.io/integrations/order-extractor"
-	wt, coord, _, overlayDir := planFixture(t, image,
-		"images:\n  - name: "+image+"\n    digest: "+testDigest+"\ncommonAnnotations:\n  "+AnnotationSourceCommit+": "+testCommit+"\n")
+	repo, coord, _, overlayDir := planFixture(t, image,
+		"images:\n  - name: "+image+"\n    digest: "+testDigest+"\ncommonAnnotations:\n  "+kustomize.AnnotationSourceCommit+": "+testCommit+"\n")
 
-	plan, err := BuildPlan(context.Background(), planOpts(wt, coord, overlayDir, image, testDigest))
+	plan, err := BuildPlan(context.Background(), planOpts(repo, coord, overlayDir, image, testDigest))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +112,7 @@ func TestBuildPlanAlreadyPinnedIsEmptyAndReverts(t *testing.T) {
 		t.Errorf("expected an empty plan, got diff:\n%s", plan.Diff)
 	}
 
-	dirty, err := wt.Git.Status(context.Background())
+	dirty, err := repo.Git.Status(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,10 +127,10 @@ func TestBuildPlanAlreadyPinnedIsEmptyAndReverts(t *testing.T) {
 func TestBuildPlanProvenanceOnlyChange(t *testing.T) {
 	image := "harbor.intropy.io/integrations/order-extractor"
 	previousCommit := "0123456789abcdef0123456789abcdef01234567"
-	wt, coord, _, overlayDir := planFixture(t, image,
-		"images:\n  - name: "+image+"\n    digest: "+testDigest+"\ncommonAnnotations:\n  "+AnnotationSourceCommit+": "+previousCommit+"\n")
+	repo, coord, _, overlayDir := planFixture(t, image,
+		"images:\n  - name: "+image+"\n    digest: "+testDigest+"\ncommonAnnotations:\n  "+kustomize.AnnotationSourceCommit+": "+previousCommit+"\n")
 
-	plan, err := BuildPlan(context.Background(), planOpts(wt, coord, overlayDir, image, testDigest))
+	plan, err := BuildPlan(context.Background(), planOpts(repo, coord, overlayDir, image, testDigest))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,10 +154,10 @@ func TestBuildPlanProvenanceOnlyChange(t *testing.T) {
 // the render is unchanged, and "already at that digest" would be a lie.
 func TestBuildPlanRejectsInertPin(t *testing.T) {
 	// The base references a different repository than component.yaml declares.
-	wt, coord, _, overlayDir := planFixture(t, "harbor.intropy.io/integrations/something-else", "")
+	repo, coord, _, overlayDir := planFixture(t, "harbor.intropy.io/integrations/something-else", "")
 
 	unmatched := "harbor.intropy.io/integrations/order-extractor"
-	_, err := BuildPlan(context.Background(), planOpts(wt, coord, overlayDir, unmatched, testDigest))
+	_, err := BuildPlan(context.Background(), planOpts(repo, coord, overlayDir, unmatched, testDigest))
 	if err == nil {
 		t.Fatal("expected an error: the pin cannot affect the rendered output")
 	}
@@ -199,7 +169,7 @@ func TestBuildPlanRejectsInertPin(t *testing.T) {
 	}
 
 	// And the failed attempt must not leave the checkout dirty.
-	dirty, err := wt.Git.Status(context.Background())
+	dirty, err := repo.Git.Status(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,12 +188,12 @@ func TestBuildPlanRejectsInertPinWhenDigestExistsElsewhere(t *testing.T) {
 	declared := "harbor.intropy.io/integrations/unreferenced"
 
 	// The base uses `referenced`, already pinned to testDigest.
-	wt, coord, _, overlayDir := planFixture(t, referenced,
+	repo, coord, _, overlayDir := planFixture(t, referenced,
 		"images:\n  - name: "+referenced+"\n    digest: "+testDigest+"\n")
 
 	// component.yaml declares an image the base never mentions, resolving to
 	// the same digest that is already present in the render.
-	_, err := BuildPlan(context.Background(), planOpts(wt, coord, overlayDir, declared, testDigest))
+	_, err := BuildPlan(context.Background(), planOpts(repo, coord, overlayDir, declared, testDigest))
 	if err == nil {
 		t.Fatal("expected an error: the pin cannot affect the rendered output even though the digest appears in it")
 	}
@@ -243,10 +213,10 @@ func TestBuildPlanSetImageReplacesNewNameRewrite(t *testing.T) {
 	declared := "harbor.intropy.io/integrations/order-extractor"
 	rewritten := "mirror.example.com/integrations/order-extractor"
 
-	wt, coord, _, overlayDir := planFixture(t, declared,
+	repo, coord, _, overlayDir := planFixture(t, declared,
 		"images:\n  - name: "+declared+"\n    newName: "+rewritten+"\n    newTag: latest\n")
 
-	plan, err := BuildPlan(context.Background(), planOpts(wt, coord, overlayDir, declared, testDigest))
+	plan, err := BuildPlan(context.Background(), planOpts(repo, coord, overlayDir, declared, testDigest))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +224,7 @@ func TestBuildPlanSetImageReplacesNewNameRewrite(t *testing.T) {
 		t.Errorf("the pin should render under the declared name:\n%s", plan.Diff)
 	}
 
-	edited, _, err := ReadKustomization(overlayDir)
+	edited, _, err := kustomize.ReadKustomization(overlayDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,9 +241,9 @@ func TestBuildPlanSetImageReplacesNewNameRewrite(t *testing.T) {
 // repositories; the pin has to work there as long as the base matches.
 func TestBuildPlanAddsMissingImagesEntry(t *testing.T) {
 	image := "harbor.intropy.io/integrations/order-extractor"
-	wt, coord, _, overlayDir := planFixture(t, image, "")
+	repo, coord, _, overlayDir := planFixture(t, image, "")
 
-	plan, err := BuildPlan(context.Background(), planOpts(wt, coord, overlayDir, image, testDigest))
+	plan, err := BuildPlan(context.Background(), planOpts(repo, coord, overlayDir, image, testDigest))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,15 +260,15 @@ func TestBuildPlanAddsMissingImagesEntry(t *testing.T) {
 
 func TestPlanRevertRestoresOverlay(t *testing.T) {
 	image := "harbor.intropy.io/integrations/order-extractor"
-	wt, coord, _, overlayDir := planFixture(t, image,
+	repo, coord, _, overlayDir := planFixture(t, image,
 		"images:\n  - name: "+image+"\n    newTag: latest\n")
 	ctx := context.Background()
 
-	plan, err := BuildPlan(ctx, planOpts(wt, coord, overlayDir, image, testDigest))
+	plan, err := BuildPlan(ctx, planOpts(repo, coord, overlayDir, image, testDigest))
 	if err != nil {
 		t.Fatal(err)
 	}
-	dirty, err := wt.Git.Status(ctx)
+	dirty, err := repo.Git.Status(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,64 +276,14 @@ func TestPlanRevertRestoresOverlay(t *testing.T) {
 		t.Fatal("a non-empty plan should leave the overlay edited")
 	}
 
-	if err := plan.Revert(ctx, wt); err != nil {
+	if err := plan.Revert(ctx, repo); err != nil {
 		t.Fatal(err)
 	}
-	dirty, err = wt.Git.Status(ctx)
+	dirty, err = repo.Git.Status(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(dirty) != 0 {
 		t.Errorf("Revert should restore the overlay, got %v", dirty)
-	}
-}
-
-func TestReadKustomization(t *testing.T) {
-	image := "harbor.intropy.io/integrations/order-extractor"
-	wt, coord, _, overlayDir := planFixture(t, image,
-		"images:\n  - name: "+image+"\n    newTag: v1.2.3\ncommonAnnotations:\n  "+AnnotationSourceCommit+": deadbeef\n")
-	_ = wt
-	_ = coord
-
-	k, path, err := ReadKustomization(overlayDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if filepath.Base(path) != "kustomization.yaml" {
-		t.Errorf("path = %q", path)
-	}
-	img, ok := k.FindImage(image)
-	if !ok {
-		t.Fatalf("FindImage(%s) not found in %+v", image, k.Images)
-	}
-	if img.NewTag != "v1.2.3" || img.Pinned() != ":v1.2.3" {
-		t.Errorf("image = %+v, Pinned() = %q", img, img.Pinned())
-	}
-	if k.CommonAnnotations[AnnotationSourceCommit] != "deadbeef" {
-		t.Errorf("CommonAnnotations = %v", k.CommonAnnotations)
-	}
-}
-
-func TestKustomizationPathMissing(t *testing.T) {
-	if _, err := KustomizationPath(t.TempDir()); err == nil {
-		t.Fatal("expected an error for a directory with no kustomization file")
-	}
-}
-
-func TestKustomizeImagePinned(t *testing.T) {
-	cases := []struct {
-		img  KustomizeImage
-		want string
-	}{
-		{KustomizeImage{Digest: "sha256:abc"}, "sha256:abc"},
-		{KustomizeImage{NewTag: "1.2.3"}, ":1.2.3"},
-		{KustomizeImage{}, "(unpinned)"},
-		// A digest wins over a tag, matching how kustomize resolves them.
-		{KustomizeImage{Digest: "sha256:abc", NewTag: "1.2.3"}, "sha256:abc"},
-	}
-	for _, tc := range cases {
-		if got := tc.img.Pinned(); got != tc.want {
-			t.Errorf("Pinned(%+v) = %q, want %q", tc.img, got, tc.want)
-		}
 	}
 }

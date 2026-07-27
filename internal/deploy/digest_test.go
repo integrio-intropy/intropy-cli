@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/integrio-intropy/intropy-cli/internal/gitops"
 	"github.com/integrio-intropy/intropy-cli/internal/registry"
 	"github.com/integrio-intropy/intropy-cli/internal/registry/registrytest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -43,12 +44,12 @@ func testImageArtifact(title string) registry.Artifact {
 	}
 }
 
-func componentWithImages(names ...string) *ComponentConfig {
-	imgs := make([]ImageRef, 0, len(names))
+func componentWithImages(names ...string) *gitops.ComponentConfig {
+	imgs := make([]gitops.ImageRef, 0, len(names))
 	for _, n := range names {
-		imgs = append(imgs, ImageRef{Name: n})
+		imgs = append(imgs, gitops.ImageRef{Name: n})
 	}
-	return &ComponentConfig{SchemaVersion: 1, Name: "order-extractor", Images: imgs, Environments: []string{"dev"}}
+	return &gitops.ComponentConfig{SchemaVersion: 1, Name: "order-extractor", Images: imgs, Environments: []string{"dev"}}
 }
 
 func TestCommitTag(t *testing.T) {

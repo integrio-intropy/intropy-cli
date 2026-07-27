@@ -5,13 +5,16 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	"github.com/integrio-intropy/intropy-cli/internal/gitops"
+	"github.com/integrio-intropy/intropy-cli/internal/kustomize"
 )
 
 // Plan is the outcome of editing an overlay and comparing the render before and
 // after. It is produced without writing to git, so it is safe to build and
 // discard.
 type Plan struct {
-	Coordinate  Coordinate
+	Coordinate  gitops.Coordinate
 	Environment string
 	Source      SourceState
 
@@ -64,14 +67,14 @@ func (p *Plan) Summary() string {
 
 // PlanOptions configures BuildPlan.
 type PlanOptions struct {
-	Worktree    *Worktree
-	Kustomize   Kustomize
-	Coordinate  Coordinate
+	Repository  *gitops.Repository
+	Kustomize   kustomize.Client
+	Coordinate  gitops.Coordinate
 	Environment string
 	Source      SourceState
 	Pins        []Pin
 	OverlayDir  string
-	Palette     Palette
+	Palette     kustomize.Palette
 }
 
 // BuildPlan edits the overlay, renders before and after, and diffs them.
@@ -83,7 +86,7 @@ type PlanOptions struct {
 func BuildPlan(ctx context.Context, opts PlanOptions) (*Plan, error) {
 	overlayRel := opts.Coordinate.OverlayRelPath(opts.Environment)
 
-	current, kustPath, err := ReadKustomization(opts.OverlayDir)
+	current, kustPath, err := kustomize.ReadKustomization(opts.OverlayDir)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +110,7 @@ func BuildPlan(ctx context.Context, opts PlanOptions) (*Plan, error) {
 	if err != nil {
 		return nil, err
 	}
-	beforeNorm, err := Normalize(before)
+	beforeNorm, err := kustomize.Normalize(before)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +127,7 @@ func BuildPlan(ctx context.Context, opts PlanOptions) (*Plan, error) {
 	}
 
 	revert := func() error {
-		return opts.Worktree.Git.CheckoutPaths(ctx, overlayRel)
+		return opts.Repository.Git.CheckoutPaths(ctx, overlayRel)
 	}
 
 	if err := applyEdits(ctx, opts); err != nil {
@@ -135,7 +138,7 @@ func BuildPlan(ctx context.Context, opts PlanOptions) (*Plan, error) {
 	if err != nil {
 		return nil, withRevert(err, revert)
 	}
-	afterNorm, err := Normalize(after)
+	afterNorm, err := kustomize.Normalize(after)
 	if err != nil {
 		return nil, withRevert(err, revert)
 	}
@@ -149,7 +152,7 @@ func BuildPlan(ctx context.Context, opts PlanOptions) (*Plan, error) {
 		return nil, withRevert(err, revert)
 	}
 
-	plan.Diff = Diff(beforeNorm, afterNorm, overlayRel+" (current)", overlayRel+" (planned)", opts.Palette)
+	plan.Diff = kustomize.Diff(beforeNorm, afterNorm, overlayRel+" (current)", overlayRel+" (planned)", opts.Palette)
 
 	// Nothing to commit, so leave the checkout as we found it.
 	if plan.Empty() {
@@ -166,7 +169,7 @@ func applyEdits(ctx context.Context, opts PlanOptions) error {
 			return err
 		}
 	}
-	return opts.Kustomize.SetAnnotation(ctx, opts.OverlayDir, AnnotationSourceCommit, opts.Source.Commit)
+	return opts.Kustomize.SetAnnotation(ctx, opts.OverlayDir, kustomize.AnnotationSourceCommit, opts.Source.Commit)
 }
 
 // assertPinsRendered checks that every pin reached the rendered output as the
@@ -196,8 +199,8 @@ func assertPinsRendered(rendered []byte, pins []Pin) error {
 
 // Revert discards the overlay edits. Callers use it when they decide not to
 // commit after building a plan.
-func (p *Plan) Revert(ctx context.Context, wt *Worktree) error {
-	return wt.Git.CheckoutPaths(ctx, p.Coordinate.OverlayRelPath(p.Environment))
+func (p *Plan) Revert(ctx context.Context, repo *gitops.Repository) error {
+	return repo.Git.CheckoutPaths(ctx, p.Coordinate.OverlayRelPath(p.Environment))
 }
 
 // RelKustomizationPath returns the modified file relative to the repository

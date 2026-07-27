@@ -6,6 +6,7 @@ import (
 	"syscall"
 
 	"github.com/integrio-intropy/intropy-cli/internal/deploy"
+	"github.com/integrio-intropy/intropy-cli/internal/gitops"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -78,13 +79,13 @@ func completeDeployComponents(cmd *cobra.Command, args []string, toComplete stri
 	if len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	root, err := deploy.CachedWorktreeRoot(deployFlagValues.gitopsRepo)
+	root, err := gitops.CachedRoot(deployFlagValues.gitopsRepo)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 	seen := map[string]bool{}
 	var names []string
-	for _, c := range deploy.ListComponents(root) {
+	for _, c := range gitops.ListComponents(root) {
 		if !seen[c.Component] {
 			seen[c.Component] = true
 			names = append(names, c.Component)
@@ -96,11 +97,11 @@ func completeDeployComponents(cmd *cobra.Command, args []string, toComplete stri
 // completeDeployEnvironments suggests environments from the GitOps
 // repository's deploy.yaml.
 func completeDeployEnvironments(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	root, err := deploy.CachedWorktreeRoot(deployFlagValues.gitopsRepo)
+	root, err := gitops.CachedRoot(deployFlagValues.gitopsRepo)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	cfg, err := deploy.LoadDeployConfig(root)
+	cfg, err := gitops.LoadDeployConfig(root)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}

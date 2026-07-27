@@ -1,27 +1,31 @@
-package deploy
+// Package git wraps the git binary with the operations the deployment
+// commands need. It is deliberately narrow: only what is used, and nothing
+// that would tempt a caller into arbitrary git.
+package git
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/integrio-intropy/intropy-cli/internal/command"
 )
 
-// Git is a typed wrapper over the git binary rooted at a working directory.
-// Only the operations this package needs are exposed.
-type Git struct {
-	Runner Runner
+// Client is a typed wrapper over the git binary rooted at a working directory.
+type Client struct {
+	Runner command.Runner
 	Dir    string
 }
 
-func (g Git) run(ctx context.Context, args ...string) (string, error) {
+func (g Client) run(ctx context.Context, args ...string) (string, error) {
 	stdout, _, err := g.Runner.Run(ctx, g.Dir, "git", args...)
 	return strings.TrimSpace(string(stdout)), err
 }
 
 // HEAD returns the full commit sha of HEAD. Full, not abbreviated: an
 // abbreviated sha is ambiguous as a registry tag and as an ancestry argument.
-func (g Git) HEAD(ctx context.Context) (string, error) {
+func (g Client) HEAD(ctx context.Context) (string, error) {
 	sha, err := g.run(ctx, "rev-parse", "HEAD")
 	if err != nil {
 		return "", fmt.Errorf("resolve HEAD: %w", err)
@@ -36,7 +40,7 @@ func (g Git) HEAD(ctx context.Context) (string, error) {
 // directory: these lines are shown to the user when a deploy is refused, and
 // "component/" is a much less useful answer than the files that are actually
 // uncommitted.
-func (g Git) Status(ctx context.Context, paths ...string) ([]string, error) {
+func (g Client) Status(ctx context.Context, paths ...string) ([]string, error) {
 	args := []string{"status", "--porcelain", "--untracked-files=all"}
 	if len(paths) > 0 {
 		args = append(args, "--")
@@ -55,7 +59,7 @@ func (g Git) Status(ctx context.Context, paths ...string) ([]string, error) {
 // Fetch updates remote-tracking refs. Callers that are about to reason about
 // ancestry must fetch first: a stale origin/<branch> makes a pushed commit look
 // unpushed.
-func (g Git) Fetch(ctx context.Context, remote string, refspecs ...string) error {
+func (g Client) Fetch(ctx context.Context, remote string, refspecs ...string) error {
 	args := append([]string{"fetch", "--quiet", remote}, refspecs...)
 	if _, err := g.run(ctx, args...); err != nil {
 		return fmt.Errorf("fetch %s: %w", remote, err)
@@ -67,7 +71,7 @@ func (g Git) Fetch(ctx context.Context, remote string, refspecs ...string) error
 // symbolic ref that git records at clone time and falling back to querying the
 // remote. Hardcoding "main" would be wrong for any repository that never
 // renamed from master.
-func (g Git) DefaultBranch(ctx context.Context, remote string) (string, error) {
+func (g Client) DefaultBranch(ctx context.Context, remote string) (string, error) {
 	if out, err := g.run(ctx, "symbolic-ref", "--short", "refs/remotes/"+remote+"/HEAD"); err == nil {
 		// refs/remotes/origin/HEAD reads back as "origin/main".
 		if _, branch, ok := strings.Cut(out, "/"); ok && branch != "" {
@@ -96,21 +100,21 @@ func (g Git) DefaultBranch(ctx context.Context, remote string) (string, error) {
 
 // IsAncestor reports whether ancestor is an ancestor of descendant. Equal
 // commits count as ancestors, matching git's own semantics.
-func (g Git) IsAncestor(ctx context.Context, ancestor, descendant string) (bool, error) {
+func (g Client) IsAncestor(ctx context.Context, ancestor, descendant string) (bool, error) {
 	_, err := g.run(ctx, "merge-base", "--is-ancestor", ancestor, descendant)
 	if err == nil {
 		return true, nil
 	}
 	// git exits 1 for "not an ancestor" and 128 for a bad revision, so only
 	// exit 1 may be read as a clean negative answer.
-	if ee, ok := errors.AsType[*ExitError](err); ok && ee.Code == 1 {
+	if ee, ok := errors.AsType[*command.ExitError](err); ok && ee.Code == 1 {
 		return false, nil
 	}
-	return false, fmt.Errorf("check whether %s is an ancestor of %s: %w", short(ancestor), short(descendant), err)
+	return false, fmt.Errorf("check whether %s is an ancestor of %s: %w", ShortSHA(ancestor), ShortSHA(descendant), err)
 }
 
 // Add stages paths.
-func (g Git) Add(ctx context.Context, paths ...string) error {
+func (g Client) Add(ctx context.Context, paths ...string) error {
 	args := append([]string{"add", "--"}, paths...)
 	if _, err := g.run(ctx, args...); err != nil {
 		return fmt.Errorf("stage changes: %w", err)
@@ -121,7 +125,7 @@ func (g Git) Add(ctx context.Context, paths ...string) error {
 // CheckoutPaths discards working-tree changes under paths. Always pass an
 // explicit path: an unscoped revert would throw away anything else in the
 // worktree, including a concurrent run's staged work.
-func (g Git) CheckoutPaths(ctx context.Context, paths ...string) error {
+func (g Client) CheckoutPaths(ctx context.Context, paths ...string) error {
 	if len(paths) == 0 {
 		return errors.New("CheckoutPaths requires at least one path")
 	}
@@ -133,7 +137,7 @@ func (g Git) CheckoutPaths(ctx context.Context, paths ...string) error {
 }
 
 // ResetHard moves the branch and working tree to ref.
-func (g Git) ResetHard(ctx context.Context, ref string) error {
+func (g Client) ResetHard(ctx context.Context, ref string) error {
 	if _, err := g.run(ctx, "reset", "--hard", ref); err != nil {
 		return fmt.Errorf("reset to %s: %w", ref, err)
 	}
@@ -141,7 +145,7 @@ func (g Git) ResetHard(ctx context.Context, ref string) error {
 }
 
 // Clean removes untracked files and directories.
-func (g Git) Clean(ctx context.Context) error {
+func (g Client) Clean(ctx context.Context) error {
 	if _, err := g.run(ctx, "clean", "-fdq"); err != nil {
 		return fmt.Errorf("clean working tree: %w", err)
 	}
@@ -149,7 +153,7 @@ func (g Git) Clean(ctx context.Context) error {
 }
 
 // RevParse resolves any revision expression to a full sha.
-func (g Git) RevParse(ctx context.Context, rev string) (string, error) {
+func (g Client) RevParse(ctx context.Context, rev string) (string, error) {
 	sha, err := g.run(ctx, "rev-parse", rev)
 	if err != nil {
 		return "", fmt.Errorf("resolve %s: %w", rev, err)
@@ -158,15 +162,15 @@ func (g Git) RevParse(ctx context.Context, rev string) (string, error) {
 }
 
 // Clone clones url into dir. dir must not already exist.
-func Clone(ctx context.Context, r Runner, url, dir string) error {
+func Clone(ctx context.Context, r command.Runner, url, dir string) error {
 	if _, _, err := r.Run(ctx, "", "git", "clone", "--quiet", url, dir); err != nil {
 		return fmt.Errorf("clone %s: %w", url, err)
 	}
 	return nil
 }
 
-// short abbreviates a sha for messages, leaving non-sha revisions alone.
-func short(rev string) string {
+// ShortSHA abbreviates a sha for messages, leaving non-sha revisions alone.
+func ShortSHA(rev string) string {
 	if len(rev) >= 40 {
 		return rev[:7]
 	}

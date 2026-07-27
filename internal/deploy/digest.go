@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/integrio-intropy/intropy-cli/internal/gitops"
 	"github.com/integrio-intropy/intropy-cli/internal/registry"
 )
 
@@ -52,7 +53,7 @@ var NewResolver = func(userAgent string) (Resolver, error) {
 // digest is what must be pinned. Registries have also been known to convert
 // between Docker and OCI manifest types on read, changing the digest, so the
 // only safe value is the one this lookup observed.
-func ResolveDigests(ctx context.Context, r Resolver, comp *ComponentConfig, commit string) ([]Pin, error) {
+func ResolveDigests(ctx context.Context, r Resolver, comp *gitops.ComponentConfig, commit string) ([]Pin, error) {
 	tag := CommitTag(commit)
 
 	pins := make([]Pin, 0, len(comp.Images))

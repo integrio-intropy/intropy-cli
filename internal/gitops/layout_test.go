@@ -1,10 +1,13 @@
-package deploy
+package gitops
 
 import (
 	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/integrio-intropy/intropy-cli/internal/gitops/gitopstest"
+	"github.com/integrio-intropy/intropy-cli/internal/gittest"
 )
 
 // newGitopsRepo builds a repository tree from coordinates of the form
@@ -12,17 +15,17 @@ import (
 func newGitopsRepo(t *testing.T, components map[string][]string) string {
 	t.Helper()
 	root := t.TempDir()
-	writeFile(t, filepath.Join(root, DeployFileName), validDeployYAML)
+	gittest.WriteFile(t, filepath.Join(root, DeployFileName), gitopstest.DeployYAML)
 	for coord, envs := range components {
 		parts := strings.Split(coord, "/")
 		if len(parts) != 3 {
 			t.Fatalf("coordinate %q must be domain/system/component", coord)
 		}
 		dir := filepath.Join(root, DomainsDirName, parts[0], parts[1], parts[2])
-		writeFile(t, filepath.Join(dir, ComponentFileName), componentYAML(parts[2], envs))
-		writeFile(t, filepath.Join(dir, "base", "kustomization.yaml"), "resources: []\n")
+		gittest.WriteFile(t, filepath.Join(dir, ComponentFileName), componentYAML(parts[2], envs))
+		gittest.WriteFile(t, filepath.Join(dir, "base", "kustomization.yaml"), "resources: []\n")
 		for _, env := range envs {
-			writeFile(t, filepath.Join(dir, OverlaysDirName, env, "kustomization.yaml"), "resources:\n  - ../../base\n")
+			gittest.WriteFile(t, filepath.Join(dir, OverlaysDirName, env, "kustomization.yaml"), "resources:\n  - ../../base\n")
 		}
 	}
 	return root
@@ -197,7 +200,7 @@ func TestResolveOverlayDeclaredButMissingDirectory(t *testing.T) {
 	root := newGitopsRepo(t, map[string][]string{"orders/order-flow/order-extractor": {"dev"}})
 	c := Coordinate{Domain: "orders", System: "order-flow", Component: "order-extractor"}
 	dir := filepath.Join(root, filepath.FromSlash(c.RelPath()))
-	writeFile(t, filepath.Join(dir, ComponentFileName), componentYAML("order-extractor", []string{"dev", "staging"}))
+	gittest.WriteFile(t, filepath.Join(dir, ComponentFileName), componentYAML("order-extractor", []string{"dev", "staging"}))
 
 	comp, err := LoadComponentConfig(dir)
 	if err != nil {

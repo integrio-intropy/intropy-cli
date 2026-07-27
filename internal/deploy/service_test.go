@@ -8,6 +8,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/integrio-intropy/intropy-cli/internal/command"
+	"github.com/integrio-intropy/intropy-cli/internal/git"
+	"github.com/integrio-intropy/intropy-cli/internal/gitops"
+	"github.com/integrio-intropy/intropy-cli/internal/gitops/gitopstest"
+	"github.com/integrio-intropy/intropy-cli/internal/gittest"
+	"github.com/integrio-intropy/intropy-cli/internal/kustomize"
 	"github.com/integrio-intropy/intropy-cli/internal/registry"
 )
 
@@ -26,27 +32,13 @@ func newRunFixture(t *testing.T) runFixture {
 	requireKustomize(t)
 
 	image := "harbor.intropy.io/integrations/order-extractor"
-	coord := Coordinate{Domain: "orders", System: "order-flow", Component: "order-extractor"}
-	compRel := filepath.FromSlash(coord.RelPath())
-
-	gitops := t.TempDir()
-	runGit(t, gitops, "init", "--quiet", "--initial-branch=main")
-	runGit(t, gitops, "config", "user.email", "test@example.com")
-	runGit(t, gitops, "config", "user.name", "Test")
-	runGit(t, gitops, "config", "commit.gpgsign", "false")
-	// The origin is a non-bare checkout, so allow pushes to its current branch.
-	runGit(t, gitops, "config", "receive.denyCurrentBranch", "ignore")
-	writeFile(t, filepath.Join(gitops, DeployFileName), validDeployYAML)
-	writeFile(t, filepath.Join(gitops, compRel, ComponentFileName),
-		"schemaVersion: 1\nname: order-extractor\nsourcePaths: [component/]\nimages:\n  - name: "+image+"\nenvironments: [dev, prod]\n")
-	writeFile(t, filepath.Join(gitops, compRel, "base", "deployment.yaml"),
-		strings.ReplaceAll(baseDeployment, "IMAGE", image))
-	writeFile(t, filepath.Join(gitops, compRel, "base", "kustomization.yaml"),
-		"apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nresources:\n  - deployment.yaml\n")
-	writeFile(t, filepath.Join(gitops, compRel, OverlaysDirName, "dev", "kustomization.yaml"),
-		"apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nnamespace: integrations\nresources:\n  - ../../base\nimages:\n  - name: "+image+"\n    newTag: latest\n")
-	runGit(t, gitops, "add", ".")
-	runGit(t, gitops, "commit", "--quiet", "-m", "onboard")
+	coord := gitops.Coordinate{Domain: "orders", System: "order-flow", Component: "order-extractor"}
+	origin := gitopstest.NewRepo(t, gitopstest.Component{
+		Coordinate:    coord.String(),
+		Image:         image,
+		Environments:  []string{"dev", "prod"},
+		OverlayImages: "images:\n  - name: " + image + "\n    newTag: latest\n",
+	})
 
 	source, _ := newSourceClone(t)
 
@@ -54,9 +46,9 @@ func newRunFixture(t *testing.T) runFixture {
 	cfgHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfgHome)
 	t.Setenv("INTROPY_GITOPS_REPO", "")
-	writeFile(t, filepath.Join(cfgHome, "intropy", "config.yaml"), "gitopsRepo: "+gitops+"\n")
+	gittest.WriteFile(t, filepath.Join(cfgHome, "intropy", "config.yaml"), "gitopsRepo: "+origin+"\n")
 
-	return runFixture{gitopsOrigin: gitops, sourceDir: source, cacheRoot: t.TempDir(), image: image}
+	return runFixture{gitopsOrigin: origin, sourceDir: source, cacheRoot: t.TempDir(), image: image}
 }
 
 // stubDigest replaces the production resolver for the duration of a test.
@@ -124,8 +116,8 @@ func TestRunLeavesTheCheckoutClean(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	root := worktreeDir(f.cacheRoot, f.gitopsOrigin)
-	g := Git{Runner: ExecRunner{}, Dir: root}
+	root := gitops.CheckoutDir(f.cacheRoot, f.gitopsOrigin)
+	g := git.Client{Runner: command.ExecRunner{}, Dir: root}
 	dirty, err := g.Status(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -162,8 +154,8 @@ func TestRunJSONOutput(t *testing.T) {
 	if res.OverlayPath != "domains/orders/order-flow/order-extractor/overlays/dev" {
 		t.Errorf("OverlayPath = %q", res.OverlayPath)
 	}
-	if res.SyncPolicy != SyncAuto {
-		t.Errorf("SyncPolicy = %q, want %q", res.SyncPolicy, SyncAuto)
+	if res.SyncPolicy != gitops.SyncAuto {
+		t.Errorf("SyncPolicy = %q, want %q", res.SyncPolicy, gitops.SyncAuto)
 	}
 	if !res.Changed || res.Applied {
 		t.Errorf("Changed/Applied = %v/%v, want true/false", res.Changed, res.Applied)
@@ -232,11 +224,11 @@ func TestRunWithoutConfiguredRepo(t *testing.T) {
 func TestRunFlagOverridesConfiguredRepo(t *testing.T) {
 	f := newRunFixture(t)
 	stubDigest(t, testDigest)
-	writeFile(t, filepath.Join(t.TempDir(), "unused"), "")
+	gittest.WriteFile(t, filepath.Join(t.TempDir(), "unused"), "")
 
 	cfgHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfgHome)
-	writeFile(t, filepath.Join(cfgHome, "intropy", "config.yaml"), "gitopsRepo: /nonexistent/repo\n")
+	gittest.WriteFile(t, filepath.Join(cfgHome, "intropy", "config.yaml"), "gitopsRepo: /nonexistent/repo\n")
 
 	var stdout, stderr bytes.Buffer
 	opts := f.options(&stdout, &stderr)
@@ -261,18 +253,18 @@ func TestRunAlreadyPinnedReportsNoOp(t *testing.T) {
 	}
 
 	// Commit the pin into the origin so the next run finds it already applied.
-	root := worktreeDir(f.cacheRoot, f.gitopsOrigin)
+	root := gitops.CheckoutDir(f.cacheRoot, f.gitopsOrigin)
 	overlay := filepath.Join(root, filepath.FromSlash("domains/orders/order-flow/order-extractor/overlays/dev"))
-	k := Kustomize{Runner: ExecRunner{}}
+	k := kustomize.Client{Runner: command.ExecRunner{}}
 	if err := k.SetImage(ctx, overlay, f.image, testDigest); err != nil {
 		t.Fatal(err)
 	}
-	if err := k.SetAnnotation(ctx, overlay, AnnotationSourceCommit, currentHEAD(t, f.sourceDir)); err != nil {
+	if err := k.SetAnnotation(ctx, overlay, kustomize.AnnotationSourceCommit, currentHEAD(t, f.sourceDir)); err != nil {
 		t.Fatal(err)
 	}
-	runGit(t, root, "add", "-A")
-	runGit(t, root, "commit", "--quiet", "-m", "pin")
-	runGit(t, root, "push", "--quiet", "origin", "main")
+	gittest.Run(t, root, "add", "-A")
+	gittest.Run(t, root, "commit", "--quiet", "-m", "pin")
+	gittest.Run(t, root, "push", "--quiet", "origin", "main")
 
 	stdout.Reset()
 	stderr.Reset()
@@ -288,7 +280,7 @@ func TestRunAlreadyPinnedReportsNoOp(t *testing.T) {
 
 func currentHEAD(t *testing.T, dir string) string {
 	t.Helper()
-	sha, err := Git{Runner: ExecRunner{}, Dir: dir}.HEAD(context.Background())
+	sha, err := git.Client{Runner: command.ExecRunner{}, Dir: dir}.HEAD(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/integrio-intropy/intropy-cli/internal/deploy"
+	"github.com/integrio-intropy/intropy-cli/internal/command"
 )
 
 func main() {
@@ -37,7 +37,7 @@ func exitCode(err error) int {
 	}
 	// A missing dependency is "command not found", not a generic failure —
 	// scripts and CI can tell the two apart and react differently.
-	if errors.Is(err, deploy.ErrNotInstalled) {
+	if errors.Is(err, command.ErrNotInstalled) {
 		return 127
 	}
 	// Ctrl-C during a long operation (the ArgoCD wait, a push over SSH) must

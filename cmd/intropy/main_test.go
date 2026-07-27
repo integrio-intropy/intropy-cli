@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/integrio-intropy/intropy-cli/internal/deploy"
+	"github.com/integrio-intropy/intropy-cli/internal/command"
 )
 
 func TestExitCode(t *testing.T) {
@@ -23,14 +23,14 @@ func TestExitCode(t *testing.T) {
 			// A missing dependency is "command not found", which scripts and CI
 			// can react to differently from a genuine failure.
 			name: "missing binary",
-			err:  &deploy.NotInstalledError{Binary: "kustomize"},
+			err:  &command.NotInstalledError{Binary: "kustomize"},
 			want: 127,
 		},
 		{
 			// Wrapping must survive: the error reaches main through several
 			// layers of fmt.Errorf.
 			name: "wrapped missing binary",
-			err:  fmt.Errorf("deploy: %w", &deploy.NotInstalledError{Binary: "git"}),
+			err:  fmt.Errorf("deploy: %w", &command.NotInstalledError{Binary: "git"}),
 			want: 127,
 		},
 		{

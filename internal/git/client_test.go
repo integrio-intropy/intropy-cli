@@ -1,61 +1,23 @@
-package deploy
+package git
 
 import (
 	"context"
 	"errors"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/integrio-intropy/intropy-cli/internal/command"
+	"github.com/integrio-intropy/intropy-cli/internal/gittest"
 )
 
-// newRepo creates a git repository with one commit on the given branch and
-// returns its path. Real git, not a fake: clone, fetch, reset and ancestry are
-// exactly the operations where a mock would encode our assumptions rather than
-// git's behaviour.
-func newRepo(t *testing.T, branch string) string {
-	t.Helper()
-	dir := t.TempDir()
-	runGit(t, dir, "init", "--quiet", "--initial-branch="+branch)
-	runGit(t, dir, "config", "user.email", "test@example.com")
-	runGit(t, dir, "config", "user.name", "Test")
-	// Commit signing would prompt or fail in CI.
-	runGit(t, dir, "config", "commit.gpgsign", "false")
-	writeFile(t, filepath.Join(dir, "README.md"), "hello\n")
-	runGit(t, dir, "add", ".")
-	runGit(t, dir, "commit", "--quiet", "-m", "initial")
-	return dir
-}
-
-func runGit(t *testing.T, dir string, args ...string) string {
-	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
-	}
-	return strings.TrimSpace(string(out))
-}
-
-func writeFile(t *testing.T, path, content string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func testGit(dir string) Git {
-	return Git{Runner: ExecRunner{}, Dir: dir}
+func testClient(dir string) Client {
+	return Client{Runner: command.ExecRunner{}, Dir: dir}
 }
 
 func TestGitHEADReturnsFullSha(t *testing.T) {
-	dir := newRepo(t, "main")
-	sha, err := testGit(dir).HEAD(context.Background())
+	dir := gittest.NewRepo(t, "main")
+	sha, err := testClient(dir).HEAD(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,10 +29,10 @@ func TestGitHEADReturnsFullSha(t *testing.T) {
 }
 
 func TestGitStatusScopesToPaths(t *testing.T) {
-	dir := newRepo(t, "main")
-	writeFile(t, filepath.Join(dir, "component", "app.cs"), "// changed\n")
-	writeFile(t, filepath.Join(dir, "unrelated", "notes.txt"), "dirty\n")
-	g := testGit(dir)
+	dir := gittest.NewRepo(t, "main")
+	gittest.WriteFile(t, filepath.Join(dir, "component", "app.cs"), "// changed\n")
+	gittest.WriteFile(t, filepath.Join(dir, "unrelated", "notes.txt"), "dirty\n")
+	g := testClient(dir)
 	ctx := context.Background()
 
 	all, err := g.Status(ctx)
@@ -101,17 +63,17 @@ func TestGitStatusScopesToPaths(t *testing.T) {
 }
 
 func TestGitIsAncestor(t *testing.T) {
-	dir := newRepo(t, "main")
-	g := testGit(dir)
+	dir := gittest.NewRepo(t, "main")
+	g := testClient(dir)
 	ctx := context.Background()
 
 	first, err := g.HEAD(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, filepath.Join(dir, "second.txt"), "x\n")
-	runGit(t, dir, "add", ".")
-	runGit(t, dir, "commit", "--quiet", "-m", "second")
+	gittest.WriteFile(t, filepath.Join(dir, "second.txt"), "x\n")
+	gittest.Run(t, dir, "add", ".")
+	gittest.Run(t, dir, "commit", "--quiet", "-m", "second")
 	second, err := g.HEAD(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -134,8 +96,8 @@ func TestGitIsAncestor(t *testing.T) {
 // an ancestor" and 128 for a bad revision; conflating them would let a typo
 // masquerade as a legitimate negative answer.
 func TestGitIsAncestorBadRevisionIsAnError(t *testing.T) {
-	dir := newRepo(t, "main")
-	_, err := testGit(dir).IsAncestor(context.Background(), "not-a-commit", "HEAD")
+	dir := gittest.NewRepo(t, "main")
+	_, err := testClient(dir).IsAncestor(context.Background(), "not-a-commit", "HEAD")
 	if err == nil {
 		t.Fatal("IsAncestor with a bad revision should error, not return false")
 	}
@@ -144,13 +106,13 @@ func TestGitIsAncestorBadRevisionIsAnError(t *testing.T) {
 func TestGitDefaultBranchFromSymbolicRef(t *testing.T) {
 	for _, branch := range []string{"main", "master", "trunk"} {
 		t.Run(branch, func(t *testing.T) {
-			origin := newRepo(t, branch)
+			origin := gittest.NewRepo(t, branch)
 			clone := filepath.Join(t.TempDir(), "clone")
 			ctx := context.Background()
-			if err := Clone(ctx, ExecRunner{}, origin, clone); err != nil {
+			if err := Clone(ctx, command.ExecRunner{}, origin, clone); err != nil {
 				t.Fatal(err)
 			}
-			got, err := testGit(clone).DefaultBranch(ctx, "origin")
+			got, err := testClient(clone).DefaultBranch(ctx, "origin")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -164,15 +126,15 @@ func TestGitDefaultBranchFromSymbolicRef(t *testing.T) {
 // A clone made without origin/HEAD has to fall back to asking the remote;
 // hardcoding "main" would break any repository still on master.
 func TestGitDefaultBranchFallsBackToLsRemote(t *testing.T) {
-	origin := newRepo(t, "master")
+	origin := gittest.NewRepo(t, "master")
 	clone := filepath.Join(t.TempDir(), "clone")
 	ctx := context.Background()
-	if err := Clone(ctx, ExecRunner{}, origin, clone); err != nil {
+	if err := Clone(ctx, command.ExecRunner{}, origin, clone); err != nil {
 		t.Fatal(err)
 	}
-	runGit(t, clone, "remote", "set-head", "origin", "--delete")
+	gittest.Run(t, clone, "remote", "set-head", "origin", "--delete")
 
-	got, err := testGit(clone).DefaultBranch(ctx, "origin")
+	got, err := testClient(clone).DefaultBranch(ctx, "origin")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,44 +146,43 @@ func TestGitDefaultBranchFallsBackToLsRemote(t *testing.T) {
 func TestGitCheckoutPathsRequiresAPath(t *testing.T) {
 	// An unscoped revert would discard everything in the worktree, so refuse
 	// rather than let a caller omit the path by accident.
-	if err := testGit(t.TempDir()).CheckoutPaths(context.Background()); err == nil {
+	if err := testClient(t.TempDir()).CheckoutPaths(context.Background()); err == nil {
 		t.Fatal("CheckoutPaths() with no paths should fail")
 	}
 }
 
 func TestGitCheckoutPathsDiscardsOnlyGivenPaths(t *testing.T) {
-	dir := newRepo(t, "main")
-	writeFile(t, filepath.Join(dir, "keep.txt"), "keep\n")
-	runGit(t, dir, "add", ".")
-	runGit(t, dir, "commit", "--quiet", "-m", "add keep")
+	dir := gittest.NewRepo(t, "main")
+	gittest.WriteFile(t, filepath.Join(dir, "keep.txt"), "keep\n")
+	gittest.Run(t, dir, "add", ".")
+	gittest.Run(t, dir, "commit", "--quiet", "-m", "add keep")
 
-	writeFile(t, filepath.Join(dir, "README.md"), "reverted\n")
-	writeFile(t, filepath.Join(dir, "keep.txt"), "modified\n")
+	gittest.WriteFile(t, filepath.Join(dir, "README.md"), "reverted\n")
+	gittest.WriteFile(t, filepath.Join(dir, "keep.txt"), "modified\n")
 
-	if err := testGit(dir).CheckoutPaths(context.Background(), "README.md"); err != nil {
+	if err := testClient(dir).CheckoutPaths(context.Background(), "README.md"); err != nil {
 		t.Fatal(err)
 	}
 
-	if got := readFile(t, filepath.Join(dir, "README.md")); got != "hello\n" {
+	if got := gittest.ReadFile(t, filepath.Join(dir, "README.md")); got != "hello\n" {
 		t.Errorf("README.md = %q, want it reverted", got)
 	}
-	if got := readFile(t, filepath.Join(dir, "keep.txt")); got != "modified\n" {
+	if got := gittest.ReadFile(t, filepath.Join(dir, "keep.txt")); got != "modified\n" {
 		t.Errorf("keep.txt = %q, want it untouched", got)
 	}
 }
 
-func readFile(t *testing.T, path string) string {
-	t.Helper()
-	b, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(b)
-}
-
 func TestGitErrorsAreWrappedWithContext(t *testing.T) {
-	g := Git{Runner: &fakeRunner{def: fakeResult{err: errors.New("boom")}}, Dir: "/nowhere"}
+	g := Client{Runner: failingRunner{}, Dir: "/nowhere"}
 	if _, err := g.HEAD(context.Background()); err == nil || !strings.Contains(err.Error(), "resolve HEAD") {
 		t.Errorf("HEAD() error = %v, want it wrapped with context", err)
 	}
+}
+
+// failingRunner fails every command, for checking error wrapping without a real
+// repository.
+type failingRunner struct{}
+
+func (failingRunner) Run(context.Context, string, string, ...string) ([]byte, []byte, error) {
+	return nil, nil, errors.New("boom")
 }
