@@ -652,14 +652,16 @@ internal/git/         Typed wrapper over the git binary
 internal/kustomize/   kustomize edit/build, manifest normalisation and diffing
 internal/registry/    Generic OCI registry client
 internal/gitops/      GitOps repository: cached checkout, layout, contract files
+internal/source/      Source repo state: commit safety and image digests
 internal/deploy/      Deployment orchestration over the packages above
 ```
 
 The lower group is layered: `command` depends on nothing, `git` and `kustomize`
-on `command`, `gitops` on `git` and `config`, and `deploy` on all of them. Each
-generic package is usable on its own; `deploy` holds the policy that combines
-them. Test fixtures live in `internal/gittest`, `internal/gitops/gitopstest`
-and `internal/registry/registrytest`.
+on `command`, `gitops` on `git` and `config`, `source` on `git`, `gitops` and
+`registry`, and `deploy` on all of them. Each generic package is usable on its
+own; `deploy` holds the policy that combines them. Test fixtures live in
+`internal/gittest`, `internal/gitops/gitopstest` and
+`internal/registry/registrytest`.
 
 ## Exit codes
 

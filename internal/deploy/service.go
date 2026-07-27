@@ -2,8 +2,8 @@
 // commit produced, pins it into one environment's overlay in the GitOps
 // repository, and reports what changed.
 //
-// The mechanics live in narrower packages — command, git, gitops, kustomize and
-// registry — and this package is the policy that combines them.
+// The mechanics live in narrower packages — command, git, gitops, kustomize,
+// registry and source — and this package is the policy that combines them.
 package deploy
 
 import (
@@ -17,6 +17,7 @@ import (
 	"github.com/integrio-intropy/intropy-cli/internal/git"
 	"github.com/integrio-intropy/intropy-cli/internal/gitops"
 	"github.com/integrio-intropy/intropy-cli/internal/kustomize"
+	"github.com/integrio-intropy/intropy-cli/internal/source"
 )
 
 // Run resolves the component's digest for the current commit and pins it into
@@ -74,20 +75,20 @@ func Run(ctx context.Context, opts Options) error {
 		return err
 	}
 
-	source, err := InspectSource(ctx, git.Client{Runner: opts.Runner, Dir: opts.SourceDir}, comp.SourcePaths, opts.AllowDirty)
+	src, err := source.Inspect(ctx, git.Client{Runner: opts.Runner, Dir: opts.SourceDir}, comp.SourcePaths, opts.AllowDirty)
 	if err != nil {
 		return err
 	}
-	if len(source.Dirty) > 0 {
-		fmt.Fprintf(opts.Stderr, "warning: deploying with %d uncommitted change(s) under the component's source paths\n", len(source.Dirty))
+	if len(src.Dirty) > 0 {
+		fmt.Fprintf(opts.Stderr, "warning: deploying with %d uncommitted change(s) under the component's source paths\n", len(src.Dirty))
 	}
 
-	resolver, err := NewResolver(opts.UserAgent)
+	resolver, err := source.NewResolver(opts.UserAgent)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(opts.Stderr, "resolving %s\n", CommitTag(source.ShortCommit()))
-	pins, err := ResolveDigests(ctx, resolver, comp, source.Commit)
+	fmt.Fprintf(opts.Stderr, "resolving %s\n", source.CommitTag(src.ShortCommit()))
+	pins, err := source.ResolveDigests(ctx, resolver, comp, src.Commit)
 	if err != nil {
 		return err
 	}
@@ -101,7 +102,7 @@ func Run(ctx context.Context, opts Options) error {
 		Kustomize:   kustomize.Client{Runner: opts.Runner},
 		Coordinate:  coord,
 		Environment: opts.Environment,
-		Source:      source,
+		Source:      src,
 		Pins:        pins,
 		OverlayDir:  overlayDir,
 		Palette:     palette,

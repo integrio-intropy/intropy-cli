@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/integrio-intropy/intropy-cli/internal/gittest"
+	"github.com/integrio-intropy/intropy-cli/internal/source"
 )
 
 // publishOpts builds options with the delays removed: the backoff is real
@@ -232,8 +233,8 @@ func TestCommitSubject(t *testing.T) {
 	plan := &Plan{
 		Coordinate:  coordFixture,
 		Environment: "dev",
-		Source:      SourceState{Commit: testCommit},
-		Pins:        []Pin{{Image: "r/i", Digest: testDigest}},
+		Source:      source.State{Commit: testCommit},
+		Pins:        []source.Pin{{Image: "r/i", Digest: testDigest}},
 	}
 	subject := commitSubject(plan)
 	if !strings.HasPrefix(subject, "deploy(order-extractor): dev → sha256:") {
@@ -244,7 +245,7 @@ func TestCommitSubject(t *testing.T) {
 		t.Errorf("subject is %d chars, too long for a log: %q", len(subject), subject)
 	}
 
-	plan.Pins = append(plan.Pins, Pin{Image: "r/j", Digest: testDigest})
+	plan.Pins = append(plan.Pins, source.Pin{Image: "r/j", Digest: testDigest})
 	if multi := commitSubject(plan); !strings.Contains(multi, "2 images") {
 		t.Errorf("multi-image subject = %q, want an image count", multi)
 	}

@@ -15,7 +15,36 @@ import (
 	"github.com/integrio-intropy/intropy-cli/internal/gittest"
 	"github.com/integrio-intropy/intropy-cli/internal/kustomize"
 	"github.com/integrio-intropy/intropy-cli/internal/registry"
+	"github.com/integrio-intropy/intropy-cli/internal/source"
 )
+
+const testCommit = "def456abc789def456abc789def456abc789def4"
+
+// newSourceClone creates an origin repository and a clone of it, returning the
+// clone. Source checks reason about the remote, so a clone with a real origin
+// is the minimum honest fixture.
+func newSourceClone(t *testing.T) (clone, origin string) {
+	t.Helper()
+	origin = gittest.NewRepo(t, "main")
+	clone = filepath.Join(t.TempDir(), "src")
+	if err := git.Clone(context.Background(), command.ExecRunner{}, origin, clone); err != nil {
+		t.Fatal(err)
+	}
+	gittest.Run(t, clone, "config", "user.email", "test@example.com")
+	gittest.Run(t, clone, "config", "user.name", "Test")
+	gittest.Run(t, clone, "config", "commit.gpgsign", "false")
+	return clone, origin
+}
+
+// stubResolver returns a fixed descriptor for every image.
+type stubResolver struct {
+	desc registry.Descriptor
+	err  error
+}
+
+func (s stubResolver) Resolve(context.Context, string) (registry.Descriptor, error) {
+	return s.desc, s.err
+}
 
 // runFixture builds everything Run needs: a GitOps repository with one
 // onboarded component, a source repository whose HEAD is pushed, a config file
@@ -40,7 +69,7 @@ func newRunFixture(t *testing.T) runFixture {
 		OverlayImages: "images:\n  - name: " + image + "\n    newTag: latest\n",
 	})
 
-	source, _ := newSourceClone(t)
+	src, _ := newSourceClone(t)
 
 	// Point the user config at the GitOps origin.
 	cfgHome := t.TempDir()
@@ -48,17 +77,17 @@ func newRunFixture(t *testing.T) runFixture {
 	t.Setenv("INTROPY_GITOPS_REPO", "")
 	gittest.WriteFile(t, filepath.Join(cfgHome, "intropy", "config.yaml"), "gitopsRepo: "+origin+"\n")
 
-	return runFixture{gitopsOrigin: origin, sourceDir: source, cacheRoot: t.TempDir(), image: image}
+	return runFixture{gitopsOrigin: origin, sourceDir: src, cacheRoot: t.TempDir(), image: image}
 }
 
 // stubDigest replaces the production resolver for the duration of a test.
 func stubDigest(t *testing.T, digest string) {
 	t.Helper()
-	original := NewResolver
-	NewResolver = func(string) (Resolver, error) {
+	original := source.NewResolver
+	source.NewResolver = func(string) (source.Resolver, error) {
 		return stubResolver{desc: registry.Descriptor{Digest: digest}}, nil
 	}
-	t.Cleanup(func() { NewResolver = original })
+	t.Cleanup(func() { source.NewResolver = original })
 }
 
 func (f runFixture) options(stdout, stderr *bytes.Buffer) Options {

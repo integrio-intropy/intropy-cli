@@ -1,4 +1,11 @@
-package deploy
+// Package source reads the state of a component's source repository: which
+// commit is being shipped, whether it is safe to ship, and which image digests
+// CI published for it.
+//
+// It is shared by the commands that need to name a specific build — deploy
+// pins those digests into an overlay, release records them in a manifest — so
+// it sits below both rather than inside either.
+package source
 
 import (
 	"context"
@@ -9,9 +16,8 @@ import (
 	"github.com/integrio-intropy/intropy-cli/internal/gitops"
 )
 
-// SourceState is what the source repository says about the commit being
-// deployed.
-type SourceState struct {
+// State is what the source repository says about the commit being shipped.
+type State struct {
 	// Commit is the full sha of HEAD.
 	Commit string
 
@@ -24,23 +30,23 @@ type SourceState struct {
 }
 
 // ShortCommit abbreviates the commit for messages and commit subjects.
-func (s SourceState) ShortCommit() string { return git.ShortSHA(s.Commit) }
+func (s State) ShortCommit() string { return git.ShortSHA(s.Commit) }
 
-// InspectSource reads the state of the source repository at dir and checks
-// that its HEAD is a safe thing to deploy.
+// Inspect reads the state of the source repository at dir and checks that its
+// HEAD is a safe thing to ship.
 //
 // Two conditions are enforced. The working tree must be clean under the
 // component's source paths, because CI built the pushed commit and uncommitted
-// changes mean the thing about to be deployed is not the thing that was just
+// changes mean the thing about to be shipped is not the thing that was just
 // tested. And HEAD must be an ancestor of the remote's default branch, because
 // an unpushed commit has no image in the registry at all.
 //
 // The cleanliness check is scoped to sourcePaths rather than applied to the
 // whole tree: these are monorepos holding many components, and an unrelated
-// dirty file elsewhere is no reason to refuse this deploy. allowDirty waives
-// the check but not the reporting.
-func InspectSource(ctx context.Context, g git.Client, sourcePaths []string, allowDirty bool) (SourceState, error) {
-	var st SourceState
+// dirty file elsewhere is no reason to refuse. allowDirty waives the check but
+// not the reporting.
+func Inspect(ctx context.Context, g git.Client, sourcePaths []string, allowDirty bool) (State, error) {
+	var st State
 
 	commit, err := g.HEAD(ctx)
 	if err != nil {
@@ -97,7 +103,7 @@ func (e *DirtyWorktreeError) Error() string {
 	for _, c := range e.Changes {
 		fmt.Fprintf(&b, "\n  %s", c)
 	}
-	b.WriteString("\nCI builds the pushed commit, so deploying now would ship something other than what you just tested.")
+	b.WriteString("\nCI builds the pushed commit, so this would ship something other than what you just tested.")
 	b.WriteString("\nCommit and push, or pass --allow-dirty if you are certain the image matches.")
 	return b.String()
 }

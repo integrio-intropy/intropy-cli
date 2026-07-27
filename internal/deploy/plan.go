@@ -8,6 +8,7 @@ import (
 
 	"github.com/integrio-intropy/intropy-cli/internal/gitops"
 	"github.com/integrio-intropy/intropy-cli/internal/kustomize"
+	"github.com/integrio-intropy/intropy-cli/internal/source"
 )
 
 // Plan is the outcome of editing an overlay and comparing the render before and
@@ -16,10 +17,10 @@ import (
 type Plan struct {
 	Coordinate  gitops.Coordinate
 	Environment string
-	Source      SourceState
+	Source      source.State
 
 	// Pins are the digests resolved for this commit.
-	Pins []Pin
+	Pins []source.Pin
 
 	// Previous records how each image was pinned before the edit, keyed by
 	// image name, for a readable summary.
@@ -71,8 +72,8 @@ type PlanOptions struct {
 	Kustomize   kustomize.Client
 	Coordinate  gitops.Coordinate
 	Environment string
-	Source      SourceState
-	Pins        []Pin
+	Source      source.State
+	Pins        []source.Pin
 	OverlayDir  string
 	Palette     kustomize.Palette
 }
@@ -185,7 +186,7 @@ func applyEdits(ctx context.Context, opts PlanOptions) error {
 // previously rewrote the repository with newName: `kustomize edit set image
 // <name>@<digest>` replaces the whole images[] entry, dropping any newName, so
 // the render always carries the declared repository afterwards.
-func assertPinsRendered(rendered []byte, pins []Pin) error {
+func assertPinsRendered(rendered []byte, pins []source.Pin) error {
 	text := string(rendered)
 	for _, pin := range pins {
 		if strings.Contains(text, pin.Ref()) {

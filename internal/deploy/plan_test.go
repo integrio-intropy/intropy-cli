@@ -7,6 +7,7 @@ import (
 	"github.com/integrio-intropy/intropy-cli/internal/gitops/gitopstest"
 	"github.com/integrio-intropy/intropy-cli/internal/gittest"
 	"github.com/integrio-intropy/intropy-cli/internal/kustomize"
+	"github.com/integrio-intropy/intropy-cli/internal/source"
 	"os/exec"
 	"strings"
 	"testing"
@@ -59,8 +60,8 @@ func planOpts(repo *gitops.Repository, coord gitops.Coordinate, overlayDir, imag
 		Kustomize:   kustomize.Client{Runner: command.ExecRunner{}},
 		Coordinate:  coord,
 		Environment: "dev",
-		Source:      SourceState{Commit: testCommit, Branch: "main"},
-		Pins:        []Pin{{Image: image, Digest: digest, Tag: CommitTag(testCommit)}},
+		Source:      source.State{Commit: testCommit, Branch: "main"},
+		Pins:        []source.Pin{{Image: image, Digest: digest, Tag: source.CommitTag(testCommit)}},
 		OverlayDir:  overlayDir,
 		Palette:     kustomize.PlainPalette,
 	}
