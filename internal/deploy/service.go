@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/integrio-intropy/intropy-cli/internal/argocd"
 	"github.com/integrio-intropy/intropy-cli/internal/command"
 	"github.com/integrio-intropy/intropy-cli/internal/config"
 	"github.com/integrio-intropy/intropy-cli/internal/git"
@@ -119,7 +120,7 @@ func Run(ctx context.Context, opts Options) error {
 				}
 			}()
 		}
-		return report(opts, plan, coord, env, "")
+		return report(opts, plan, coord, env, "", nil)
 	}
 
 	// Print the plan before writing anything, so the diff is on screen even if
@@ -142,7 +143,29 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	fmt.Fprintf(opts.Stderr, "pushed %s to %s\n", revision[:7], repo.Branch)
 
-	return report(opts, plan, coord, env, revision)
+	// A manual-sync environment is gated in ArgoCD, so there is no sync to wait
+	// for; --no-wait opts out everywhere else.
+	if opts.NoWait || env.Sync == gitops.SyncManual {
+		return report(opts, plan, coord, env, revision, nil)
+	}
+
+	app, observed, err := WaitForSync(ctx, WaitOptions{
+		Repository:   repo,
+		DeployCfg:    deployCfg,
+		AppName:      coord.AppName(opts.Environment),
+		Revision:     revision,
+		Timeout:      opts.Timeout,
+		ArgocdServer: opts.ArgocdServer,
+		UserAgent:    opts.UserAgent,
+		Stderr:       opts.Stderr,
+	})
+	if err != nil {
+		return err
+	}
+	if !observed {
+		app = nil
+	}
+	return report(opts, plan, coord, env, revision, app)
 }
 
 func componentDir(root string, c gitops.Coordinate) string {
@@ -162,9 +185,9 @@ func reportPlan(opts Options, plan *Plan) {
 
 // report writes the final outcome. revision is the pushed sha, empty when
 // nothing was pushed.
-func report(opts Options, plan *Plan, coord gitops.Coordinate, env gitops.EnvironmentConfig, revision string) error {
+func report(opts Options, plan *Plan, coord gitops.Coordinate, env gitops.EnvironmentConfig, revision string, app *argocd.Application) error {
 	if opts.OutputFormat == OutputJSON {
-		return writeJSON(opts, plan, coord, env, revision)
+		return writeJSON(opts, plan, coord, env, revision, app)
 	}
 
 	if plan.Empty() {
@@ -187,11 +210,16 @@ func report(opts Options, plan *Plan, coord gitops.Coordinate, env gitops.Enviro
 		return nil
 	}
 
+	if app != nil {
+		fmt.Fprintf(opts.Stdout, "\ncommitted %s; %s is synced and healthy at %s\n",
+			revision[:7], coord.AppName(plan.Environment), shortDigest(app.Status.Sync.Revision))
+		return nil
+	}
 	fmt.Fprintf(opts.Stdout, "\ncommitted %s; ArgoCD will sync %s\n", revision[:7], coord.AppName(plan.Environment))
 	return nil
 }
 
-func writeJSON(opts Options, plan *Plan, coord gitops.Coordinate, env gitops.EnvironmentConfig, revision string) error {
+func writeJSON(opts Options, plan *Plan, coord gitops.Coordinate, env gitops.EnvironmentConfig, revision string, app *argocd.Application) error {
 	res := Result{
 		Component:    coord.Component,
 		Domain:       coord.Domain,
@@ -204,6 +232,11 @@ func writeJSON(opts Options, plan *Plan, coord gitops.Coordinate, env gitops.Env
 		Applied:      revision != "",
 		Revision:     revision,
 		SyncPolicy:   env.Sync,
+	}
+	if app != nil {
+		res.SyncStatus = app.Status.Sync.Status
+		res.HealthStatus = app.Status.Health.Status
+		res.SyncedRevision = app.Status.Sync.Revision
 	}
 	for _, pin := range plan.Pins {
 		res.Pins = append(res.Pins, ResultPin{

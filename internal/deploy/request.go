@@ -3,6 +3,7 @@ package deploy
 import (
 	"io"
 	"os"
+	"time"
 
 	"github.com/integrio-intropy/intropy-cli/internal/command"
 )
@@ -35,6 +36,15 @@ type Options struct {
 
 	// AllowDirty permits uncommitted changes under the component's sourcePaths.
 	AllowDirty bool
+
+	// NoWait skips the ArgoCD wait after pushing.
+	NoWait bool
+
+	// Timeout bounds the ArgoCD wait. Zero means the package default.
+	Timeout time.Duration
+
+	// ArgocdServer overrides deploy.yaml's argocd.server.
+	ArgocdServer string
 
 	// OutputFormat is "plain" or "json".
 	OutputFormat string

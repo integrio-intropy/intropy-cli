@@ -4,7 +4,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/integrio-intropy/intropy-cli/internal/argocd"
 	"github.com/integrio-intropy/intropy-cli/internal/deploy"
 	"github.com/integrio-intropy/intropy-cli/internal/gitops"
 	"github.com/spf13/cobra"
@@ -18,6 +20,8 @@ type deployFlags struct {
 	gitopsRepo string
 	plan       bool
 	allowDirty bool
+	noWait     bool
+	timeout    time.Duration
 	output     string
 }
 
@@ -31,7 +35,8 @@ var deployCmd = &cobra.Command{
 		"Run it inside the component's source repository: the commit comes from HEAD there, and must be pushed — " +
 		"CI builds pushed commits, so an unpushed one has no image. The component is located by searching the " +
 		"GitOps repository for domains/*/*/<component>; pass --domain and --system if the name is ambiguous.\n\n" +
-		"With --plan the overlay is rendered and diffed but nothing is written to git.",
+		"With --plan the overlay is rendered and diffed but nothing is written to git. After pushing, the command waits " +
+		"for ArgoCD to apply the new revision; --no-wait skips that, and environments that sync manually never wait.",
 	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: completeDeployComponents,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -53,6 +58,8 @@ var deployCmd = &cobra.Command{
 			GitopsRepo:   deployFlagValues.gitopsRepo,
 			PlanOnly:     deployFlagValues.plan,
 			AllowDirty:   deployFlagValues.allowDirty,
+			NoWait:       deployFlagValues.noWait,
+			Timeout:      deployFlagValues.timeout,
 			OutputFormat: deployFlagValues.output,
 			Color:        useColor(cmd),
 			UserAgent:    "intropy-cli/" + version,
@@ -116,6 +123,8 @@ func init() {
 	f.StringVar(&deployFlagValues.gitopsRepo, "gitops-repo", "", "GitOps repository URL (default: gitopsRepo from config, or INTROPY_GITOPS_REPO)")
 	f.BoolVar(&deployFlagValues.plan, "plan", false, "render and diff the change without writing to git")
 	f.BoolVar(&deployFlagValues.allowDirty, "allow-dirty", false, "deploy despite uncommitted changes under the component's source paths")
+	f.BoolVar(&deployFlagValues.noWait, "no-wait", false, "push without waiting for ArgoCD to sync")
+	f.DurationVar(&deployFlagValues.timeout, "timeout", argocd.DefaultTimeout, "how long to wait for ArgoCD to converge")
 	f.StringVarP(&deployFlagValues.output, "output", "o", deploy.OutputPlain, "output format (plain, json)")
 
 	_ = deployCmd.MarkFlagRequired("env")

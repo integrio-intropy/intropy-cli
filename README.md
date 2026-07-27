@@ -354,9 +354,58 @@ environment in the same moment. That fails loudly and pushes nothing:
 auto-resolving would silently pick a winner and discard a deployment someone
 believes succeeded. Re-run to deploy on top of theirs.
 
-For an environment with `sync: manual`, deploy commits and stops — the gate is
-in ArgoCD, so it prints the `deploy sync` follow-up rather than waiting for a
-sync that will never start on its own.
+### What happens
+
+For `intropy deploy order-extractor --env dev`, the CLI:
+
+1. Verifies that `git` and `kustomize` are available and resolves the GitOps
+   repository from the flag, environment, or user configuration.
+2. Locks and refreshes its cached local GitOps checkout, so two local deploys
+   cannot edit, reset, or revert the same checkout concurrently.
+3. Reads the `dev` and `order-extractor` metadata, then checks that the current
+   source checkout is clean for that component and that `HEAD` was pushed.
+4. Resolves the image digest CI published for that commit, temporarily updates
+   the Kustomize overlay, renders it before and after, and verifies that the
+   requested image pin reached the rendered manifests.
+5. With `--plan`, prints the diff and reverts the temporary edit. Without it,
+   commits only the changed `kustomization.yaml` and pushes that commit to the
+   GitOps repository's default branch.
+
+After pushing, deploy waits for ArgoCD to apply the new revision and become
+healthy. `--no-wait` skips it and `--timeout` bounds it (default 5m).
+
+For an environment with `sync: manual`, deploy commits and stops without
+waiting — the gate is in ArgoCD, so it prints the `deploy sync` follow-up rather
+than waiting for a sync that will never start on its own.
+
+### Waiting for ArgoCD
+
+Credentials come from the argocd CLI's own configuration, so if you have run
+`argocd login` this needs no extra setup. `ARGOCD_SERVER` and
+`ARGOCD_AUTH_TOKEN` override it — those are argocd's variable names, honoured
+deliberately so an existing CI setup works unchanged. Precedence for the server
+is `--argocd-server` flag, then the environment, then `deploy.yaml`.
+
+The wait is defined in terms of the pushed revision, not just sync status.
+Polling for `Synced`/`Healthy` alone reads the *previous* revision's perfectly
+healthy state on the first poll and reports success before ArgoCD has done
+anything. It also accepts a *descendant* of your commit: if another deployment
+lands after yours, ArgoCD syncs a later commit and your sha never appears on its
+own, so waiting for an exact match would hang forever.
+
+Outcomes:
+
+| Situation | Result |
+| --- | --- |
+| Applied and healthy | exit 0 |
+| Did not converge in time | exit 1, with sync/health status, ArgoCD's operation message, and recent warning events |
+| Sync reached a terminal failure | exit 1 immediately, rather than waiting out the timeout |
+| ArgoCD unreachable, or the token expired | **exit 0** with a warning — the commit is the deployment, and being unable to watch it does not undo it |
+| Interrupted | exit 130 |
+
+A 404 from ArgoCD is most often a wrong `argocd.appNamespace` rather than a
+missing application, since Applications are deployed per customer rather than
+into the `argocd` namespace. The error says which namespace was tried.
 
 ### Commit trailers
 

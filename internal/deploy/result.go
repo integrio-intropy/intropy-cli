@@ -21,6 +21,14 @@ type Result struct {
 	Revision string `json:"revision,omitempty"`
 
 	SyncPolicy string `json:"syncPolicy"`
+
+	// SyncStatus, HealthStatus and SyncedRevision are what ArgoCD reported once
+	// it converged. Empty when the wait was skipped, the environment syncs
+	// manually, or ArgoCD could not be reached — none of which means the
+	// deployment failed.
+	SyncStatus     string `json:"syncStatus,omitempty"`
+	HealthStatus   string `json:"healthStatus,omitempty"`
+	SyncedRevision string `json:"syncedRevision,omitempty"`
 }
 
 // ResultPin is one image's before and after state.

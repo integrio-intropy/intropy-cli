@@ -391,3 +391,13 @@ func TestRunPlanOnlyStillWritesNothing(t *testing.T) {
 		t.Errorf("--plan must leave the checkout clean, got:\n%s", dirty)
 	}
 }
+
+// decodeResult parses a JSON Result, failing the test on malformed output.
+func decodeResult(t *testing.T, b []byte) Result {
+	t.Helper()
+	var res Result
+	if err := json.Unmarshal(b, &res); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\n%s", err, b)
+	}
+	return res
+}
