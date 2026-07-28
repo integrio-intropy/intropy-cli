@@ -3,7 +3,7 @@
   "checkpoint_id": "ceabc4f4df2f",
   "strategy": "manual-commit",
   "branch": "feature/deploy-verify",
-  "checkpoints_count": 2,
+  "checkpoints_count": 3,
   "files_touched": [
     "README.md",
     "cmd/intropy/deploy.go",
@@ -38,13 +38,20 @@
       "compact_transcript": "/ce/abc4f4df2f/1/transcript.jsonl",
       "content_hash": "/ce/abc4f4df2f/1/content_hash.txt",
       "prompt": "/ce/abc4f4df2f/1/prompt.txt"
+    },
+    {
+      "metadata": "/ce/abc4f4df2f/2/metadata.json",
+      "transcript": "/ce/abc4f4df2f/2/full.jsonl",
+      "compact_transcript": "/ce/abc4f4df2f/2/transcript.jsonl",
+      "content_hash": "/ce/abc4f4df2f/2/content_hash.txt",
+      "prompt": "/ce/abc4f4df2f/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 286335,
+    "input_tokens": 408698,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 1145344,
-    "output_tokens": 8436,
-    "api_call_count": 25
+    "cache_read_tokens": 1606656,
+    "output_tokens": 12114,
+    "api_call_count": 38
   }
 }
