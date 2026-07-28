@@ -34,3 +34,11 @@ error: install rabbitmq: helm upgrade --install rabbitmq bitnami/rabbitmq --name
 ---
 
 no, I am running make build and then I have an alias i that points to the built binary
+
+---
+
+It seems to hang on
+✖ i deploy verify up                       19:03
+bringing up the verification cluster
+cluster intropy-verify already exists
+ensuring dapr (dapr/dapr@1.14.4)
