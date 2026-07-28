@@ -2,6 +2,8 @@ package deploy
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -372,5 +374,86 @@ func TestCommitTrailersOmitThePromotionSourceForADeploy(t *testing.T) {
 	got := commitTrailers(releasePlan("1.4.2", source.Pin{Image: "img", Digest: testDigest}), "intropy-cli/v0.8.0")
 	if strings.Contains(got, TrailerPromotedFrom) {
 		t.Errorf("a deployment should have no %s trailer:\n%s", TrailerPromotedFrom, got)
+	}
+}
+
+// installPreCommitHook plants a hook that stages a file of its own, and returns a
+// function that proves it fires: without that proof a passing test could mean
+// nothing more than a hook git never tried to run.
+func installPreCommitHook(t *testing.T, root, extra string) func(t *testing.T) {
+	t.Helper()
+	hook := filepath.Join(root, ".git", "hooks", "pre-commit")
+	if err := os.MkdirAll(filepath.Dir(hook), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\nprintf 'added by a hook\\n' > " + extra + "\ngit add -- " + extra + "\n"
+	if err := os.WriteFile(hook, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return func(t *testing.T) {
+		t.Helper()
+		// A throwaway clone, so proving the hook works does not disturb the
+		// checkout under test.
+		probe := filepath.Join(t.TempDir(), "probe")
+		gittest.Run(t, filepath.Dir(probe), "clone", "--quiet", root, probe)
+		gittest.Init(t, probe, "main")
+		if err := os.MkdirAll(filepath.Join(probe, ".git", "hooks"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(probe, ".git", "hooks", "pre-commit"), []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		gittest.WriteFile(t, filepath.Join(probe, "unrelated.txt"), "anything\n")
+		gittest.Run(t, probe, "add", "--", "unrelated.txt")
+		gittest.Run(t, probe, "commit", "--quiet", "-m", "probe")
+		if files := gittest.Run(t, probe, "show", "--name-only", "--format=", "HEAD"); !strings.Contains(files, extra) {
+			t.Fatalf("the hook does not fire under plain git, so this test proves nothing:\n%s", files)
+		}
+	}
+}
+
+// A pre-commit hook is code the repository supplies, and git runs it while
+// building the commit. It could stage anything it liked, and the result would be
+// pushed to the GitOps default branch as if this CLI had asked for it.
+func TestPublishIsUnaffectedByAPreCommitHook(t *testing.T) {
+	f := newRepoFixture(t)
+	proveHookFires := installPreCommitHook(t, f.repo.Root, "pwned.txt")
+	proveHookFires(t)
+
+	plan := f.buildPlan(t, testDigest)
+	revision, err := Publish(context.Background(), publishOpts(t, f, plan))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	files := gittest.Run(t, f.origin, "show", "--name-only", "--format=", revision)
+	if strings.Contains(files, "pwned.txt") {
+		t.Errorf("the hook's file reached the origin:\n%s", files)
+	}
+	if !strings.HasSuffix(strings.TrimSpace(files), "overlays/dev/kustomization.yaml") {
+		t.Errorf("commit touched the wrong file: %s", files)
+	}
+}
+
+// The guard behind the hook defence: if anything ever does widen the commit, the
+// push must not happen.
+func TestPublishRefusesACommitWithAnExtraPath(t *testing.T) {
+	f := newRepoFixture(t)
+	plan := f.buildPlan(t, testDigest)
+
+	// Staged out of band, the way a hook or a concurrent run would leave it.
+	gittest.WriteFile(t, filepath.Join(f.repo.Root, "stray.yaml"), "not ours\n")
+	gittest.Run(t, f.repo.Root, "add", "--", "stray.yaml")
+
+	before := gittest.Run(t, f.origin, "rev-parse", "main")
+	_, err := Publish(context.Background(), publishOpts(t, f, plan))
+	if err == nil {
+		t.Fatal("expected the extra path to be refused")
+	}
+	if !strings.Contains(err.Error(), "stray.yaml") {
+		t.Errorf("error does not name the extra path: %v", err)
+	}
+	if after := gittest.Run(t, f.origin, "rev-parse", "main"); after != before {
+		t.Error("something was pushed despite the refusal")
 	}
 }

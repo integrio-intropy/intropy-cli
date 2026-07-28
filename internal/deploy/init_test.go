@@ -658,6 +658,86 @@ func TestInitRequiresDomainOnAFirstRun(t *testing.T) {
 	}
 }
 
+// The scaffold branch is reviewed as a file list, so a hook that stages files of
+// its own would put them in front of a reviewer as this command's work — and into
+// the GitOps repository.
+func TestInitIsUnaffectedByAPreCommitHookInTheCache(t *testing.T) {
+	f := newInitFixture(t)
+
+	// The cache is normally created by the run itself; creating it first is what
+	// lets a hook be waiting in it, which is the situation being tested.
+	cache := cachedCheckoutDir(t, f)
+	if err := git.Clone(context.Background(), command.ExecRunner{}, f.gitopsOrigin, cache); err != nil {
+		t.Fatal(err)
+	}
+	proveHookFires := installPreCommitHook(t, cache, "pwned.txt")
+	proveHookFires(t)
+
+	if _, stderr, err := runInit(t, f.options(&bytes.Buffer{}, &bytes.Buffer{})); err != nil {
+		t.Fatalf("Init: %v\nstderr: %s", err, stderr)
+	}
+
+	work := f.clone(t, "deploy-init/sales-distribution")
+	if _, err := os.Stat(filepath.Join(work, "pwned.txt")); err == nil {
+		t.Error("the hook's file reached the scaffold branch")
+	}
+	files := gittest.Run(t, work, "show", "--name-only", "--format=", "HEAD")
+	if strings.Contains(files, "pwned.txt") {
+		t.Errorf("the scaffold commit contains the hook's file:\n%s", files)
+	}
+}
+
+// A GitOps repository can carry a symlink — git stores one natively and the
+// clone reproduces it — so this is the whole attack, end to end: the repository
+// names a destination, and the write follows it out of the checkout.
+func TestInitRefusesToWriteThroughASymlinkInTheGitopsRepository(t *testing.T) {
+	f := newInitFixture(t)
+
+	outside := filepath.Join(t.TempDir(), "captured.yaml")
+	if err := os.WriteFile(outside, []byte("untouched\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(f.gitopsOrigin, "domains", "sales", "distribution", "host", "component.yaml")
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+	gittest.Run(t, f.gitopsOrigin, "add", "--", "domains")
+	gittest.Run(t, f.gitopsOrigin, "commit", "--quiet", "-m", "plant a symlink")
+
+	_, _, err := runInit(t, f.options(&bytes.Buffer{}, &bytes.Buffer{}))
+	if err == nil {
+		t.Fatal("expected Init to refuse the symlinked destination")
+	}
+	if !strings.Contains(err.Error(), "symlink") {
+		t.Errorf("error does not mention the symlink: %v", err)
+	}
+	if data, readErr := os.ReadFile(outside); readErr != nil || string(data) != "untouched\n" {
+		t.Errorf("the file outside the repository was written: %q (%v)", data, readErr)
+	}
+}
+
+// --domain becomes a tree segment and part of the branch name, so it has to be a
+// single name. The write boundary would refuse the traversal anyway; this is
+// where the user finds out which flag was wrong.
+func TestInitRejectsADomainThatIsNotOneSegment(t *testing.T) {
+	for _, domain := range []string{"../../etc", "sales/orders", "."} {
+		f := newInitFixture(t)
+		opts := f.options(&bytes.Buffer{}, &bytes.Buffer{})
+		opts.Domain = domain
+
+		_, _, err := runInit(t, opts)
+		if err == nil {
+			t.Fatalf("--domain %q was accepted", domain)
+		}
+		if !strings.Contains(err.Error(), "--domain") {
+			t.Errorf("--domain %q: error does not name the flag: %v", domain, err)
+		}
+	}
+}
+
 // After the first run the domain is inferable, which is what makes a re-run
 // flag-free.
 func TestInitInfersDomainOnARerun(t *testing.T) {

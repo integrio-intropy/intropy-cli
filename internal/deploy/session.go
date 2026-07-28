@@ -55,9 +55,15 @@ func openSession(ctx context.Context, opts sessionOptions, binaries ...string) (
 	}
 
 	fmt.Fprintf(opts.Stderr, "refreshing %s\n", repoURL)
-	repo, err := gitops.Open(ctx, gitops.Options{URL: repoURL, Runner: opts.Runner, CacheRoot: opts.CacheRoot})
+	repo, err := gitops.Open(ctx, gitops.Options{URL: repoURL, Runner: opts.Runner, CacheRoot: opts.CacheRoot, Stderr: opts.Stderr})
 	if err != nil {
 		return nil, err
+	}
+	// Only when git resolves the configured URL to somewhere else — an insteadOf
+	// rewrite, or a pushurl. Said before anything is pushed, because the address a
+	// deployment actually leaves for is not something to discover afterwards.
+	if repo.PushURL != "" && !gitops.SameRepository(repo.PushURL, repoURL) {
+		fmt.Fprintf(opts.Stderr, "note: git pushes %s to %s\n", repoURL, repo.PushURL)
 	}
 
 	deployCfg, err := gitops.LoadDeployConfig(repo.Root)

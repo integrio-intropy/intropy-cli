@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/integrio-intropy/intropy-cli/internal/command"
+	"github.com/integrio-intropy/intropy-cli/internal/git"
 )
 
 const (
@@ -56,7 +57,7 @@ type Options struct {
 
 func (o *Options) applyDefaults() {
 	if o.Runner == nil {
-		o.Runner = command.ExecRunner{}
+		o.Runner = git.DefaultRunner()
 	}
 	if o.SourceDir == "" {
 		o.SourceDir = "."

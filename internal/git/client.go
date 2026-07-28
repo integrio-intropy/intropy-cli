@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -19,8 +21,51 @@ type Client struct {
 	Dir    string
 }
 
+// hardening is prepended to every git invocation.
+//
+// A commit here is built from an exact list of paths, and the callers say so:
+// nothing is staged implicitly, and never `add -A`. Ambient configuration can
+// defeat that on its own, because a hook is code the repository supplies and git
+// runs it while building the commit — a pre-commit hook can stage anything it
+// likes, and the result is pushed to the GitOps repository's default branch as if
+// this CLI had asked for it. core.hooksPath is the one setting that disables every
+// hook at once, including the ones no --no-verify flag covers (post-checkout,
+// post-rewrite during a rebase, reference-transaction), and -c beats the
+// repository, global and system configuration it could be set in.
+//
+// Signing is deliberately left alone: an organisation whose remote requires
+// signed commits would have every push rejected, and signing was never how a
+// commit acquires files it should not contain.
+var hardening = []string{
+	// A directory that cannot contain a hook, because it is not a directory.
+	"-c", "core.hooksPath=" + os.DevNull,
+
+	// A filesystem monitor is a long-lived helper process started on demand; the
+	// deployment commands touch a handful of files in a cache and have no use for
+	// one.
+	"-c", "core.fsmonitor=false",
+}
+
+// NonInteractiveEnv is the environment git needs when its output is captured.
+//
+// Without it git prompts for credentials on /dev/tty, which is still there even
+// though this package gives the child no stdin and reads its output into a
+// buffer — so a missing credential reads as a hang with no explanation. With it,
+// the same situation is an error that says what happened. Credential helpers and
+// SSH agents keep working: only the fallback to asking a human is removed.
+func NonInteractiveEnv() []string {
+	return []string{"GIT_TERMINAL_PROMPT=0"}
+}
+
+// DefaultRunner is the runner every git call site should default to.
+func DefaultRunner() command.Runner {
+	return command.ExecRunner{Env: NonInteractiveEnv()}
+}
+
 func (g Client) run(ctx context.Context, args ...string) (string, error) {
-	stdout, _, err := g.Runner.Run(ctx, g.Dir, "git", args...)
+	// Concat rather than append: appending to a package-level slice would let two
+	// concurrent calls share its backing array.
+	stdout, _, err := g.Runner.Run(ctx, g.Dir, "git", slices.Concat(hardening, args)...)
 	return strings.TrimSpace(string(stdout)), err
 }
 
@@ -99,6 +144,40 @@ func (g Client) DefaultBranch(ctx context.Context, remote string) (string, error
 	return "", fmt.Errorf("determine default branch of %s: no symref in ls-remote output", remote)
 }
 
+// RemoteURL returns the URL configured for remote, and whether it is configured
+// at all.
+//
+// This is the identity of the checkout, and the only way to tell whether a
+// cached clone is a clone of the repository the caller asked for: a directory
+// name says what it was created for, not what its git config now points at.
+func (g Client) RemoteURL(ctx context.Context, remote string) (string, bool, error) {
+	url, err := g.run(ctx, "config", "--get", "remote."+remote+".url")
+	if err == nil {
+		return url, url != "", nil
+	}
+	// git exits 1 when the key is simply not set, which is an answer rather than
+	// a failure to read it.
+	if ee, ok := errors.AsType[*command.ExitError](err); ok && ee.Code == 1 {
+		return "", false, nil
+	}
+	return "", false, fmt.Errorf("read the URL of %s: %w", remote, err)
+}
+
+// PushURL returns the URL a push to remote would actually reach, with pushurl
+// and url.<base>.pushInsteadOf rewrites applied.
+//
+// It exists to be reported, not compared: what identifies the repository is the
+// configured URL, and a caller with a deliberate insteadOf rewrite must not be
+// told their own configuration is a mismatch. Showing the resolved URL is what
+// makes such a rewrite visible before anything is pushed.
+func (g Client) PushURL(ctx context.Context, remote string) (string, error) {
+	url, err := g.run(ctx, "remote", "get-url", "--push", remote)
+	if err != nil {
+		return "", fmt.Errorf("resolve the push URL of %s: %w", remote, err)
+	}
+	return url, nil
+}
+
 // IsAncestor reports whether ancestor is an ancestor of descendant. Equal
 // commits count as ancestors, matching git's own semantics.
 func (g Client) IsAncestor(ctx context.Context, ancestor, descendant string) (bool, error) {
@@ -121,6 +200,45 @@ func (g Client) Add(ctx context.Context, paths ...string) error {
 		return fmt.Errorf("stage changes: %w", err)
 	}
 	return nil
+}
+
+// StagedPaths lists the paths the index changes relative to HEAD, repository-root
+// relative and slash-separated.
+//
+// This is how a caller checks that staging an exact list of paths produced exactly
+// that index, rather than assuming it did.
+func (g Client) StagedPaths(ctx context.Context) ([]string, error) {
+	out, err := g.run(ctx, "diff", "--cached", "--name-only", "--no-renames", "-z")
+	if err != nil {
+		return nil, fmt.Errorf("read the staged paths: %w", err)
+	}
+	return splitNUL(out), nil
+}
+
+// CommitPaths lists the paths a commit changed relative to its parent.
+//
+// StagedPaths answers what was about to be committed; this answers what was, which
+// is the last chance to notice a difference before a push makes it everyone's.
+func (g Client) CommitPaths(ctx context.Context, rev string) ([]string, error) {
+	// --root so a repository's first commit reports its files rather than nothing.
+	out, err := g.run(ctx, "diff-tree", "-r", "--root", "--no-commit-id", "--name-only", "--no-renames", "-z", rev)
+	if err != nil {
+		return nil, fmt.Errorf("read the paths changed by %s: %w", ShortSHA(rev), err)
+	}
+	return splitNUL(out), nil
+}
+
+// splitNUL splits git's -z output. NUL-terminated records are the only form in
+// which git never quotes or escapes a path, which matters because these paths are
+// compared against ones this CLI produced.
+func splitNUL(out string) []string {
+	var paths []string
+	for p := range strings.SplitSeq(out, "\x00") {
+		if p != "" {
+			paths = append(paths, p)
+		}
+	}
+	return paths
 }
 
 // CheckoutPaths discards working-tree changes under paths. Always pass an
@@ -189,8 +307,12 @@ func (g Client) RevParse(ctx context.Context, rev string) (string, error) {
 }
 
 // Clone clones url into dir. dir must not already exist.
+//
+// Hardened like every other invocation: a clone checks out a worktree, which runs
+// post-checkout — the first place a repository gets to run code of its own.
 func Clone(ctx context.Context, r command.Runner, url, dir string) error {
-	if _, _, err := r.Run(ctx, "", "git", "clone", "--quiet", url, dir); err != nil {
+	args := slices.Concat(hardening, []string{"clone", "--quiet", url, dir})
+	if _, _, err := r.Run(ctx, "", "git", args...); err != nil {
 		return fmt.Errorf("clone %s: %w", url, err)
 	}
 	return nil
@@ -210,12 +332,14 @@ func ShortSHA(rev string) string {
 // the final paragraph to be parseable by `git log --format=%(trailers)`.
 //
 // Nothing is staged implicitly — there is no -a — so the caller decides exactly
-// what the commit contains.
+// what the commit contains. --no-verify is belt and braces on top of the
+// core.hooksPath in hardening: the two disable hooks by different mechanisms, and
+// this is the operation where a hook would do the most damage.
 func (g Client) Commit(ctx context.Context, messages ...string) error {
 	if len(messages) == 0 {
 		return errors.New("Commit requires at least a subject")
 	}
-	args := []string{"commit", "--quiet"}
+	args := []string{"commit", "--quiet", "--no-verify"}
 	for _, m := range messages {
 		args = append(args, "-m", m)
 	}
@@ -339,7 +463,7 @@ func (g Client) Log(ctx context.Context, revRange string, paths ...string) ([]Lo
 // distinguished from an authentication or network failure where retrying is
 // pointless.
 func (g Client) Push(ctx context.Context, remote, refspec string) error {
-	_, err := g.run(ctx, "push", "--quiet", remote, refspec)
+	_, err := g.run(ctx, "push", "--quiet", "--no-verify", remote, refspec)
 	if err == nil {
 		return nil
 	}

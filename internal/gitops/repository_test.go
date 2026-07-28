@@ -134,6 +134,109 @@ func TestOpenRecoversFromInterruptedClone(t *testing.T) {
 	}
 }
 
+// The cache directory is named after the URL it was created for, which says
+// nothing about where its git config points now. If a stale, corrupted or edited
+// origin were trusted, the fetch that decides what is deployed and the push that
+// publishes it would both go to a repository the user never named.
+func TestOpenRefusesToTrustACachedOriginThatMoved(t *testing.T) {
+	ours := gittest.NewRepo(t, "main")
+	theirs := gittest.NewRepo(t, "main")
+	gittest.Commit(t, theirs, "theirs.txt", "someone else's repository\n", "not ours")
+
+	opts := openOpts(t, ours)
+	var notes strings.Builder
+	opts.Stderr = &notes
+	ctx := context.Background()
+
+	wt, err := Open(ctx, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := wt.Root
+	if err := wt.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	gittest.Run(t, root, "remote", "set-url", RemoteName, theirs)
+
+	wt, err = Open(ctx, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wt.Close()
+
+	have, ok, err := wt.Git.RemoteURL(ctx, RemoteName)
+	if err != nil || !ok {
+		t.Fatalf("RemoteURL = %q, %v, %v", have, ok, err)
+	}
+	if !SameRepository(have, ours) {
+		t.Errorf("origin = %q, want the configured %q", have, ours)
+	}
+	if _, err := os.Stat(filepath.Join(wt.Root, "theirs.txt")); err == nil {
+		t.Error("the checkout still holds the other repository's content")
+	}
+	if !strings.Contains(notes.String(), "re-cloning") {
+		t.Errorf("the user was not told the cache was replaced: %q", notes.String())
+	}
+}
+
+func TestOpenRecoversFromACheckoutWithNoOrigin(t *testing.T) {
+	origin := gittest.NewRepo(t, "main")
+	opts := openOpts(t, origin)
+	ctx := context.Background()
+
+	wt, err := Open(ctx, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := wt.Root
+	if err := wt.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	gittest.Run(t, root, "remote", "remove", RemoteName)
+
+	wt, err = Open(ctx, opts)
+	if err != nil {
+		t.Fatalf("a checkout with no origin should be re-cloned: %v", err)
+	}
+	defer wt.Close()
+	if _, err := os.Stat(filepath.Join(wt.Root, "README.md")); err != nil {
+		t.Errorf("recovery did not produce a usable clone: %v", err)
+	}
+}
+
+// A differently-spelled URL for the same repository must not throw the cache away
+// on every run. It cannot arise from CheckoutDir, which hashes the spelling, but
+// it does arise from git rewriting what it records at clone time.
+func TestOpenKeepsACacheWhoseOriginIsSpelledDifferently(t *testing.T) {
+	origin := gittest.NewRepo(t, "main")
+	opts := openOpts(t, origin)
+	ctx := context.Background()
+
+	wt, err := Open(ctx, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := wt.Root
+	gittest.Run(t, root, "remote", "set-url", RemoteName, origin+"/")
+	if err := wt.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	marker := filepath.Join(root, ".git", "cache-marker")
+	gittest.WriteFile(t, marker, "same clone\n")
+
+	wt, err = Open(ctx, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wt.Close()
+	if _, err := os.Stat(marker); err != nil {
+		t.Error("the cache was re-cloned for a cosmetic URL difference")
+	}
+}
+
 // Two concurrent deploys sharing one checkout would interleave edits, so the
 // second must be told to wait rather than silently queue or proceed.
 func TestOpenIsExclusive(t *testing.T) {

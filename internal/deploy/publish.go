@@ -95,12 +95,28 @@ func Publish(ctx context.Context, opts PublishOptions) (string, error) {
 	plan := opts.Plan
 	rel := plan.RelKustomizationPath(repo.Root)
 
+	// RelKustomizationPath falls back to the absolute path when the file is not
+	// under the checkout, and filepath.Rel is happy to climb out of it. Neither is
+	// something to hand to git add.
+	if err := assertRelIsLocal(rel); err != nil {
+		return "", fmt.Errorf("refusing to stage %s: %w", plan.KustomizationPath, err)
+	}
+
 	// Stage only the file the plan changed. A blanket `git add -A` in a shared
 	// checkout would sweep up anything else that happened to be there.
 	if err := repo.Git.Add(ctx, rel); err != nil {
 		return "", err
 	}
+	// Verified, not assumed: a deployment commit is read as a statement about one
+	// component's overlay, and until the push it is still only a local claim.
+	expected := []string{rel}
+	if err := assertStagedIsExactly(ctx, repo.Git, expected); err != nil {
+		return "", err
+	}
 	if err := repo.Git.Commit(ctx, commitSubject(plan), commitTrailers(plan, opts.CliVersion)); err != nil {
+		return "", err
+	}
+	if err := assertCommittedIsExactly(ctx, repo.Git, expected); err != nil {
 		return "", err
 	}
 
@@ -143,6 +159,11 @@ func Publish(ctx context.Context, opts PublishOptions) (string, error) {
 			}
 			return "", fmt.Errorf("another deployment of %s to %s landed at the same moment, and the two changes conflict.\nNothing was pushed. Re-run to deploy on top of theirs",
 				plan.Coordinate, plan.Environment)
+		}
+		// The replay produced a new commit, so the guarantee has to be re-checked
+		// against that one rather than the one we already verified.
+		if err := assertCommittedIsExactly(ctx, repo.Git, expected); err != nil {
+			return "", err
 		}
 	}
 }

@@ -123,3 +123,31 @@ func TestNotInstalledErrorIncludesHint(t *testing.T) {
 		t.Errorf("error %q should hint at how to install kustomize", err)
 	}
 }
+
+// Env exists so a caller can pin behaviour a user's shell would otherwise decide —
+// git's terminal prompting above all, which would wait for input on a tty whose
+// output this package captures.
+func TestExecRunnerEnvReachesTheChild(t *testing.T) {
+	r := ExecRunner{Env: []string{"INTROPY_TEST_ENV=set-by-runner"}}
+	stdout, _, err := r.Run(context.Background(), t.TempDir(), "sh", "-c", `printf %s "$INTROPY_TEST_ENV"`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(stdout); got != "set-by-runner" {
+		t.Errorf("child saw %q", got)
+	}
+}
+
+// The parent environment has to survive, or git loses the PATH, SSH agent and
+// credential configuration it needs to work at all.
+func TestExecRunnerEnvKeepsTheParentEnvironment(t *testing.T) {
+	t.Setenv("INTROPY_TEST_PARENT", "inherited")
+	r := ExecRunner{Env: []string{"INTROPY_TEST_ENV=set-by-runner"}}
+	stdout, _, err := r.Run(context.Background(), t.TempDir(), "sh", "-c", `printf %s "$INTROPY_TEST_PARENT"`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(stdout); got != "inherited" {
+		t.Errorf("child saw %q, want the parent's value", got)
+	}
+}

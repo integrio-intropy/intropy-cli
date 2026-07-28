@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -45,6 +46,10 @@ func (a FileAction) Writes() bool {
 
 // stageRels lists every file a render produced, relative to the staging root and
 // slash-separated, sorted so a plan reads in tree order.
+//
+// A symlink is refused rather than listed. A rendered skeleton has no reason to
+// produce one, and copying it would mean reading through it to a file the
+// template never named.
 func stageRels(stagingDir string) ([]string, error) {
 	var rels []string
 	err := filepath.WalkDir(stagingDir, func(p string, d fs.DirEntry, err error) error {
@@ -57,6 +62,9 @@ func stageRels(stagingDir string) ([]string, error) {
 		rel, err := filepath.Rel(stagingDir, p)
 		if err != nil {
 			return err
+		}
+		if !d.Type().IsRegular() {
+			return fmt.Errorf("%s rendered as %s, and only regular files may be staged", filepath.ToSlash(rel), d.Type())
 		}
 		rels = append(rels, filepath.ToSlash(rel))
 		return nil
@@ -76,15 +84,21 @@ func stageRels(stagingDir string) ([]string, error) {
 // classifying second is what makes this command additive — a system gains a
 // component and only that subtree is new, while everything a human has since
 // edited is left exactly as it is.
-func classifyStaged(stagingDir, destRoot string, rels []string, force bool) ([]FileAction, error) {
+//
+// Every destination is checked before anything is read: a symlink or a path that
+// leaves the checkout fails the whole run here, which is early enough that --plan
+// refuses it too.
+func classifyStaged(stagingDir string, dest *destTree, rels []string, force bool) ([]FileAction, error) {
 	actions := make([]FileAction, 0, len(rels))
 	for _, rel := range rels {
 		staged := filepath.Join(stagingDir, filepath.FromSlash(rel))
-		existing := filepath.Join(destRoot, filepath.FromSlash(rel))
+		if err := dest.assertWritable(rel); err != nil {
+			return nil, err
+		}
 
-		current, err := os.ReadFile(existing)
+		current, err := dest.read(rel)
 		if err != nil {
-			if !os.IsNotExist(err) {
+			if !errors.Is(err, fs.ErrNotExist) {
 				return nil, fmt.Errorf("read %s: %w", rel, err)
 			}
 			actions = append(actions, FileAction{Rel: rel, Action: ActionCreate})
@@ -148,23 +162,26 @@ func isKustomizationFile(rel string) bool {
 //
 // Nothing is written until every action has been classified, so a failure part
 // way through classification leaves the repository untouched.
-func applyStaged(stagingDir, destRoot string, actions []FileAction) ([]string, error) {
+//
+// The destination is asserted again here rather than trusted from
+// classifyStaged: this function is what puts bytes on disk, and it should not be
+// safe only by virtue of its caller.
+func applyStaged(stagingDir string, dest *destTree, actions []FileAction) ([]string, error) {
 	var written []string
 	for _, a := range actions {
 		if !a.Writes() {
 			continue
 		}
-		src := filepath.Join(stagingDir, filepath.FromSlash(a.Rel))
-		dst := filepath.Join(destRoot, filepath.FromSlash(a.Rel))
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-			return written, fmt.Errorf("create %s: %w", path.Dir(a.Rel), err)
+		if err := dest.assertWritable(a.Rel); err != nil {
+			return written, err
 		}
+		src := filepath.Join(stagingDir, filepath.FromSlash(a.Rel))
 		data, err := os.ReadFile(src)
 		if err != nil {
 			return written, fmt.Errorf("read staged %s: %w", a.Rel, err)
 		}
-		if err := os.WriteFile(dst, data, 0o644); err != nil {
-			return written, fmt.Errorf("write %s: %w", a.Rel, err)
+		if err := dest.write(a.Rel, data); err != nil {
+			return written, err
 		}
 		written = append(written, a.Rel)
 	}

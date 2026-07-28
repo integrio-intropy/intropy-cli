@@ -3,7 +3,10 @@ package git
 import (
 	"context"
 	"errors"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -456,5 +459,142 @@ func TestTrailersOnCommitWithout(t *testing.T) {
 	}
 	if len(trailers) != 0 {
 		t.Errorf("Trailers() = %+v, want none", trailers)
+	}
+}
+
+func TestRemoteURLReportsWhetherItIsConfigured(t *testing.T) {
+	dir := gittest.NewRepo(t, "main")
+	ctx := context.Background()
+	g := testClient(dir)
+
+	// A repository with no remote at all: not configured is an answer, not a
+	// failure to read it.
+	url, ok, err := g.RemoteURL(ctx, "origin")
+	if err != nil {
+		t.Fatalf("RemoteURL on a repository with no remote: %v", err)
+	}
+	if ok || url != "" {
+		t.Errorf("RemoteURL = %q, %v, want unset", url, ok)
+	}
+
+	gittest.Run(t, dir, "remote", "add", "origin", "https://example.test/acme/gitops.git")
+	url, ok, err = g.RemoteURL(ctx, "origin")
+	if err != nil || !ok {
+		t.Fatalf("RemoteURL = %q, %v, %v", url, ok, err)
+	}
+	if url != "https://example.test/acme/gitops.git" {
+		t.Errorf("RemoteURL = %q", url)
+	}
+}
+
+// The push URL is what a deployment actually reaches, and a pushurl is exactly
+// the case where it is not the URL the user configured.
+func TestPushURLResolvesAPushurl(t *testing.T) {
+	dir := gittest.NewRepo(t, "main")
+	ctx := context.Background()
+	gittest.Run(t, dir, "remote", "add", "origin", "https://example.test/acme/gitops.git")
+	gittest.Run(t, dir, "remote", "set-url", "--push", "origin", "ssh://git@example.test/acme/mirror.git")
+
+	got, err := testClient(dir).PushURL(ctx, "origin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "ssh://git@example.test/acme/mirror.git" {
+		t.Errorf("PushURL = %q", got)
+	}
+}
+
+// recordingRunner captures the argv git would have been given.
+type recordingRunner struct{ calls [][]string }
+
+func (r *recordingRunner) Run(_ context.Context, _, _ string, args ...string) ([]byte, []byte, error) {
+	r.calls = append(r.calls, args)
+	return nil, nil, nil
+}
+
+// A clone checks out a worktree, which is the first place a repository gets to run
+// code of its own.
+func TestCloneDisablesHooks(t *testing.T) {
+	r := &recordingRunner{}
+	if err := Clone(context.Background(), r, "https://example.test/acme/gitops.git", t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.calls) != 1 {
+		t.Fatalf("calls = %v", r.calls)
+	}
+	if !slices.Contains(r.calls[0], "core.hooksPath="+os.DevNull) {
+		t.Errorf("clone did not disable hooks: %v", r.calls[0])
+	}
+	// Prepended, because -c is only accepted before the subcommand.
+	if r.calls[0][0] != "-c" {
+		t.Errorf("hardening must come before the subcommand: %v", r.calls[0])
+	}
+}
+
+// A hook is repository-supplied code that git runs while building a commit. This
+// one refuses the commit outright, which is the loudest possible evidence of
+// whether it ran.
+func TestCommitDoesNotRunHooks(t *testing.T) {
+	dir := gittest.NewRepo(t, "main")
+	hook := filepath.Join(dir, ".git", "hooks", "pre-commit")
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	gittest.WriteFile(t, filepath.Join(dir, "new.txt"), "content\n")
+
+	// The hook has to actually work, or this test proves nothing.
+	if out, err := exec.Command("git", "-C", dir, "commit", "--quiet", "-am", "blocked").CombinedOutput(); err == nil {
+		t.Fatalf("plain git accepted a commit the hook should have refused: %s", out)
+	}
+
+	g := testClient(dir)
+	if err := g.Add(ctx, "new.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Commit(ctx, "hooks are disabled"); err != nil {
+		t.Fatalf("Commit ran the hook: %v", err)
+	}
+}
+
+func TestStagedAndCommitPaths(t *testing.T) {
+	dir := gittest.NewRepo(t, "main")
+	ctx := context.Background()
+	g := testClient(dir)
+
+	if paths, err := g.StagedPaths(ctx); err != nil || len(paths) != 0 {
+		t.Fatalf("StagedPaths on a clean index = %v, %v", paths, err)
+	}
+
+	gittest.WriteFile(t, filepath.Join(dir, "a", "one.yaml"), "one\n")
+	// A space is the character git would quote in its default output, which is why
+	// these read -z.
+	gittest.WriteFile(t, filepath.Join(dir, "a", "two words.yaml"), "two\n")
+	if err := g.Add(ctx, "a/one.yaml", "a/two words.yaml"); err != nil {
+		t.Fatal(err)
+	}
+
+	staged, err := g.StagedPaths(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"a/one.yaml", "a/two words.yaml"}
+	if !slices.Equal(staged, want) {
+		t.Errorf("StagedPaths = %q, want %q", staged, want)
+	}
+
+	if err := g.Commit(ctx, "two files"); err != nil {
+		t.Fatal(err)
+	}
+	head, err := g.HEAD(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	committed, err := g.CommitPaths(ctx, head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(committed, want) {
+		t.Errorf("CommitPaths = %q, want %q", committed, want)
 	}
 }

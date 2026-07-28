@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/integrio-intropy/intropy-cli/internal/command"
+	"github.com/integrio-intropy/intropy-cli/internal/git"
 	"github.com/integrio-intropy/intropy-cli/internal/kustomize"
 )
 
@@ -105,7 +106,7 @@ func (o Options) session() sessionOptions {
 
 func (o *Options) applyDefaults() {
 	if o.Runner == nil {
-		o.Runner = command.ExecRunner{}
+		o.Runner = git.DefaultRunner()
 	}
 	if o.SourceDir == "" {
 		o.SourceDir = "."
@@ -177,7 +178,7 @@ func (o PromoteOptions) session() sessionOptions {
 
 func (o *PromoteOptions) applyDefaults() {
 	if o.Runner == nil {
-		o.Runner = command.ExecRunner{}
+		o.Runner = git.DefaultRunner()
 	}
 	if o.OutputFormat == "" {
 		o.OutputFormat = OutputPlain
@@ -238,7 +239,7 @@ func (o DiffOptions) session() sessionOptions {
 
 func (o *DiffOptions) applyDefaults() {
 	if o.Runner == nil {
-		o.Runner = command.ExecRunner{}
+		o.Runner = git.DefaultRunner()
 	}
 	if o.OutputFormat == "" {
 		o.OutputFormat = OutputPlain
@@ -298,7 +299,7 @@ func (o StatusOptions) session() sessionOptions {
 
 func (o *StatusOptions) applyDefaults() {
 	if o.Runner == nil {
-		o.Runner = command.ExecRunner{}
+		o.Runner = git.DefaultRunner()
 	}
 	if o.OutputFormat == "" {
 		o.OutputFormat = OutputPlain
@@ -358,7 +359,7 @@ func (o SyncOptions) session() sessionOptions {
 
 func (o *SyncOptions) applyDefaults() {
 	if o.Runner == nil {
-		o.Runner = command.ExecRunner{}
+		o.Runner = git.DefaultRunner()
 	}
 	if o.OutputFormat == "" {
 		o.OutputFormat = OutputPlain

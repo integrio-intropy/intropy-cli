@@ -31,13 +31,23 @@ func actionFor(t *testing.T, actions []FileAction, rel string) string {
 	return ""
 }
 
+func destTreeFor(t *testing.T, dir string) *destTree {
+	t.Helper()
+	tree, err := openDestTree(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { tree.Close() })
+	return tree
+}
+
 func classify(t *testing.T, staging, dest string, force bool) []FileAction {
 	t.Helper()
 	rels, err := stageRels(staging)
 	if err != nil {
 		t.Fatal(err)
 	}
-	actions, err := classifyStaged(staging, dest, rels, force)
+	actions, err := classifyStaged(staging, destTreeFor(t, dest), rels, force)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +158,7 @@ func TestApplyStagedWritesOnlyWhatTheActionsSay(t *testing.T) {
 	writeTree(t, dest, map[string]string{"b/component.yaml": "left alone\n"})
 
 	actions := classify(t, staging, dest, false)
-	written, err := applyStaged(staging, dest, actions)
+	written, err := applyStaged(staging, destTreeFor(t, dest), actions)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -64,15 +65,27 @@ func (e *ExitError) Error() string {
 }
 
 // ExecRunner runs commands as subprocesses.
-type ExecRunner struct{}
+type ExecRunner struct {
+	// Env holds NAME=VALUE pairs added to the environment of every command it
+	// runs, overriding the parent's. It exists so a caller can pin the parts of
+	// a tool's behaviour that would otherwise come from whatever the user's shell
+	// happens to export — git's terminal prompting above all, which would
+	// otherwise wait for input on a tty whose output this package captures.
+	Env []string
+}
 
 // Run implements Runner using exec.CommandContext, so cancelling ctx kills the
 // child. That matters here: this package shells out to `git push` over SSH and
 // can sit in an ArgoCD poll for minutes, and with a context-free exec.Command a
 // Ctrl-C would cancel the Go side while the subprocess kept running.
-func (ExecRunner) Run(ctx context.Context, dir, name string, args ...string) ([]byte, []byte, error) {
+func (r ExecRunner) Run(ctx context.Context, dir, name string, args ...string) ([]byte, []byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
+	if len(r.Env) > 0 {
+		// Appended, so the last assignment wins and the child still inherits the
+		// PATH, SSH agent and credential configuration it needs to work at all.
+		cmd.Env = append(os.Environ(), r.Env...)
+	}
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
