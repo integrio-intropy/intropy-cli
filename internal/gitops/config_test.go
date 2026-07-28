@@ -163,6 +163,63 @@ func TestLoadDeployConfigRejections(t *testing.T) {
 	}
 }
 
+// The order a status table presents environments in. Alphabetical would render
+// the usual three as dev, prod, staging and tell the wrong story about a
+// pipeline; the promotion graph is what says prod comes last.
+func TestPromotionOrder(t *testing.T) {
+	cases := []struct {
+		name string
+		envs string
+		want string
+	}{
+		{
+			name: "the usual chain",
+			envs: "  dev:\n    sync: auto\n  staging:\n    sync: auto\n    promotesFrom: [dev]\n  prod:\n    sync: manual\n    promotesFrom: [staging]\n",
+			want: "dev,staging,prod",
+		},
+		{
+			name: "no edges at all falls back to alphabetical",
+			envs: "  staging:\n    sync: auto\n  dev:\n    sync: auto\n",
+			want: "dev,staging",
+		},
+		{
+			// Two independent roots, and a target fed by both. The roots are a
+			// rank, so they come out alphabetically next to each other.
+			name: "two roots merging",
+			envs: "  qa:\n    sync: auto\n  dev:\n    sync: auto\n  prod:\n    sync: manual\n    promotesFrom: [dev, qa]\n",
+			want: "dev,qa,prod",
+		},
+		{
+			// Nothing forbids this in validate, and dropping the environments
+			// would hide them from anything listing what exists.
+			name: "a cycle still lists every environment",
+			envs: "  a:\n    sync: auto\n    promotesFrom: [b]\n  b:\n    sync: auto\n    promotesFrom: [a]\n  dev:\n    sync: auto\n",
+			want: "dev,a,b",
+		},
+		{
+			// A self-edge is not a dependency on anything else. Counting it
+			// would make the environment permanently unemittable.
+			name: "a self edge does not strand an environment",
+			envs: "  dev:\n    sync: auto\n    promotesFrom: [dev]\n",
+			want: "dev",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeDeployYAML(t, root, "schemaVersion: 1\nregistry: r\nenvironments:\n"+tc.envs)
+			cfg, err := LoadDeployConfig(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.Join(cfg.PromotionOrder(), ","); got != tc.want {
+				t.Errorf("PromotionOrder() = %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
 // The scratch flag has no defined behaviour yet, but a repository that already
 // sets it must parse rather than be rejected as malformed.
 func TestScratchFlagIsCarried(t *testing.T) {

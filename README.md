@@ -172,6 +172,7 @@ intropy
 ├── deploy <component>     Pin a component's image digest into an environment
 │   ├── promote <component>    Copy the digests one environment runs into another
 │   ├── diff <component>       Show the rendered change a sync would apply
+│   ├── status <component>     Show what every environment runs, side by side
 │   └── sync <component>       Apply an environment's pending change through ArgoCD
 ├── release                Publish and inspect immutable release manifests
 │   ├── create <component>     Publish a release manifest and push a git tag
@@ -759,6 +760,82 @@ digest is unchanged but whose commit moved still restarts the pods. That is
 deliberate — an annotation named `source-commit` that did not track the source
 commit would be worse — and the plan says so explicitly when it is the only
 change.
+
+## Confirming what is deployed (`intropy deploy status`)
+
+The last step of the release process is checking that the same thing really is
+running everywhere:
+
+```sh
+intropy deploy status order-extractor
+```
+
+```
+COMPONENT        ENV      RELEASE  DIGEST               AGE  SYNC    HEALTH
+order-extractor  dev      1.4.2    sha256:ad22d6f2ecbc  2h   Synced  Healthy
+order-extractor  staging  1.4.2    sha256:ad22d6f2ecbc  47m  Synced  Healthy
+order-extractor  prod     1.4.2    sha256:ad22d6f2ecbc  3m   Synced  Healthy
+
+all 3 environments run sha256:ad22d6f2ecbc — these are the same bits, promoted rather than rebuilt
+```
+
+The identical digest in every row is the whole point of the design. Promotion
+copies digests rather than rebuilding, so agreement here is what makes
+"production runs the bits staging tested" a fact instead of a hope — and the
+line under the table says whether it holds, so nobody has to compare three
+truncated hashes by eye.
+
+When it does not hold, the environments are grouped by what they actually run:
+
+```
+the environments do not all run the same bits: dev runs sha256:abc123abc123; staging and prod run sha256:ad22d6f2ecbc
+```
+
+Rows are ordered by the promotion graph in `deploy.yaml`, not alphabetically, so
+the last row is the furthest downstream. Only the environments the component
+declares are shown.
+
+Where each column comes from:
+
+| Column | Source |
+| --- | --- |
+| `RELEASE` | the overlay's `deploy.internal/release` annotation, or `@<short sha>` from `deploy.internal/source-commit` when it was deployed from a commit |
+| `DIGEST` | the digest the overlay pins, in the same form `deploy` and `promote` print |
+| `AGE` | the commit that last changed that overlay — ArgoCD reports no timestamp, and the commit is when the change reached the branch |
+| `SYNC`, `HEALTH` | ArgoCD's `status.sync.status` and `status.health.status` |
+
+**Nothing here can fail on one bad environment.** An overlay that pins a tag, an
+environment the component has never been deployed to, an application ArgoCD does
+not know — each is reported as a note under the table and the other rows still
+print, because the point of the table is the environments that are fine next to
+the one that is not. This is the opposite of `deploy promote`, which *refuses* to
+copy out of a tag-pinned overlay; describing one is not the same as promoting it.
+
+If ArgoCD cannot be reached at all, `SYNC` and `HEALTH` are left empty and
+everything else still prints with a warning on stderr. Those two columns are the
+only ones that come from the cluster; withholding the digests over them would be
+withholding most of the answer over part of it.
+
+An environment whose overlay has a committed change ArgoCD has not applied is
+called out with the command to review it — for a `sync: manual` environment that
+is the normal resting state of an unspent gate, not a fault:
+
+```
+prod has a committed change ArgoCD has not applied, waiting on its manual sync gate:
+  intropy deploy diff order-extractor --env prod
+```
+
+The exit code is **always 0**, even when the environments disagree. This reports;
+it does not gate. To gate in CI, read `consistent` from the machine-readable
+form, which also carries every image rather than just the one the table has room
+for, and the deploy time as an instant rather than a rendered age:
+
+```sh
+intropy deploy status order-extractor --output json | jq -e '.consistent'
+```
+
+Nothing is written to git, no sync is triggered, `kubectl` is never invoked, and
+`kustomize` is not required.
 
 ## Releases (`intropy release`)
 

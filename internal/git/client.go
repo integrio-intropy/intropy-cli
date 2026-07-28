@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/integrio-intropy/intropy-cli/internal/command"
 )
@@ -242,14 +243,37 @@ type LogCommit struct {
 // file in its current state", and a merge that resolved the file really is that
 // commit.
 func (g Client) LastCommit(ctx context.Context, rev, path string) (string, bool, error) {
-	out, err := g.run(ctx, "log", "-1", "--format=%H", rev, "--", path)
+	sha, _, found, err := g.LastCommitAt(ctx, rev, path)
+	return sha, found, err
+}
+
+// LastCommitAt is LastCommit with the commit's timestamp, which is what dates a
+// deployment: an overlay changed when the commit that changed it landed.
+//
+// The committer date rather than the author date. Publish rebases and retries
+// when the push races another deployment, which rewrites the committer date and
+// leaves the author date at the first attempt; the later of the two is when the
+// change actually reached the branch.
+func (g Client) LastCommitAt(ctx context.Context, rev, path string) (string, time.Time, bool, error) {
+	// NUL-separated for the same reason Log is: the fields are fixed-width here,
+	// but one delimiter convention in this file is one fewer thing to get wrong.
+	out, err := g.run(ctx, "log", "-1", "--format=%H%x00%cI", rev, "--", path)
 	if err != nil {
-		return "", false, fmt.Errorf("read last commit for %s: %w", path, err)
+		return "", time.Time{}, false, fmt.Errorf("read last commit for %s: %w", path, err)
 	}
 	if out == "" {
-		return "", false, nil
+		return "", time.Time{}, false, nil
 	}
-	return out, true, nil
+
+	sha, date, ok := strings.Cut(out, "\x00")
+	if !ok {
+		return "", time.Time{}, false, fmt.Errorf("read last commit for %s: unexpected git log output %q", path, out)
+	}
+	at, err := time.Parse(time.RFC3339, date)
+	if err != nil {
+		return "", time.Time{}, false, fmt.Errorf("read last commit for %s: parse commit date %q: %w", path, date, err)
+	}
+	return sha, at, true, nil
 }
 
 // Log lists the commits in revRange, most recent first, limited to paths when

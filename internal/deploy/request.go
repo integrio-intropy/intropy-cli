@@ -260,6 +260,60 @@ func (o *DiffOptions) applyDefaults() {
 	}
 }
 
+// StatusOptions configures Status.
+//
+// Narrower than every other options type here: there is no Environment, because
+// status is about all of them at once — the question it answers is whether the
+// environments agree, which cannot be asked of one. There is no Color either,
+// since it renders a table rather than a diff.
+type StatusOptions struct {
+	Component string
+	Domain    string
+	System    string
+
+	GitopsRepo   string
+	ArgocdServer string
+	OutputFormat string
+	CacheRoot    string
+
+	Runner    command.Runner
+	UserAgent string
+	Stdout    io.Writer
+	Stderr    io.Writer
+}
+
+func (o StatusOptions) output() output {
+	return output{Format: o.OutputFormat, Stdout: o.Stdout, Stderr: o.Stderr}
+}
+
+func (o StatusOptions) session() sessionOptions {
+	return sessionOptions{
+		GitopsRepo:   o.GitopsRepo,
+		ArgocdServer: o.ArgocdServer,
+		CacheRoot:    o.CacheRoot,
+		Runner:       o.Runner,
+		Stderr:       o.Stderr,
+	}
+}
+
+func (o *StatusOptions) applyDefaults() {
+	if o.Runner == nil {
+		o.Runner = command.ExecRunner{}
+	}
+	if o.OutputFormat == "" {
+		o.OutputFormat = OutputPlain
+	}
+	if o.UserAgent == "" {
+		o.UserAgent = "intropy-cli"
+	}
+	if o.Stdout == nil {
+		o.Stdout = os.Stdout
+	}
+	if o.Stderr == nil {
+		o.Stderr = os.Stderr
+	}
+}
+
 // SyncOptions configures Sync.
 type SyncOptions struct {
 	Component string

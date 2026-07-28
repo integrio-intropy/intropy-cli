@@ -45,8 +45,8 @@ var deployCmd = &cobra.Command{
 		"With --plan the overlay is rendered and diffed but nothing is written to git. After pushing, the command " +
 		"waits for ArgoCD to apply the new revision; --no-wait skips that, and environments that sync manually " +
 		"never wait.\n\n" +
-		"The subcommand names win over the component argument, so a component actually called diff, promote or sync " +
-		"is not reachable this way.",
+		"The subcommand names win over the component argument, so a component actually called diff, promote, status " +
+		"or sync is not reachable this way.",
 	Args:              cobra.RangeArgs(1, 2),
 	ValidArgsFunction: completeDeployComponents,
 	RunE: func(cmd *cobra.Command, args []string) error {

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/integrio-intropy/intropy-cli/internal/command"
 	"github.com/integrio-intropy/intropy-cli/internal/gittest"
@@ -101,6 +102,47 @@ func TestGitLastCommitOfAnUntouchedPath(t *testing.T) {
 	}
 	if found || got != "" {
 		t.Errorf("LastCommit() = %q, %v; want no commit", got, found)
+	}
+}
+
+// Dating a deployment: the overlay changed when the commit that changed it
+// landed, and that timestamp is the only source of a deployment's age — ArgoCD
+// reports none.
+func TestGitLastCommitAtReportsWhenTheCommitLanded(t *testing.T) {
+	dir := gittest.NewRepo(t, "main")
+	g := testClient(dir)
+	ctx := context.Background()
+
+	before := time.Now().Add(-time.Second).Truncate(time.Second)
+	gittest.Commit(t, dir, "overlays/prod/kustomization.yaml", "digest: one\n", "pin prod")
+	after := time.Now().Add(time.Second)
+
+	sha, at, found, err := g.LastCommitAt(ctx, "HEAD", "overlays/prod/kustomization.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("LastCommitAt() found nothing for a path that exists")
+	}
+	if want := gittest.HEAD(t, dir); sha != want {
+		t.Errorf("LastCommitAt() sha = %q, want %q", sha, want)
+	}
+	if at.Before(before) || at.After(after) {
+		t.Errorf("LastCommitAt() at = %s, want between %s and %s", at, before, after)
+	}
+}
+
+// The same "nothing pending" case as LastCommit: an onboarded but never
+// deployed overlay has no history, which is a fact rather than a failure.
+func TestGitLastCommitAtOfAnUntouchedPath(t *testing.T) {
+	dir := gittest.NewRepo(t, "main")
+
+	sha, at, found, err := testClient(dir).LastCommitAt(context.Background(), "HEAD", "never/existed.yaml")
+	if err != nil {
+		t.Fatalf("an untouched path should not be an error: %v", err)
+	}
+	if found || sha != "" || !at.IsZero() {
+		t.Errorf("LastCommitAt() = %q, %s, %v; want no commit", sha, at, found)
 	}
 }
 

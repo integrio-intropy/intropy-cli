@@ -1,5 +1,7 @@
 package deploy
 
+import "time"
+
 // Result is the machine-readable outcome. Field names are stable and
 // additive-only.
 type Result struct {
@@ -121,6 +123,70 @@ type DiffResult struct {
 	SyncPolicy   string `json:"syncPolicy"`
 	SyncStatus   string `json:"syncStatus,omitempty"`
 	HealthStatus string `json:"healthStatus,omitempty"`
+}
+
+// StatusResult is the machine-readable outcome of a status. Its own type for
+// the same reason SyncResult is: it plans nothing, applies nothing, and is the
+// only result here that describes more than one environment.
+type StatusResult struct {
+	Component string `json:"component"`
+	Domain    string `json:"domain"`
+	System    string `json:"system"`
+
+	// Environments are in promotion order, so the last one is the furthest
+	// downstream — usually production.
+	Environments []EnvironmentStatus `json:"environments"`
+
+	// Consistent reports that every onboarded environment pins the identical
+	// digest for every image the component declares. This is the question the
+	// command exists to answer: promotion copies digests rather than rebuilding,
+	// so agreement here is what makes "prod runs the bits staging tested" true.
+	//
+	// False when any environment disagrees, pins a tag instead of a digest, or
+	// could not be read — in none of those cases has agreement been shown.
+	Consistent bool `json:"consistent"`
+}
+
+// EnvironmentStatus is one environment's row.
+type EnvironmentStatus struct {
+	Environment string `json:"environment"`
+	AppName     string `json:"appName"`
+	OverlayPath string `json:"overlayPath"`
+
+	// Onboarded reports that the component has a readable overlay here. False
+	// leaves everything below it empty, and Reason says why.
+	Onboarded bool   `json:"onboarded"`
+	Reason    string `json:"reason,omitempty"`
+
+	// Release and SourceCommit are the deploy.internal/release and
+	// deploy.internal/source-commit annotations. Release is empty when the
+	// environment was deployed from a commit rather than a release.
+	Release      string `json:"release,omitempty"`
+	SourceCommit string `json:"sourceCommit,omitempty"`
+
+	// Pins is every image the component declares, in that order — not just the
+	// one the table has room for. Digest is empty when the overlay pins a tag
+	// or nothing, in which case Tag says which.
+	Pins []ResultPin `json:"pins,omitempty"`
+
+	// Revision is the GitOps commit that last changed this overlay, and
+	// DeployedAt when it landed. Both empty when the path has no history.
+	Revision   string     `json:"revision,omitempty"`
+	DeployedAt *time.Time `json:"deployedAt,omitempty"`
+
+	SyncPolicy string `json:"syncPolicy"`
+
+	// SyncStatus, HealthStatus and SyncedRevision are what ArgoCD reports.
+	// Empty when it could not be reached or does not know this application —
+	// neither of which says anything about what the overlay pins.
+	SyncStatus     string `json:"syncStatus,omitempty"`
+	HealthStatus   string `json:"healthStatus,omitempty"`
+	SyncedRevision string `json:"syncedRevision,omitempty"`
+
+	// Pending reports a committed overlay change ArgoCD has not applied. For a
+	// manual-sync environment that is the normal resting state of an unspent
+	// gate, not a fault.
+	Pending bool `json:"pending"`
 }
 
 // ResultPin is one image's before and after state.

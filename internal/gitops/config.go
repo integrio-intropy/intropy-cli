@@ -172,6 +172,71 @@ func (c *DeployConfig) EnvironmentNames() []string {
 	return slices.Sorted(maps.Keys(c.Environments))
 }
 
+// PromotionOrder returns the environments in the order changes flow through
+// them: an environment comes after every environment it promotes from. Ties
+// break alphabetically, so the order is stable across runs.
+//
+// EnvironmentNames sorts alphabetically, which renders the usual three as dev,
+// prod, staging. That is the wrong story for anything presenting environments
+// as a pipeline — the promotion graph is what says prod comes last.
+func (c *DeployConfig) PromotionOrder() []string {
+	// Sources counts the not-yet-emitted environments each one promotes from.
+	// An edge naming an undefined environment is impossible here: validate
+	// rejects the file first.
+	remaining := make(map[string]int, len(c.Environments))
+	for name, env := range c.Environments {
+		sources := 0
+		for _, src := range env.PromotesFrom {
+			// A self-edge is not a dependency on anything else, and counting it
+			// would make the environment permanently unemittable.
+			if src != name {
+				sources++
+			}
+		}
+		remaining[name] = sources
+	}
+
+	order := make([]string, 0, len(c.Environments))
+	for len(remaining) > 0 {
+		ready := make([]string, 0, len(remaining))
+		for name, sources := range remaining {
+			if sources == 0 {
+				ready = append(ready, name)
+			}
+		}
+
+		// Nothing is ready, so the remainder is a cycle. deploy.yaml's
+		// validation does not forbid one, and dropping those environments would
+		// hide them from a caller listing what exists — emit them alphabetically
+		// instead.
+		if len(ready) == 0 {
+			order = append(order, slices.Sorted(maps.Keys(remaining))...)
+			break
+		}
+
+		slices.Sort(ready)
+		order = append(order, ready...)
+		for _, name := range ready {
+			delete(remaining, name)
+		}
+		// Emitting a whole rank at a time keeps siblings adjacent and
+		// alphabetical, rather than interleaving them by discovery order.
+		for _, name := range ready {
+			for other, env := range c.Environments {
+				if _, pending := remaining[other]; !pending {
+					continue
+				}
+				for _, src := range env.PromotesFrom {
+					if src == name {
+						remaining[other]--
+					}
+				}
+			}
+		}
+	}
+	return order
+}
+
 // LoadComponentConfig reads and validates a component.yaml from a component
 // directory.
 func LoadComponentConfig(dir string) (*ComponentConfig, error) {
