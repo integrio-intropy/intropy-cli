@@ -3,7 +3,7 @@
   "checkpoint_id": "120197a21344",
   "strategy": "manual-commit",
   "branch": "feature/v-next",
-  "checkpoints_count": 8,
+  "checkpoints_count": 9,
   "files_touched": [
     "README.md",
     "cmd/intropy/deploy.go",
@@ -59,13 +59,20 @@
       "compact_transcript": "/12/0197a21344/1/transcript.jsonl",
       "content_hash": "/12/0197a21344/1/content_hash.txt",
       "prompt": "/12/0197a21344/1/prompt.txt"
+    },
+    {
+      "metadata": "/12/0197a21344/2/metadata.json",
+      "transcript": "/12/0197a21344/2/full.jsonl",
+      "compact_transcript": "/12/0197a21344/2/transcript.jsonl",
+      "content_hash": "/12/0197a21344/2/content_hash.txt",
+      "prompt": "/12/0197a21344/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 128837,
+    "input_tokens": 162047,
     "cache_creation_tokens": 507503,
-    "cache_read_tokens": 78874409,
-    "output_tokens": 295280,
-    "api_call_count": 253
+    "cache_read_tokens": 78902569,
+    "output_tokens": 297326,
+    "api_call_count": 256
   }
 }
