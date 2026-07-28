@@ -1,0 +1,72 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "972c45632bd1",
+  "session_id": "cb6acc28-47a2-43c8-ae22-b9ef88dec9c1",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-28T13:53:52.237891Z",
+  "branch": "feature/v-next",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "internal/command/runner.go",
+    "internal/command/runner_test.go",
+    "internal/deploy/init.go",
+    "internal/deploy/init_test.go",
+    "internal/deploy/publish.go",
+    "internal/deploy/publish_test.go",
+    "internal/deploy/request.go",
+    "internal/deploy/safepath.go",
+    "internal/deploy/safepath_test.go",
+    "internal/deploy/scaffold.go",
+    "internal/deploy/scaffold_test.go",
+    "internal/deploy/session.go",
+    "internal/deploy/verify.go",
+    "internal/deploy/verify_test.go",
+    "internal/git/client.go",
+    "internal/git/client_test.go",
+    "internal/gitops/remote.go",
+    "internal/gitops/remote_test.go",
+    "internal/gitops/repository.go",
+    "internal/gitops/repository_test.go",
+    "internal/release/request.go"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "d0a1e6afb879",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 6444,
+    "cache_creation_tokens": 206456,
+    "cache_read_tokens": 16915483,
+    "output_tokens": 85057,
+    "api_call_count": 104
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-28T13:53:52.190044Z",
+    "agent_lines": 1331,
+    "agent_removed": 49,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1331,
+    "total_lines_changed": 1380,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 52,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 51
+      }
+    }
+  ]
+}
