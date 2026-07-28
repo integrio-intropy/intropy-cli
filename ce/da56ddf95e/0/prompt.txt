@@ -1,0 +1,1 @@
+runing intropy dashboard just renders a blank page (when started from /Users/robinhultman/dev/intropy/customers/entrovia/integrations/domains/orders/order-flow/order-flow)
