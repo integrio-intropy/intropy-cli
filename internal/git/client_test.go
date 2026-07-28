@@ -512,11 +512,11 @@ func (r *recordingRunner) Run(_ context.Context, _, _ string, args ...string) ([
 	return nil, nil, nil
 }
 
-// A clone checks out a worktree, which is the first place a repository gets to run
-// code of its own.
-func TestCloneDisablesHooks(t *testing.T) {
+// A managed clone checks out a worktree, which is the first place a repository
+// gets to run code of its own in a directory this CLI is about to commit in.
+func TestCloneManagedDisablesHooks(t *testing.T) {
 	r := &recordingRunner{}
-	if err := Clone(context.Background(), r, "https://example.test/acme/gitops.git", t.TempDir()); err != nil {
+	if err := CloneManaged(context.Background(), r, "https://example.test/acme/gitops.git", t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
 	if len(r.calls) != 1 {
@@ -531,15 +531,34 @@ func TestCloneDisablesHooks(t *testing.T) {
 	}
 }
 
-// A hook is repository-supplied code that git runs while building a commit. This
-// one refuses the commit outright, which is the loudest possible evidence of
-// whether it ran.
-func TestCommitDoesNotRunHooks(t *testing.T) {
-	dir := gittest.NewRepo(t, "main")
-	hook := filepath.Join(dir, ".git", "hooks", "pre-commit")
-	if err := os.WriteFile(hook, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+// Cloning a repository the user owns is not the CLI's to reinterpret.
+func TestCloneLeavesAUserRepositoryAlone(t *testing.T) {
+	r := &recordingRunner{}
+	if err := Clone(context.Background(), r, "https://example.test/acme/app.git", t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
+	if slices.Contains(r.calls[0], "core.hooksPath="+os.DevNull) {
+		t.Errorf("a user's clone should keep their hook policy: %v", r.calls[0])
+	}
+	if r.calls[0][0] != "clone" {
+		t.Errorf("args = %v, want a plain clone", r.calls[0])
+	}
+}
+
+// blockingHook installs a hook that refuses whatever it is asked about, which is
+// the loudest possible evidence of whether it ran.
+func blockingHook(t *testing.T, dir, name string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, ".git", "hooks", name), []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A hook is repository-supplied code that git runs while building a commit, and in
+// a checkout nobody configured and nobody reviews, that is code we did not ask for.
+func TestManagedCommitDoesNotRunHooks(t *testing.T) {
+	dir := gittest.NewRepo(t, "main")
+	blockingHook(t, dir, "pre-commit")
 	ctx := context.Background()
 	gittest.WriteFile(t, filepath.Join(dir, "new.txt"), "content\n")
 
@@ -548,12 +567,55 @@ func TestCommitDoesNotRunHooks(t *testing.T) {
 		t.Fatalf("plain git accepted a commit the hook should have refused: %s", out)
 	}
 
-	g := testClient(dir)
+	g := NewManagedClient(command.ExecRunner{}, dir)
 	if err := g.Add(ctx, "new.txt"); err != nil {
 		t.Fatal(err)
 	}
 	if err := g.Commit(ctx, "hooks are disabled"); err != nil {
 		t.Fatalf("Commit ran the hook: %v", err)
+	}
+}
+
+// The other half of the same rule: a repository the user owns keeps their hooks. A
+// release tag leaving their source tree must clear the same pre-push checks any
+// other push of theirs would.
+func TestPushFromAUserRepositoryRunsTheirPrePushHook(t *testing.T) {
+	origin := gittest.NewRepo(t, "main")
+	clone := filepath.Join(t.TempDir(), "clone")
+	ctx := context.Background()
+	if err := Clone(ctx, command.ExecRunner{}, origin, clone); err != nil {
+		t.Fatal(err)
+	}
+	gittest.Init(t, clone, "main")
+	blockingHook(t, clone, "pre-push")
+	gittest.Commit(t, clone, "ours.txt", "ours\n", "our change")
+
+	err := testClient(clone).Push(ctx, "origin", "HEAD:main")
+	if err == nil {
+		t.Fatal("the user's pre-push hook was bypassed")
+	}
+	if got := gittest.Run(t, origin, "rev-parse", "main"); got == gittest.HEAD(t, clone) {
+		t.Error("the push landed despite the hook refusing it")
+	}
+}
+
+// And the managed checkout, where the same hook must not stop a deployment.
+func TestManagedPushDoesNotRunHooks(t *testing.T) {
+	origin := gittest.NewRepo(t, "main")
+	clone := filepath.Join(t.TempDir(), "clone")
+	ctx := context.Background()
+	if err := CloneManaged(ctx, command.ExecRunner{}, origin, clone); err != nil {
+		t.Fatal(err)
+	}
+	gittest.Init(t, clone, "main")
+	blockingHook(t, clone, "pre-push")
+	gittest.Commit(t, clone, "ours.txt", "ours\n", "our change")
+
+	if err := NewManagedClient(command.ExecRunner{}, clone).Push(ctx, "origin", "HEAD:main"); err != nil {
+		t.Fatalf("Push ran the hook: %v", err)
+	}
+	if got := gittest.Run(t, origin, "rev-parse", "main"); got != gittest.HEAD(t, clone) {
+		t.Error("the push did not land")
 	}
 }
 
@@ -596,5 +658,39 @@ func TestStagedAndCommitPaths(t *testing.T) {
 	}
 	if !slices.Equal(committed, want) {
 		t.Errorf("CommitPaths = %q, want %q", committed, want)
+	}
+}
+
+// A pushurl is the one key that says "a push goes somewhere other than where a
+// fetch came from", so reading it and clearing it are separate from resolving the
+// address every rewrite rule adds up to.
+func TestRemotePushURLAndClear(t *testing.T) {
+	dir := gittest.NewRepo(t, "main")
+	ctx := context.Background()
+	g := testClient(dir)
+	gittest.Run(t, dir, "remote", "add", "origin", "https://example.test/acme/gitops.git")
+
+	if url, ok, err := g.RemotePushURL(ctx, "origin"); err != nil || ok {
+		t.Fatalf("RemotePushURL with none set = %q, %v, %v", url, ok, err)
+	}
+
+	gittest.Run(t, dir, "remote", "set-url", "--push", "origin", "ssh://git@elsewhere.test/acme/mirror.git")
+	url, ok, err := g.RemotePushURL(ctx, "origin")
+	if err != nil || !ok {
+		t.Fatalf("RemotePushURL = %q, %v, %v", url, ok, err)
+	}
+	if url != "ssh://git@elsewhere.test/acme/mirror.git" {
+		t.Errorf("RemotePushURL = %q", url)
+	}
+
+	if err := g.ClearRemotePushURL(ctx, "origin"); err != nil {
+		t.Fatal(err)
+	}
+	if url, ok, err := g.RemotePushURL(ctx, "origin"); err != nil || ok {
+		t.Errorf("RemotePushURL after clearing = %q, %v, %v", url, ok, err)
+	}
+	// With the pushurl gone, a push goes where a fetch comes from.
+	if got, err := g.PushURL(ctx, "origin"); err != nil || got != "https://example.test/acme/gitops.git" {
+		t.Errorf("PushURL = %q, %v", got, err)
 	}
 }

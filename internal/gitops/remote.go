@@ -20,12 +20,15 @@ func SameRepository(a, b string) bool {
 	return normalizeRepoURL(a) == normalizeRepoURL(b)
 }
 
-// normalizeRepoURL reduces a remote URL to host and path.
+// normalizeRepoURL reduces a remote URL to host, port and path.
 //
-// Credentials, scheme and port are dropped: none of them change which repository
-// is named, and all of them differ routinely between the SSH form a clone records
-// and the HTTPS form a human writes down. An unparseable URL is returned trimmed
-// rather than rejected, so it compares equal only to itself.
+// Credentials and scheme are dropped: neither changes which repository is named,
+// and both differ routinely between the SSH form a clone records and the HTTPS
+// form a human writes down. A port is kept unless it is the scheme's default,
+// which is the only way to drop it without conflating two hosts: :8443 and :9443
+// on one address can be entirely different servers, while :443 and no port on an
+// https URL cannot be. An unparseable URL is returned trimmed rather than
+// rejected, so it compares equal only to itself.
 func normalizeRepoURL(raw string) string {
 	s := strings.TrimSpace(raw)
 	s = strings.TrimSuffix(s, "/")
@@ -36,7 +39,9 @@ func normalizeRepoURL(raw string) string {
 	}
 
 	// scp-form: git@host:owner/repo, which is not a URL and would parse as the
-	// "git@host" scheme with an opaque body.
+	// "git@host" scheme with an opaque body. It carries no port — git reads
+	// everything after the colon as the path, so git@host:2222/o/r is a repository
+	// called 2222/o/r and ssh:// is the only way to name a port.
 	if !strings.Contains(s, "://") {
 		if host, path, ok := strings.Cut(s, ":"); ok {
 			_, host, _ = strings.Cut(host, "@") // drop any user
@@ -55,5 +60,25 @@ func normalizeRepoURL(raw string) string {
 		// file:///path — the path is the whole identity.
 		return strings.TrimRight(u.Path, "/")
 	}
+	if port := u.Port(); port != "" && port != defaultPort(u.Scheme) {
+		host += ":" + port
+	}
 	return host + "/" + strings.Trim(u.Path, "/")
+}
+
+// defaultPort is the port a scheme implies, so writing it out compares equal to
+// leaving it off. An unrecognised scheme has no default, which keeps whatever port
+// it was given rather than guessing that it does not matter.
+func defaultPort(scheme string) string {
+	switch strings.ToLower(scheme) {
+	case "https":
+		return "443"
+	case "http":
+		return "80"
+	case "ssh":
+		return "22"
+	case "git":
+		return "9418"
+	}
+	return ""
 }

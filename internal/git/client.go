@@ -16,14 +16,36 @@ import (
 )
 
 // Client is a typed wrapper over the git binary rooted at a working directory.
+//
+// A zero Client works on a repository the user owns, where git behaves exactly as
+// they configured it. NewManagedClient is for the checkouts this CLI creates and
+// is the sole writer of.
 type Client struct {
 	Runner command.Runner
 	Dir    string
+
+	// managed marks a checkout this CLI created and owns. Unexported and settable
+	// only through NewManagedClient, because the default has to be the user's own
+	// repository: reinterpreting how git behaves there is not this package's call.
+	managed bool
 }
 
-// hardening is prepended to every git invocation.
+// NewManagedClient returns a client for a checkout this CLI created, owns and is
+// the only writer of — today, the cached GitOps clone.
 //
-// A commit here is built from an exact list of paths, and the callers say so:
+// Only these are hardened. The distinction is not cosmetic: a user's own
+// repository is theirs, their hooks are their policy, and a release tag pushed
+// from their source tree must go through the same pre-push checks any other push
+// of theirs would. The cached clone is the opposite case — nobody configured it,
+// nobody reviews what lands in it, and this CLI is the only thing that commits
+// there.
+func NewManagedClient(r command.Runner, dir string) Client {
+	return Client{Runner: r, Dir: dir, managed: true}
+}
+
+// hardening is prepended to every invocation on a managed checkout.
+//
+// A commit there is built from an exact list of paths, and the callers say so:
 // nothing is staged implicitly, and never `add -A`. Ambient configuration can
 // defeat that on its own, because a hook is code the repository supplies and git
 // runs it while building the commit — a pre-commit hook can stage anything it
@@ -63,9 +85,12 @@ func DefaultRunner() command.Runner {
 }
 
 func (g Client) run(ctx context.Context, args ...string) (string, error) {
-	// Concat rather than append: appending to a package-level slice would let two
-	// concurrent calls share its backing array.
-	stdout, _, err := g.Runner.Run(ctx, g.Dir, "git", slices.Concat(hardening, args)...)
+	if g.managed {
+		// Concat rather than append: appending to a package-level slice would let
+		// two concurrent calls share its backing array.
+		args = slices.Concat(hardening, args)
+	}
+	stdout, _, err := g.Runner.Run(ctx, g.Dir, "git", args...)
 	return strings.TrimSpace(string(stdout)), err
 }
 
@@ -163,19 +188,45 @@ func (g Client) RemoteURL(ctx context.Context, remote string) (string, bool, err
 	return "", false, fmt.Errorf("read the URL of %s: %w", remote, err)
 }
 
-// PushURL returns the URL a push to remote would actually reach, with pushurl
-// and url.<base>.pushInsteadOf rewrites applied.
+// PushURL returns the URL a push to remote would actually reach, with pushurl and
+// url.<base>.pushInsteadOf rewrites applied.
 //
-// It exists to be reported, not compared: what identifies the repository is the
-// configured URL, and a caller with a deliberate insteadOf rewrite must not be
-// told their own configuration is a mismatch. Showing the resolved URL is what
-// makes such a rewrite visible before anything is pushed.
+// remote.<remote>.url is where a fetch comes from, and it is not where a push
+// goes. Any caller that has verified the one and not the other has verified
+// nothing about where its commits end up.
 func (g Client) PushURL(ctx context.Context, remote string) (string, error) {
 	url, err := g.run(ctx, "remote", "get-url", "--push", remote)
 	if err != nil {
 		return "", fmt.Errorf("resolve the push URL of %s: %w", remote, err)
 	}
 	return url, nil
+}
+
+// RemotePushURL returns the pushurl configured for remote in this repository, and
+// whether one is configured at all.
+//
+// Distinct from PushURL: this reads one key, rather than the address git would
+// arrive at after every rewrite rule in every configuration file has had its say.
+func (g Client) RemotePushURL(ctx context.Context, remote string) (string, bool, error) {
+	url, err := g.run(ctx, "config", "--get", "remote."+remote+".pushurl")
+	if err == nil {
+		return url, url != "", nil
+	}
+	if ee, ok := errors.AsType[*command.ExitError](err); ok && ee.Code == 1 {
+		return "", false, nil
+	}
+	return "", false, fmt.Errorf("read the pushurl of %s: %w", remote, err)
+}
+
+// ClearRemotePushURL removes every pushurl configured for remote in this
+// repository's own configuration.
+//
+// Only call it for a key that exists: git exits 5 for unsetting one that does not.
+func (g Client) ClearRemotePushURL(ctx context.Context, remote string) error {
+	if _, err := g.run(ctx, "config", "--unset-all", "remote."+remote+".pushurl"); err != nil {
+		return fmt.Errorf("remove the pushurl of %s: %w", remote, err)
+	}
+	return nil
 }
 
 // IsAncestor reports whether ancestor is an ancestor of descendant. Equal
@@ -307,11 +358,20 @@ func (g Client) RevParse(ctx context.Context, rev string) (string, error) {
 }
 
 // Clone clones url into dir. dir must not already exist.
-//
-// Hardened like every other invocation: a clone checks out a worktree, which runs
-// post-checkout — the first place a repository gets to run code of its own.
 func Clone(ctx context.Context, r command.Runner, url, dir string) error {
-	args := slices.Concat(hardening, []string{"clone", "--quiet", url, dir})
+	return clone(ctx, r, url, dir, nil)
+}
+
+// CloneManaged clones into a directory this CLI will own, with hooks disabled for
+// the same reason NewManagedClient disables them: a clone checks out a worktree,
+// which runs post-checkout — the first opportunity a repository has to run code of
+// its own in a checkout we are about to commit in.
+func CloneManaged(ctx context.Context, r command.Runner, url, dir string) error {
+	return clone(ctx, r, url, dir, hardening)
+}
+
+func clone(ctx context.Context, r command.Runner, url, dir string, prefix []string) error {
+	args := slices.Concat(prefix, []string{"clone", "--quiet", url, dir})
 	if _, _, err := r.Run(ctx, "", "git", args...); err != nil {
 		return fmt.Errorf("clone %s: %w", url, err)
 	}
@@ -332,14 +392,17 @@ func ShortSHA(rev string) string {
 // the final paragraph to be parseable by `git log --format=%(trailers)`.
 //
 // Nothing is staged implicitly — there is no -a — so the caller decides exactly
-// what the commit contains. --no-verify is belt and braces on top of the
-// core.hooksPath in hardening: the two disable hooks by different mechanisms, and
-// this is the operation where a hook would do the most damage.
+// what the commit contains. On a managed checkout --no-verify is belt and braces
+// on top of the core.hooksPath in hardening: the two disable hooks by different
+// mechanisms, and this is the operation where a hook would do the most damage.
 func (g Client) Commit(ctx context.Context, messages ...string) error {
 	if len(messages) == 0 {
 		return errors.New("Commit requires at least a subject")
 	}
-	args := []string{"commit", "--quiet", "--no-verify"}
+	args := []string{"commit", "--quiet"}
+	if g.managed {
+		args = append(args, "--no-verify")
+	}
 	for _, m := range messages {
 		args = append(args, "-m", m)
 	}
@@ -462,8 +525,17 @@ func (g Client) Log(ctx context.Context, revRange string, paths ...string) ([]Lo
 // A rejection is reported as *PushRejectedError so callers can rebase and retry,
 // distinguished from an authentication or network failure where retrying is
 // pointless.
+//
+// A push from a repository the user owns runs their pre-push hook, whatever it is.
+// That is their policy — a release tag leaving their source tree must clear the
+// same checks any other push of theirs would.
 func (g Client) Push(ctx context.Context, remote, refspec string) error {
-	_, err := g.run(ctx, "push", "--quiet", "--no-verify", remote, refspec)
+	args := []string{"push", "--quiet"}
+	if g.managed {
+		args = append(args, "--no-verify")
+	}
+	args = append(args, remote, refspec)
+	_, err := g.run(ctx, args...)
 	if err == nil {
 		return nil
 	}

@@ -30,10 +30,11 @@ type Repository struct {
 	// URL is the remote this was cloned from.
 	URL string
 
-	// PushURL is where a push actually goes, with any url.<base>.pushInsteadOf
-	// rewrite applied. Empty when git could not be asked. It is for reporting: a
-	// user is entitled to see the address their deployment leaves for, which is
-	// not always the one they configured.
+	// PushURL is where a push actually goes, with any pushurl or
+	// url.<base>.pushInsteadOf rewrite applied. Open verifies that it identifies
+	// the same repository as URL and fails otherwise, so this is never a surprise
+	// by the time a caller holds it — only a possibly different spelling, which is
+	// worth showing the user.
 	PushURL string
 
 	// Branch is the remote's default branch, the branch deploys land on.
@@ -108,7 +109,9 @@ func Open(ctx context.Context, opts Options) (*Repository, error) {
 	}
 
 	wt := &Repository{Root: dir, URL: url, lock: lock}
-	wt.Git = git.Client{Runner: r, Dir: dir}
+	// Managed: this directory is the CLI's own, nobody configured it, and nothing
+	// but this CLI commits there.
+	wt.Git = git.NewManagedClient(r, dir)
 
 	if err := wt.refresh(ctx, r, stderr); err != nil {
 		wt.Close()
@@ -122,11 +125,8 @@ func (w *Repository) refresh(ctx context.Context, r command.Runner, stderr io.Wr
 		return err
 	}
 
-	// Reported, not compared: an insteadOf rewrite is a legitimate configuration,
-	// and the user is the one who should judge whether the address is right.
-	// Best-effort — a repository that cannot name its push URL is not broken.
-	if pushURL, err := w.Git.PushURL(ctx, RemoteName); err == nil {
-		w.PushURL = pushURL
+	if err := w.ensurePushDestination(ctx, stderr); err != nil {
+		return err
 	}
 
 	branch, err := w.Git.DefaultBranch(ctx, RemoteName)
@@ -184,7 +184,7 @@ func (w *Repository) ensureCheckout(ctx context.Context, r command.Runner, stder
 	if err := os.RemoveAll(w.Root); err != nil {
 		return fmt.Errorf("clear %s: %w", w.Root, err)
 	}
-	if err := git.Clone(ctx, r, w.URL, w.Root); err != nil {
+	if err := git.CloneManaged(ctx, r, w.URL, w.Root); err != nil {
 		return err
 	}
 
@@ -197,6 +197,48 @@ func (w *Repository) ensureCheckout(ctx context.Context, r command.Runner, stder
 	if !ok || !SameRepository(have, w.URL) {
 		return fmt.Errorf("cloned %s into %s but its %s is %q", w.URL, w.Root, RemoteName, have)
 	}
+	return nil
+}
+
+// ensurePushDestination makes the address a push will actually reach be the
+// repository the caller asked for.
+//
+// A verified remote.origin.url is only half the answer. git pushes to
+// remote.origin.pushurl when one is set, and url.<base>.pushInsteadOf rewrites the
+// address on the way out; either can send a deployment to a repository nobody
+// named. Reporting that is no defence — by the time anyone reads a warning the
+// commit has already landed somewhere else — so this fails closed, before any
+// command in this CLI has done work it would have to throw away.
+//
+// A pushurl in this repository's own config is removed rather than refused. This
+// CLI never sets one, so in a directory it owns that key is debris or tampering
+// either way, and clearing it is the same self-healing ensureCheckout does. A
+// rewrite rule is not removed: it can come from configuration this CLI has no
+// business editing, and the honest answer there is to stop.
+func (w *Repository) ensurePushDestination(ctx context.Context, stderr io.Writer) error {
+	local, ok, err := w.Git.RemotePushURL(ctx, RemoteName)
+	if err != nil {
+		return err
+	}
+	if ok {
+		fmt.Fprintf(stderr, "the cached checkout in %s sets a push address of its own for %s (%s); removing it\n", w.Root, RemoteName, local)
+		if err := w.Git.ClearRemotePushURL(ctx, RemoteName); err != nil {
+			return err
+		}
+	}
+
+	// Resolved after the removal, so this is the address that would be used now.
+	pushURL, err := w.Git.PushURL(ctx, RemoteName)
+	if err != nil {
+		return err
+	}
+	if !SameRepository(pushURL, w.URL) {
+		return fmt.Errorf("git would push %s to %s, which is a different repository.\n"+
+			"A pushurl or a url.<base>.pushInsteadOf rule in your git configuration redirects it. Nothing has been pushed.\n"+
+			"If the redirect is intentional, configure gitopsRepo as the repository you actually deploy to; otherwise remove the rule",
+			w.URL, pushURL)
+	}
+	w.PushURL = pushURL
 	return nil
 }
 

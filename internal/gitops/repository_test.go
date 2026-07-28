@@ -180,6 +180,110 @@ func TestOpenRefusesToTrustACachedOriginThatMoved(t *testing.T) {
 	}
 }
 
+// remote.origin.url is where a fetch comes from; a pushurl is where a push goes.
+// This CLI never sets one, so in a directory it owns that key is debris or
+// tampering either way — and left alone it would redirect a production deployment.
+func TestOpenRemovesAPushurlFromTheCache(t *testing.T) {
+	ours := gittest.NewRepo(t, "main")
+	theirs := gittest.NewRepo(t, "main")
+
+	opts := openOpts(t, ours)
+	var notes strings.Builder
+	opts.Stderr = &notes
+	ctx := context.Background()
+
+	wt, err := Open(ctx, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := wt.Root
+	if err := wt.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	gittest.Run(t, root, "remote", "set-url", "--push", RemoteName, theirs)
+
+	wt, err = Open(ctx, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wt.Close()
+
+	// Read through the client rather than gittest.Run: git exits 1 for a key that
+	// is not set, which is the answer here and not a failure.
+	if got, ok, err := wt.Git.RemotePushURL(ctx, RemoteName); err != nil || ok {
+		t.Errorf("pushurl = %q, %v, %v; want it removed", got, ok, err)
+	}
+	if !SameRepository(wt.PushURL, ours) {
+		t.Errorf("PushURL = %q, want the configured %q", wt.PushURL, ours)
+	}
+	if !strings.Contains(notes.String(), "removing it") {
+		t.Errorf("the user was not told: %q", notes.String())
+	}
+}
+
+// A rewrite rule can come from configuration this CLI has no business editing, so
+// the only honest answer is to stop — before any command has done work, and long
+// before a commit could land in the wrong repository.
+func TestOpenFailsClosedWhenAPushRuleRetargetsTheRepository(t *testing.T) {
+	ours := gittest.NewRepo(t, "main")
+	theirs := gittest.NewRepo(t, "main")
+
+	opts := openOpts(t, ours)
+	ctx := context.Background()
+
+	wt, err := Open(ctx, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := wt.Root
+	if err := wt.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// pushInsteadOf rather than a pushurl: this is the half that cannot be
+	// removed, so it has to be refused.
+	gittest.Run(t, root, "config", "url."+theirs+".pushInsteadOf", ours)
+
+	_, err = Open(ctx, opts)
+	if err == nil {
+		t.Fatal("expected the redirected push address to be refused")
+	}
+	for _, want := range []string{ours, theirs, "gitopsRepo"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error does not mention %q: %v", want, err)
+		}
+	}
+}
+
+// The gate is on identity, not spelling: a rewrite that names the same repository
+// another way is a legitimate configuration and must still work.
+func TestOpenAcceptsAPushRuleThatKeepsTheRepository(t *testing.T) {
+	origin := gittest.NewRepo(t, "main")
+	opts := openOpts(t, origin)
+	ctx := context.Background()
+
+	wt, err := Open(ctx, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := wt.Root
+	if err := wt.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	gittest.Run(t, root, "config", "url."+origin+"/.pushInsteadOf", origin)
+
+	wt, err = Open(ctx, opts)
+	if err != nil {
+		t.Fatalf("a rewrite to the same repository was refused: %v", err)
+	}
+	defer wt.Close()
+	if wt.PushURL != origin+"/" {
+		t.Errorf("PushURL = %q, want the rewritten spelling", wt.PushURL)
+	}
+}
+
 func TestOpenRecoversFromACheckoutWithNoOrigin(t *testing.T) {
 	origin := gittest.NewRepo(t, "main")
 	opts := openOpts(t, origin)

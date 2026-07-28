@@ -59,11 +59,12 @@ func openSession(ctx context.Context, opts sessionOptions, binaries ...string) (
 	if err != nil {
 		return nil, err
 	}
-	// Only when git resolves the configured URL to somewhere else — an insteadOf
-	// rewrite, or a pushurl. Said before anything is pushed, because the address a
-	// deployment actually leaves for is not something to discover afterwards.
-	if repo.PushURL != "" && !gitops.SameRepository(repo.PushURL, repoURL) {
-		fmt.Fprintf(opts.Stderr, "note: git pushes %s to %s\n", repoURL, repo.PushURL)
+	// Open has already refused a push address that is a different repository, so
+	// anything left is the same repository under another name — an insteadOf
+	// rewrite. Worth showing: the address a deployment leaves for is not something
+	// to discover afterwards.
+	if repo.PushURL != "" && repo.PushURL != repoURL {
+		fmt.Fprintf(opts.Stderr, "note: git pushes %s as %s\n", repoURL, repo.PushURL)
 	}
 
 	deployCfg, err := gitops.LoadDeployConfig(repo.Root)
