@@ -1,0 +1,88 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "7e3d5d1b4434",
+  "session_id": "019fa942-d673-7592-bd2f-e9c872ea4a39",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-28T15:18:37.85359Z",
+  "branch": "feature/dashboard-deploy-status",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "CONTRIBUTING.md",
+    "README.md",
+    "internal/dashboard/dashboard_test.go",
+    "internal/dashboard/handlers.go",
+    "internal/dashboard/server.go",
+    "internal/deploy/result.go",
+    "internal/deploy/status.go",
+    "internal/deploy/status_test.go",
+    "web/src/App.tsx",
+    "web/src/api.ts",
+    "web/src/components/DetailPanel.tsx",
+    "web/src/index.css"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "6b9450eb9f97",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 1
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-28T15:18:37.84666Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 33,
+    "total_committed": 0,
+    "total_lines_changed": 33,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 1416,
+      "user_lines_removed": 109,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 51,
+        "CONTRIBUTING.md": 1,
+        "README.md": 34,
+        "internal/dashboard/dashboard_test.go": 17,
+        "internal/dashboard/deploy.go": 103,
+        "internal/dashboard/deploy_test.go": 342,
+        "internal/dashboard/handlers.go": 95,
+        "internal/dashboard/server.go": 18,
+        "internal/deploy/result.go": 18,
+        "internal/deploy/status.go": 40,
+        "internal/deploy/status_test.go": 75,
+        "web/dist/index.html": 19,
+        "web/src/App.tsx": 59,
+        "web/src/api.ts": 92,
+        "web/src/components/Deployment.tsx": 237,
+        "web/src/components/DetailPanel.tsx": 23,
+        "web/src/index.css": 191
+      },
+      "user_removed_per_file": {
+        "internal/dashboard/dashboard_test.go": 2,
+        "internal/dashboard/handlers.go": 3,
+        "internal/dashboard/server.go": 4,
+        "internal/deploy/status.go": 19,
+        "web/dist/index.html": 76,
+        "web/src/App.tsx": 3,
+        "web/src/components/DetailPanel.tsx": 2
+      }
+    }
+  ]
+}
