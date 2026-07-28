@@ -3,23 +3,47 @@
   "checkpoint_id": "120197a21344",
   "strategy": "manual-commit",
   "branch": "feature/v-next",
-  "checkpoints_count": 1,
+  "checkpoints_count": 8,
   "files_touched": [
     "README.md",
     "cmd/intropy/deploy.go",
+    "cmd/intropy/deploy_init.go",
+    "cmd/intropy/deploy_init_test.go",
     "internal/dashboard/topology.go",
+    "internal/deploy/domain_test.go",
+    "internal/deploy/init.go",
+    "internal/deploy/init_test.go",
+    "internal/deploy/initmodel.go",
+    "internal/deploy/initmodel_test.go",
+    "internal/deploy/kind_test.go",
     "internal/deploy/localtemplates_test.go",
+    "internal/deploy/placeholder.go",
+    "internal/deploy/placeholder_test.go",
     "internal/deploy/promote.go",
     "internal/deploy/result.go",
+    "internal/deploy/scaffold.go",
+    "internal/deploy/scaffold_test.go",
+    "internal/deploy/selecthost_test.go",
     "internal/deploy/service.go",
     "internal/deploy/session.go",
     "internal/deploy/status.go",
+    "internal/git/branch_test.go",
     "internal/git/client.go",
     "internal/gitops/config.go",
+    "internal/gitops/kind_test.go",
+    "internal/gitops/platform_test.go",
+    "internal/template/filter.go",
+    "internal/template/filter_test.go",
+    "internal/template/hosts_test.go",
+    "internal/template/library.go",
+    "internal/template/library_test.go",
     "internal/template/manifest.go",
     "internal/template/render.go",
+    "internal/template/reserved.go",
+    "internal/template/reserved_test.go",
     "internal/template/scaffold_list.go",
-    "internal/template/values.go"
+    "internal/template/values.go",
+    "internal/topology/graph.go"
   ],
   "sessions": [
     {
@@ -28,13 +52,20 @@
       "compact_transcript": "/12/0197a21344/0/transcript.jsonl",
       "content_hash": "/12/0197a21344/0/content_hash.txt",
       "prompt": "/12/0197a21344/0/prompt.txt"
+    },
+    {
+      "metadata": "/12/0197a21344/1/metadata.json",
+      "transcript": "/12/0197a21344/1/full.jsonl",
+      "compact_transcript": "/12/0197a21344/1/transcript.jsonl",
+      "content_hash": "/12/0197a21344/1/content_hash.txt",
+      "prompt": "/12/0197a21344/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 115033,
-    "cache_creation_tokens": 0,
-    "cache_read_tokens": 1292800,
-    "output_tokens": 7669,
-    "api_call_count": 18
+    "input_tokens": 128837,
+    "cache_creation_tokens": 507503,
+    "cache_read_tokens": 78874409,
+    "output_tokens": 295280,
+    "api_call_count": 253
   }
 }

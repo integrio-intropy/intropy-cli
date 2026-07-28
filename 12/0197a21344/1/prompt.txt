@@ -1,0 +1,29 @@
+I want to be able to scaffold the deployment manifests in the gitops repo from the topology.
+I wonder if intropy deploy init might be a good command for it?
+The cli is already aware of the gitops repo from the other commands in intropy deploy
+I want to use intropy-templates for keeping parameterized skeletons of this but it needs to be more conditional than other skeletons since it would only make sense to render a service bus dapr pubsub if we are using azure.
+I have no intention on being able to scaffold complete manifests. Connection strings, passwords, remote urls need to use placeholders that the developer fills in but if we are atleast able to generate all files that are needed and fill in as much as possible so that the developers task is just replacing placeholders with real values
+
+---
+
+Can you explain that again. What is platform in this context?
+
+---
+
+and kustomize wont allow referencing a folder at the system level?
+
+---
+
+yes put them back to me'
+
+---
+
+init command needs to accept the --version flag so that we can use another version than latest on the template repo
+
+---
+
+If I run i deploy init order-flow where order-flow is a system host will it init the whole system then?
+
+---
+
+Could we go for --system and it discovers the system itself?
