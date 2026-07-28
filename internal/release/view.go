@@ -12,8 +12,10 @@ import (
 
 // View reads a published release manifest and renders it.
 //
-// It touches no git working tree and writes nothing: it exists so the notes a
-// release generated can be sanity-checked before anything is deployed from it.
+// It makes no source-repository, GitOps-remote, or environment change. It does
+// refresh the local cached GitOps checkout to locate the component metadata;
+// that cache is an implementation detail, not deployment state. View exists so
+// generated notes can be sanity-checked before anything is deployed from them.
 func View(ctx context.Context, opts Options) error {
 	opts.applyDefaults()
 
@@ -61,6 +63,11 @@ func View(ctx context.Context, opts Options) error {
 	m, err := Pull(ctx, reg, ref)
 	if err != nil {
 		return err
+	}
+	// The requested OCI tag and the manifest's self-described version must
+	// agree. A retagged artifact must not be presented as a different release.
+	if m.Version != opts.Version {
+		return fmt.Errorf("%s is tagged as release %s, but its manifest declares version %s", ref, opts.Version, m.Version)
 	}
 
 	if opts.OutputFormat == OutputJSON {

@@ -88,6 +88,30 @@ func TestViewJSONIsTheManifest(t *testing.T) {
 	}
 }
 
+func TestViewRejectsManifestWhoseVersionDiffersFromRequestedTag(t *testing.T) {
+	f := newCreateFixture(t)
+	created, _ := f.create(t, "1.0.0")
+
+	// Publish a valid manifest under another OCI tag. View must not present a
+	// retagged artifact as the release version its caller requested.
+	wrong := *created.Manifest
+	wrong.Version = "1.0.1"
+	requested := "1.0.0-retagged"
+	if _, err := Push(context.Background(), f.reg, Ref(ReleasesRepo(f.image), requested), &wrong); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := f.view(t, requested, OutputPlain)
+	if err == nil {
+		t.Fatal("a manifest whose version differs from its requested tag must be refused")
+	}
+	for _, want := range []string{requested, wrong.Version} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should mention %q:\n%v", want, err)
+		}
+	}
+}
+
 func TestViewMissingReleaseIsNotFound(t *testing.T) {
 	f := newCreateFixture(t)
 
@@ -97,8 +121,9 @@ func TestViewMissingReleaseIsNotFound(t *testing.T) {
 	}
 }
 
-// View reads. It must not touch the source repository or any environment.
-func TestViewWritesNothing(t *testing.T) {
+// View refreshes only its local GitOps cache. It must not change the source
+// repository, the GitOps remote, or any environment.
+func TestViewDoesNotChangeSourceOrGitopsRemote(t *testing.T) {
 	f := newCreateFixture(t)
 	f.create(t, "1.0.0")
 

@@ -23,7 +23,7 @@ var releaseViewCmd = &cobra.Command{
 	Short: "Read a published release manifest",
 	Long: "Read the release manifest for a version and print what it records: the source commit, the pinned image " +
 		"digests, what the notes were measured against, and the notes themselves.\n\n" +
-		"Reads only. Use it to sanity-check the generated notes before deploying anything from the release.",
+		"It changes no source repository, GitOps remote, or environment. Use it to sanity-check generated notes before deploying anything from the release.",
 	Args:              cobra.ExactArgs(2),
 	ValidArgsFunction: completeReleaseComponents,
 	RunE: func(cmd *cobra.Command, args []string) error {
