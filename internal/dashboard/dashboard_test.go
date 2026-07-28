@@ -40,14 +40,29 @@ func writeScaffoldRole(t *testing.T, dir, tmpl, version, role string) {
 // emptyTopo is the stub provider for tests that do not exercise /api/topology.
 func emptyTopo(context.Context) ([]topology.Entry, []string) { return nil, nil }
 
+// emptyDeploy is the stub provider for tests that do not exercise /api/deploy.
+// It reports nothing rather than an error: a test about the catalog should not
+// have to care what the GitOps repository says.
+func emptyDeploy(context.Context, integrationSummary) deployState { return deployState{} }
+
 func testHandler(t *testing.T, root string) http.Handler {
 	t.Helper()
-	return testHandlerWithTopo(t, root, emptyTopo)
+	return testHandlerWith(t, root, providers{topology: emptyTopo, deploy: emptyDeploy})
 }
 
 func testHandlerWithTopo(t *testing.T, root string, topo topologyProvider) http.Handler {
 	t.Helper()
-	h, err := newHandler(root, "test", topo)
+	return testHandlerWith(t, root, providers{topology: topo, deploy: emptyDeploy})
+}
+
+func testHandlerWithDeploy(t *testing.T, root string, dep deployProvider) http.Handler {
+	t.Helper()
+	return testHandlerWith(t, root, providers{topology: emptyTopo, deploy: dep})
+}
+
+func testHandlerWith(t *testing.T, root string, p providers) http.Handler {
+	t.Helper()
+	h, err := newHandler(root, "test", p)
 	if err != nil {
 		t.Fatalf("newHandler: %v", err)
 	}

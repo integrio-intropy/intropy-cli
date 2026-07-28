@@ -67,6 +67,92 @@ export interface Health {
   version: string
 }
 
+// Deployment state (internal/deploy). The server obtains each record by running
+// the `deploy status` command with a JSON writer and passing its result through
+// unchanged, so everything below is that command's own output — including the
+// prose in `summary` and `notes`, which must be rendered as served rather than
+// re-derived from `environments`.
+
+/** How one overlay pins one image. */
+export interface ResultPin {
+  image: string
+  /** The digest this replaced. Only present on a deployment's own result. */
+  previous?: string
+  digest: string
+  /** The tag the digest was resolved from, or the tag pinned instead of a
+   *  digest. Empty when the digest came from a release manifest. */
+  tag?: string
+}
+
+/** One environment's row of the deployment ladder. */
+export interface EnvironmentStatus {
+  environment: string
+  appName: string
+  overlayPath: string
+  /** False means there is no readable overlay here; `reason` says why and
+   *  everything below is empty. On its own it never means "not deployed". */
+  onboarded: boolean
+  reason?: string
+  /** The version this environment runs. Absent when it was deployed from a
+   *  commit rather than a release, in which case `sourceCommit` stands in. */
+  release?: string
+  sourceCommit?: string
+  /** Every image the component declares, in declared order. `digest` is empty
+   *  when the overlay pins a tag or nothing — `tag` says which. */
+  pins?: ResultPin[]
+  /** The GitOps commit that last changed this overlay, and when it landed.
+   *  Both absent when the overlay path has no history. */
+  revision?: string
+  /** RFC 3339. */
+  deployedAt?: string
+  syncPolicy: 'auto' | 'manual' | string
+  /** What ArgoCD reports. Absent when it could not be read — which says
+   *  nothing at all about what the overlay pins. */
+  syncStatus?: string
+  healthStatus?: string
+  syncedRevision?: string
+  /** A committed overlay change ArgoCD has not applied. For a `manual`
+   *  environment that is an unspent gate at rest, not a fault. */
+  pending: boolean
+}
+
+export interface StatusResult {
+  component: string
+  domain: string
+  system: string
+  /** Declared kind. "shared" holds system-level manifests and no image, so its
+   *  empty digests are by design rather than evidence of never deploying. */
+  kind: 'service' | 'shared' | string
+  /** In promotion order: the last entry is the furthest downstream. */
+  environments: EnvironmentStatus[]
+  /** Every onboarded environment pins the identical digest for every image —
+   *  what makes "prod runs the bits staging tested" a fact. */
+  consistent: boolean
+  /** The command's own sentence about what the environments collectively run.
+   *  Render as served: `consistent` is a bool and the interesting cases are
+   *  not — "these run different bits" and "there is nothing to compare" are
+   *  both false and mean very different things. */
+  summary: string
+  /** The command's qualifications: an environment that could not be read, one
+   *  pinning a tag, one waiting on a sync gate. */
+  notes?: string[]
+}
+
+/** The /api/deploy/{path} payload: what the deploy status command said about one
+ *  integration, or why it could not say anything. */
+export interface DeployState {
+  status?: StatusResult
+  /** The command's message, verbatim — an unconfigured GitOps repository, a
+   *  component name matching several, a checkout another deploy is holding.
+   *  None of these is a statement about the integration; only `status` is. */
+  error?: string
+  /** What the command wrote to stderr: which repository it refreshed, and any
+   *  environment ArgoCD could not be read for. Provenance, not failure. */
+  diagnostics?: string[]
+  /** RFC 3339 — when the command ran. */
+  readAt: string
+}
+
 // Declared system topology (internal/topology). The server obtains each
 // record by running the system host's `graph` verb (apiVersion
 // topology.intropy.io/v1) and caches the result until an explicit refresh.
@@ -254,5 +340,11 @@ export const api = {
   /** Re-run every host's graph verb and return the fresh report. */
   refreshTopologies: () =>
     requestJSON<TopologyReport>('/api/topology/refresh', { method: 'POST' }),
+  /** One integration's deployment state, read once and reused by the server. */
+  deployState: (path: string) => getJSON<DeployState>(`/api/deploy/${path}`),
+  /** Re-run `deploy status` for one integration and return the fresh result —
+   *  how you pick up a deploy just made from another terminal. */
+  refreshDeployState: (path: string) =>
+    requestJSON<DeployState>(`/api/deploy/${path}`, { method: 'POST' }),
   health: () => getJSON<Health>('/api/health'),
 }

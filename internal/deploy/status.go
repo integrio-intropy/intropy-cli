@@ -240,15 +240,21 @@ func consistent(rows []EnvironmentStatus) bool {
 // reportStatus writes the table, then the answer to the question that prompted
 // it. Exit is always 0: this reports, it does not gate.
 func reportStatus(out output, coord gitops.Coordinate, comp *gitops.ComponentConfig, rows []EnvironmentStatus) error {
+	// Built for both formats, and the table below renders from it rather than
+	// recomputing: two presenters deriving the same claim independently is how
+	// they come to disagree about it.
+	res := StatusResult{
+		Component:    coord.Component,
+		Domain:       coord.Domain,
+		System:       coord.System,
+		Kind:         componentKind(comp),
+		Environments: rows,
+		Consistent:   consistent(rows),
+		Summary:      summarise(rows),
+		Notes:        notes(coord, comp, rows),
+	}
+
 	if out.Format == OutputJSON {
-		res := StatusResult{
-			Component:    coord.Component,
-			Domain:       coord.Domain,
-			System:       coord.System,
-			Kind:         componentKind(comp),
-			Environments: rows,
-			Consistent:   consistent(rows),
-		}
 		enc := json.NewEncoder(out.Stdout)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(res); err != nil {
@@ -268,8 +274,11 @@ func reportStatus(out output, coord gitops.Coordinate, comp *gitops.ComponentCon
 		return err
 	}
 
-	fmt.Fprintf(out.Stdout, "\n%s\n", summarise(rows))
-	for _, note := range notes(coord, comp, rows) {
+	fmt.Fprintf(out.Stdout, "\n%s\n", res.Summary)
+	for _, note := range res.Notes {
+		fmt.Fprintf(out.Stdout, "%s\n", note)
+	}
+	if note := tableNote(coord, comp); note != "" {
 		fmt.Fprintf(out.Stdout, "%s\n", note)
 	}
 	return nil
@@ -430,8 +439,12 @@ func describeSignatureString(signature string) string {
 	return strings.Join(short, " + ")
 }
 
-// notes are the qualifications under the table: what could not be read, what is
-// waiting, and what the table had no room for.
+// notes are the qualifications under the summary: what could not be read, what
+// pins a tag, and what is waiting.
+//
+// Every note here is about the deployment, so it is equally true in both output
+// formats and travels in StatusResult. The one qualification that is about the
+// table itself lives in tableNote.
 func notes(coord gitops.Coordinate, comp *gitops.ComponentConfig, rows []EnvironmentStatus) []string {
 	var out []string
 
@@ -476,14 +489,22 @@ func notes(coord gitops.Coordinate, comp *gitops.ComponentConfig, rows []Environ
 			row.Environment, waiting, coord.Component, row.Environment))
 	}
 
-	// The consistency claim above is computed over every image, so it is never
-	// narrower than the data behind it — but the table shows one, and a reader
-	// should know that before drawing a conclusion from the column.
-	if len(comp.Images) > 1 {
-		out = append(out, fmt.Sprintf("%s declares %d images; DIGEST shows %s. Use --output json for all of them",
-			coord.Component, len(comp.Images), comp.Images[0].Name))
-	}
 	return out
+}
+
+// tableNote is the qualification the table needs and the result does not.
+//
+// The consistency claim is computed over every image, so it is never narrower
+// than the data behind it — but DIGEST has room for one, and a reader should know
+// that before drawing a conclusion from the column. A consumer reading the result
+// already has every pin in Environments[].Pins, so telling it to ask for what it
+// is holding would be false rather than merely redundant.
+func tableNote(coord gitops.Coordinate, comp *gitops.ComponentConfig) string {
+	if len(comp.Images) <= 1 {
+		return ""
+	}
+	return fmt.Sprintf("%s declares %d images; DIGEST shows %s. Use --output json for all of them",
+		coord.Component, len(comp.Images), comp.Images[0].Name)
 }
 
 // englishList renders names as "a", "a and b", or "a, b and c".

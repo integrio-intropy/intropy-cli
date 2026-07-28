@@ -1,9 +1,20 @@
 // Package dashboard serves the local Intropy integration dashboard: a small
 // stdlib net/http server that exposes a read-only JSON API over the
 // integrations discovered under a workspace root and serves the embedded SPA
-// that renders them. It starts no integration processes — the only thing it
-// executes is each system host's `graph` verb, to obtain the declared
-// topology the flow view draws.
+// that renders them.
+//
+// It starts no integration processes and changes nothing. What it does run is
+// two things, both on request rather than at startup: each system host's `graph`
+// verb, for the topology the flow view draws, and the deploy status command, for
+// what the catalog reports each environment is running. The second one refreshes
+// the cached GitOps checkout and reads ArgoCD, so it is the only part of this
+// package that touches the network — asked for one integration at a time, and
+// reused until an explicit refresh.
+//
+// Deployment facts are never derived here. The command owns every refusal that
+// matters — an unset gitopsRepo, a component name matching several, an
+// environment nobody has onboarded — and its answers are passed through
+// verbatim, so the dashboard cannot claim something the command line would not.
 package dashboard
 
 import (
@@ -54,7 +65,10 @@ func Serve(ctx context.Context, opts Options) error {
 		root = "."
 	}
 
-	handler, err := newHandler(root, opts.Version, hostGraphProvider(root))
+	handler, err := newHandler(root, opts.Version, providers{
+		topology: hostGraphProvider(root),
+		deploy:   statusCommandProvider(opts.Version),
+	})
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}

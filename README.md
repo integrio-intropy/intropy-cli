@@ -179,6 +179,7 @@ intropy
 │   ├── create <component>     Publish a release manifest and push a git tag
 │   ├── list <component>       List the releases published for a component
 │   └── view <component> <ver> Read a published release manifest
+├── dashboard [dir]        Browse the integrations scaffolded under dir
 ├── skills                 Manage Intropy skills
 │   ├── add [ref]              Add and install a skill from an OCI registry
 │   ├── list                   List installed skills
@@ -964,6 +965,39 @@ intropy deploy status order-extractor --output json | jq -e '.consistent'
 
 Nothing is written to git, no sync is triggered, `kubectl` is never invoked, and
 `kustomize` is not required.
+
+### In the dashboard
+
+`intropy dashboard` shows the same thing per integration, so you can read it
+without leaving the catalog:
+
+```sh
+intropy dashboard ./integrations
+```
+
+Selecting an integration runs `deploy status` for it and renders the environments
+as a ladder, in the same promotion order and with the same sentence beneath them.
+It is the command's own output — the dashboard decodes it and does not recompute
+any of it, so the two cannot disagree about the same overlays.
+
+Two things follow from that being a command rather than a file read:
+
+- **It happens on selection, not on page load.** Reading deployment state
+  refreshes the cached GitOps checkout under the same exclusive lock `deploy`
+  takes, so the dashboard asks for one integration at a time, reuses the answer,
+  and re-runs only when you press Refresh. Nothing polls in the background — a
+  browser tab that fetched on a timer would eventually fail your own `deploy`
+  with a lock it was holding.
+- **Every refusal reaches you verbatim.** An unconfigured `gitopsRepo`, a
+  component name that matches several places in the tree, a checkout another
+  deploy is using — each is shown as the command worded it, because each is a
+  statement about the lookup and not about the integration. None of them renders
+  as an empty ladder, which would read as "not deployed".
+
+Sync and health are the only columns that come from ArgoCD. Without a usable
+token they are left out entirely and the panel says why, for the same reason the
+table leaves them empty rather than guessing: not being able to reach the cluster
+says nothing about what the overlays pin.
 
 ## Releases (`intropy release`)
 

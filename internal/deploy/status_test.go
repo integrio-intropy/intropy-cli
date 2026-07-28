@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/integrio-intropy/intropy-cli/internal/argocd"
+	"github.com/integrio-intropy/intropy-cli/internal/gitops"
 	"github.com/integrio-intropy/intropy-cli/internal/gittest"
 )
 
@@ -371,6 +372,80 @@ func TestStatusJSONCarriesEveryPinAndTheDeployTime(t *testing.T) {
 		t.Errorf("JSON should carry an instant, not a rendered age:\n%s", out)
 	}
 }
+
+// The terminal renders a table and a consumer renders StatusResult, and both
+// state the same conclusion about the same overlays. They agree because there is
+// one computation rather than two: this pins the prose under the table to exactly
+// what the result carries, so a second presenter cannot quietly drift from it.
+func TestStatusResultCarriesTheProseUnderTheTable(t *testing.T) {
+	f := newRunFixture(t)
+	f.pinAll(t, testDigest, testReleaseCommit, "1.4.2")
+
+	// prod holds an older revision, so there is a note as well as a summary —
+	// with no notes to compare, this test would prove much less.
+	head := gittest.Run(t, f.gitopsOrigin, "rev-parse", "main")
+	older := gittest.Run(t, f.gitopsOrigin, "rev-parse", "main~3")
+	stubArgo(t, &stubArgoClient{get: map[string]*argocd.Application{
+		"orders-order-flow-order-extractor-dev":     healthyApp(head),
+		"orders-order-flow-order-extractor-staging": healthyApp(head),
+		"orders-order-flow-order-extractor-prod":    outOfSyncApp(older),
+	}})
+
+	var plainOut, plainErr bytes.Buffer
+	plain, _ := f.status(t, f.statusOptions(&plainOut, &plainErr))
+
+	var jsonOut, jsonErr bytes.Buffer
+	opts := f.statusOptions(&jsonOut, &jsonErr)
+	opts.OutputFormat = OutputJSON
+	res := statusJSON(t, mustFirst(f.status(t, opts)))
+
+	if res.Summary == "" {
+		t.Error("Summary should never be empty: a consumer reading Consistent alone cannot tell a disagreement from an unanswerable comparison")
+	}
+	if len(res.Notes) == 0 {
+		t.Fatal("this fixture has a pending change, so it should produce a note")
+	}
+
+	_, prose, ok := strings.Cut(plain, "\n\n")
+	if !ok {
+		t.Fatalf("plain output has no prose under its table:\n%s", plain)
+	}
+	want := res.Summary + "\n"
+	for _, note := range res.Notes {
+		want += note + "\n"
+	}
+	if prose != want {
+		t.Errorf("the table's prose and the result disagree\nplain output:\n%q\nfrom result:\n%q", prose, want)
+	}
+}
+
+// The multi-image qualification is about DIGEST having room for one image, not
+// about the deployment — so it belongs to the table and must stay out of the
+// result, where every pin is already present. Telling a consumer to ask for what
+// it is already holding would be false rather than merely redundant.
+func TestTableNoteBelongsToTheTableAndNotTheResult(t *testing.T) {
+	coord := gitops.Coordinate{Domain: "orders", System: "order-flow", Component: "order-extractor"}
+	oneImage := &gitops.ComponentConfig{Images: []gitops.ImageRef{{Name: "reg/a"}}}
+	twoImages := &gitops.ComponentConfig{Images: []gitops.ImageRef{{Name: "reg/a"}, {Name: "reg/b"}}}
+
+	if got := tableNote(coord, oneImage); got != "" {
+		t.Errorf("one image needs no qualification, got %q", got)
+	}
+	got := tableNote(coord, twoImages)
+	if !strings.Contains(got, "declares 2 images") {
+		t.Errorf("two images should be called out, got %q", got)
+	}
+	if !strings.Contains(got, "reg/a") {
+		t.Errorf("the note should name the image DIGEST actually shows, got %q", got)
+	}
+	if n := notes(coord, twoImages, nil); len(n) != 0 {
+		t.Errorf("notes() travels in the result, so it must not carry the table's qualification: %q", n)
+	}
+}
+
+// mustFirst keeps the two-format comparison above readable: f.status returns
+// stdout and stderr, and only stdout is being compared.
+func mustFirst(stdout, _ string) string { return stdout }
 
 // A read-only command must leave both repositories exactly as it found them,
 // and must never ask ArgoCD to do anything.

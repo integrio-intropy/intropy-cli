@@ -254,6 +254,7 @@ cmd/intropy/          Cobra commands — one file per command + tests
 internal/template/    Template download, validation, describe, render
 internal/system/      `sys create` — assemble scaffolds into a system host
 internal/dashboard/   Local `intropy dashboard`: HTTP server + JSON API
+                      (deploy.go runs `deploy status` for the catalog's ladder)
 internal/topology/    topology.intropy.io/v1 schema + decoder (host graph verb output)
 internal/skill/       skills.json/lockfile, install/update/add, collection cache
 internal/skill/oci/   OCI client wrappers, pack/push/pull, references

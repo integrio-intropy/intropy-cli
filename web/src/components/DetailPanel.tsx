@@ -1,5 +1,6 @@
 import type { ComponentType, ReactNode, SVGProps } from 'react'
-import type { IntegrationDetail } from '../api'
+import type { DeployState, IntegrationDetail } from '../api'
+import { Deployment } from './Deployment'
 import {
   DescriptionIcon,
   ExtensionIcon,
@@ -13,9 +14,20 @@ type IconComponent = ComponentType<SVGProps<SVGSVGElement>>
 interface Props {
   detail: IntegrationDetail | null
   hasSelection: boolean
+  deploy: DeployProps
 }
 
-export function DetailPanel({ detail, hasSelection }: Props) {
+/** Everything the Deployment section needs. It loads separately from the detail
+ *  because it costs very differently: detail is local files, this refreshes a
+ *  GitOps checkout over the network. */
+export interface DeployProps {
+  state: DeployState | null
+  loading: boolean
+  refreshing: boolean
+  onRefresh: () => void
+}
+
+export function DetailPanel({ detail, hasSelection, deploy }: Props) {
   if (!hasSelection) {
     return <p className="empty">Select an integration to see its details.</p>
   }
@@ -35,6 +47,15 @@ export function DetailPanel({ detail, hasSelection }: Props) {
         <Meta label="Source" value={`${detail.owner}/${detail.repo}`} />
         <Meta label="Path" value={detail.path} />
       </div>
+
+      {/* Above Values on purpose: where an integration runs is more
+          operationally interesting than what it was scaffolded with. */}
+      <Deployment
+        state={deploy.state}
+        loading={deploy.loading}
+        refreshing={deploy.refreshing}
+        onRefresh={deploy.onRefresh}
+      />
 
       <Section title="Values" icon={TuneIcon}>
         {values.length === 0 ? (

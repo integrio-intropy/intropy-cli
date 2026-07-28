@@ -582,6 +582,197 @@ body {
   padding: 4px 16px;
 }
 
+/* Deployment ladder: what every environment runs, in promotion order. The
+   verdict, the table and the notes are all `deploy status` output; nothing here
+   colours a row by health, because a row that could not be read is not a row
+   that is failing. */
+.deploy-verdict {
+  margin: 0 0 12px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--text-muted);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+/* Agreement across every environment is the claim the command exists to make,
+   so it is the one state worth marking. Disagreement is left neutral: the
+   sentence already says what it is, and an alarm colour would overstate a
+   dev/prod skew that is often just work in progress. */
+.deploy-verdict.agrees {
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.deploy-error {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  white-space: pre-wrap;
+}
+
+.deploy-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  font-size: 13px;
+}
+
+.deploy-table th,
+.deploy-table td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.deploy-table thead th {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  background: var(--surface-2);
+}
+
+.deploy-table tbody th {
+  font-weight: 600;
+  background: var(--surface);
+  white-space: nowrap;
+}
+
+.deploy-table tbody td {
+  background: var(--surface);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+}
+
+.deploy-table tr:last-child th,
+.deploy-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* An environment with no readable overlay keeps its row — omitting it would
+   hide exactly the thing an operator needs to see — but reads as absent. */
+.deploy-table tr.not-onboarded th {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.deploy-table tr.not-onboarded td {
+  font-family: inherit;
+  font-size: 13px;
+}
+
+/* Sync policy and pending state. Both deliberately neutral: for a manual
+   environment a pending change is an unspent gate at rest, not a fault. */
+.deploy-tag {
+  margin-left: 7px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: var(--bg);
+  vertical-align: 1px;
+}
+
+.deploy-tag.waiting {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* Every declared image, one per line. The terminal shows only the first because
+   its row has no space; this does, so the note apologising for that is absent
+   from the result the panel reads. */
+.deploy-pins {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.deploy-image {
+  color: var(--text-muted);
+  margin-right: 8px;
+}
+
+/* A tag can change what runs without a deployment, which is the whole reason
+   deploy pins digests — so it is marked, unlike an ordinary digest. */
+.deploy-unpinned {
+  color: var(--danger);
+}
+
+.deploy-aside {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.deploy-notes {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* The pending note carries a follow-up command on its own line. */
+.deploy-notes li {
+  white-space: pre-wrap;
+}
+
+.deploy-foot {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.deploy-foot-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.deploy-diagnostics {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  word-break: break-word;
+}
+
+.deploy-foot .flow-refresh {
+  flex: 0 0 auto;
+  margin-left: 0;
+}
+
 /* Flow view: a system-topology React Flow canvas with a system picker above */
 .flow-view {
   display: flex;

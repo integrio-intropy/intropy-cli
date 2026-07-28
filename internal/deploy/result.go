@@ -180,6 +180,24 @@ type StatusResult struct {
 	// False when any environment disagrees, pins a tag instead of a digest, or
 	// could not be read — in none of those cases has agreement been shown.
 	Consistent bool `json:"consistent"`
+
+	// Summary is the sentence the plain output prints beneath its table: what
+	// the environments collectively run, or why they cannot be compared.
+	//
+	// It travels in the result because Consistent is a bool and the interesting
+	// cases are not: "these two run different bits" and "there is nothing to
+	// compare here" are both false and mean very different things. A second
+	// presenter deriving its own sentence from Environments would eventually
+	// draw a different conclusion from the same rows than this command does.
+	Summary string `json:"summary"`
+
+	// Notes are the qualifications under that sentence: an environment that
+	// could not be read, one that pins a tag rather than a digest, one waiting
+	// on a sync gate. Empty when there is nothing to qualify.
+	//
+	// The plain output adds one more note that is about its own table rather
+	// than about the deployment, and so is deliberately absent here.
+	Notes []string `json:"notes,omitempty"`
 }
 
 // EnvironmentStatus is one environment's row.

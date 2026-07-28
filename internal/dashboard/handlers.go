@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/integrio-intropy/intropy-cli/internal/template"
 	"github.com/integrio-intropy/intropy-cli/internal/topology"
@@ -19,11 +20,31 @@ import (
 // the detail endpoint returns, so a huge file cannot bloat a response.
 const maxDocBytes = 128 * 1024
 
+// providers are the request-independent sources the API reads beyond the
+// workspace's own files: what a system host declares about its topology, and
+// what the GitOps repository says is deployed. Both run a command, so both are
+// injected as function values that tests replace.
+type providers struct {
+	topology topologyProvider
+	deploy   deployProvider
+}
+
+// deployStateTimeout bounds one deploy status run.
+//
+// It exists for the checkout lock rather than for the browser: the command holds
+// an exclusive lock on the shared GitOps checkout for its whole duration, and an
+// ArgoCD server that accepts connections but never answers would otherwise keep
+// that lock — blocking the user's own intropy deploy indefinitely. A minute is
+// generous for a fetch plus a handful of ArgoCD calls and short enough that a
+// hung one lets go.
+const deployStateTimeout = time.Minute
+
 // apiServer holds the request-independent state for the JSON API.
 type apiServer struct {
 	root    string
 	version string
 	topo    topologyProvider
+	dep     deployProvider
 
 	// topoMu guards the cached provider result. Fetching runs the hosts'
 	// graph verbs (a dotnet build on first run), so the result is computed
@@ -33,6 +54,13 @@ type apiServer struct {
 	topoLoaded  bool
 	topoEntries []topology.Entry
 	topoErrs    []string
+
+	// depMu guards the cached deployment state, keyed by root-relative path.
+	// Reading it refreshes a shared GitOps checkout under an exclusive lock, so
+	// unlike the topology this is cached per integration and computed only for
+	// the ones actually asked about.
+	depMu     sync.Mutex
+	depStates map[string]deployState
 }
 
 // topologyReport is the /api/topology payload: every declared topology plus
@@ -84,8 +112,8 @@ type integrationDetail struct {
 }
 
 // newHandler wires the API routes and the SPA static handler onto a mux.
-func newHandler(root, version string, topo topologyProvider) (http.Handler, error) {
-	api := &apiServer{root: root, version: version, topo: topo}
+func newHandler(root, version string, p providers) (http.Handler, error) {
+	api := &apiServer{root: root, version: version, topo: p.topology, dep: p.deploy}
 	static, err := staticHandler()
 	if err != nil {
 		return nil, err
@@ -98,6 +126,11 @@ func newHandler(root, version string, topo topologyProvider) (http.Handler, erro
 	mux.HandleFunc("GET /api/flow", api.flow)
 	mux.HandleFunc("GET /api/topology", api.topologies)
 	mux.HandleFunc("POST /api/topology/refresh", api.refreshTopologies)
+	// The verb carries the meaning rather than a /refresh segment: a {path...}
+	// wildcard has to be the last thing in the pattern. GET serves what has
+	// already been read, POST runs the command again.
+	mux.HandleFunc("GET /api/deploy/{path...}", api.getDeployState)
+	mux.HandleFunc("POST /api/deploy/{path...}", api.refreshDeployState)
 	mux.Handle("/", static)
 	return mux, nil
 }
@@ -306,6 +339,37 @@ func (s *apiServer) messageDocs(e topology.Entry) (map[string]messageDoc, []stri
 }
 
 func (s *apiServer) getIntegration(w http.ResponseWriter, r *http.Request) {
+	s.byPath(w, r, func(e template.ScaffoldEntry, systems map[string]string) any {
+		return s.enrich(e, systems)
+	})
+}
+
+// getDeployState serves what the deploy status command last said about one
+// integration, running it on the first request and reusing that until a POST to
+// the same path. It is a separate endpoint from the integration detail because
+// the two cost very different things: detail is local files, this refreshes a
+// GitOps checkout over the network. Keeping them apart lets the detail panel
+// render immediately and fill the deployment in when it arrives.
+func (s *apiServer) getDeployState(w http.ResponseWriter, r *http.Request) {
+	s.deployStateByPath(w, r, false)
+}
+
+// refreshDeployState re-runs the command for one integration and returns the
+// fresh result, picking up a deploy someone just made from another terminal.
+func (s *apiServer) refreshDeployState(w http.ResponseWriter, r *http.Request) {
+	s.deployStateByPath(w, r, true)
+}
+
+func (s *apiServer) deployStateByPath(w http.ResponseWriter, r *http.Request, force bool) {
+	s.byPath(w, r, func(e template.ScaffoldEntry, systems map[string]string) any {
+		return s.cachedDeployState(r.Context(), s.summarize(e, systems), force)
+	})
+}
+
+// byPath resolves the {path...} wildcard to a scaffolded integration and serves
+// what render makes of it, or 404s. Shared so the detail and deployment
+// endpoints agree about which identifiers name the same integration.
+func (s *apiServer) byPath(w http.ResponseWriter, r *http.Request, render func(template.ScaffoldEntry, map[string]string) any) {
 	want := strings.Trim(r.PathValue("path"), "/")
 	// An integration at the workspace root has the identifier "." (see
 	// relPath), but a browser strips the "." segment from /api/integrations/.
@@ -316,11 +380,39 @@ func (s *apiServer) getIntegration(w http.ResponseWriter, r *http.Request) {
 	entries, systems := s.scan()
 	for _, e := range entries {
 		if s.relPath(e.Path) == want {
-			writeJSON(w, http.StatusOK, s.enrich(e, systems))
+			writeJSON(w, http.StatusOK, render(e, systems))
 			return
 		}
 	}
 	writeError(w, http.StatusNotFound, "integration not found: "+want)
+}
+
+// cachedDeployState returns one integration's deployment state — computed on
+// first use or when force is set, reused otherwise.
+//
+// The mutex is held across the provider call rather than only around the map,
+// because the command takes an exclusive lock on the shared GitOps checkout:
+// two requests running it at once would have one of them fail on the other's
+// lock. Serialising here turns that failure into a wait, and concurrent requests
+// for the same integration share one run — the same bargain cachedTopologies
+// makes with topoMu.
+func (s *apiServer) cachedDeployState(ctx context.Context, sum integrationSummary, force bool) deployState {
+	s.depMu.Lock()
+	defer s.depMu.Unlock()
+
+	if state, ok := s.depStates[sum.Path]; ok && !force {
+		return state
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, deployStateTimeout)
+	defer cancel()
+	state := s.dep(ctx, sum)
+
+	if s.depStates == nil {
+		s.depStates = map[string]deployState{}
+	}
+	s.depStates[sum.Path] = state
+	return state
 }
 
 // enrich reads optional on-disk context for an integration. The entry's Path

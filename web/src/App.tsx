@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { api, type Integration, type IntegrationDetail } from './api'
+import { useCallback, useEffect, useState } from 'react'
+import { api, type DeployState, type Integration, type IntegrationDetail } from './api'
 import { Sidebar } from './components/Sidebar'
 import { DetailPanel } from './components/DetailPanel'
 import { FlowView } from './components/FlowView'
@@ -38,6 +38,9 @@ export default function App() {
   const [integrations, setIntegrations] = useState<Integration[] | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [detail, setDetail] = useState<IntegrationDetail | null>(null)
+  const [deployState, setDeployState] = useState<DeployState | null>(null)
+  const [deployLoading, setDeployLoading] = useState(false)
+  const [deployRefreshing, setDeployRefreshing] = useState(false)
   const [version, setVersion] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState<boolean>(
@@ -104,6 +107,50 @@ export default function App() {
       .catch((e: unknown) => setError(errText(e)))
   }, [selected])
 
+  // Deployment state loads on its own, because it costs its own thing: reading
+  // it refreshes a GitOps checkout over the network, while the detail above is
+  // local files. Keeping them apart lets the panel render straight away.
+  //
+  // A failed lookup is not an error banner: the reason travels inside the state
+  // and belongs in the Deployment section, next to the Refresh that retries it.
+  useEffect(() => {
+    if (!selected) {
+      setDeployState(null)
+      return
+    }
+    setDeployState(null)
+    setDeployLoading(true)
+    let current = true
+    api
+      .deployState(selected)
+      .then((s) => {
+        if (current) setDeployState(s)
+      })
+      .catch((e: unknown) => {
+        if (current) setDeployState({ error: errText(e), readAt: new Date().toISOString() })
+      })
+      .finally(() => {
+        if (current) setDeployLoading(false)
+      })
+    // Selecting another integration while this is in flight must not let the
+    // slower answer land on the newer selection.
+    return () => {
+      current = false
+    }
+  }, [selected])
+
+  const refreshDeploy = useCallback(() => {
+    if (!selected) return
+    setDeployRefreshing(true)
+    api
+      .refreshDeployState(selected)
+      .then(setDeployState)
+      .catch((e: unknown) =>
+        setDeployState({ error: errText(e), readAt: new Date().toISOString() }),
+      )
+      .finally(() => setDeployRefreshing(false))
+  }, [selected])
+
   return (
     <div className="app">
       <header className="topbar">
@@ -143,7 +190,16 @@ export default function App() {
         <main className="content">
           {error && <div className="banner error">{error}</div>}
           {view === 'catalog' ? (
-            <DetailPanel detail={detail} hasSelection={!!selected} />
+            <DetailPanel
+              detail={detail}
+              hasSelection={!!selected}
+              deploy={{
+                state: deployState,
+                loading: deployLoading,
+                refreshing: deployRefreshing,
+                onRefresh: refreshDeploy,
+              }}
+            />
           ) : (
             <FlowView selected={selected} onSelect={setSelected} theme={resolvedTheme} />
           )}
