@@ -1,0 +1,36 @@
+I do not want you to make any code changes just suggest a plan. This cli contains a deploy command with a number of sub-commands related to deployments. I would like to introduce a special environment with the sole purpose of verifying the gitops manifests. It should run in a local k3s cluster. It needs to run dependencies like dapr and kgateway but the deployments will be done using the api directly. We should value speed in setting everything up
+
+---
+
+1. We will eventually need to run the integrations but in the first phase we can limit to server-side dry-run
+2. They can be fixed. Rabbitmq is one of them aswell
+3. It should be run locally but for performance reason I guess we should share the cluster but tear down the resources we are verifying?
+
+---
+
+go for error. Please implement the plan. I want you to do it on a separate branch out of feature/v-next. I will eventually merge these changes to feature/v-next but not now. No PR no git push
+
+---
+
+can you show me an example of a deploy.yaml with a verify environment?
+
+---
+
+how should the overlay look?
+
+---
+
+Mac domains/orders/order-flow on  main [$!?] ✖ i deploy verify up                       18:58
+bringing up the verification cluster
+creating k3s cluster intropy-verify
+ensuring dapr (dapr/dapr@1.14.4)
+error: install dapr: helm upgrade --install dapr dapr/dapr --namespace dapr-system --version 1.14.4 --wait --timeout 5m --set global.mtls.enabled=false: Error: no cached repo found. (try 'helm repo update'): open /Users/robinhultman/Library/Caches/helm/repository/dapr-index.yaml: no such file or director
+
+---
+
+ensuring rabbitmq (bitnami/rabbitmq@15.0.6)
+error: install rabbitmq: helm upgrade --install rabbitmq bitnami/rabbitmq --namespace rabbitmq --version 15.0.6 --wait --timeout 5m --set auth.username=intropy --set auth.password=intropy --set persistence.enabled=false: Error: no cached repo found. (try 'helm repo update'): open /Users/robinhultman/Library/Caches/helm/repository/bitnami-index.yaml: no such file or directory
+
+---
+
+no, I am running make build and then I have an alias i that points to the built binary
