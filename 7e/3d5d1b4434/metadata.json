@@ -3,7 +3,7 @@
   "checkpoint_id": "7e3d5d1b4434",
   "strategy": "manual-commit",
   "branch": "feature/dashboard-deploy-status",
-  "checkpoints_count": 2,
+  "checkpoints_count": 4,
   "files_touched": [
     "CONTRIBUTING.md",
     "README.md",
@@ -32,13 +32,20 @@
       "compact_transcript": "/7e/3d5d1b4434/1/transcript.jsonl",
       "content_hash": "/7e/3d5d1b4434/1/content_hash.txt",
       "prompt": "/7e/3d5d1b4434/1/prompt.txt"
+    },
+    {
+      "metadata": "/7e/3d5d1b4434/2/metadata.json",
+      "transcript": "/7e/3d5d1b4434/2/full.jsonl",
+      "compact_transcript": "/7e/3d5d1b4434/2/transcript.jsonl",
+      "content_hash": "/7e/3d5d1b4434/2/content_hash.txt",
+      "prompt": "/7e/3d5d1b4434/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 0,
+    "input_tokens": 36282,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 0,
-    "output_tokens": 0,
-    "api_call_count": 2
+    "cache_read_tokens": 218432,
+    "output_tokens": 3555,
+    "api_call_count": 10
   }
 }
