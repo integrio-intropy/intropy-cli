@@ -3,14 +3,17 @@ package dashboard
 import (
 	"context"
 	"encoding/json"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/integrio-intropy/intropy-cli/internal/topology"
+	"github.com/integrio-intropy/intropy-cli/web"
 )
 
 func writeScaffold(t *testing.T, dir, tmpl, version string) {
@@ -575,6 +578,46 @@ func TestSPAFallback(t *testing.T) {
 		}
 		if !strings.Contains(rec.Body.String(), "Intropy Dashboard") {
 			t.Errorf("%s: body is not index.html", path)
+		}
+	}
+}
+
+// A missing file must 404, not fall back to index.html. Answering a script
+// request with HTML and a 200 fails the browser's MIME check and surfaces only
+// as a blank page — the failure mode when a binary is built without `make web`.
+func TestMissingAssetIsNotFound(t *testing.T) {
+	// Names that cannot exist in either build state, so this holds whether or
+	// not `make web` has run.
+	h := testHandler(t, t.TempDir())
+	for _, path := range []string{
+		"/assets/index-nosuchbundle.js",
+		"/assets/index-nosuchbundle.css",
+		"/nested/deep/missing.js",
+	} {
+		rec := get(t, h, path)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s: status = %d, want 404 (body: %.40q)", path, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+// Whatever dist/index.html the binary embeds — the committed placeholder or a
+// real `vite build` — every asset it links to must also be embedded. The
+// committed placeholder links to none; a real build links to bundles it just
+// wrote. Committing a built index.html breaks this: dist/assets is gitignored,
+// so the links survive but the files do not, and the dashboard renders blank.
+func TestEmbeddedIndexAssetsExist(t *testing.T) {
+	index, err := fs.ReadFile(web.Assets, "dist/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	refs := regexp.MustCompile(`(?:src|href)="(/assets/[^"]+)"`).FindAllStringSubmatch(string(index), -1)
+	for _, ref := range refs {
+		name := strings.TrimPrefix(ref[1], "/")
+		if _, err := fs.Stat(web.Assets, "dist/"+name); err != nil {
+			t.Errorf("dist/index.html references %s but it is not embedded; "+
+				"run `make web` to build it, or `make web-clean` to restore the "+
+				"placeholder before committing", ref[1])
 		}
 	}
 }

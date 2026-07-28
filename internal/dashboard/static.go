@@ -11,9 +11,14 @@ import (
 )
 
 // staticHandler serves the embedded SPA. Real build assets (hashed JS/CSS) are
-// served with their correct content types; any path that does not map to a
-// file falls back to index.html so the SPA's client-side routing works on deep
-// links and reloads.
+// served with their correct content types; unknown *routes* fall back to
+// index.html so the SPA's client-side routing works on deep links and reloads.
+//
+// A missing *file* (a path with an extension, e.g. /assets/index-abc123.js) is
+// a 404 rather than a fallback. Serving index.html there would answer a script
+// request with HTML and a 200, which the browser rejects on its MIME check and
+// reports only as an empty page — the failure mode when a binary is built
+// without `make web`. A 404 names the missing file instead.
 func staticHandler() (http.Handler, error) {
 	sub, err := fs.Sub(web.Assets, "dist")
 	if err != nil {
@@ -37,6 +42,10 @@ func staticHandler() (http.Handler, error) {
 			return
 		}
 		if _, err := fs.Stat(sub, name); err != nil {
+			if path.Ext(name) != "" {
+				http.NotFound(w, r)
+				return
+			}
 			serveIndex(w)
 			return
 		}
