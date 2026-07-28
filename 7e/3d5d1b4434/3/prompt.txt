@@ -1,0 +1,1 @@
+the intropy deploy and introy release commands contain a lot of information that could be valuable in the integration catalog of the dashboard. Can  you analyze and come with suggestions?

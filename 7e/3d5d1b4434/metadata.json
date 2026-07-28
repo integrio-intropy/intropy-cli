@@ -3,11 +3,13 @@
   "checkpoint_id": "7e3d5d1b4434",
   "strategy": "manual-commit",
   "branch": "feature/dashboard-deploy-status",
-  "checkpoints_count": 4,
+  "checkpoints_count": 5,
   "files_touched": [
     "CONTRIBUTING.md",
     "README.md",
     "internal/dashboard/dashboard_test.go",
+    "internal/dashboard/deploy.go",
+    "internal/dashboard/deploy_test.go",
     "internal/dashboard/handlers.go",
     "internal/dashboard/server.go",
     "internal/deploy/result.go",
@@ -15,6 +17,7 @@
     "internal/deploy/status_test.go",
     "web/src/App.tsx",
     "web/src/api.ts",
+    "web/src/components/Deployment.tsx",
     "web/src/components/DetailPanel.tsx",
     "web/src/index.css"
   ],
@@ -39,13 +42,20 @@
       "compact_transcript": "/7e/3d5d1b4434/2/transcript.jsonl",
       "content_hash": "/7e/3d5d1b4434/2/content_hash.txt",
       "prompt": "/7e/3d5d1b4434/2/prompt.txt"
+    },
+    {
+      "metadata": "/7e/3d5d1b4434/3/metadata.json",
+      "transcript": "/7e/3d5d1b4434/3/full.jsonl",
+      "compact_transcript": "/7e/3d5d1b4434/3/transcript.jsonl",
+      "content_hash": "/7e/3d5d1b4434/3/content_hash.txt",
+      "prompt": "/7e/3d5d1b4434/3/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 36282,
-    "cache_creation_tokens": 0,
-    "cache_read_tokens": 218432,
-    "output_tokens": 3555,
-    "api_call_count": 10
+    "input_tokens": 36564,
+    "cache_creation_tokens": 126068,
+    "cache_read_tokens": 38724528,
+    "output_tokens": 71722,
+    "api_call_count": 152
   }
 }
