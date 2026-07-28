@@ -1,0 +1,143 @@
+I want you to analyze and implement the fixes for these 3 git safety issues:
+
+### P1 — Writes can escape the cached repository through symlinks
+
+ Evidence: internal/deploy/scaffold.go:151-166
+
+ applyStaged uses MkdirAll and WriteFile without checking symlinks or confirming the resolved
+ destination remains under destRoot.
+
+ A GitOps repository can contain:
+
+ - A symlink as the destination file.
+ - A symlink in a parent directory.
+
+ deploy init may then overwrite files outside the cached clone. Parent-directory symlinks are
+ followed even without --force.
+
+ Recommended fix:
+
+ - Reject symlinks in every destination path component.
+ - Verify resolved parent paths remain beneath the repository root.
+ - Open files using no-follow semantics where supported.
+ - Add tests for final-file and parent-directory symlinks.
+
+ ────────────────────────────────────────────────────────────────────────────────
+
+ ### P1 — Cached origin is trusted without checking the configured URL
+
+ Evidence:
+
+ - internal/gitops/repository.go:105-135
+ - internal/deploy/publish.go:108-111
+ - internal/deploy/init.go:707
+
+ The cache directory is derived from the configured URL, but an existing checkout’s origin is
+ never verified. Refresh, fetch, and push all trust whatever origin currently contains.
+
+ If cached Git config is stale, corrupted, or modified, a deployment can fetch from and push to
+ a different repository than the one displayed to the user.
+
+ Recommended fix:
+
+ - Read remote.origin.url whenever opening the cache.
+ - Compare it to the requested repository identity.
+ - Fail closed or recreate the cache on mismatch.
+ - Before pushing, resolve and report the destination URL.
+ - Consider setting the remote URL explicitly during refresh.
+
+ ────────────────────────────────────────────────────────────────────────────────
+
+ ### P1 — Git hooks can expand an exact-path commit into unintended changes
+
+ Evidence:
+
+ - internal/git/client.go:22-24
+ - internal/git/client.go:214-238
+ - internal/deploy/publish.go:98-104
+ - internal/deploy/init.go:699-705
+
+ The code carefully stages specific files, but git commit runs with ambient repository/global
+ Git configuration. A pre-commit hook supplied through core.hooksPath can modify or stage
+ additional files before the commit is created. Those files would then be pushed to the default
+ GitOps branch.
+
+ This defeats the stated “only the paths staged” invariant.
+
+ Recommended fix:
+
+ - Disable hooks for commits in the CLI-owned cache, for example through an isolated Git
+   configuration.
+ - Disable unexpected signing and interactive prompting.
+ - Verify the staged path list immediately before committing.
+ - Verify the resulting commit’s changed paths before pushing.
+ - Abort if the commit contains anything outside the expected set.
+
+---
+
+### Remaining blocker: repository identity ignores ports
+
+ internal/gitops/remote.go:49-58 normalizes URLs using u.Hostname(), dropping the port.
+
+ Consequently, these compare as the same repository:
+
+ - https://git.example.com:8443/org/repo
+ - https://git.example.com:9443/org/repo
+
+ They may be entirely different servers. Preserve the effective port in repository identity
+ comparison.
+
+ ### Hook fix is over-scoped
+
+ internal/git/client.go:24-47 disables hooks for every git.Client, and Push also uses
+ --no-verify. This includes source repositories used by release creation, so organizational or
+ user pre-push hooks are bypassed when pushing release tags.
+
+ The exact-commit protections are good:
+
+ - Hooks disabled in the managed cache.
+ - Staged paths checked before commit.
+ - Committed paths checked before push.
+
+ But hardening should be scoped to CLI-managed GitOps checkouts. User source-repository pushes
+ should retain their normal hook policy.
+
+---
+
+### Remaining P1: effective push destination is only reported
+
+ The configured fetch URL is now verified correctly, including non-default ports. However, Git
+ may use a different push destination through:
+
+ - remote.origin.pushurl
+ - url.*.pushInsteadOf
+
+ The code resolves this destination, but a mismatch only prints a note:
+
+ - internal/gitops/repository.go:127-132
+ - internal/deploy/session.go:65-67
+
+ It then proceeds with the push:
+
+ - internal/git/client.go:506-512
+
+ Thus a modified cached remote.origin.pushurl can still redirect a production GitOps push to an
+ unintended repository.
+
+ ### Required fix
+
+ For managed GitOps checkouts, fail closed when the effective push URL does not identify the
+ configured repository. Alternatively, remove an unexpected repository-local pushurl and
+ revalidate before pushing. Any intentional redirect should require explicit configuration
+ rather than a warning.
+
+ ### Validation
+
+ These all pass:
+
+ ```text
+   go test ./internal/deploy ./internal/git ./internal/gitops
+   go test ./internal/release ./internal/source
+   go vet ./internal/deploy ./internal/git ./internal/gitops ./internal/release
+ ./internal/source
+ ```
