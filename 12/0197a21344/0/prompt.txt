@@ -1,0 +1,1 @@
+In v-next we have started doing operations on git repos. I want you to scan that repo for risks, where we might be doing things that will have unintended effects on the git repo

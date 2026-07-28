@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "120197a21344",
+  "strategy": "manual-commit",
+  "branch": "feature/v-next",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "README.md",
+    "cmd/intropy/deploy.go",
+    "internal/dashboard/topology.go",
+    "internal/deploy/localtemplates_test.go",
+    "internal/deploy/promote.go",
+    "internal/deploy/result.go",
+    "internal/deploy/service.go",
+    "internal/deploy/session.go",
+    "internal/deploy/status.go",
+    "internal/git/client.go",
+    "internal/gitops/config.go",
+    "internal/template/manifest.go",
+    "internal/template/render.go",
+    "internal/template/scaffold_list.go",
+    "internal/template/values.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/12/0197a21344/0/metadata.json",
+      "transcript": "/12/0197a21344/0/full.jsonl",
+      "compact_transcript": "/12/0197a21344/0/transcript.jsonl",
+      "content_hash": "/12/0197a21344/0/content_hash.txt",
+      "prompt": "/12/0197a21344/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 115033,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1292800,
+    "output_tokens": 7669,
+    "api_call_count": 18
+  }
+}
