@@ -257,8 +257,22 @@ internal/dashboard/   Local `intropy dashboard`: HTTP server + JSON API
 internal/topology/    topology.intropy.io/v1 schema + decoder (host graph verb output)
 internal/skill/       skills.json/lockfile, install/update/add, collection cache
 internal/skill/oci/   OCI client wrappers, pack/push/pull, references
+internal/registry/    Generic OCI registry client — pull/push/index, ListTags
+internal/config/      Per-user settings (~/.config/intropy/config.yaml)
+internal/command/     Runner for external binaries (git, kustomize, dotnet, argocd)
+internal/git/         Git plumbing — clone, worktree, commit, push, tag
+internal/gitops/      GitOps repo: config, overlay layout, coordinate lookup
+internal/kustomize/   kustomization.yaml editing + manifest render/diff
+internal/source/      Resolve the source commit and its image digests
+internal/deploy/      `deploy` — plan, publish, diff, promote, status, sync gate
+internal/release/     `release` — immutable release manifests, changelog, view
+internal/argocd/      ArgoCD client; waits for a pushed revision to be applied
 web/                  Dashboard SPA (Vite + React + TS), embedded via go:embed
 ```
+
+Packages ending in `test` (`internal/gittest`, `internal/gitops/gitopstest`,
+`internal/registry/registrytest`) are test-only helpers that build throwaway
+repositories and registries for the suites above.
 
 ### Version stamping
 
