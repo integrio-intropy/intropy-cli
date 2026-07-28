@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="data:," />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Intropy Dashboard</title>
+    <script>
+      // Resolve the theme before first paint to avoid a flash. Mirrors the
+      // logic in App.tsx: an explicit "light"/"dark" preference wins, while
+      // "system" (or an unset preference) follows the OS.
+      (function () {
+        try {
+          var pref = localStorage.getItem('intropy.theme') || 'system'
+          var dark =
+            pref === 'dark' ||
+            (pref !== 'light' &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches)
+          document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+        } catch (e) {
+          /* localStorage/matchMedia unavailable — fall back to CSS defaults */
+        }
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

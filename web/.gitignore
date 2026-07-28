@@ -1,0 +1,9 @@
+# Dependencies and build caches — but NOT dist/index.html, which is committed
+# as a placeholder and embedded into the CLI binary via go:embed. Built assets
+# (dist/assets) are produced by `make web` / CI and never committed.
+node_modules
+dist/assets
+.tmp
+*.tsbuildinfo
+*.local
+.DS_Store
