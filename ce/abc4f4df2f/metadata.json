@@ -1,0 +1,43 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "ceabc4f4df2f",
+  "strategy": "manual-commit",
+  "branch": "feature/deploy-verify",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "README.md",
+    "cmd/intropy/deploy.go",
+    "cmd/intropy/deploy_verify.go",
+    "cmd/intropy/deploy_verify_test.go",
+    "internal/command/runner.go",
+    "internal/deploy/diff.go",
+    "internal/deploy/promote.go",
+    "internal/deploy/request.go",
+    "internal/deploy/service.go",
+    "internal/deploy/sync.go",
+    "internal/deploy/verifycmd.go",
+    "internal/deploy/verifycmd_test.go",
+    "internal/gitops/config.go",
+    "internal/gitops/config_test.go",
+    "internal/verify/cluster.go",
+    "internal/verify/deps.go",
+    "internal/verify/run.go",
+    "internal/verify/verify_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ce/abc4f4df2f/0/metadata.json",
+      "transcript": "/ce/abc4f4df2f/0/full.jsonl",
+      "compact_transcript": "/ce/abc4f4df2f/0/transcript.jsonl",
+      "content_hash": "/ce/abc4f4df2f/0/content_hash.txt",
+      "prompt": "/ce/abc4f4df2f/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 162235,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 751616,
+    "output_tokens": 3797,
+    "api_call_count": 14
+  }
+}
