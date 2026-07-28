@@ -33,12 +33,33 @@ type Metadata struct {
 type Spec struct {
 	Parameters   map[string]any    `yaml:"parameters"`
 	Values       map[string]string `yaml:"values,omitempty"`
+	Files        []FileRule        `yaml:"files,omitempty"`
 	Dependencies []DependencySpec  `yaml:"dependencies,omitempty"`
 
 	// parameterOrder captures the declaration order of properties in
 	// spec.parameters.properties, since Go maps don't preserve YAML order.
 	// Populated by UnmarshalYAML.
 	parameterOrder []string
+}
+
+// FileRule conditionally includes part of a skeleton, so one template can serve
+// platforms whose manifest sets differ rather than only whose values differ.
+//
+// Path is a slash-separated glob relative to skeleton/, matched against the
+// *source* path with any .tmpl suffix included — a rule that decides on values
+// cannot depend on a path those values produce, so a templated directory segment
+// is only reachable via a glob. A trailing "/**" also matches everything beneath
+// the directory, and prunes it before its contents are parsed.
+//
+// When is a Go template (sprig available) rendered against the resolved values.
+// Any result other than "", "false" or "0" includes the match.
+//
+// The first rule whose Path matches decides, and a path no rule matches is
+// included — so a template without spec.files renders exactly as it did before
+// this field existed.
+type FileRule struct {
+	Path string `yaml:"path" json:"path"`
+	When string `yaml:"when" json:"when"`
 }
 
 // DependencySpec declares another template in the same library that must
@@ -63,9 +84,12 @@ type DependencySpec struct {
 // UnmarshalYAML decodes the spec and captures property declaration order
 // so Fields() can return FieldSpecs in author-intended sequence.
 func (s *Spec) UnmarshalYAML(node *yaml.Node) error {
+	// Every field of Spec must be repeated here: the decode targets rawSpec, so
+	// a field added to Spec alone is silently dropped.
 	type rawSpec struct {
 		Parameters   map[string]any    `yaml:"parameters"`
 		Values       map[string]string `yaml:"values,omitempty"`
+		Files        []FileRule        `yaml:"files,omitempty"`
 		Dependencies []DependencySpec  `yaml:"dependencies,omitempty"`
 	}
 	var r rawSpec
@@ -74,6 +98,7 @@ func (s *Spec) UnmarshalYAML(node *yaml.Node) error {
 	}
 	s.Parameters = r.Parameters
 	s.Values = r.Values
+	s.Files = r.Files
 	s.Dependencies = r.Dependencies
 	s.parameterOrder = extractPropertyOrder(node)
 	return nil
@@ -194,6 +219,21 @@ func (t *Template) validate() error {
 	}
 	if typ, _ := t.Spec.Parameters["type"].(string); typ != "object" {
 		return fmt.Errorf(`spec.parameters.type must be "object"`)
+	}
+	for i, rule := range t.Spec.Files {
+		if rule.Path == "" {
+			return fmt.Errorf("spec.files[%d]: path is required", i)
+		}
+		// A rule with no condition either does nothing or means the author
+		// forgot the condition; neither deserves to render.
+		if rule.When == "" {
+			return fmt.Errorf("spec.files[%d] (%s): when is required", i, rule.Path)
+		}
+		// Parsed here so a syntax error surfaces at load time rather than
+		// partway through a render.
+		if _, err := compileExpr(rule.When); err != nil {
+			return fmt.Errorf("spec.files[%d] (%s): invalid when: %w", i, rule.Path, err)
+		}
 	}
 	for i, dep := range t.Spec.Dependencies {
 		if err := validateTemplateName(dep.Template); err != nil {

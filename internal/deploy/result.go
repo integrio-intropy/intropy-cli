@@ -128,10 +128,45 @@ type DiffResult struct {
 // StatusResult is the machine-readable outcome of a status. Its own type for
 // the same reason SyncResult is: it plans nothing, applies nothing, and is the
 // only result here that describes more than one environment.
+// InitResult is the machine-readable summary of a deploy init run.
+//
+// Placeholders is the point of the document: complete manifests are explicitly
+// not the goal, so what a consumer wants to know is exactly which values a human
+// still has to supply and where.
+type InitResult struct {
+	System string `json:"system"`
+	Domain string `json:"domain"`
+
+	// Host is the component directory holding the system's shared manifests.
+	Host string `json:"host"`
+
+	// Template is the resolved template library reference, so a reviewer can tell
+	// which release produced the tree.
+	Template string `json:"template"`
+
+	Components []string `json:"components"`
+
+	// Files is every staged path and what was done with it, including the ones
+	// left alone.
+	Files []FileAction `json:"files"`
+
+	// Applied is false for --plan and for a run that found nothing to write.
+	Applied  bool   `json:"applied"`
+	Branch   string `json:"branch,omitempty"`
+	Revision string `json:"revision,omitempty"`
+
+	Placeholders []Placeholder `json:"placeholders"`
+}
+
 type StatusResult struct {
 	Component string `json:"component"`
 	Domain    string `json:"domain"`
 	System    string `json:"system"`
+
+	// Kind is the component's declared kind, always populated even when
+	// component.yaml leaves it implicit. A consumer reading empty digests needs
+	// to tell "shared, so there is nothing to pin" from "never deployed".
+	Kind string `json:"kind"`
 
 	// Environments are in promotion order, so the last one is the furthest
 	// downstream — usually production.

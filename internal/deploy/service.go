@@ -44,6 +44,9 @@ func Run(ctx context.Context, opts Options) error {
 	if err != nil {
 		return err
 	}
+	if err := requirePinnable(coord, comp); err != nil {
+		return err
+	}
 	overlayDir, err := gitops.ResolveOverlay(repo.Root, coord, comp, opts.Environment)
 	if err != nil {
 		return err

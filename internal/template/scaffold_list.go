@@ -26,6 +26,22 @@ type ScaffoldEntry struct {
 	Scaffold
 }
 
+// ListSystemHosts returns the system-host projects under root, in walk order.
+//
+// A system host is the composition root of one integration system: it is what
+// can be asked for the declared topology, and its parent directory is the
+// system directory whose siblings are the components. Warnings are passed
+// through unchanged so a caller can decide whether a malformed record matters.
+func ListSystemHosts(root string) (hosts []ScaffoldEntry, warnings []error) {
+	entries, warnings := ListScaffolds(root)
+	for _, e := range entries {
+		if e.Role == RoleSystemHost {
+			hosts = append(hosts, e)
+		}
+	}
+	return hosts, warnings
+}
+
 // ListScaffolds walks the tree rooted at root and returns an entry for every
 // directory that contains .intropy/scaffold.json, in lexical walk order.
 // Paths are reported as WalkDir yields them (root-prefixed), so with a

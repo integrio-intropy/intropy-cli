@@ -170,6 +170,7 @@ intropy
 ├── sys                    Manage integration systems
 │   └── create                 Assemble scaffolded integrations into a system host
 ├── deploy <component>     Pin a component's image digest into an environment
+│   ├── init [component...]    Scaffold a system's manifests into the GitOps repository
 │   ├── promote <component>    Copy the digests one environment runs into another
 │   ├── diff <component>       Show the rendered change a sync would apply
 │   ├── status <component>     Show what every environment runs, side by side
@@ -332,6 +333,128 @@ Records without a `blockKind` (scaffolded by an older CLI) or with a block
 kind other than extractor/loader are skipped with a warning; records
 without a `connector` value keep their component but get no `From`/`To`.
 Validate the result from the host directory with `dotnet run -- check`.
+
+## Onboarding a system (`intropy deploy init`)
+
+Every command below assumes the component already exists in the GitOps
+repository. Getting it there used to be manual — hand-writing
+`component.yaml`, `base/` and an overlay per environment, for every block, in
+every customer repository. `deploy init` generates that tree from the topology
+the system host declares:
+
+```sh
+# from a system workspace
+intropy deploy init --plan
+```
+
+Everything the CLI can derive is filled in: each block's workload (an extractor
+is a `CronJob`, everything else a `Deployment`), the app-ids that belong in a
+Dapr component's `scopes:`, the environments `deploy.yaml` defines, the
+registry. What it cannot derive — connection strings, hosts, credentials, cron
+schedules — is emitted as a `REPLACE-ME-<HINT>` placeholder and listed when the
+run finishes. Filling those in is the remaining job.
+
+Image tags are never in that list. Scaffolding leaves them at an `unpinned`
+sentinel, because pinning digests is `intropy deploy`'s job and nothing else's.
+
+The system's shared objects — the Dapr pub/sub and secret store its blocks
+resolve by name, plus the secrets behind them — go in a `host` directory of
+their own, declared `kind: shared` in `component.yaml`:
+
+```
+domains/sales/ordersync/
+  host/                    kind: shared — no image, nothing to pin
+    base/dapr/pubsub.yaml  one owner, scopes: limits who may use it
+    base/secrets/
+  order-extract/           extractor ⇒ CronJob
+  order-load/              loader ⇒ Deployment
+```
+
+A Dapr `Component` is namespace-scoped and every integration in the namespace
+shares it, so exactly one ArgoCD Application may own each one. The `host`
+directory is what gives them that owner; `scopes:` is what limits who may use
+them. `deploy` and `promote` refuse a `kind: shared` component, since it has no
+image to pin.
+
+Which Dapr components get rendered depends on the platform, declared once per
+repository in `deploy.yaml`:
+
+```yaml
+platform:
+  provider: beebyte      # azure, beebyte, …
+  pubsub: rabbitmq       # in-memory, rabbitmq, servicebus, …
+  secretStore: kubernetes
+```
+
+The CLI itself knows nothing about any of those values: the string flows from
+`deploy.yaml` into a template parameter and into a `spec.files` condition in the
+template library, so adding a platform is a templates-repo change. The
+components live in `base/` and are identical in every environment — what varies
+per environment is the credential, which a Dapr component reaches through
+`secretKeyRef`.
+
+Nothing is pushed to the default branch; a tree full of placeholders would be
+picked up by the ApplicationSet immediately. The run pushes
+`deploy-init/<domain>-<system>` for review. Re-running is additive: a file that
+already exists and differs is reported and left alone unless `--force` is given,
+and `--force` still refuses to overwrite an overlay that pins a digest.
+
+### Where the system lands
+
+The GitOps path is `domains/<domain>/<system>/<component>/`, and both segments
+are derived rather than typed:
+
+- **`<system>`** comes from the topology record. Pass `--system` when the
+  workspace holds several — see below.
+- **`<domain>`** comes from where the system already sits in the GitOps tree; on
+  a first run, from the workspace's own `domains/<domain>/<system>/` layout,
+  which every integrations tree mirrors from the deployment tree. `--domain`
+  overrides both, and is only *required* when the workspace has some other
+  shape.
+
+If the two disagree — the repository files a system under one domain and the
+workspace suggests another — the repository wins and the run says so. Moving a
+system between domains should be deliberate, not a side effect of a directory
+name.
+
+### Picking a system
+
+An integrations tree usually holds several systems side by side, so `--system`
+says which one:
+
+```sh
+intropy deploy init --system order-flow
+```
+
+The name is matched against each scaffolded host's recorded system name and its
+system directory — both already on disk — so picking a system never builds the
+others. `OrderFlow` and `order-flow` are the same system, matching how
+`intropy sys create` kebab-cases what you give it. With one system in the
+workspace the flag is unnecessary; with several and no `--system`, the command
+lists them and stops rather than guessing.
+
+`--system` also names the tree segment. If it differs from what the topology
+declares, your name wins and the run says so.
+
+The topology comes from the host's `graph` verb, which builds the project first.
+In CI, capture it once and skip the build:
+
+```sh
+dotnet run --project ./OrderSync.SystemHost -- graph > topology.json
+intropy deploy init --topology topology.json
+```
+
+The manifests come from the template library's latest release. `--version` pins
+a tag instead — the same flag `intropy int create` uses, and the one that makes
+a re-run reproducible while the templates are still moving:
+
+```sh
+intropy deploy init --version v0.4.0
+```
+
+The resolved tag is echoed as it fetches and recorded as `template` in
+`--output json`, so a reviewer of the pushed branch can tell which release
+produced the tree.
 
 ## Deployment (`intropy deploy`)
 

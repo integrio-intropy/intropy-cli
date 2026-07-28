@@ -245,6 +245,7 @@ func reportStatus(out output, coord gitops.Coordinate, comp *gitops.ComponentCon
 			Component:    coord.Component,
 			Domain:       coord.Domain,
 			System:       coord.System,
+			Kind:         componentKind(comp),
 			Environments: rows,
 			Consistent:   consistent(rows),
 		}
@@ -433,6 +434,17 @@ func describeSignatureString(signature string) string {
 // waiting, and what the table had no room for.
 func notes(coord gitops.Coordinate, comp *gitops.ComponentConfig, rows []EnvironmentStatus) []string {
 	var out []string
+
+	// A shared component declares no images, so every DIGEST cell is empty. Said
+	// plainly and first, because an empty column otherwise reads as "never
+	// deployed" — the one conclusion a reader must not draw here. A KIND column
+	// would carry this too, at the cost of a mostly-"service" column in every
+	// other component's table.
+	if comp.IsShared() {
+		out = append(out, fmt.Sprintf("%s is kind %q: it holds system-level manifests and no image, so DIGEST is empty by design",
+			coord.Component, gitops.KindShared))
+	}
+
 	for _, row := range rows {
 		switch {
 		case !row.Onboarded:

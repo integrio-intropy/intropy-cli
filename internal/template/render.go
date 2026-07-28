@@ -25,6 +25,16 @@ const tmplSuffix = ".tmpl"
 // srcDir is the template's skeleton/ directory; the manifest lives outside
 // this tree.
 func Render(srcDir, destDir string, values map[string]any) error {
+	return RenderFiltered(srcDir, destDir, values, nil)
+}
+
+// RenderFiltered is Render restricted to the paths the template's spec.files
+// rules include. Rules are matched against the source path, and a rule that
+// excludes a directory prunes it before anything inside is parsed — so a
+// skeleton may carry files that are not even valid templates for the values in
+// play. Passing no rules is exactly Render.
+func RenderFiltered(srcDir, destDir string, values map[string]any, rules []FileRule) error {
+	filter := newSkeletonFilter(rules, values)
 	return filepath.WalkDir(srcDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -34,6 +44,16 @@ func Render(srcDir, destDir string, values map[string]any) error {
 			return err
 		}
 		if rel == "." {
+			return nil
+		}
+		include, err := filter.include(filepath.ToSlash(rel))
+		if err != nil {
+			return err
+		}
+		if !include {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
 			return nil
 		}
 		renderedRel, err := renderPath(rel, values)

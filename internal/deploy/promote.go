@@ -59,6 +59,9 @@ func Promote(ctx context.Context, opts PromoteOptions) error {
 	if err != nil {
 		return err
 	}
+	if err := requirePinnable(coord, comp); err != nil {
+		return err
+	}
 	overlayDir, err := gitops.ResolveOverlay(repo.Root, coord, comp, opts.To)
 	if err != nil {
 		return err

@@ -85,3 +85,25 @@ func (s *session) locateComponent(component, domain, system string) (gitops.Coor
 	}
 	return coord, comp, nil
 }
+
+// componentKind is the component's kind with the default made explicit, so a
+// reported value never depends on whether component.yaml spelled it out.
+func componentKind(comp *gitops.ComponentConfig) string {
+	if comp.Kind == "" {
+		return gitops.KindService
+	}
+	return comp.Kind
+}
+
+// requirePinnable rejects a component that has no image to pin.
+//
+// deploy and promote exist to move image digests, so a shared component is a
+// category error for them rather than a run that happens to change nothing —
+// without this the plan would come out empty and read as "already up to date".
+// status, diff and sync all work on a shared component and must not call this.
+func requirePinnable(coord gitops.Coordinate, comp *gitops.ComponentConfig) error {
+	if !comp.IsShared() {
+		return nil
+	}
+	return fmt.Errorf("%s is kind %q; it declares no images, so there is nothing to pin — edit its manifests directly", coord, gitops.KindShared)
+}

@@ -40,6 +40,19 @@ const (
 	// but must not wait for a sync that will never start on its own.
 	SyncAuto   = "auto"
 	SyncManual = "manual"
+
+	// KindService and KindShared are the recognised component kinds.
+	//
+	// A service is a workload with an image for deploy to pin. A shared
+	// component holds the system-level objects that belong to no single
+	// workload — the Dapr components a system's blocks resolve by name, and the
+	// secrets behind them. Exactly one ArgoCD Application must own each of
+	// those objects, and a shared component is what gives them that owner.
+	//
+	// KindService is the default, so a component.yaml predating this field is
+	// unchanged in meaning.
+	KindService = "service"
+	KindShared  = "shared"
 )
 
 // DeployConfig is the parsed deploy.yaml.
@@ -51,8 +64,32 @@ type DeployConfig struct {
 	// consider safe to deploy with.
 	MinimumCliVersion string `yaml:"minimumCliVersion"`
 
+	// Platform describes the target cluster's hosting. It is repo-wide on
+	// purpose: a system's Dapr components are identical in every environment,
+	// so there is nothing for an environment to override. Only manifest
+	// scaffolding reads it; deploy, promote, diff and sync ignore it entirely.
+	Platform PlatformConfig `yaml:"platform"`
+
 	Argocd       ArgocdConfig                 `yaml:"argocd"`
 	Environments map[string]EnvironmentConfig `yaml:"environments"`
+}
+
+// PlatformConfig names the hosting choices a manifest skeleton renders against.
+//
+// The values are deliberately not validated here. The allowed set belongs to
+// whichever template consumes them — its JSON Schema is where the enum lives —
+// and hard-coding a list here would mean a CLI release for every new broker.
+type PlatformConfig struct {
+	// Provider is the hosting environment, e.g. "azure" or "beebyte".
+	Provider string `yaml:"provider"`
+
+	// Pubsub selects the Dapr pub/sub building block, e.g. "in-memory",
+	// "rabbitmq" or "servicebus".
+	Pubsub string `yaml:"pubsub"`
+
+	// SecretStore selects the Dapr secret store, e.g. "kubernetes",
+	// "azure.keyvault" or "vault".
+	SecretStore string `yaml:"secretStore"`
 }
 
 // ArgocdConfig locates the ArgoCD instance that reconciles this repository.
@@ -92,6 +129,10 @@ type EnvironmentConfig struct {
 type ComponentConfig struct {
 	SchemaVersion int    `yaml:"schemaVersion"`
 	Name          string `yaml:"name"`
+
+	// Kind is KindService or KindShared; empty means KindService, so every
+	// component.yaml written before this field existed keeps working.
+	Kind string `yaml:"kind"`
 
 	// SourcePaths are the paths in the *source* repository that make up this
 	// component. The working-tree cleanliness check is scoped to them, so an
@@ -258,7 +299,18 @@ func (c *ComponentConfig) validate(path string) error {
 	if c.Name == "" {
 		return fmt.Errorf("%s: name is required", path)
 	}
-	if len(c.Images) == 0 {
+	switch c.Kind {
+	case "", KindService, KindShared:
+	default:
+		return fmt.Errorf("%s: kind %q is not valid (expected %q or %q)", path, c.Kind, KindService, KindShared)
+	}
+	if c.IsShared() {
+		// An images entry that matches nothing is inert rather than fatal, so a
+		// shared component listing one would look pinnable and never be pinned.
+		if len(c.Images) > 0 {
+			return fmt.Errorf("%s: kind %q must not declare images — there is no workload to pin", path, KindShared)
+		}
+	} else if len(c.Images) == 0 {
 		return fmt.Errorf("%s: at least one entry under images is required — there is nothing to pin otherwise", path)
 	}
 	for i, img := range c.Images {
@@ -278,6 +330,12 @@ func (c *ComponentConfig) validate(path string) error {
 // SupportsEnvironment reports whether the component declares env.
 func (c *ComponentConfig) SupportsEnvironment(env string) bool {
 	return slices.Contains(c.Environments, env)
+}
+
+// IsShared reports whether the component holds system-level objects rather than
+// a workload, and so has nothing for deploy or promote to pin.
+func (c *ComponentConfig) IsShared() bool {
+	return c.Kind == KindShared
 }
 
 // hasTagOrDigest reports whether an image reference carries a tag or digest.

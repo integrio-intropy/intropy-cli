@@ -137,6 +137,32 @@ func (g Client) CheckoutPaths(ctx context.Context, paths ...string) error {
 	return nil
 }
 
+// CreateBranch creates name at startPoint and checks it out, resetting it if it
+// already exists locally.
+//
+// The reset is deliberate: the only local branches in a cached checkout are ones
+// a previous run of this CLI left behind, and reusing a stale one would build a
+// commit on top of whatever that run happened to do.
+func (g Client) CreateBranch(ctx context.Context, name, startPoint string) error {
+	if _, err := g.run(ctx, "checkout", "-B", name, startPoint); err != nil {
+		return fmt.Errorf("create branch %s at %s: %w", name, startPoint, err)
+	}
+	return nil
+}
+
+// Switch checks out an existing ref.
+//
+// Callers holding a shared cached checkout must switch back to the default
+// branch when they are done: the refresh on the next Open resets whatever branch
+// is current to the default branch's remote head, which would silently discard a
+// feature branch's commits.
+func (g Client) Switch(ctx context.Context, ref string) error {
+	if _, err := g.run(ctx, "checkout", ref); err != nil {
+		return fmt.Errorf("switch to %s: %w", ref, err)
+	}
+	return nil
+}
+
 // ResetHard moves the branch and working tree to ref.
 func (g Client) ResetHard(ctx context.Context, ref string) error {
 	if _, err := g.run(ctx, "reset", "--hard", ref); err != nil {
