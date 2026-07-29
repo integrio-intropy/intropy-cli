@@ -112,6 +112,11 @@ func TestResolveByTagAndDigest(t *testing.T) {
 	if byTag.Annotations["org.opencontainers.image.title"] != "component-x" {
 		t.Errorf("resolve by tag annotations = %v; want the title annotation", byTag.Annotations)
 	}
+	// Callers tell one kind of artifact from another without pulling it, so the
+	// artifact type has to survive a resolve.
+	if byTag.ArtifactType != testArtifact().ArtifactType {
+		t.Errorf("resolve by tag artifactType = %q; want %q", byTag.ArtifactType, testArtifact().ArtifactType)
+	}
 
 	byDigest, err := c.Resolve(ctx, srv.Host+"/releases/component-x@"+pushed.Digest)
 	if err != nil {

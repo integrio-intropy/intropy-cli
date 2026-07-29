@@ -21,7 +21,13 @@ func completeReleaseComponents(cmd *cobra.Command, args []string, toComplete str
 	if len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	root, err := gitops.CachedRoot(releaseCreateOpts.gitopsRepo)
+	// --gitops-repo belongs to whichever subcommand is completing, so read it
+	// from there rather than from one subcommand's flag globals.
+	var gitopsRepo string
+	if f := cmd.Flags().Lookup("gitops-repo"); f != nil {
+		gitopsRepo = f.Value.String()
+	}
+	root, err := gitops.CachedRoot(gitopsRepo)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}

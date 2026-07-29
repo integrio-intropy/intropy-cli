@@ -46,6 +46,11 @@ type Options struct {
 	// OutputFormat is "plain" or "json".
 	OutputFormat string
 
+	// Limit caps how many releases List reports, newest first. Zero means all,
+	// so a caller that does not think about it gets the whole answer; the
+	// command-line default lives on the flag.
+	Limit int
+
 	// CacheRoot overrides where GitOps checkouts are cached.
 	CacheRoot string
 

@@ -265,7 +265,7 @@ internal/gitops/      GitOps repo: config, overlay layout, coordinate lookup
 internal/kustomize/   kustomization.yaml editing + manifest render/diff
 internal/source/      Resolve the source commit and its image digests
 internal/deploy/      `deploy` — plan, publish, diff, promote, status, sync gate
-internal/release/     `release` — immutable release manifests, changelog, view
+internal/release/     `release` — immutable release manifests, changelog, list, view
 internal/argocd/      ArgoCD client; waits for a pushed revision to be applied
 web/                  Dashboard SPA (Vite + React + TS), embedded via go:embed
 ```

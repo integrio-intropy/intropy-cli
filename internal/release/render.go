@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 	"text/tabwriter"
+	"time"
 )
 
 // renderCreated reports what Create did.
@@ -57,6 +58,35 @@ func renderManifest(w io.Writer, m *Manifest) error {
 	}
 	fmt.Fprintf(w, "\nnotes:\n%s\n", indent(notes, "  "))
 	return nil
+}
+
+// noValue is what an empty cell renders as, matching deploy status.
+const noValue = "—"
+
+// renderReleases is the human view of a component's releases.
+func renderReleases(w io.Writer, releases []Summary) error {
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "VERSION\tCREATED\tCOMMIT\tNOTES")
+	for _, r := range releases {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", r.Version, createdCell(r.CreatedAt), orNone(shortSHA(r.Commit)), orNone(r.Notes))
+	}
+	return tw.Flush()
+}
+
+// createdCell renders the release date at day precision: the interesting
+// question in a list is which release is newer, not what time of day it was cut.
+func createdCell(t *time.Time) string {
+	if t == nil {
+		return noValue
+	}
+	return t.UTC().Format("2006-01-02")
+}
+
+func orNone(s string) string {
+	if s == "" {
+		return noValue
+	}
+	return s
 }
 
 func indent(s, prefix string) string {

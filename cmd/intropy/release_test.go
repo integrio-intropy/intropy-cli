@@ -18,6 +18,7 @@ func resetReleaseState(t *testing.T, stdout, stderr *bytes.Buffer) {
 	reset := func() {
 		releaseCreateOpts = releaseCreateFlags{output: release.OutputPlain}
 		releaseViewOpts = releaseViewFlags{output: release.OutputPlain}
+		releaseListOpts = releaseListFlags{output: release.OutputPlain, limit: defaultReleaseListLimit}
 	}
 	reset()
 	t.Cleanup(reset)
@@ -68,10 +69,39 @@ func TestReleaseViewRequiresComponentAndVersion(t *testing.T) {
 	}
 }
 
+func TestReleaseListTakesExactlyOneComponent(t *testing.T) {
+	for _, args := range [][]string{
+		{"list"},
+		{"list", "order-extractor", "1.4.2"},
+	} {
+		_, _, err := runRelease(t, args...)
+		if err == nil {
+			t.Errorf("release %v should be a usage error", args)
+			continue
+		}
+		if code := exitCode(err); code != 2 {
+			t.Errorf("release %v: exit code = %d, want 2", args, code)
+		}
+	}
+}
+
+// Zero means all, so a negative limit is a mistake rather than a synonym.
+func TestReleaseListRejectsNegativeLimit(t *testing.T) {
+	_, _, err := runRelease(t, "list", "order-extractor", "--limit", "-1")
+	if err == nil {
+		t.Fatal("a negative --limit should be a usage error")
+	}
+	var ue *usageError
+	if !errors.As(err, &ue) {
+		t.Errorf("error %q should be a usageError", err)
+	}
+}
+
 func TestReleaseRejectsUnknownOutputFormat(t *testing.T) {
 	for _, args := range [][]string{
 		{"create", "order-extractor", "--version", "1.4.2", "--output", "yaml"},
 		{"view", "order-extractor", "1.4.2", "--output", "yaml"},
+		{"list", "order-extractor", "--output", "yaml"},
 	} {
 		_, _, err := runRelease(t, args...)
 		if err == nil {
@@ -124,7 +154,7 @@ func TestReleaseIsRegistered(t *testing.T) {
 		t.Fatal("release is not registered on the root command")
 	}
 
-	want := map[string]bool{"create": false, "view": false}
+	want := map[string]bool{"create": false, "view": false, "list": false}
 	for _, c := range releaseCmd.Commands() {
 		if _, ok := want[c.Name()]; ok {
 			want[c.Name()] = true

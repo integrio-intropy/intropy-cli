@@ -177,6 +177,7 @@ intropy
 │   └── sync <component>       Apply an environment's pending change through ArgoCD
 ├── release                Publish and inspect immutable release manifests
 │   ├── create <component>     Publish a release manifest and push a git tag
+│   ├── list <component>       List the releases published for a component
 │   └── view <component> <ver> Read a published release manifest
 ├── skills                 Manage Intropy skills
 │   ├── add [ref]              Add and install a skill from an OCI registry
@@ -987,6 +988,30 @@ For `intropy release create component-x --version 1.4.2`, the CLI:
 Re-running for a version that already exists compares the intended manifest to
 the published one. An identical release is left in place and a missing Git tag
 is repaired; a different release is refused because versions are immutable.
+
+Find out what has been released, newest first:
+
+```sh
+intropy release list component-x
+```
+
+```
+VERSION  CREATED     COMMIT   NOTES
+1.4.2    2026-07-24  a1b2c3d  Retry on connector timeouts
+1.4.1    2026-07-22  9f8e7d6  Handle empty payloads
+1.4.0    2026-07-20  4c5d6e7  Initial release.
+```
+
+Releases are read from the registry beside the component's images, so this
+reports what is actually published rather than what Git tags claim, and the order
+is publication order rather than a guess at a versioning scheme. Each row costs
+one manifest fetch and no blob transfer, because the version, date, commit, and
+first line of the notes are mirrored onto the manifest as annotations. Anything
+in that repository that is not a readable release is skipped with a note on
+stderr. The 20 newest are shown by default; `--limit 0` prints them all, and a
+limit that hides releases says how many. A component that has never been released
+is reported as such rather than treated as an error. `-o json` adds `total`, the
+count before the limit, and each release's full digest.
 
 Inspect a published release before shipping it:
 

@@ -18,11 +18,21 @@ const (
 )
 
 // Annotations mirrored onto the manifest so a registry UI shows something
-// useful without pulling the layer.
+// useful without pulling the layer. release list reads them for the same
+// reason: a listing costs one manifest fetch per release instead of a blob pull.
 const (
 	AnnotationComponent = "io.intropy.release.component"
 	AnnotationCommit    = "io.intropy.release.source-commit"
+
+	annotationTitle       = "org.opencontainers.image.title"
+	annotationVersion     = "org.opencontainers.image.version"
+	annotationCreated     = "org.opencontainers.image.created"
+	annotationRevision    = "org.opencontainers.image.revision"
+	annotationDescription = "org.opencontainers.image.description"
 )
+
+// createdLayout is how annotationCreated is written, and so how it must be read.
+const createdLayout = "2006-01-02T15:04:05Z"
 
 // ReleasesRepoSuffix is appended to an image repository to locate that
 // component's releases. Releases live beside the images they describe so a
@@ -77,13 +87,13 @@ func Push(ctx context.Context, reg Registry, ref string, m *Manifest) (string, e
 		ArtifactType: ArtifactType,
 		Layers:       []registry.Blob{{MediaType: MediaTypeJSON, Data: body}},
 		Annotations: map[string]string{
-			AnnotationComponent:                    m.Component,
-			AnnotationCommit:                       m.Source.Commit,
-			"org.opencontainers.image.title":       m.Component,
-			"org.opencontainers.image.version":     m.Version,
-			"org.opencontainers.image.created":     m.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
-			"org.opencontainers.image.revision":    m.Source.Commit,
-			"org.opencontainers.image.description": firstLine(m.Notes),
+			AnnotationComponent:   m.Component,
+			AnnotationCommit:      m.Source.Commit,
+			annotationTitle:       m.Component,
+			annotationVersion:     m.Version,
+			annotationCreated:     m.CreatedAt.UTC().Format(createdLayout),
+			annotationRevision:    m.Source.Commit,
+			annotationDescription: firstLine(m.Notes),
 		},
 	})
 	if err != nil {
