@@ -3,17 +3,21 @@
   "checkpoint_id": "269f8d2d2f2a",
   "strategy": "manual-commit",
   "branch": "feature/v-next",
-  "checkpoints_count": 2,
+  "checkpoints_count": 3,
   "files_touched": [
     "CONTRIBUTING.md",
     "README.md",
     "cmd/intropy/release.go",
+    "cmd/intropy/release_list.go",
     "cmd/intropy/release_test.go",
     "internal/registry/resolve.go",
     "internal/registry/roundtrip_test.go",
     "internal/release/artifact.go",
+    "internal/release/list.go",
+    "internal/release/list_test.go",
     "internal/release/render.go",
     "internal/release/request.go",
+    "internal/release/target.go",
     "internal/release/view.go"
   ],
   "sessions": [
@@ -30,13 +34,20 @@
       "compact_transcript": "/26/9f8d2d2f2a/1/transcript.jsonl",
       "content_hash": "/26/9f8d2d2f2a/1/content_hash.txt",
       "prompt": "/26/9f8d2d2f2a/1/prompt.txt"
+    },
+    {
+      "metadata": "/26/9f8d2d2f2a/2/metadata.json",
+      "transcript": "/26/9f8d2d2f2a/2/full.jsonl",
+      "compact_transcript": "/26/9f8d2d2f2a/2/transcript.jsonl",
+      "content_hash": "/26/9f8d2d2f2a/2/content_hash.txt",
+      "prompt": "/26/9f8d2d2f2a/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 203717,
-    "cache_creation_tokens": 0,
-    "cache_read_tokens": 2255872,
-    "output_tokens": 14169,
-    "api_call_count": 53
+    "input_tokens": 203826,
+    "cache_creation_tokens": 115002,
+    "cache_read_tokens": 8111421,
+    "output_tokens": 52953,
+    "api_call_count": 111
   }
 }

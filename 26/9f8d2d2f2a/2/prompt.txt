@@ -1,0 +1,1 @@
+Would it require a lot of new plumbing code to add a release list subcommand that would list all releases in addition to view that shows details on a single release
