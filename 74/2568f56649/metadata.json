@@ -1,0 +1,37 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "742568f56649",
+  "strategy": "manual-commit",
+  "branch": "feature/watch-flag",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "README.md",
+    "cmd/intropy/deploy.go",
+    "cmd/intropy/deploy_test.go",
+    "cmd/intropy/release_create.go",
+    "internal/deploy/request.go",
+    "internal/deploy/resolve.go",
+    "internal/deploy/service_test.go",
+    "internal/release/create.go",
+    "internal/release/create_test.go",
+    "internal/release/request.go",
+    "internal/source/digest.go",
+    "internal/source/watch_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/74/2568f56649/0/metadata.json",
+      "transcript": "/74/2568f56649/0/full.jsonl",
+      "compact_transcript": "/74/2568f56649/0/transcript.jsonl",
+      "content_hash": "/74/2568f56649/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  }
+}
