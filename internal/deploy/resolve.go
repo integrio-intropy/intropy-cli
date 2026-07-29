@@ -68,7 +68,12 @@ func resolveFromHEAD(ctx context.Context, opts Options, comp *gitops.ComponentCo
 		return origin{}, err
 	}
 	fmt.Fprintf(opts.Stderr, "resolving %s\n", source.CommitTag(src.ShortCommit()))
-	pins, err := source.ResolveDigests(ctx, resolver, comp, src.Commit)
+	var pins []source.Pin
+	if opts.Watch {
+		pins, err = source.WatchResolveDigests(ctx, resolver, comp, src.Commit, source.WatchOptions{Stderr: opts.Stderr})
+	} else {
+		pins, err = source.ResolveDigests(ctx, resolver, comp, src.Commit)
+	}
 	if err != nil {
 		return origin{}, err
 	}

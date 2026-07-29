@@ -43,6 +43,10 @@ type Options struct {
 	// AllowDirty permits uncommitted changes under the component's sourcePaths.
 	AllowDirty bool
 
+	// Watch polls the registry until the commit's images appear, instead of
+	// failing immediately when CI has not published them yet.
+	Watch bool
+
 	// OutputFormat is "plain" or "json".
 	OutputFormat string
 

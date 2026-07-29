@@ -21,6 +21,7 @@ type deployFlags struct {
 	argocdServer string
 	plan         bool
 	allowDirty   bool
+	watch        bool
 	noWait       bool
 	timeout      time.Duration
 	output       string
@@ -35,7 +36,8 @@ var deployCmd = &cobra.Command{
 		"repository.\n\n" +
 		"Without a version the commit comes from HEAD in the current source repository, which must be clean " +
 		"and pushed — CI builds pushed commits, so an unpushed one has no image — and the digests come from the " +
-		"tags CI published for it.\n\n" +
+		"tags CI published for it. If CI has not finished yet, the command fails — unless --watch is given, in " +
+		"which case it polls the registry until the images appear, and proceeds from there.\n\n" +
 		"With a version the digests come from that release's manifest instead. The release already recorded " +
 		"them, so no source repository is read and the command works from any directory. When the target " +
 		"environment declares promotesFrom, the plan also says whether those digests are what the upstream " +
@@ -64,6 +66,9 @@ var deployCmd = &cobra.Command{
 		if releaseVersion != "" && deployFlagValues.allowDirty {
 			return newUsageErrorf("--allow-dirty has no meaning when deploying a release: a release records the digests, so no working tree is read")
 		}
+		if releaseVersion != "" && deployFlagValues.watch {
+			return newUsageErrorf("--watch has no meaning when deploying a release: a release records the digests, so there is nothing to wait for")
+		}
 
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
@@ -78,6 +83,7 @@ var deployCmd = &cobra.Command{
 			ArgocdServer: deployFlagValues.argocdServer,
 			PlanOnly:     deployFlagValues.plan,
 			AllowDirty:   deployFlagValues.allowDirty,
+			Watch:        deployFlagValues.watch,
 			NoWait:       deployFlagValues.noWait,
 			Timeout:      deployFlagValues.timeout,
 			OutputFormat: deployFlagValues.output,
@@ -163,6 +169,7 @@ func init() {
 	f.StringVar(&deployFlagValues.argocdServer, "argocd-server", "", "ArgoCD server to watch (default: argocdServer from config, ARGOCD_SERVER, or deploy.yaml)")
 	f.BoolVar(&deployFlagValues.plan, "plan", false, "render and diff the change without writing to git")
 	f.BoolVar(&deployFlagValues.allowDirty, "allow-dirty", false, "deploy despite uncommitted changes under the component's source paths")
+	f.BoolVarP(&deployFlagValues.watch, "watch", "w", false, "wait for the commit's images to appear in the registry instead of failing immediately")
 	f.BoolVar(&deployFlagValues.noWait, "no-wait", false, "push without waiting for ArgoCD to sync")
 	f.DurationVar(&deployFlagValues.timeout, "timeout", argocd.DefaultTimeout, "how long to wait for ArgoCD to converge")
 	f.StringVarP(&deployFlagValues.output, "output", "o", deploy.OutputPlain, "output format (plain, json)")

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"time"
 
 	"github.com/integrio-intropy/intropy-cli/internal/gitops"
 	"github.com/integrio-intropy/intropy-cli/internal/registry"
@@ -13,6 +15,15 @@ import (
 // publishes. Kept in one place: if the pipeline's tagging scheme ever differs,
 // this is the only line that changes.
 const CommitTagPrefix = "sha-"
+
+// DefaultWatchPollInterval is how often the registry is re-asked while
+// watching for a commit's images.
+const DefaultWatchPollInterval = 2 * time.Second
+
+// watchProgressInterval is how often a "still waiting" line is printed while
+// watching, so a long CI build does not look like a hang. One line per poll
+// would flood the terminal on a slow build.
+const watchProgressInterval = 30 * time.Second
 
 // CommitTag returns the registry tag for a commit.
 func CommitTag(commit string) string { return CommitTagPrefix + commit }
@@ -77,7 +88,101 @@ func ResolveDigests(ctx context.Context, r Resolver, comp *gitops.ComponentConfi
 // generic 404.
 func resolveError(err error, image, tag string) error {
 	if errors.Is(err, registry.ErrNotFound) {
-		return fmt.Errorf("%s has no %s tag yet: the pipeline has not published an image for this commit (or was not triggered for it)", image, tag)
+		// The registry's answer stays wrapped underneath the friendly
+		// message: the watch loop recognises the retryable case with
+		// errors.Is, without the message growing a "registry: not found:
+		// <ref>" tail.
+		return &notPublishedError{image: image, tag: tag, cause: err}
 	}
 	return fmt.Errorf("resolve %s:%s: %w", image, tag, err)
+}
+
+// notPublishedError reports the tag CI has not published yet. Its message is
+// written for the operator, while Unwrap keeps the registry's answer (and
+// through it, registry.ErrNotFound) reachable for errors.Is.
+type notPublishedError struct {
+	image string
+	tag   string
+	cause error
+}
+
+func (e *notPublishedError) Error() string {
+	return fmt.Sprintf("%s has no %s tag yet: the pipeline has not published an image for this commit (or was not triggered for it)", e.image, e.tag)
+}
+
+func (e *notPublishedError) Unwrap() error { return e.cause }
+
+// WatchOptions configures WatchResolveDigests.
+type WatchOptions struct {
+	// PollInterval is how often the registry is re-asked. Zero means
+	// DefaultWatchPollInterval.
+	PollInterval time.Duration
+
+	// Stderr receives progress lines. Nil discards them.
+	Stderr io.Writer
+
+	// progressInterval overrides watchProgressInterval in tests.
+	progressInterval time.Duration
+}
+
+func (o *WatchOptions) applyDefaults() {
+	if o.PollInterval <= 0 {
+		o.PollInterval = DefaultWatchPollInterval
+	}
+	if o.progressInterval <= 0 {
+		o.progressInterval = watchProgressInterval
+	}
+	if o.Stderr == nil {
+		o.Stderr = io.Discard
+	}
+}
+
+// WatchResolveDigests is ResolveDigests with a wait: when the tag CI should
+// have published is not in the registry yet, it polls until it is rather than
+// failing immediately. There is no timeout — like kubectl --watch, the wait
+// ends when the image appears or the caller interrupts (Ctrl+C cancels the
+// context, which the commands wire to SIGINT).
+//
+// Only a missing tag is retried. An auth failure, a network error or a
+// malformed answer will not improve by waiting, so those fail on the spot.
+func WatchResolveDigests(ctx context.Context, r Resolver, comp *gitops.ComponentConfig, commit string, opts WatchOptions) ([]Pin, error) {
+	opts.applyDefaults()
+
+	pins, err := ResolveDigests(ctx, r, comp, commit)
+	switch {
+	case err == nil:
+		return pins, nil
+	case !errors.Is(err, registry.ErrNotFound):
+		return nil, err
+	}
+
+	tag := CommitTag(commit)
+	fmt.Fprintf(opts.Stderr, "waiting for the %s image(s) to appear in the registry (ctrl+c to stop)\n", tag)
+
+	ticker := time.NewTicker(opts.PollInterval)
+	defer ticker.Stop()
+	started := time.Now()
+	lastProgress := started
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+		}
+
+		pins, err := ResolveDigests(ctx, r, comp, commit)
+		switch {
+		case err == nil:
+			fmt.Fprintf(opts.Stderr, "%s resolved after %s\n", tag, time.Since(started).Round(time.Second))
+			return pins, nil
+		case errors.Is(err, registry.ErrNotFound):
+			if time.Since(lastProgress) >= opts.progressInterval {
+				fmt.Fprintf(opts.Stderr, "  still waiting for %s… (%s elapsed)\n", tag, time.Since(started).Round(time.Second))
+				lastProgress = time.Now()
+			}
+		default:
+			return nil, err
+		}
+	}
 }

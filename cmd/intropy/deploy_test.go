@@ -136,6 +136,35 @@ func TestDeployRejectsAllowDirtyWithAVersion(t *testing.T) {
 	}
 }
 
+// A release records the digests it was created from, so there is nothing for
+// --watch to wait on. Refusing beats silently accepting a flag that does
+// nothing.
+func TestDeployRejectsWatchWithAVersion(t *testing.T) {
+	_, _, err := runDeploy(t, "order-extractor", "1.4.2", "--env", "staging", "--watch")
+	if err == nil {
+		t.Fatal("expected an error for --watch with a version")
+	}
+	var ue *usageError
+	if !errors.As(err, &ue) {
+		t.Fatalf("error should be a usage error, got %T: %v", err, err)
+	}
+	if !strings.Contains(err.Error(), "--watch") {
+		t.Errorf("error should name the flag: %v", err)
+	}
+	if code := exitCode(err); code != 2 {
+		t.Errorf("exit code = %d, want 2", code)
+	}
+}
+
+// The -w shorthand must parse, like kubectl's.
+func TestDeployAcceptsWatchShorthand(t *testing.T) {
+	_, _, err := runDeploy(t, "order-extractor", "--env", "dev", "-w", "--gitops-repo", "/nonexistent/repo")
+	var ue *usageError
+	if errors.As(err, &ue) {
+		t.Errorf("-w must not be a usage error: %v", err)
+	}
+}
+
 // The version is accepted as a second positional argument: this must fail for
 // want of configuration, not for want of valid arguments.
 func TestDeployAcceptsAVersionArgument(t *testing.T) {

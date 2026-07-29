@@ -66,6 +66,12 @@ type Options struct {
 	// AllowDirty permits uncommitted changes under the component's sourcePaths.
 	AllowDirty bool
 
+	// Watch polls the registry until the current commit's images appear,
+	// instead of failing immediately when CI has not published them yet.
+	// Meaningless with Version — a release already records its digests — and
+	// the command rejects the combination.
+	Watch bool
+
 	// NoWait skips the ArgoCD wait after pushing.
 	NoWait bool
 

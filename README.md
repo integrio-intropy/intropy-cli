@@ -511,7 +511,11 @@ For `intropy deploy order-extractor --env dev`, the CLI:
 4. Resolves the image digest CI published for that commit — or reads the digests
    the release recorded — temporarily updates the Kustomize overlay, renders it
    before and after, and verifies that the requested image pin reached the
-   rendered manifests.
+   rendered manifests. If the pipeline has not published the commit's image
+   yet, this is where the command fails; pass `--watch` (`-w`) to poll the
+   registry until the image appears instead. There is no timeout — like
+   `kubectl --watch`, the wait ends when the image arrives or you interrupt
+   it.
 5. With `--plan`, prints the diff and reverts the temporary edit. Without it,
    commits only the changed `kustomization.yaml` and pushes that commit to the
    GitOps repository's default branch.
@@ -977,7 +981,11 @@ For `intropy release create component-x --version 1.4.2`, the CLI:
    pushed revision.
 3. Resolves the exact image digests CI built for that commit and generates notes
    from the component-scoped commits since the closest ancestor release, or from
-   the explicit `--since` baseline.
+   the explicit `--since` baseline. If the pipeline has not published the
+   commit's image yet, this is where the command fails; pass `--watch` (`-w`)
+   to poll the registry until the image appears instead. There is no timeout —
+   like `kubectl --watch`, the wait ends when the image arrives or you
+   interrupt it.
 4. Publishes a versioned OCI release manifest containing the component, source
    commit, image digests, notes, and their comparison basis. It does not update
    any GitOps overlay.

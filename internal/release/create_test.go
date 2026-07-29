@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -107,7 +109,7 @@ func (f *createFixture) commitAndPush(t *testing.T, path, subject string) {
 	f.publishImage(t)
 }
 
-func (f *createFixture) options(version string, stdout, stderr *bytes.Buffer) Options {
+func (f *createFixture) options(version string, stdout, stderr io.Writer) Options {
 	return Options{
 		Component:    "order-extractor",
 		Version:      version,
@@ -122,6 +124,25 @@ func (f *createFixture) options(version string, stdout, stderr *bytes.Buffer) Op
 func headOf(t *testing.T, dir string) string {
 	t.Helper()
 	return gittest.HEAD(t, dir)
+}
+
+// syncBuffer is a bytes.Buffer safe for concurrent writes and reads, so a
+// test can watch what a goroutine is writing to stderr.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 // create runs Create and decodes the JSON result.
@@ -425,5 +446,56 @@ func TestCreateRequiresAVersion(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "version") {
 		t.Errorf("error %q should mention the version", err)
+	}
+}
+
+// With --watch, running before CI finished is not a failure: the release
+// waits for the image to appear and proceeds from there.
+func TestCreateWatchWaitsForTheImage(t *testing.T) {
+	f := newCreateFixture(t)
+
+	// A commit whose image CI has not published yet.
+	gittest.Commit(t, f.sourceDir, filepath.Join("component", "b.cs"), "// Handle empty payloads\n", "Handle empty payloads")
+	gittest.Run(t, f.sourceDir, "push", "--quiet", "origin", "main")
+
+	var stdout bytes.Buffer
+	var stderr syncBuffer
+	opts := f.options("1.0.0", &stdout, &stderr)
+	opts.Watch = true
+
+	done := make(chan error, 1)
+	go func() { done <- Create(context.Background(), opts) }()
+
+	// CI finishes only once the release is actually waiting for it: opening
+	// the GitOps checkout and inspecting the source take longer than a fixed
+	// sleep would reliably cover.
+	deadline := time.After(10 * time.Second)
+	for !strings.Contains(stderr.String(), "waiting for") {
+		select {
+		case <-deadline:
+			t.Fatalf("the release never started waiting\nstderr: %s", stderr.String())
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+	f.publishImage(t)
+
+	if err := <-done; err != nil {
+		t.Fatalf("Create() with watch: %v\nstderr: %s", err, stderr.String())
+	}
+
+	var r Result
+	if err := json.Unmarshal(stdout.Bytes(), &r); err != nil {
+		t.Fatalf("decode result: %v\nstdout: %s", err, stdout.String())
+	}
+	if !r.Created {
+		t.Error("the release should have been created once the image appeared")
+	}
+	if !strings.Contains(stderr.String(), "waiting for") {
+		t.Errorf("stderr should report the wait, got %q", stderr.String())
+	}
+
+	// The manifest pinned the digest that appeared.
+	if len(r.Manifest.Images) != 1 || !strings.HasPrefix(r.Manifest.Images[0].Digest, "sha256:") {
+		t.Errorf("images = %+v, want one pinned digest", r.Manifest.Images)
 	}
 }

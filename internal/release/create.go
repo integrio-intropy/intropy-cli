@@ -111,7 +111,12 @@ func Create(ctx context.Context, opts Options) error {
 	}
 
 	// Registry's Resolve matches source.Resolver, so no adapter is needed.
-	pins, err := source.ResolveDigests(ctx, reg, comp, commit)
+	var pins []source.Pin
+	if opts.Watch {
+		pins, err = source.WatchResolveDigests(ctx, reg, comp, commit, source.WatchOptions{Stderr: opts.Stderr})
+	} else {
+		pins, err = source.ResolveDigests(ctx, reg, comp, commit)
+	}
 	if err != nil {
 		return err
 	}

@@ -17,6 +17,7 @@ type releaseCreateFlags struct {
 	system     string
 	gitopsRepo string
 	allowDirty bool
+	watch      bool
 	output     string
 }
 
@@ -32,6 +33,8 @@ var releaseCreateCmd = &cobra.Command{
 		"Run it inside the component's source repository. The commit comes from HEAD, or from --ref, and must be " +
 		"pushed. Notes are generated from the commits since the previous release that this one descends from; on a " +
 		"first release there is no predecessor to measure against, and --since names a starting point explicitly.\n\n" +
+		"If CI has not finished publishing the commit's images, the command fails — unless --watch is given, in " +
+		"which case it polls the registry until the images appear, and proceeds from there.\n\n" +
 		"Re-running for a version that already exists is safe: an identical release is recognised and only a missing " +
 		"git tag is repaired. A different one is refused.",
 	Args:              cobra.ExactArgs(1),
@@ -56,6 +59,7 @@ var releaseCreateCmd = &cobra.Command{
 			Since:        releaseCreateOpts.since,
 			GitopsRepo:   releaseCreateOpts.gitopsRepo,
 			AllowDirty:   releaseCreateOpts.allowDirty,
+			Watch:        releaseCreateOpts.watch,
 			OutputFormat: releaseCreateOpts.output,
 			UserAgent:    "intropy-cli/" + version,
 			Stdout:       cmd.OutOrStdout(),
@@ -73,6 +77,7 @@ func init() {
 	f.StringVar(&releaseCreateOpts.system, "system", "", "disambiguate the component by system")
 	f.StringVar(&releaseCreateOpts.gitopsRepo, "gitops-repo", "", "GitOps repository URL (default: gitopsRepo from config, or INTROPY_GITOPS_REPO)")
 	f.BoolVar(&releaseCreateOpts.allowDirty, "allow-dirty", false, "release despite uncommitted changes under the component's source paths")
+	f.BoolVarP(&releaseCreateOpts.watch, "watch", "w", false, "wait for the commit's images to appear in the registry instead of failing immediately")
 	f.StringVarP(&releaseCreateOpts.output, "output", "o", release.OutputPlain, "output format (plain, json)")
 
 	_ = releaseCreateCmd.MarkFlagRequired("version")

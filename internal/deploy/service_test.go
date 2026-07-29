@@ -100,6 +100,22 @@ func stubDigest(t *testing.T, digest string) {
 	t.Cleanup(func() { source.NewResolver = original })
 }
 
+// lateResolver stands in for a pipeline that has not finished: it reports the
+// tag missing a fixed number of times before resolving, so a watch test does
+// not need a real registry or a long wait.
+type lateResolver struct {
+	misses int
+	desc   registry.Descriptor
+}
+
+func (r *lateResolver) Resolve(context.Context, string) (registry.Descriptor, error) {
+	if r.misses > 0 {
+		r.misses--
+		return registry.Descriptor{}, registry.ErrNotFound
+	}
+	return r.desc, nil
+}
+
 func (f runFixture) options(stdout, stderr *bytes.Buffer) Options {
 	return Options{
 		Component:   "order-extractor",
@@ -324,6 +340,58 @@ func currentHEAD(t *testing.T, dir string) string {
 		t.Fatal(err)
 	}
 	return sha
+}
+
+// With --watch, running the deploy before CI finished is not a failure: the
+// command polls until the tag appears and proceeds from there.
+func TestRunWatchWaitsForTheImage(t *testing.T) {
+	f := newRunFixture(t)
+
+	resolver := &lateResolver{misses: 1, desc: registry.Descriptor{Digest: testDigest}}
+	original := source.NewResolver
+	source.NewResolver = func(string) (source.Resolver, error) { return resolver, nil }
+	t.Cleanup(func() { source.NewResolver = original })
+
+	var stdout, stderr bytes.Buffer
+	opts := f.options(&stdout, &stderr)
+	opts.Watch = true
+	opts.NoWait = true
+
+	if err := Run(context.Background(), opts); err != nil {
+		t.Fatalf("Run() with watch: %v\nstderr: %s", err, stderr.String())
+	}
+	if resolver.misses != 0 {
+		t.Error("the resolver should have been asked again after the miss")
+	}
+	if !strings.Contains(stderr.String(), "waiting for") {
+		t.Errorf("stderr should report the wait:\n%s", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "committed") {
+		t.Errorf("the deploy should have proceeded once the image appeared:\n%s", stdout.String())
+	}
+}
+
+// Without --watch, an unpublished tag fails on the spot — the flag is what
+// buys the wait.
+func TestRunWithoutWatchFailsImmediately(t *testing.T) {
+	f := newRunFixture(t)
+
+	resolver := &lateResolver{misses: 5, desc: registry.Descriptor{Digest: testDigest}}
+	original := source.NewResolver
+	source.NewResolver = func(string) (source.Resolver, error) { return resolver, nil }
+	t.Cleanup(func() { source.NewResolver = original })
+
+	var stdout, stderr bytes.Buffer
+	opts := f.options(&stdout, &stderr)
+	opts.NoWait = true
+
+	err := Run(context.Background(), opts)
+	if err == nil {
+		t.Fatal("Run() without watch should fail on an unpublished tag")
+	}
+	if !strings.Contains(err.Error(), "pipeline has not published") {
+		t.Errorf("error %q should explain the pipeline", err)
+	}
 }
 
 // The apply path, end to end through Run: the change must reach the GitOps
