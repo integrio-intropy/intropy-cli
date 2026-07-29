@@ -1,0 +1,7 @@
+Plan a change to add a -w similar to kubectl. It should be used on release create and deploy and will make it so that if the image does not yet exist in the repository it will loop and check until it does and continue from there
+
+---
+
+1. I dont understand what you mean
+2. I would say wait-forever, like kubectl does it? You can always ctrl+c
+3. What does this mean?

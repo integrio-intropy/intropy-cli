@@ -3,7 +3,7 @@
   "checkpoint_id": "742568f56649",
   "strategy": "manual-commit",
   "branch": "feature/watch-flag",
-  "checkpoints_count": 3,
+  "checkpoints_count": 5,
   "files_touched": [
     "README.md",
     "cmd/intropy/deploy.go",
@@ -39,13 +39,20 @@
       "compact_transcript": "/74/2568f56649/2/transcript.jsonl",
       "content_hash": "/74/2568f56649/2/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/74/2568f56649/3/metadata.json",
+      "transcript": "/74/2568f56649/3/full.jsonl",
+      "compact_transcript": "/74/2568f56649/3/transcript.jsonl",
+      "content_hash": "/74/2568f56649/3/content_hash.txt",
+      "prompt": "/74/2568f56649/3/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 0,
+    "input_tokens": 70471,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 0,
-    "output_tokens": 0,
-    "api_call_count": 0
+    "cache_read_tokens": 4310208,
+    "output_tokens": 24918,
+    "api_call_count": 67
   }
 }
