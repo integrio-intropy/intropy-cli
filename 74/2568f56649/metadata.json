@@ -3,7 +3,7 @@
   "checkpoint_id": "742568f56649",
   "strategy": "manual-commit",
   "branch": "feature/watch-flag",
-  "checkpoints_count": 2,
+  "checkpoints_count": 3,
   "files_touched": [
     "README.md",
     "cmd/intropy/deploy.go",
@@ -31,6 +31,13 @@
       "transcript": "/74/2568f56649/1/full.jsonl",
       "compact_transcript": "/74/2568f56649/1/transcript.jsonl",
       "content_hash": "/74/2568f56649/1/content_hash.txt",
+      "prompt": ""
+    },
+    {
+      "metadata": "/74/2568f56649/2/metadata.json",
+      "transcript": "/74/2568f56649/2/full.jsonl",
+      "compact_transcript": "/74/2568f56649/2/transcript.jsonl",
+      "content_hash": "/74/2568f56649/2/content_hash.txt",
       "prompt": ""
     }
   ],
