@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "269f8d2d2f2a",
+  "strategy": "manual-commit",
+  "branch": "feature/v-next",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "CONTRIBUTING.md",
+    "README.md",
+    "cmd/intropy/release.go",
+    "cmd/intropy/release_test.go",
+    "internal/registry/resolve.go",
+    "internal/registry/roundtrip_test.go",
+    "internal/release/artifact.go",
+    "internal/release/render.go",
+    "internal/release/request.go",
+    "internal/release/view.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/26/9f8d2d2f2a/0/metadata.json",
+      "transcript": "/26/9f8d2d2f2a/0/full.jsonl",
+      "compact_transcript": "/26/9f8d2d2f2a/0/transcript.jsonl",
+      "content_hash": "/26/9f8d2d2f2a/0/content_hash.txt",
+      "prompt": "/26/9f8d2d2f2a/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 65734,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 702464,
+    "output_tokens": 4695,
+    "api_call_count": 17
+  }
+}

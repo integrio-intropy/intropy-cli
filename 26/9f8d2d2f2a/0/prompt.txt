@@ -1,0 +1,1 @@
+Do not make any question, just investigate. Could peres https://perses.dev/ be used to add a tracing view with the aspire telemetry backend api in our dashboard?
