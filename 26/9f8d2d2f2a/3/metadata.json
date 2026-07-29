@@ -1,0 +1,98 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "269f8d2d2f2a",
+  "session_id": "session",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-29T12:09:53.483696Z",
+  "branch": "feature/v-next",
+  "checkpoints_count": 2,
+  "save_step_count": 2,
+  "files_touched": [
+    "CONTRIBUTING.md",
+    "README.md",
+    "cmd/intropy/release.go",
+    "cmd/intropy/release_list.go",
+    "cmd/intropy/release_test.go",
+    "internal/registry/resolve.go",
+    "internal/registry/roundtrip_test.go",
+    "internal/release/artifact.go",
+    "internal/release/list.go",
+    "internal/release/list_test.go",
+    "internal/release/render.go",
+    "internal/release/request.go",
+    "internal/release/target.go",
+    "internal/release/view.go"
+  ],
+  "agent": "Pi",
+  "model": "gpt-5.6-sol",
+  "turn_id": "e30451b8694c",
+  "checkpoint_transcript_start": 19,
+  "transcript_lines_at_start": 19,
+  "compact_transcript_start": 3,
+  "token_usage": {
+    "input_tokens": 142525,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2706432,
+    "output_tokens": 11755,
+    "api_call_count": 26
+  },
+  "session_metrics": {
+    "turn_count": 6
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-29T12:09:53.376986Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 45,
+    "total_committed": 0,
+    "total_lines_changed": 45,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 799,
+      "user_lines_removed": 121,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 51,
+        "CONTRIBUTING.md": 1,
+        "README.md": 25,
+        "cmd/intropy/release.go": 7,
+        "cmd/intropy/release_list.go": 72,
+        "cmd/intropy/release_test.go": 31,
+        "internal/registry/resolve.go": 7,
+        "internal/registry/roundtrip_test.go": 5,
+        "internal/release/artifact.go": 18,
+        "internal/release/list.go": 179,
+        "internal/release/list_test.go": 270,
+        "internal/release/render.go": 30,
+        "internal/release/request.go": 5,
+        "internal/release/target.go": 75,
+        "internal/release/view.go": 3,
+        "web/dist/index.html": 19
+      },
+      "user_removed_per_file": {
+        "CONTRIBUTING.md": 1,
+        "cmd/intropy/release.go": 1,
+        "cmd/intropy/release_test.go": 1,
+        "internal/registry/resolve.go": 2,
+        "internal/release/artifact.go": 8,
+        "internal/release/view.go": 32,
+        "web/dist/index.html": 76
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
