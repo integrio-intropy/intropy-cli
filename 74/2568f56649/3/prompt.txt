@@ -5,3 +5,9 @@ Plan a change to add a -w similar to kubectl. It should be used on release creat
 1. I dont understand what you mean
 2. I would say wait-forever, like kubectl does it? You can always ctrl+c
 3. What does this mean?
+
+---
+
+1. Then reject per your recommendation
+2. drop it
+3. I agree, Option C
