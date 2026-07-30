@@ -1,0 +1,53 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "bf18d2f52bdf",
+  "session_id": "019fb2bb-1a3d-727e-b693-d73de8cccb04",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-30T11:33:35.744698Z",
+  "branch": "feat/template-command",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "8b6de7580631",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 71067,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 3084608,
+    "output_tokens": 20320,
+    "api_call_count": 60
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 71,
+      "user_lines_removed": 76,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 51,
+        "web/dist/index.html": 19
+      },
+      "user_removed_per_file": {
+        "web/dist/index.html": 76
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 52,
+      "user_lines_removed": 0,
+      "agent_lines_added": 19,
+      "agent_lines_removed": 76,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 51
+      }
+    }
+  ]
+}
