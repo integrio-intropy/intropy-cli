@@ -1,0 +1,290 @@
+Task: Read-only, inspect only internal/deploy/safepath.go, scaffold.go, verify.go; internal/gitops/remote.go, repository.go; internal/git/client.go; internal/release/create.go. Decide whether the three prior P1s are fully fixed: symlink escape; cached origin mismatch; ambient hooks altering exact commits. Specifically check two concerns: SameRepository drops port; global hardening and Push --no-verify apply to user source repos and may bypass pre-push hooks. Return concise fixed/partial verdicts with file:line. No broad repo scan.
+
+## Acceptance Contract
+Acceptance level: checked
+Completion is not accepted from prose alone. End with a structured acceptance report.
+
+Criteria:
+- criterion-1: Implement the requested change without widening scope
+- criterion-2: Return evidence sufficient for an independent acceptance review
+
+Required evidence: changed-files, tests-added, commands-run, residual-risks, no-staged-files
+
+Review gate: required by reviewer.
+
+Finish with a fenced JSON block tagged `acceptance-report` in this shape:
+Use empty arrays when no items apply; array fields contain strings unless object entries are shown.
+`criteriaSatisfied[].status` must be exactly one of: satisfied, not-satisfied, not-applicable.
+`commandsRun[].result` must be exactly one of: passed, failed, not-run.
+`manualNotes` and `notes` are optional strings; an empty string means no note and does not satisfy `manual-notes` evidence.
+```acceptance-report
+{
+  "criteriaSatisfied": [
+    {
+      "id": "criterion-1",
+      "status": "satisfied",
+      "evidence": "specific proof"
+    },
+    {
+      "id": "criterion-2",
+      "status": "satisfied",
+      "evidence": "specific proof"
+    }
+  ],
+  "changedFiles": [
+    "src/file.ts"
+  ],
+  "testsAddedOrUpdated": [
+    "test/file.test.ts"
+  ],
+  "commandsRun": [
+    {
+      "command": "command",
+      "result": "passed",
+      "summary": "short result"
+    }
+  ],
+  "validationOutput": [
+    "validation output or concise summary"
+  ],
+  "residualRisks": [
+    "none"
+  ],
+  "noStagedFiles": true,
+  "diffSummary": "short description of the diff",
+  "reviewFindings": [
+    "blocker: file.ts:12 - issue found, or no blockers"
+  ],
+  "manualNotes": "anything else the parent should know"
+}
+```
+
+---
+
+Task: Read-only narrow verification. Inspect current internal/deploy/safepath.go, scaffold.go, session.go; internal/gitops/remote.go, repository.go; internal/git/client.go; internal/release/create.go. Determine whether all three prior P1s are fully resolved. Pay special attention to remote.origin.pushurl or url.*.pushInsteadOf causing the actual push destination to differ: does code merely print a note and still push? Return concise verdict and exact lines. No broad scan.
+
+## Acceptance Contract
+Acceptance level: checked
+Completion is not accepted from prose alone. End with a structured acceptance report.
+
+Criteria:
+- criterion-1: Implement the requested change without widening scope
+- criterion-2: Return evidence sufficient for an independent acceptance review
+
+Required evidence: changed-files, tests-added, commands-run, residual-risks, no-staged-files
+
+Review gate: required by reviewer.
+
+Finish with a fenced JSON block tagged `acceptance-report` in this shape:
+Use empty arrays when no items apply; array fields contain strings unless object entries are shown.
+`criteriaSatisfied[].status` must be exactly one of: satisfied, not-satisfied, not-applicable.
+`commandsRun[].result` must be exactly one of: passed, failed, not-run.
+`manualNotes` and `notes` are optional strings; an empty string means no note and does not satisfy `manual-notes` evidence.
+```acceptance-report
+{
+  "criteriaSatisfied": [
+    {
+      "id": "criterion-1",
+      "status": "satisfied",
+      "evidence": "specific proof"
+    },
+    {
+      "id": "criterion-2",
+      "status": "satisfied",
+      "evidence": "specific proof"
+    }
+  ],
+  "changedFiles": [
+    "src/file.ts"
+  ],
+  "testsAddedOrUpdated": [
+    "test/file.test.ts"
+  ],
+  "commandsRun": [
+    {
+      "command": "command",
+      "result": "passed",
+      "summary": "short result"
+    }
+  ],
+  "validationOutput": [
+    "validation output or concise summary"
+  ],
+  "residualRisks": [
+    "none"
+  ],
+  "noStagedFiles": true,
+  "diffSummary": "short description of the diff",
+  "reviewFindings": [
+    "blocker: file.ts:12 - issue found, or no blockers"
+  ],
+  "manualNotes": "anything else the parent should know"
+}
+```
+
+---
+
+Task: Read-only final verification of the three prior P1s in current working tree. Inspect only internal/deploy/safepath.go, scaffold.go, verify.go, session.go; internal/git/client.go; internal/gitops/remote.go, repository.go and related tests; internal/release/create.go. Decide if fully resolved: symlink/path escape; ambient hooks changing managed commits without bypassing source hooks; wrong effective GitOps push destination including pushurl, pushInsteadOf, and ports. Return concise verdict plus any concrete remaining P1 only. Do not broaden scope.
+
+## Acceptance Contract
+Acceptance level: checked
+Completion is not accepted from prose alone. End with a structured acceptance report.
+
+Criteria:
+- criterion-1: Implement the requested change without widening scope
+- criterion-2: Return evidence sufficient for an independent acceptance review
+
+Required evidence: changed-files, tests-added, commands-run, residual-risks, no-staged-files
+
+Review gate: required by reviewer.
+
+Finish with a fenced JSON block tagged `acceptance-report` in this shape:
+Use empty arrays when no items apply; array fields contain strings unless object entries are shown.
+`criteriaSatisfied[].status` must be exactly one of: satisfied, not-satisfied, not-applicable.
+`commandsRun[].result` must be exactly one of: passed, failed, not-run.
+`manualNotes` and `notes` are optional strings; an empty string means no note and does not satisfy `manual-notes` evidence.
+```acceptance-report
+{
+  "criteriaSatisfied": [
+    {
+      "id": "criterion-1",
+      "status": "satisfied",
+      "evidence": "specific proof"
+    },
+    {
+      "id": "criterion-2",
+      "status": "satisfied",
+      "evidence": "specific proof"
+    }
+  ],
+  "changedFiles": [
+    "src/file.ts"
+  ],
+  "testsAddedOrUpdated": [
+    "test/file.test.ts"
+  ],
+  "commandsRun": [
+    {
+      "command": "command",
+      "result": "passed",
+      "summary": "short result"
+    }
+  ],
+  "validationOutput": [
+    "validation output or concise summary"
+  ],
+  "residualRisks": [
+    "none"
+  ],
+  "noStagedFiles": true,
+  "diffSummary": "short description of the diff",
+  "reviewFindings": [
+    "blocker: file.ts:12 - issue found, or no blockers"
+  ],
+  "manualNotes": "anything else the parent should know"
+}
+```
+
+---
+
+Task: Investigate the current repository at /Users/robinhultman/dev/intropy/tooling/intropy-cli for dashboard architecture and any Aspire telemetry backend API usage. Focus on whether and how a tracing view could be integrated. Read-only. Return concrete file paths, APIs, data models, frontend stack, deployment constraints, and existing tracing UI behavior. Do not modify files.
+
+---
+
+Task: Research current official Perses documentation and source to assess support for distributed tracing views and custom data sources/plugins. Specifically investigate compatibility with an ASP.NET Aspire Dashboard OTLP/telemetry backend API, embeddability, proxy/API model, plugin SDK, Tempo/Jaeger support, and roadmap/status. Use official sources wherever possible. Return citations/URLs and separate confirmed capabilities from inference. Read-only.
+
+---
+
+Task: Handle testing, building, and complete PR management for the current branch `feature/lean-cli` targeting base branch `feature/v-next`.
+
+## What was done
+
+Removed ~20 CLI flags and deprecated alias machinery from the intropy CLI to make it leaner. The project has no external users, so backward compatibility is not a concern.
+
+### Removals:
+1. Root `--verbose` / `-v` and `--quiet` / `-q` — registered but never consumed
+2. Deprecated `--version` alias for `--template-version` (4 commands + merge machinery in template_version.go)
+3. Deprecated `--tag` alias for `--version` in `skills publish`
+4. Deprecated `--output` as directory alias for `--out-dir` in `int create` and `sys create`
+5. `--output-json` file-path flag from `int create` and `sys create`
+6. `skills add --also-install-to` — speculative multi-directory install feature
+7. `dashboard --addr` — always binds to 127.0.0.1 now
+8. `deploy init --source-dir` and `--topology` as CLI flags (kept as internal test seams)
+9. `release list --limit`, `release create --since` and `--ref` as CLI flags (kept as internal test seams)
+10. All shell completion machinery — completions.go, RegisterFlagCompletionFunc, ValidArgsFunction, and all completion helper functions
+
+### Internal changes:
+- `internal/skill`: Removed `AdditionalBasePaths` from ManifestEntry, `AdditionalPaths` from LockEntry, `AdditionalDirs()` and `AdditionalRelPaths()` from Project
+- `internal/deploy/init.go`: `TopologyFile` and `SourceDir` kept as internal-only struct fields (test seams), CLI flags removed
+- `internal/release`: `Ref`, `Since`, `Limit` kept as internal-only struct fields (test seams), CLI flags removed
+- README.md updated to reflect all removals
+
+### Files changed: 49 files, -1116 lines, +104 lines
+
+## Instructions
+1. Run `go build ./...` and `go test ./...` — all must pass
+2. Stage all changed/deleted files (do NOT use `git add .` — add specific paths)
+3. Create a commit with a descriptive message
+4. Push to origin
+5. Create a PR against `feature/v-next` with a clear description
+6. Return the PR URL
+
+
+## Acceptance Contract
+Acceptance level: verified
+Completion is not accepted from prose alone. End with a structured acceptance report.
+
+Criteria:
+- criterion-1: Implement the requested change without widening scope
+- criterion-2: Return evidence sufficient for an independent acceptance review
+
+Required evidence: changed-files, tests-added, commands-run, validation-output, residual-risks, no-staged-files
+
+Review gate: required by reviewer.
+
+Finish with a fenced JSON block tagged `acceptance-report` in this shape:
+Use empty arrays when no items apply; array fields contain strings unless object entries are shown.
+`criteriaSatisfied[].status` must be exactly one of: satisfied, not-satisfied, not-applicable.
+`commandsRun[].result` must be exactly one of: passed, failed, not-run.
+`manualNotes` and `notes` are optional strings; an empty string means no note and does not satisfy `manual-notes` evidence.
+```acceptance-report
+{
+  "criteriaSatisfied": [
+    {
+      "id": "criterion-1",
+      "status": "satisfied",
+      "evidence": "specific proof"
+    },
+    {
+      "id": "criterion-2",
+      "status": "satisfied",
+      "evidence": "specific proof"
+    }
+  ],
+  "changedFiles": [
+    "src/file.ts"
+  ],
+  "testsAddedOrUpdated": [
+    "test/file.test.ts"
+  ],
+  "commandsRun": [
+    {
+      "command": "command",
+      "result": "passed",
+      "summary": "short result"
+    }
+  ],
+  "validationOutput": [
+    "validation output or concise summary"
+  ],
+  "residualRisks": [
+    "none"
+  ],
+  "noStagedFiles": true,
+  "diffSummary": "short description of the diff",
+  "reviewFindings": [
+    "blocker: file.ts:12 - issue found, or no blockers"
+  ],
+  "manualNotes": "anything else the parent should know"
+}
+```

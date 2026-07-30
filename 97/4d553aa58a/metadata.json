@@ -3,7 +3,7 @@
   "checkpoint_id": "974d553aa58a",
   "strategy": "manual-commit",
   "branch": "feature/lean-cli",
-  "checkpoints_count": 3,
+  "checkpoints_count": 5,
   "files_touched": [
     "README.md",
     "cmd/intropy/completions.go",
@@ -69,6 +69,13 @@
       "compact_transcript": "/97/4d553aa58a/1/transcript.jsonl",
       "content_hash": "/97/4d553aa58a/1/content_hash.txt",
       "prompt": "/97/4d553aa58a/1/prompt.txt"
+    },
+    {
+      "metadata": "/97/4d553aa58a/2/metadata.json",
+      "transcript": "/97/4d553aa58a/2/full.jsonl",
+      "compact_transcript": "/97/4d553aa58a/2/transcript.jsonl",
+      "content_hash": "/97/4d553aa58a/2/content_hash.txt",
+      "prompt": "/97/4d553aa58a/2/prompt.txt"
     }
   ],
   "token_usage": {
