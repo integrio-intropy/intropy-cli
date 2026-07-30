@@ -56,6 +56,7 @@ func isCobraUsageError(err error) bool {
 	prefixes := []string{
 		"unknown command",
 		"unknown flag",
+		"unknown shorthand flag",
 		"invalid argument",
 		"accepts ",
 		"requires ",

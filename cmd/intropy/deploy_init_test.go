@@ -77,7 +77,7 @@ func TestDeployInitHasNoArgocdOrDirtyFlags(t *testing.T) {
 
 func TestDeployInitDocumentedFlagsExist(t *testing.T) {
 	for _, name := range []string{
-		"domain", "system", "env", "topology", "source-dir",
+		"domain", "system", "environments", "topology", "source-dir",
 		"template-version", "version", "values", "set", "no-input", "plan", "force",
 		"gitops-repo", "output",
 	} {
@@ -126,6 +126,35 @@ func TestDeployInitVersionFlagBinds(t *testing.T) {
 	}
 	if initFlagValues.templateVersion != "v1.2.3" {
 		t.Errorf("templateVersion = %q, want v1.2.3", initFlagValues.templateVersion)
+	}
+}
+
+// Everywhere else --env/-e names the single target environment a deploy acts
+// on; init selects which overlays to scaffold, so it takes --environments
+// (plural, repeatable) with no shorthand. A value with a comma must survive:
+// StringSlice would split it, StringArray does not.
+func TestDeployInitEnvironmentFlagShape(t *testing.T) {
+	if deployInitCmd.Flags().Lookup("env") != nil {
+		t.Error("init must not define --env: that name means a single target environment in the other deploy commands")
+	}
+	envs := deployInitCmd.Flags().Lookup("environments")
+	if envs == nil {
+		t.Fatal("init must define --environments")
+	}
+	if envs.Shorthand != "" {
+		t.Errorf("--environments shorthand = %q, want none (-e would collide with the single-env commands)", envs.Shorthand)
+	}
+
+	values := deployInitCmd.Flags().Lookup("values")
+	if values == nil {
+		t.Fatal("init must define --values")
+	}
+	if values.Value.Type() != "stringArray" {
+		t.Errorf("--values type = %q, want stringArray (no comma splitting, matching int create)", values.Value.Type())
+	}
+	envsType := deployInitCmd.Flags().Lookup("environments").Value.Type()
+	if envsType != "stringArray" {
+		t.Errorf("--environments type = %q, want stringArray (no comma splitting)", envsType)
 	}
 }
 

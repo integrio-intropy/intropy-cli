@@ -98,7 +98,7 @@ The comment in `deploy_init.go` shows the authors know about this ("Named --vers
 
 ---
 
-### 5. `--name` / `-n` shorthand collision with `--limit -n` (LOW)
+### 5. `--name` / `-n` shorthand collision with `--limit -n` (LOW) ✅ DONE (`--limit` is long-only now)
 
 | Command | `-n` shorthand |
 |---|---|
@@ -112,7 +112,7 @@ The comment in `deploy_init.go` shows the authors know about this ("Named --vers
 
 ---
 
-### 6. `--env -e` means different things in deploy vs deploy init (LOW)
+### 6. `--env -e` means different things in deploy vs deploy init (LOW) ✅ DONE (`deploy init` now takes `--environments`, plural, no shorthand)
 
 | Command | `--env -e` |
 |---|---|
@@ -157,7 +157,7 @@ So within the same `collection` group, add takes flags, update takes positional 
 
 ---
 
-### 10. `--values -f` type inconsistency: StringArray vs StringSlice (LOW)
+### 10. `--values -f` type inconsistency: StringArray vs StringSlice (LOW) ✅ DONE (both are StringArray now)
 
 | Command | Flag type |
 |---|---|
