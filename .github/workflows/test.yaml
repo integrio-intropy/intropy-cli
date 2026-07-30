@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  unit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,25 +28,6 @@ jobs:
         run: npm ci && npm run build
         working-directory: web
 
-      # The deploy tests drive the real kustomize binary. Without it those tests
-      # skip, which would leave the render and diff logic — the part most likely
-      # to break silently — untested.
-      # The integration tests clone real repositories and run git commit,
-      # which needs an identity. Dev machines have one from their global git
-      # config; CI runners do not.
-      - name: Set git identity
-        run: |
-          git config --global user.email "ci@intropy.dev"
-          git config --global user.name "CI"
-
-      - name: Install kustomize
-        run: |
-          if ! command -v kustomize &> /dev/null; then
-            curl -sSfL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" \
-              | bash -s -- 5.8.1 /usr/local/bin
-          fi
-          kustomize version
-
       - name: Build
         run: go build -v ./...
 
@@ -63,3 +44,45 @@ jobs:
             gofmt -l .
             exit 1
           fi
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build dashboard SPA
+        run: npm ci && npm run build
+        working-directory: web
+
+      # The integration tests clone real repositories and run git commit,
+      # which needs an identity. Dev machines have one from their global git
+      # config; CI runners do not.
+      - name: Set git identity
+        run: |
+          git config --global user.email "ci@intropy.dev"
+          git config --global user.name "CI"
+
+      # The deploy tests drive the real kustomize binary. Without it those tests
+      # skip, which would leave the render and diff logic — the part most likely
+      # to break silently — untested.
+      - name: Install kustomize
+        run: |
+          if ! command -v kustomize &> /dev/null; then
+            curl -sSfL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" \
+              | bash -s -- 5.8.1 /usr/local/bin
+          fi
+          kustomize version
+
+      - name: Build
+        run: go build -v ./...
+
+      - name: Test
+        run: go test -race -v -tags integration ./...

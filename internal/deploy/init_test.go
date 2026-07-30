@@ -1,3 +1,5 @@
+//go:build integration
+
 package deploy
 
 import (
@@ -19,6 +21,7 @@ import (
 	"github.com/integrio-intropy/intropy-cli/internal/gitops"
 	"github.com/integrio-intropy/intropy-cli/internal/gitops/gitopstest"
 	"github.com/integrio-intropy/intropy-cli/internal/gittest"
+	"github.com/integrio-intropy/intropy-cli/internal/template"
 )
 
 // The host template: everything in base/, rendered once, with the broker chosen
@@ -848,5 +851,134 @@ func TestInitRejectsASystemNameAsAComponent(t *testing.T) {
 	// component" would not make obvious.
 	if !strings.Contains(err.Error(), "no arguments") {
 		t.Errorf("error should point at the no-argument form: %v", err)
+	}
+}
+
+// End to end: a workspace laid out the customary way needs no --domain at all.
+func TestInitInfersDomainFromWorkspaceLayout(t *testing.T) {
+	f := newInitFixture(t)
+
+	// integrations/domains/<domain>/<system>/system-host, as sys create leaves it.
+	workspace := t.TempDir()
+	hostDir := filepath.Join(workspace, "domains", "logistics", "distribution", "system-host")
+	if err := os.MkdirAll(hostDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	err := template.WriteScaffold(hostDir, template.Scaffold{
+		SchemaVersion: template.ScaffoldSchemaVersion,
+		Template:      "system-host",
+		Owner:         "o",
+		Repo:          "r",
+		Version:       "v1",
+		Role:          template.RoleSystemHost,
+		Values:        map[string]any{"name": "distribution"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stubRunGraph(t, initTopologyRecord)
+
+	var stdout, stderr bytes.Buffer
+	opts := f.options(&stdout, &stderr)
+	opts.Domain = "" // the whole point
+	opts.TopologyFile = ""
+	opts.SourceDir = workspace
+	opts.OutputFormat = OutputJSON
+
+	if err := Init(context.Background(), opts); err != nil {
+		t.Fatalf("Init without --domain: %v\nstderr: %s", err, stderr.String())
+	}
+
+	var res InitResult
+	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.Domain != "logistics" {
+		t.Errorf("Domain = %q, want logistics from the workspace layout", res.Domain)
+	}
+	for _, f := range res.Files {
+		if !strings.HasPrefix(f.Rel, "domains/logistics/distribution/") {
+			t.Errorf("file written outside the inferred domain: %s", f.Rel)
+			break
+		}
+	}
+}
+
+func TestInitSelectsTheNamedSystemInAMultiSystemWorkspace(t *testing.T) {
+	f := newInitFixture(t)
+	workspace := t.TempDir()
+	writeHostWorkspace(t, workspace, "order-flow", "distribution")
+	called := stubRunGraph(t, initTopologyRecord)
+
+	var stdout, stderr bytes.Buffer
+	opts := f.options(&stdout, &stderr)
+	opts.TopologyFile = "" // force host discovery
+	opts.SourceDir = workspace
+	opts.System = "distribution"
+
+	if err := Init(context.Background(), opts); err != nil {
+		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
+	}
+	want := filepath.Join(workspace, "domains", "x", "distribution", "system-host")
+	if *called != want {
+		t.Errorf("graph verb ran on %q, want %q", *called, want)
+	}
+	// Only the selected system is built: the other host is never touched.
+	if strings.Contains(*called, "order-flow") {
+		t.Errorf("the wrong host was built: %q", *called)
+	}
+}
+
+func TestInitWithoutSystemInAMultiSystemWorkspaceIsAnError(t *testing.T) {
+	f := newInitFixture(t)
+	workspace := t.TempDir()
+	writeHostWorkspace(t, workspace, "order-flow", "distribution")
+	called := stubRunGraph(t, initTopologyRecord)
+
+	opts := f.options(&bytes.Buffer{}, &bytes.Buffer{})
+	opts.TopologyFile = ""
+	opts.SourceDir = workspace
+
+	_, _, err := runInit(t, opts)
+	if err == nil {
+		t.Fatal("expected an error: two systems and nothing saying which")
+	}
+	if !strings.Contains(err.Error(), "--system") {
+		t.Errorf("error should point at --system: %v", err)
+	}
+	// Nothing was built — discovery must not pay for a graph verb to fail.
+	if *called != "" {
+		t.Errorf("the graph verb ran anyway, on %q", *called)
+	}
+}
+
+// Selecting by name and renaming the tree segment are the same flag, so when they
+// disagree the caller's name wins — and is told.
+func TestInitWarnsWhenSystemRenamesTheTreeSegment(t *testing.T) {
+	f := newInitFixture(t)
+	workspace := t.TempDir()
+	writeHostWorkspace(t, workspace, "distribution")
+	stubRunGraph(t, initTopologyRecord) // declares system "distribution"
+
+	var stdout, stderr bytes.Buffer
+	opts := f.options(&stdout, &stderr)
+	opts.TopologyFile = ""
+	opts.SourceDir = workspace
+	opts.System = "product-distribution"
+	opts.OutputFormat = OutputJSON
+
+	if err := Init(context.Background(), opts); err != nil {
+		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "using \"product-distribution\" as the tree segment") {
+		t.Errorf("stderr does not warn about the rename:\n%s", stderr.String())
+	}
+
+	var res InitResult
+	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.System != "product-distribution" {
+		t.Errorf("System = %q, want the caller's name", res.System)
 	}
 }
