@@ -45,8 +45,7 @@ var deployPinCmd = &cobra.Command{
 		"With --plan the overlay is rendered and diffed but nothing is written to git. After pushing, the command " +
 		"waits for ArgoCD to apply the new revision; --no-wait skips that, and environments that sync manually " +
 		"never wait.",
-	Args:              cobra.RangeArgs(1, 2),
-	ValidArgsFunction: completeDeployComponents,
+	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validateOutputFlag(deployFlagValues.output, deploy.OutputPlain, deploy.OutputJSON); err != nil {
 			return err
@@ -114,10 +113,6 @@ func init() {
 	f.StringVarP(&deployFlagValues.output, "output", "o", deploy.OutputPlain, "output format (plain, json)")
 
 	_ = deployPinCmd.MarkFlagRequired("env")
-	_ = deployPinCmd.RegisterFlagCompletionFunc("env", completeDeployEnvironments)
-	_ = deployPinCmd.RegisterFlagCompletionFunc("output", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
-		return []string{deploy.OutputPlain, deploy.OutputJSON}, cobra.ShellCompDirectiveNoFileComp
-	})
 
 	deployCmd.AddCommand(deployPinCmd)
 }

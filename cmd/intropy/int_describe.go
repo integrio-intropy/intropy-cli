@@ -12,7 +12,6 @@ import (
 
 type describeFlags struct {
 	templateVersion string
-	version         string // deprecated alias for templateVersion
 	output          string
 }
 
@@ -23,13 +22,9 @@ var intDescribeCmd = &cobra.Command{
 	Short: "Describe an Intropy template",
 	Long: "Print the template manifest — metadata and parameter schema — for the requested release. " +
 		"Use --output json to emit a stable, machine-readable document (the same schema Backstage's frontend renders).",
-	Args:              cobra.ExactArgs(1),
-	ValidArgsFunction: completeTemplates,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validateOutputFlag(intDescribeFlags.output, "json", "plain"); err != nil {
-			return err
-		}
-		if err := resolveTemplateVersion(cmd, &intDescribeFlags.templateVersion, &intDescribeFlags.version); err != nil {
 			return err
 		}
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
@@ -54,7 +49,7 @@ var intDescribeCmd = &cobra.Command{
 
 func init() {
 	f := intDescribeCmd.Flags()
-	registerTemplateVersionFlag(intDescribeCmd, &intDescribeFlags.templateVersion, &intDescribeFlags.version)
+	f.StringVar(&intDescribeFlags.templateVersion, "template-version", "", "template release tag (default: latest)")
 	f.StringVarP(&intDescribeFlags.output, "output", "o", "plain", "output format: plain or json")
 	intCmd.AddCommand(intDescribeCmd)
 }

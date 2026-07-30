@@ -26,11 +26,12 @@ type Options struct {
 	Version string
 
 	// Ref is the source revision to release. Defaults to HEAD.
+	// Internal test seam — not exposed as a CLI flag.
 	Ref string
 
 	// Since names the starting point for the changelog when there is no
-	// previous release to measure from — the adoption case, where a component
-	// has been deployed by hand for years before its first managed release.
+	// previous release to measure from. Internal test seam — not exposed as a
+	// CLI flag.
 	Since string
 
 	// GitopsRepo overrides the configured GitOps repository URL.
@@ -50,9 +51,8 @@ type Options struct {
 	// OutputFormat is "plain" or "json".
 	OutputFormat string
 
-	// Limit caps how many releases List reports, newest first. Zero means all,
-	// so a caller that does not think about it gets the whole answer; the
-	// command-line default lives on the flag.
+	// Limit caps how many releases List reports, newest first. Zero means all.
+	// Internal — not exposed as a CLI flag.
 	Limit int
 
 	// CacheRoot overrides where GitOps checkouts are cached.

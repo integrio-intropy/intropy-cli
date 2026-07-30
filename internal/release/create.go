@@ -83,7 +83,7 @@ func Create(ctx context.Context, opts Options) error {
 	if opts.Ref != "HEAD" {
 		commit, err = g.RevParse(ctx, opts.Ref)
 		if err != nil {
-			return fmt.Errorf("resolve --ref %s: %w", opts.Ref, err)
+			return fmt.Errorf("resolve ref %s: %w", opts.Ref, err)
 		}
 		pushed, err := g.IsAncestor(ctx, commit, gitops.RemoteName+"/"+src.Branch)
 		if err != nil {
@@ -212,14 +212,14 @@ func resolveBasis(ctx context.Context, reg Registry, g git.Client, releasesRepo,
 	if since != "" {
 		from, err := g.RevParse(ctx, since)
 		if err != nil {
-			return ChangeBasis{}, "", fmt.Errorf("resolve --since %s: %w", since, err)
+			return ChangeBasis{}, "", fmt.Errorf("resolve since %s: %w", since, err)
 		}
 		ancestor, err := g.IsAncestor(ctx, from, commit)
 		if err != nil {
 			return ChangeBasis{}, "", err
 		}
 		if !ancestor {
-			return ChangeBasis{}, "", fmt.Errorf("--since %s is not an ancestor of the commit being released (%s), so there is no range between them", since, shortSHA(commit))
+			return ChangeBasis{}, "", fmt.Errorf("since %s is not an ancestor of the commit being released (%s), so there is no range between them", since, shortSHA(commit))
 		}
 		return ChangeBasis{Kind: BasisExplicit, Ref: since}, from, nil
 	}
@@ -229,11 +229,6 @@ func resolveBasis(ctx context.Context, reg Registry, g git.Client, releasesRepo,
 		return ChangeBasis{}, "", err
 	}
 	if prev == nil {
-		// Nothing was released, so there is no prior state to diff against.
-		// The window is undefined rather than large, and saying so beats
-		// synthesising one: the first managed release of a component is
-		// usually adoption, not birth, and --since is how an operator names
-		// the point the tool cannot know.
 		return ChangeBasis{Kind: BasisInitial}, "", nil
 	}
 	return ChangeBasis{

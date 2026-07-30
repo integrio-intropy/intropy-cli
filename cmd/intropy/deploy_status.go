@@ -36,8 +36,7 @@ var deployStatusCmd = &cobra.Command{
 		"Rows are ordered by the promotion graph in deploy.yaml, so the last row is the furthest downstream.\n\n" +
 		"Nothing is written to git, no sync is triggered, and kubectl is never invoked. The exit code is 0 even " +
 		"when the environments disagree; read `consistent` from --output json to gate on it.",
-	Args:              cobra.ExactArgs(1),
-	ValidArgsFunction: completeDeployComponents,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validateOutputFlag(statusFlagValues.output, deploy.OutputPlain, deploy.OutputJSON); err != nil {
 			return err
@@ -70,9 +69,6 @@ func init() {
 
 	// Deliberately no --env: status is every environment at once, and the
 	// question about one of them — what a sync would apply — is deploy diff.
-	_ = deployStatusCmd.RegisterFlagCompletionFunc("output", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
-		return []string{deploy.OutputPlain, deploy.OutputJSON}, cobra.ShellCompDirectiveNoFileComp
-	})
 
 	deployCmd.AddCommand(deployStatusCmd)
 }

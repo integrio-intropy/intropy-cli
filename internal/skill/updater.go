@@ -80,10 +80,9 @@ func (u *Updater) Update(ctx context.Context, name string) (UpdateResult, error)
 	}
 
 	newEntry := ManifestEntry{
-		Name:                name,
-		Source:              newSource,
-		Version:             newVersion,
-		AdditionalBasePaths: existing.AdditionalBasePaths,
+		Name:    name,
+		Source:  newSource,
+		Version: newVersion,
 	}
 
 	lockEntry, err := u.installer.Install(ctx, newEntry)

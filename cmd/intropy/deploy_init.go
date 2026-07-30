@@ -3,11 +3,9 @@ package main
 import (
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 
 	"github.com/integrio-intropy/intropy-cli/internal/deploy"
-	"github.com/integrio-intropy/intropy-cli/internal/gitops"
 	"github.com/integrio-intropy/intropy-cli/internal/template"
 	"github.com/spf13/cobra"
 )
@@ -16,10 +14,7 @@ type initFlags struct {
 	domain          string
 	system          string
 	envs            []string
-	topology        string
-	sourceDir       string
 	templateVersion string
-	version         string // deprecated alias for templateVersion
 	values          []string
 	sets            []string
 	noInput         bool
@@ -53,26 +48,19 @@ var deployInitCmd = &cobra.Command{
 		"the system already sits in the GitOps tree, and failing that from the workspace's own " +
 		"domains/<domain>/<system>/ layout, which every integrations tree mirrors from the deployment tree. " +
 		"Pass it explicitly to place a system somewhere else, or when the workspace has another shape.\n\n" +
-		"The topology comes from the system host's graph verb, which builds the project first and can take a " +
-		"minute. Pass --topology with a file (or - for stdin) to skip that — in CI, capture it once with " +
-		"`dotnet run --project <host> -- graph > topology.json`.\n\n" +
 		"A workspace holding several systems needs --system to say which one. It is matched against each " +
 		"scaffolded host's recorded system name and its system directory, both of which are on disk, so " +
 		"picking a system never builds the others.\n\n" +
-		"The manifests come from the template library's latest release; --version renders from a specific tag " +
+		"The manifests come from the template library's latest release; --template-version renders from a specific tag " +
 		"instead, which is what makes a re-run reproducible while the templates are still moving.\n\n" +
 		"Nothing is pushed to the default branch: a tree full of placeholders would be picked up by the " +
 		"ApplicationSet immediately. The run pushes deploy-init/<domain>-<system> for review instead. Re-running " +
 		"is additive and safe — a file that already exists and differs is reported and left alone unless --force " +
 		"is given, and --force still refuses to overwrite an overlay that pins a digest.\n\n" +
 		"With --plan nothing is written and git is not touched at all.",
-	Args:              cobra.ArbitraryArgs,
-	ValidArgsFunction: completeInitComponents,
+	Args: cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validateOutputFlag(initFlagValues.output, deploy.OutputPlain, deploy.OutputJSON); err != nil {
-			return err
-		}
-		if err := resolveTemplateVersion(cmd, &initFlagValues.templateVersion, &initFlagValues.version); err != nil {
 			return err
 		}
 		sets, err := template.ParseSets(initFlagValues.sets)
@@ -88,8 +76,6 @@ var deployInitCmd = &cobra.Command{
 			Domain:          initFlagValues.domain,
 			System:          initFlagValues.system,
 			Environments:    initFlagValues.envs,
-			TopologyFile:    initFlagValues.topology,
-			SourceDir:       initFlagValues.sourceDir,
 			TemplateVersion: initFlagValues.templateVersion,
 			Files:           initFlagValues.values,
 			SetValues:       sets,
@@ -108,58 +94,12 @@ var deployInitCmd = &cobra.Command{
 	},
 }
 
-// completeInitComponents suggests block names from the local workspace.
-//
-// Deliberately local: the alternative is the topology, and obtaining that means
-// a dotnet build. A completion that takes a minute is not a completion.
-func completeInitComponents(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	dir := cmd.Flags().Lookup("source-dir").Value.String()
-	if dir == "" {
-		dir = "."
-	}
-	entries, _ := template.ListScaffolds(dir)
-	var names []string
-	for _, e := range entries {
-		if e.Role == template.RoleSystemHost {
-			continue
-		}
-		names = append(names, filepath.Base(e.Path))
-	}
-	return names, cobra.ShellCompDirectiveNoFileComp
-}
-
-// completeDeployDomains suggests the domains already in the GitOps tree, from
-// the cached checkout only.
-func completeDeployDomains(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	root, err := gitops.CachedRoot(gitopsRepoFlag(cmd))
-	if err != nil {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	seen := map[string]bool{}
-	var names []string
-	for _, c := range gitops.ListComponents(root) {
-		if !seen[c.Domain] {
-			seen[c.Domain] = true
-			names = append(names, c.Domain)
-		}
-	}
-	return names, cobra.ShellCompDirectiveNoFileComp
-}
-
 func init() {
 	f := deployInitCmd.Flags()
 	f.StringVar(&initFlagValues.domain, "domain", "", "domain to place the system under (default: where it already is in the GitOps tree, else the workspace's domains/<domain>/ layout)")
 	f.StringVar(&initFlagValues.system, "system", "", "system to scaffold; selects the host when the workspace holds several (default: the only one)")
-	// Plural, and no -e: everywhere else in the CLI --env/-e names the single
-	// target environment a deploy acts on, while this selects which overlays
-	// to scaffold. The different spelling makes the different cardinality
-	// visible at the command line.
 	f.StringArrayVar(&initFlagValues.envs, "environments", nil, "environments to create overlays for (repeatable; default: every environment in deploy.yaml)")
-	f.StringVar(&initFlagValues.topology, "topology", "", "read the topology record from a file instead of running the host's graph verb (- for stdin)")
-	f.StringVar(&initFlagValues.sourceDir, "source-dir", ".", "workspace to discover the system host and scaffold records in")
-	registerTemplateVersionFlag(deployInitCmd, &initFlagValues.templateVersion, &initFlagValues.version)
-	// StringArray, matching int create: StringSlice would split on commas, and
-	// a file path containing a comma must survive the round trip.
+	f.StringVar(&initFlagValues.templateVersion, "template-version", "", "template release tag (default: latest)")
 	f.StringArrayVarP(&initFlagValues.values, "values", "f", nil, "values file (repeatable; - reads one document from stdin)")
 	f.StringArrayVarP(&initFlagValues.sets, "set", "s", nil, "set a template value as key=value (repeatable)")
 	f.BoolVar(&initFlagValues.noInput, "no-input", false, "never prompt; fail if a required value is missing")
@@ -167,16 +107,6 @@ func init() {
 	f.BoolVar(&initFlagValues.force, "force", false, "overwrite files that already differ (refused for an overlay that pins a digest)")
 	f.StringVar(&initFlagValues.gitopsRepo, "gitops-repo", "", "GitOps repository URL (default: gitopsRepo from config, or INTROPY_GITOPS_REPO)")
 	f.StringVarP(&initFlagValues.output, "output", "o", deploy.OutputPlain, "output format (plain, json)")
-
-	// Deliberately no --argocd-server, --no-wait or --timeout: this writes a
-	// branch for review and syncs nothing, so there is no ArgoCD interaction to
-	// configure. No --allow-dirty either — no source working tree is read for
-	// correctness, only for the topology the host itself reports.
-	_ = deployInitCmd.RegisterFlagCompletionFunc("domain", completeDeployDomains)
-	_ = deployInitCmd.RegisterFlagCompletionFunc("environments", completeDeployEnvironments)
-	_ = deployInitCmd.RegisterFlagCompletionFunc("output", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
-		return []string{deploy.OutputPlain, deploy.OutputJSON}, cobra.ShellCompDirectiveNoFileComp
-	})
 
 	deployCmd.AddCommand(deployInitCmd)
 }

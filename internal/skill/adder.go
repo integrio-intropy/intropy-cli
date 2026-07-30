@@ -17,9 +17,7 @@ func NewAdder(r Registry, i *Installer, p *Project) *Adder {
 	return &Adder{registry: r, installer: i, project: p}
 }
 
-type AddOptions struct {
-	AdditionalBasePaths []string
-}
+type AddOptions struct{}
 
 // Add adds a skill to the project, installs it, and persists both files.
 // The ref must include a tag (e.g. ghcr.io/.../skill:1.0.0).
@@ -52,10 +50,9 @@ func (a *Adder) Add(ctx context.Context, ref string, opts AddOptions) (LockEntry
 	}
 
 	entry := ManifestEntry{
-		Name:                skillName,
-		Source:              parsed.Registry + "/" + parsed.Repository,
-		Version:             parsed.Tag,
-		AdditionalBasePaths: opts.AdditionalBasePaths,
+		Name:    skillName,
+		Source:  parsed.Registry + "/" + parsed.Repository,
+		Version: parsed.Tag,
 	}
 
 	lockEntry, err := a.installer.Install(ctx, entry)

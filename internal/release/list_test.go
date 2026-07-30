@@ -180,10 +180,8 @@ func TestListLimitReportsWhatItHides(t *testing.T) {
 	if got.Releases[0].Version != "2.0.0" || got.Releases[1].Version != "1.1.0" {
 		t.Errorf("kept %+v, want the two newest", got.Releases)
 	}
-	for _, want := range []string{"2 of 3", "--limit 0"} {
-		if !strings.Contains(stderr, want) {
-			t.Errorf("stderr should mention %q, got %q", want, stderr)
-		}
+	if !strings.Contains(stderr, "2 of 3") {
+		t.Errorf("stderr should mention %q, got %q", "2 of 3", stderr)
 	}
 }
 

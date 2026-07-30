@@ -104,31 +104,8 @@ func TestPromoteIsRegisteredUnderDeploy(t *testing.T) {
 	t.Error("promote is not registered under deploy")
 }
 
-func TestPromoteCompletionsAreSilentWithoutConfig(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("INTROPY_GITOPS_REPO", "")
-
-	if got, _ := completeDeployComponents(deployPromoteCmd, nil, ""); len(got) != 0 {
-		t.Errorf("component completion = %v, want none", got)
-	}
-	if got, _ := completeDeployEnvironments(deployPromoteCmd, nil, ""); len(got) != 0 {
-		t.Errorf("environment completion = %v, want none", got)
-	}
-}
-
 // The completions read the invoked command's own --gitops-repo. Reading deploy's
 // global would make them silently consult the wrong repository under promote.
-func TestPromoteCompletionsReadItsOwnGitopsRepoFlag(t *testing.T) {
-	if err := deployPromoteCmd.Flags().Set("gitops-repo", "/promote/repo"); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = deployPromoteCmd.Flags().Set("gitops-repo", "") })
-
-	if got := gitopsRepoFlag(deployPromoteCmd); got != "/promote/repo" {
-		t.Errorf("gitopsRepoFlag = %q, want promote's own value", got)
-	}
-}
-
 // The subcommand name wins over the component argument, which is what makes
 // `deploy promote x` reach this command rather than deploying a component called
 // promote.

@@ -33,8 +33,8 @@ func (i *Installer) Install(ctx context.Context, entry ManifestEntry) (LockEntry
 	}
 	defer artifact.Content.Close()
 
-	dests := append([]string{i.project.SkillDir(entry.Name)}, i.project.AdditionalDirs(entry)...)
-	if err := i.extractor.Extract(ctx, artifact.Content, dests); err != nil {
+	dest := i.project.SkillDir(entry.Name)
+	if err := i.extractor.Extract(ctx, artifact.Content, []string{dest}); err != nil {
 		return LockEntry{}, fmt.Errorf("extract %s: %w", entry.Name, err)
 	}
 
@@ -43,12 +43,9 @@ func (i *Installer) Install(ctx context.Context, entry ManifestEntry) (LockEntry
 		return LockEntry{}, fmt.Errorf("parse ref %s: %w", ref, err)
 	}
 
-	additionalRels := i.project.AdditionalRelPaths(entry)
-
 	lockEntry := LockEntry{
-		Name:            entry.Name,
-		Path:            i.project.SkillRelPath(entry.Name),
-		AdditionalPaths: additionalRels,
+		Name: entry.Name,
+		Path: i.project.SkillRelPath(entry.Name),
 		Source: LockSource{
 			Registry:   parsed.Registry,
 			Repository: parsed.Repository,

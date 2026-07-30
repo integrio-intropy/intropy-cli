@@ -8,8 +8,6 @@ import (
 )
 
 var (
-	verboseFlag   bool
-	quietFlag     bool
 	noColorFlag   bool
 	changeDirFlag string
 )
@@ -52,8 +50,6 @@ func validateOutputFlag(format string, allowed ...string) error {
 }
 
 func init() {
-	rootCmd.PersistentFlags().BoolVarP(&verboseFlag, "verbose", "v", false, "enable verbose output")
-	rootCmd.PersistentFlags().BoolVarP(&quietFlag, "quiet", "q", false, "suppress non-error output")
 	rootCmd.PersistentFlags().BoolVar(&noColorFlag, "no-color", false, "disable colored output")
 	rootCmd.PersistentFlags().StringVarP(&changeDirFlag, "directory", "C", "", "change to directory before running the command")
 	_ = rootCmd.MarkPersistentFlagDirname("directory")

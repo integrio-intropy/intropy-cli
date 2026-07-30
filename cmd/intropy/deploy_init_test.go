@@ -77,8 +77,8 @@ func TestDeployInitHasNoArgocdOrDirtyFlags(t *testing.T) {
 
 func TestDeployInitDocumentedFlagsExist(t *testing.T) {
 	for _, name := range []string{
-		"domain", "system", "environments", "topology", "source-dir",
-		"template-version", "version", "values", "set", "no-input", "plan", "force",
+		"domain", "system", "environments",
+		"template-version", "values", "set", "no-input", "plan", "force",
 		"gitops-repo", "output",
 	} {
 		if deployInitCmd.Flags().Lookup(name) == nil {
@@ -87,10 +87,6 @@ func TestDeployInitDocumentedFlagsExist(t *testing.T) {
 	}
 }
 
-// --template-version names the template release; --version is its deprecated
-// alias, kept because it predates the release command where --version means
-// the version being published. The alias usage string must match int create's
-// so the two commands read the same whichever spelling a user finds.
 func TestDeployInitVersionIsTheTemplateRelease(t *testing.T) {
 	f := deployInitCmd.Flags().Lookup("template-version")
 	if f == nil {
@@ -98,22 +94,6 @@ func TestDeployInitVersionIsTheTemplateRelease(t *testing.T) {
 	}
 	if !strings.Contains(f.Usage, "template") {
 		t.Errorf("--template-version usage = %q, want it to say it is the template release", f.Usage)
-	}
-
-	create, _, _ := rootCmd.Find([]string{"int", "create"})
-	if create == nil {
-		t.Fatal("could not find int create")
-	}
-	if got, want := f.Usage, create.Flags().Lookup("template-version").Usage; got != want {
-		t.Errorf("--template-version usage differs from int create:\n  init:   %q\n  create: %q", got, want)
-	}
-
-	alias := deployInitCmd.Flags().Lookup("version")
-	if alias == nil {
-		t.Fatal("init must keep --version as a deprecated alias")
-	}
-	if alias.Hidden != true {
-		t.Error("deprecated --version alias must be hidden from help")
 	}
 }
 
@@ -182,32 +162,6 @@ func TestDeployInitHelpPromisesABranch(t *testing.T) {
 func TestDeployInitDoesNotShadowRootPersistentPreRun(t *testing.T) {
 	if deployInitCmd.PersistentPreRunE != nil || deployInitCmd.PersistentPreRun != nil {
 		t.Error("init must not define PersistentPreRunE; it would shadow the root's and break -C")
-	}
-}
-
-// A shell completion must never print a diagnostic, so without configuration it
-// returns nothing rather than an error.
-func TestDeployInitCompletionsAreSilentWithoutConfig(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("INTROPY_GITOPS_REPO", "")
-
-	if got, _ := completeDeployDomains(deployInitCmd, nil, ""); len(got) != 0 {
-		t.Errorf("completeDeployDomains = %v, want nothing without config", got)
-	}
-	if got, _ := completeDeployEnvironments(deployInitCmd, nil, ""); len(got) != 0 {
-		t.Errorf("completeDeployEnvironments = %v, want nothing without config", got)
-	}
-}
-
-// Component completion reads the local workspace only: the alternative is the
-// topology, and obtaining that means a dotnet build.
-func TestDeployInitComponentCompletionIsLocalAndSilent(t *testing.T) {
-	resetInitState(t, &bytes.Buffer{}, &bytes.Buffer{})
-	if err := deployInitCmd.Flags().Set("source-dir", t.TempDir()); err != nil {
-		t.Fatal(err)
-	}
-	if got, _ := completeInitComponents(deployInitCmd, nil, ""); len(got) != 0 {
-		t.Errorf("completeInitComponents = %v, want nothing in an empty workspace", got)
 	}
 }
 

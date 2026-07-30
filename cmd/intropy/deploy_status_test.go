@@ -69,15 +69,6 @@ func TestStatusIsRegisteredUnderDeploy(t *testing.T) {
 	t.Error("status is not registered under deploy")
 }
 
-func TestStatusCompletionsAreSilentWithoutConfig(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("INTROPY_GITOPS_REPO", "")
-
-	if got, _ := completeDeployComponents(deployStatusCmd, nil, ""); len(got) != 0 {
-		t.Errorf("component completion = %v, want none", got)
-	}
-}
-
 func TestStatusSubcommandWinsOverTheComponentArgument(t *testing.T) {
 	args := []string{"deploy", "status", "order-extractor"}
 

@@ -143,8 +143,8 @@ func TestSelectHostWithNoHosts(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	if !strings.Contains(err.Error(), "--topology") {
-		t.Errorf("error should offer --topology as the alternative: %v", err)
+	if !strings.Contains(err.Error(), "system workspace") {
+		t.Errorf("error should say to run from a system workspace: %v", err)
 	}
 }
 

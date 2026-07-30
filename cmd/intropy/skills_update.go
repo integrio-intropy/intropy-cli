@@ -30,8 +30,7 @@ Run 'intropy skills collection update <alias>' first to refresh the cache if
 the upstream collection has been republished.
 
 Pass --all to reconcile every installed skill at once.`,
-	Args:              cobra.MaximumNArgs(1),
-	ValidArgsFunction: completeInstalledSkills,
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validateOutputFlag(skillsUpdateOpts.output, "json", "plain"); err != nil {
 			return err
