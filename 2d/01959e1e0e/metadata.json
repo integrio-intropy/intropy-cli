@@ -1,0 +1,48 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "2d01959e1e0e",
+  "strategy": "manual-commit",
+  "branch": "docs/writing-quality",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "cmd/intropy/dashboard.go",
+    "cmd/intropy/deploy_diff.go",
+    "cmd/intropy/deploy_init.go",
+    "cmd/intropy/deploy_pin.go",
+    "cmd/intropy/deploy_promote.go",
+    "cmd/intropy/deploy_status.go",
+    "cmd/intropy/deploy_sync.go",
+    "cmd/intropy/flagtext.go",
+    "cmd/intropy/helptext_test.go",
+    "cmd/intropy/int_describe.go",
+    "cmd/intropy/int_list.go",
+    "cmd/intropy/release_create.go",
+    "cmd/intropy/release_list.go",
+    "cmd/intropy/release_view.go",
+    "cmd/intropy/skills_add.go",
+    "cmd/intropy/skills_collection_add.go",
+    "cmd/intropy/skills_collection_publish.go",
+    "cmd/intropy/skills_collection_update.go",
+    "cmd/intropy/skills_list.go",
+    "cmd/intropy/skills_publish.go",
+    "cmd/intropy/skills_update.go",
+    "cmd/intropy/sys_create.go",
+    "docs/deploy-init.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/2d/01959e1e0e/0/metadata.json",
+      "transcript": "/2d/01959e1e0e/0/full.jsonl",
+      "compact_transcript": "/2d/01959e1e0e/0/transcript.jsonl",
+      "content_hash": "/2d/01959e1e0e/0/content_hash.txt",
+      "prompt": "/2d/01959e1e0e/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 89232,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 13798080,
+    "output_tokens": 48892,
+    "api_call_count": 139
+  }
+}

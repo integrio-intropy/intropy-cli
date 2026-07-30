@@ -1,0 +1,61 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "2d01959e1e0e",
+  "session_id": "019fb285-fd4c-7ace-9d1d-4c9c285a8d1f",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-30T10:57:36.517698Z",
+  "branch": "docs/writing-quality",
+  "checkpoints_count": 3,
+  "save_step_count": 1,
+  "files_touched": [
+    "cmd/intropy/skills_update.go",
+    "cmd/intropy/skills_collection_update.go",
+    "cmd/intropy/skills_publish.go",
+    "cmd/intropy/deploy_init.go",
+    "cmd/intropy/deploy_sync.go",
+    "cmd/intropy/deploy_diff.go",
+    "cmd/intropy/release_create.go",
+    "cmd/intropy/sys_create.go",
+    "cmd/intropy/dashboard.go",
+    "cmd/intropy/int_list.go",
+    "cmd/intropy/int_describe.go",
+    "cmd/intropy/release_view.go",
+    "cmd/intropy/release_list.go",
+    "cmd/intropy/flagtext.go",
+    "docs/deploy-init.md",
+    "cmd/intropy/deploy_status.go",
+    "cmd/intropy/deploy_promote.go",
+    "cmd/intropy/deploy_pin.go",
+    "cmd/intropy/skills_add.go",
+    "cmd/intropy/skills_collection_add.go",
+    "cmd/intropy/skills_collection_publish.go",
+    "cmd/intropy/skills_list.go",
+    "cmd/intropy/helptext_test.go"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "e2ddadff5953",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 89232,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 13798080,
+    "output_tokens": 48892,
+    "api_call_count": 139
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-30T10:57:36.484225Z",
+    "agent_lines": 299,
+    "agent_removed": 119,
+    "human_added": 2,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 301,
+    "total_lines_changed": 422,
+    "agent_percentage": 99.0521327014218,
+    "metric_version": 2
+  }
+}
