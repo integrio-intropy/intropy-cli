@@ -31,6 +31,14 @@ jobs:
       # The deploy tests drive the real kustomize binary. Without it those tests
       # skip, which would leave the render and diff logic — the part most likely
       # to break silently — untested.
+      # The integration tests clone real repositories and run git commit,
+      # which needs an identity. Dev machines have one from their global git
+      # config; CI runners do not.
+      - name: Set git identity
+        run: |
+          git config --global user.email "ci@intropy.dev"
+          git config --global user.name "CI"
+
       - name: Install kustomize
         run: |
           if ! command -v kustomize &> /dev/null; then
