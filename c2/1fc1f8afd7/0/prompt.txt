@@ -1,1 +1,1 @@
-Can you make sure that the verbs we are using are described in AGENTS.md so that we can ensure consistency? Like list, show, create etc
+no go ahead
