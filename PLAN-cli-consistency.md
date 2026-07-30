@@ -14,8 +14,11 @@ intropy
 │   └── sync <component>    --env -e --revision --domain --system --gitops-repo --argocd-server --no-wait --timeout --output -o
 ├── int
 │   ├── create <template>   --output -o(dir!) --name -n --version --values -f --set -s --force --no-input --install-skills --skip-install-skills --output-json
-│   ├── describe <template> --version --output -o(format)
+│   ├── show [dir]          --output -o(format)
 │   └── list [dir]          --output -o(format)
+├── template
+│   ├── list                --template-version --output -o(format)
+│   └── show <template>     --template-version --output -o(format)
 ├── release
 │   ├── create <component>  --version(required) --ref --since --domain --system --gitops-repo --allow-dirty --watch -w --output -o
 │   ├── list <component>    --domain --system --gitops-repo --output -o --limit -n

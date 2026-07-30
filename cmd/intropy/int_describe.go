@@ -1,58 +1,28 @@
 package main
 
 import (
-	"encoding/json"
-	"os"
-	"os/signal"
-	"syscall"
-
-	"github.com/integrio-intropy/intropy-cli/internal/template"
 	"github.com/spf13/cobra"
 )
 
-// int describe prints a template's manifest. Fetching and parsing the
-// manifest live in internal/template; this file is flag plumbing and output
-// formatting.
-type describeFlags struct {
-	templateVersion string
-	output          string
-}
-
-var intDescribeFlags describeFlags
-
+// int describe used to print a template's manifest; that is `template show`
+// now. The command remains as a hidden stub so a user following old docs or
+// muscle memory gets a pointer instead of an unknown-command error. It
+// always fails; remove the stub once the rename is old enough that nobody
+// trips over it.
 var intDescribeCmd = &cobra.Command{
-	Use:   "describe <template>",
-	Short: "Describe an Intropy template",
-	Long: "Print the template manifest — metadata and parameter schema — for the requested release. " +
-		"Use --output json to emit a stable, machine-readable document (the same schema Backstage's frontend renders).",
-	Args: cobra.ExactArgs(1),
+	Use:    "describe <template>",
+	Short:  "Describe an Intropy template",
+	Args:   cobra.ArbitraryArgs,
+	Hidden: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := validateOutputFlag(intDescribeFlags.output, "json", "plain"); err != nil {
-			return err
+		target := "template show"
+		if len(args) > 0 {
+			target += " " + args[0]
 		}
-		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-		defer cancel()
-		result, err := template.Describe(ctx, template.DescribeOptions{
-			Template:  args[0],
-			Version:   intDescribeFlags.templateVersion,
-			UserAgent: "intropy-cli/" + version,
-		})
-		if err != nil {
-			return err
-		}
-		if intDescribeFlags.output == "json" {
-			enc := json.NewEncoder(cmd.OutOrStdout())
-			enc.SetIndent("", "  ")
-			return enc.Encode(result)
-		}
-		result.FormatText(cmd.OutOrStdout())
-		return nil
+		return newUsageErrorf("'int describe' has been replaced\nuse 'intropy %s' to inspect a template, or 'intropy int show' to inspect a scaffolded integration", target)
 	},
 }
 
 func init() {
-	f := intDescribeCmd.Flags()
-	f.StringVar(&intDescribeFlags.templateVersion, "template-version", "", flagUsageTemplateVer)
-	f.StringVarP(&intDescribeFlags.output, "output", "o", "plain", flagUsageOutput)
 	intCmd.AddCommand(intDescribeCmd)
 }

@@ -140,7 +140,7 @@ intropy version
 
 ```sh
 # Inspect a template before you scaffold it
-intropy int describe hello-world
+intropy template show hello-world
 
 # Render it into a new directory
 intropy int create hello-world -o ./my-integration   # -o is --out-dir here
@@ -165,8 +165,11 @@ intropy skills list
 intropy
 ├── int                    Manage integrations
 │   ├── create <template>      Scaffold a new integration from a template
-│   ├── describe <template>    Print a template's manifest and parameter schema
+│   ├── show [dir]             Show the integration scaffolded at a directory
 │   └── list [dir]             List scaffolded integrations under a directory
+├── template               Inspect the Intropy template library
+│   ├── list                   List the templates in the library
+│   └── show <template>        Show a template's manifest and parameter schema
 ├── sys                    Manage integration systems
 │   └── create                 Assemble scaffolded integrations into a system host
 ├── deploy                 Move components between environments via the GitOps repository
@@ -195,19 +198,31 @@ intropy
 
 Run any command with `--help` for full flag documentation.
 
-## Integrations (`intropy int`)
+## Templates (`intropy template`)
 
-### Describe a template
+### List templates
+
+See what the template library publishes:
+
+```sh
+intropy template list
+intropy template list --template-version v1.2.0
+intropy template list -o json
+```
+
+Without `--template-version`, the latest GitHub release is listed.
+
+### Show a template
 
 Inspect what parameters a template accepts before scaffolding it:
 
 ```sh
-intropy int describe hello-world
-intropy int describe hello-world --template-version v1.2.0
-intropy int describe hello-world -o json   # machine-readable; same schema Backstage renders
+intropy template show hello-world
+intropy template show hello-world --template-version v1.2.0
+intropy template show hello-world -o json   # machine-readable; same schema Backstage renders
 ```
 
-Without `--template-version`, the latest GitHub release is used.
+## Integrations (`intropy int`)
 
 ### Create an integration
 
@@ -268,6 +283,22 @@ collection ref (e.g. a local registry when testing).
 the new integration — the template name, the exact release version, and the
 resolved parameter values. Commit it: later commands read it to reproduce
 decisions made at scaffold time.
+
+### Show an integration
+
+Print the scaffold record of the integration at a directory — which template
+rendered it, from which release, with which values:
+
+```sh
+# current directory (searched upward)
+intropy int show
+
+# an explicit project directory
+intropy int show ./my-integration
+
+# the record unchanged, for scripts
+intropy int show -o json
+```
 
 ### List scaffolded integrations
 
@@ -1234,7 +1265,7 @@ own; `deploy` holds the policy that combines them. Test fixtures live in
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `intropy int create` fails with "template not found" | The template name is misspelled or does not exist in the library. | Run `intropy int describe <name>` to verify the template exists. Check spelling and case. |
+| `intropy int create` fails with "template not found" | The template name is misspelled or does not exist in the library. | Run `intropy template show <name>` to verify the template exists. Check spelling and case. |
 | `intropy skills add` fails with "unauthorized" | Missing or expired registry credentials. | Run `docker login <registry>` or `gh auth login` (for `ghcr.io`) and retry. |
 | `intropy skills add --name <skill>` fails with "not found" | The skill name is not in any registered collection, or the collection cache is stale. | Run `intropy skills collection update <alias>` to refresh the cache, or install by full OCI ref. |
 | `skills.json` merge conflicts | Multiple contributors edited `skills.json` or `skills.lock.json` simultaneously. | Resolve the conflict manually (both files are plain JSON), then run `intropy skills list` to verify. |
@@ -1254,5 +1285,5 @@ and the pull request workflow.
   — the packaging, distribution, signing, and tracking spec the `skills`
   subsystem implements.
 - [`integrio-intropy/intropy-templates`](https://github.com/integrio-intropy/intropy-templates)
-  — the template library `intropy int create` and `intropy int describe`
+  — the template library `intropy int create` and `intropy template`
   download from by default.
