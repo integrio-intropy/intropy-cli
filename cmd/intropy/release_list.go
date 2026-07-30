@@ -24,7 +24,7 @@ var releaseListCmd = &cobra.Command{
 	Use:   "list <component>",
 	Short: "List the releases published for a component",
 	Long: "List the versions released for a component, newest first, with the date each was cut, its source commit, and the " +
-		"first line of its notes. Pass one of those versions to release view to read the full manifest.\n\n" +
+		"first line of its notes. Pass one of those versions to release show to read the full manifest.\n\n" +
 		"Releases are read from the registry beside the component's images, so this reports what is actually published rather " +
 		"than what git tags claim. It changes no source repository, GitOps remote, or environment.",
 	Args: cobra.ExactArgs(1),

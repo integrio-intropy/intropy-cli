@@ -9,39 +9,39 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// release view prints a published release manifest. Fetching and rendering
-// live in internal/release.View; this file is flag plumbing.
-type releaseViewFlags struct {
+// release show prints a published release manifest. Fetching and rendering
+// live in internal/release.Show; this file is flag plumbing.
+type releaseShowFlags struct {
 	domain     string
 	system     string
 	gitopsRepo string
 	output     string
 }
 
-var releaseViewOpts = releaseViewFlags{output: release.OutputPlain}
+var releaseShowOpts = releaseShowFlags{output: release.OutputPlain}
 
-var releaseViewCmd = &cobra.Command{
-	Use:   "view <component> <version>",
+var releaseShowCmd = &cobra.Command{
+	Use:   "show <component> <version>",
 	Short: "Read a published release manifest",
 	Long: "Read the release manifest for a version and print what it records: the source commit, the pinned image " +
 		"digests, what the notes were measured against, and the notes themselves.\n\n" +
 		"It changes no source repository, GitOps remote, or environment. Use it to sanity-check generated notes before deploying anything from the release.",
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := validateOutputFlag(releaseViewOpts.output, release.OutputPlain, release.OutputJSON); err != nil {
+		if err := validateOutputFlag(releaseShowOpts.output, release.OutputPlain, release.OutputJSON); err != nil {
 			return err
 		}
 
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 
-		return release.View(ctx, release.Options{
+		return release.Show(ctx, release.Options{
 			Component:    args[0],
 			Version:      args[1],
-			Domain:       releaseViewOpts.domain,
-			System:       releaseViewOpts.system,
-			GitopsRepo:   releaseViewOpts.gitopsRepo,
-			OutputFormat: releaseViewOpts.output,
+			Domain:       releaseShowOpts.domain,
+			System:       releaseShowOpts.system,
+			GitopsRepo:   releaseShowOpts.gitopsRepo,
+			OutputFormat: releaseShowOpts.output,
 			UserAgent:    "intropy-cli/" + version,
 			Stdout:       cmd.OutOrStdout(),
 			Stderr:       cmd.ErrOrStderr(),
@@ -50,11 +50,11 @@ var releaseViewCmd = &cobra.Command{
 }
 
 func init() {
-	f := releaseViewCmd.Flags()
-	f.StringVar(&releaseViewOpts.domain, "domain", "", flagUsageDomain)
-	f.StringVar(&releaseViewOpts.system, "system", "", flagUsageSystem)
-	f.StringVar(&releaseViewOpts.gitopsRepo, "gitops-repo", "", flagUsageGitopsRepo)
-	f.StringVarP(&releaseViewOpts.output, "output", "o", release.OutputPlain, flagUsageOutput)
+	f := releaseShowCmd.Flags()
+	f.StringVar(&releaseShowOpts.domain, "domain", "", flagUsageDomain)
+	f.StringVar(&releaseShowOpts.system, "system", "", flagUsageSystem)
+	f.StringVar(&releaseShowOpts.gitopsRepo, "gitops-repo", "", flagUsageGitopsRepo)
+	f.StringVarP(&releaseShowOpts.output, "output", "o", release.OutputPlain, flagUsageOutput)
 
-	releaseCmd.AddCommand(releaseViewCmd)
+	releaseCmd.AddCommand(releaseShowCmd)
 }

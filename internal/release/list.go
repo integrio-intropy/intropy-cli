@@ -17,7 +17,7 @@ import (
 //
 // Field names are stable and additive-only, like the manifest's.
 type Summary struct {
-	// Version is the registry tag, which is the handle release view takes. It
+	// Version is the registry tag, which is the handle release show takes. It
 	// is deliberately the tag rather than the manifest's self-described
 	// version: showing a name that does not resolve would be a trap.
 	Version string `json:"version"`
@@ -31,7 +31,7 @@ type Summary struct {
 
 	// Notes is the first line of the release notes, as recorded in the
 	// manifest's description annotation. The full notes are in the manifest,
-	// which release view prints.
+	// which release show prints.
 	Notes string `json:"notes"`
 }
 
@@ -52,7 +52,7 @@ type ListResult struct {
 //
 // Like View it changes nothing: it reads the registry, and refreshes the local
 // cached GitOps checkout only to learn which registry to ask. It exists because
-// release view needs a version, and until now there was no way to discover one.
+// release show needs a version, and until now there was no way to discover one.
 func List(ctx context.Context, opts Options) error {
 	opts.applyDefaults()
 

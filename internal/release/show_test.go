@@ -11,10 +11,10 @@ import (
 	"testing"
 )
 
-func (f *createFixture) view(t *testing.T, version, format string) (string, error) {
+func (f *createFixture) show(t *testing.T, version, format string) (string, error) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	err := View(context.Background(), Options{
+	err := Show(context.Background(), Options{
 		Component:    "order-extractor",
 		Version:      version,
 		CacheRoot:    f.cacheRoot,
@@ -25,13 +25,13 @@ func (f *createFixture) view(t *testing.T, version, format string) (string, erro
 	return stdout.String(), err
 }
 
-func TestViewRendersAPublishedRelease(t *testing.T) {
+func TestShowRendersAPublishedRelease(t *testing.T) {
 	f := newCreateFixture(t)
 	f.create(t, "1.0.0")
 	f.commitAndPush(t, "b.cs", "Handle empty payloads")
 	r, _ := f.create(t, "1.0.1")
 
-	out, err := f.view(t, "1.0.1", OutputPlain)
+	out, err := f.show(t, "1.0.1", OutputPlain)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,11 +54,11 @@ func TestViewRendersAPublishedRelease(t *testing.T) {
 }
 
 // An initial release must say why it has no changes, not show a blank space.
-func TestViewExplainsAnInitialRelease(t *testing.T) {
+func TestShowExplainsAnInitialRelease(t *testing.T) {
 	f := newCreateFixture(t)
 	f.create(t, "1.0.0")
 
-	out, err := f.view(t, "1.0.0", OutputPlain)
+	out, err := f.show(t, "1.0.0", OutputPlain)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,29 +72,29 @@ func TestViewExplainsAnInitialRelease(t *testing.T) {
 
 // JSON is the manifest as stored, so it can be compared with what a later
 // deploy resolves.
-func TestViewJSONIsTheManifest(t *testing.T) {
+func TestShowJSONIsTheManifest(t *testing.T) {
 	f := newCreateFixture(t)
 	created, _ := f.create(t, "1.0.0")
 
-	out, err := f.view(t, "1.0.0", OutputJSON)
+	out, err := f.show(t, "1.0.0", OutputJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	var got Manifest
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
-		t.Fatalf("view output is not a manifest: %v\n%s", err, out)
+		t.Fatalf("show output is not a manifest: %v\n%s", err, out)
 	}
 	if !got.SameRelease(created.Manifest) {
-		t.Errorf("view returned a different release:\n got %+v\nwant %+v", got, created.Manifest)
+		t.Errorf("show returned a different release:\n got %+v\nwant %+v", got, created.Manifest)
 	}
 }
 
-func TestViewRejectsManifestWhoseVersionDiffersFromRequestedTag(t *testing.T) {
+func TestShowRejectsManifestWhoseVersionDiffersFromRequestedTag(t *testing.T) {
 	f := newCreateFixture(t)
 	created, _ := f.create(t, "1.0.0")
 
-	// Publish a valid manifest under another OCI tag. View must not present a
+	// Publish a valid manifest under another OCI tag. Show must not present a
 	// retagged artifact as the release version its caller requested.
 	wrong := *created.Manifest
 	wrong.Version = "1.0.1"
@@ -103,7 +103,7 @@ func TestViewRejectsManifestWhoseVersionDiffersFromRequestedTag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := f.view(t, requested, OutputPlain)
+	_, err := f.show(t, requested, OutputPlain)
 	if err == nil {
 		t.Fatal("a manifest whose version differs from its requested tag must be refused")
 	}
@@ -114,32 +114,32 @@ func TestViewRejectsManifestWhoseVersionDiffersFromRequestedTag(t *testing.T) {
 	}
 }
 
-func TestViewMissingReleaseIsNotFound(t *testing.T) {
+func TestShowMissingReleaseIsNotFound(t *testing.T) {
 	f := newCreateFixture(t)
 
-	_, err := f.view(t, "9.9.9", OutputPlain)
+	_, err := f.show(t, "9.9.9", OutputPlain)
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("error %v should be ErrNotFound", err)
 	}
 }
 
-// View refreshes only its local GitOps cache. It must not change the source
+// Show refreshes only its local GitOps cache. It must not change the source
 // repository, the GitOps remote, or any environment.
-func TestViewDoesNotChangeSourceOrGitopsRemote(t *testing.T) {
+func TestShowDoesNotChangeSourceOrGitopsRemote(t *testing.T) {
 	f := newCreateFixture(t)
 	f.create(t, "1.0.0")
 
 	gitopsBefore := headOf(t, f.gitopsOrigin)
 	sourceBefore := headOf(t, f.sourceDir)
 
-	if _, err := f.view(t, "1.0.0", OutputPlain); err != nil {
+	if _, err := f.show(t, "1.0.0", OutputPlain); err != nil {
 		t.Fatal(err)
 	}
 
 	if got := headOf(t, f.gitopsOrigin); got != gitopsBefore {
-		t.Error("view moved the GitOps repository")
+		t.Error("show moved the GitOps repository")
 	}
 	if got := headOf(t, f.sourceDir); got != sourceBefore {
-		t.Error("view moved the source repository")
+		t.Error("show moved the source repository")
 	}
 }

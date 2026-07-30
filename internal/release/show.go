@@ -6,13 +6,13 @@ import (
 	"fmt"
 )
 
-// View reads a published release manifest and renders it.
+// Show reads a published release manifest and renders it.
 //
 // It makes no source-repository, GitOps-remote, or environment change. It does
 // refresh the local cached GitOps checkout to locate the component metadata;
-// that cache is an implementation detail, not deployment state. View exists so
+// that cache is an implementation detail, not deployment state. Show exists so
 // generated notes can be sanity-checked before anything is deployed from them.
-func View(ctx context.Context, opts Options) error {
+func Show(ctx context.Context, opts Options) error {
 	opts.applyDefaults()
 
 	if opts.Version == "" {

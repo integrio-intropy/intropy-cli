@@ -1087,7 +1087,7 @@ each release's full digest.
 Inspect a published release before shipping it:
 
 ```sh
-intropy release view component-x 1.4.2
+intropy release show component-x 1.4.2
 ```
 
 This command changes no source repository, GitOps remote, or environment. It

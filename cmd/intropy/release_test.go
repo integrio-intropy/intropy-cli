@@ -17,7 +17,7 @@ func resetReleaseState(t *testing.T, stdout, stderr *bytes.Buffer) {
 	resetRootIO(t, stdout, stderr)
 	reset := func() {
 		releaseCreateOpts = releaseCreateFlags{output: release.OutputPlain}
-		releaseViewOpts = releaseViewFlags{output: release.OutputPlain}
+		releaseShowOpts = releaseShowFlags{output: release.OutputPlain}
 		releaseListOpts = releaseListFlags{output: release.OutputPlain}
 	}
 	reset()
@@ -52,11 +52,11 @@ func TestReleaseCreateRequiresVersion(t *testing.T) {
 	}
 }
 
-func TestReleaseViewRequiresComponentAndVersion(t *testing.T) {
+func TestReleaseShowRequiresComponentAndVersion(t *testing.T) {
 	for _, args := range [][]string{
-		{"view"},
-		{"view", "order-extractor"},
-		{"view", "order-extractor", "1.4.2", "extra"},
+		{"show"},
+		{"show", "order-extractor"},
+		{"show", "order-extractor", "1.4.2", "extra"},
 	} {
 		_, _, err := runRelease(t, args...)
 		if err == nil {
@@ -88,7 +88,7 @@ func TestReleaseListTakesExactlyOneComponent(t *testing.T) {
 func TestReleaseRejectsUnknownOutputFormat(t *testing.T) {
 	for _, args := range [][]string{
 		{"create", "order-extractor", "--version", "1.4.2", "--output", "yaml"},
-		{"view", "order-extractor", "1.4.2", "--output", "yaml"},
+		{"show", "order-extractor", "1.4.2", "--output", "yaml"},
 		{"list", "order-extractor", "--output", "yaml"},
 	} {
 		_, _, err := runRelease(t, args...)
@@ -142,7 +142,7 @@ func TestReleaseIsRegistered(t *testing.T) {
 		t.Fatal("release is not registered on the root command")
 	}
 
-	want := map[string]bool{"create": false, "view": false, "list": false}
+	want := map[string]bool{"create": false, "show": false, "list": false}
 	for _, c := range releaseCmd.Commands() {
 		if _, ok := want[c.Name()]; ok {
 			want[c.Name()] = true

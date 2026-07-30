@@ -125,7 +125,7 @@ func TestListJSONDescribesEveryRelease(t *testing.T) {
 	}
 }
 
-// The version in a listing is the handle release view takes.
+// The version in a listing is the handle release show takes.
 func TestListVersionsCanBeViewed(t *testing.T) {
 	f := newCreateFixture(t)
 	f.createAt(t, "1.0.0", 20)
@@ -134,7 +134,7 @@ func TestListVersionsCanBeViewed(t *testing.T) {
 	if len(got.Releases) != 1 {
 		t.Fatalf("releases = %+v, want one", got.Releases)
 	}
-	if _, err := f.view(t, got.Releases[0].Version, OutputPlain); err != nil {
+	if _, err := f.show(t, got.Releases[0].Version, OutputPlain); err != nil {
 		t.Errorf("the listed version should be viewable: %v", err)
 	}
 }
