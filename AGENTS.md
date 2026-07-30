@@ -101,6 +101,19 @@ parsing. The two never share a stream.
   Never mix the two in one message.
 - A commit SHA is shown short (7 chars) unless the full value is the point.
 
+### Command verbs
+
+One verb per meaning, used on every noun (`int`, `template`, `skills`, ...):
+
+- **`list`** enumerates a collection: integrations on disk, templates in the
+  library, installed skills. It never prints one item's details.
+- **`show`** prints the details of exactly one thing: a template's manifest,
+  an integration's scaffold record. It never enumerates.
+
+Do not import kubectl's `get`/`describe` split — `int describe` was retired
+because it described templates, not integrations. New verbs need a reason
+that `list` and `show` cannot express.
+
 ---
 
 ## What this file is not
