@@ -1,0 +1,26 @@
+It went to the next step:
+Run if [ -n "$(gofmt -l .)" ]; then
+The following files need formatting:
+cmd/intropy/deploy_diff.go
+cmd/intropy/deploy_pin.go
+cmd/intropy/deploy_promote.go
+cmd/intropy/deploy_status.go
+cmd/intropy/deploy_sync.go
+cmd/intropy/int_create_test.go
+cmd/intropy/release_test.go
+cmd/intropy/release_view.go
+cmd/intropy/skills_collection_update.go
+cmd/intropy/skills_publish_test.go
+cmd/intropy/skills_update.go
+cmd/intropy/sys_create_test.go
+internal/skill/installer_test.go
+internal/skill/project_test.go
+Error: Process completed with exit code 1.
+
+---
+
+Just to be clear. The tests doesnt go out to any external repository or argocd or anything? Everything is contained to the runner?
+
+---
+
+I merged this to feature/v-next now but I think we should move to option 2 with the test separation (On a new branch off feature/v-next)
