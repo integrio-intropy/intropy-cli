@@ -201,11 +201,13 @@ Inspect what parameters a template accepts before scaffolding it:
 
 ```sh
 intropy int describe hello-world
-intropy int describe hello-world --version v1.2.0
+intropy int describe hello-world --template-version v1.2.0
 intropy int describe hello-world -o json   # machine-readable; same schema Backstage renders
 ```
 
-Without `--version`, the latest GitHub release is used.
+Without `--template-version`, the latest GitHub release is used. (`--version` is a
+deprecated alias — it predates `release create`, where `--version` names the version
+being published.)
 
 ### Create an integration
 
@@ -331,7 +333,7 @@ else comes from the scaffold records.
 intropy sys create -n OrderFlow
 
 # pin the system-host template release
-intropy sys create -n OrderFlow -o system-host --version v1.5.0
+intropy sys create -n OrderFlow -o system-host --template-version v1.5.0
 
 # machine-readable result document with the assembled model
 intropy sys create -n OrderFlow -o system-host --output json
@@ -455,12 +457,12 @@ dotnet run --project ./OrderSync.SystemHost -- graph > topology.json
 intropy deploy init --topology topology.json
 ```
 
-The manifests come from the template library's latest release. `--version` pins
-a tag instead — the same flag `intropy int create` uses, and the one that makes
+The manifests come from the template library's latest release. `--template-version`
+pins a tag instead — the same flag `intropy int create` uses, and the one that makes
 a re-run reproducible while the templates are still moving:
 
 ```sh
-intropy deploy init --version v0.4.0
+intropy deploy init --template-version v0.4.0
 ```
 
 The resolved tag is echoed as it fetches and recorded as `template` in

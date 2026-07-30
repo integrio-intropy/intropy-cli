@@ -14,7 +14,8 @@ type createFlags struct {
 	outDir            string
 	output            string // --output: "json" selects the result document on stdout; any other value is a deprecated alias for --out-dir
 	name              string
-	version           string
+	templateVersion   string
+	version           string // deprecated alias for templateVersion
 	values            []string
 	sets              []string
 	force             bool
@@ -58,6 +59,9 @@ var intCreateCmd = &cobra.Command{
 		if intCreateFlags.outputJSON == "-" && intCreateFlags.output != "json" {
 			fmt.Fprintln(cmd.ErrOrStderr(), "warning: --output-json - is deprecated; use --output json")
 		}
+		if err := resolveTemplateVersion(cmd, &intCreateFlags.templateVersion, &intCreateFlags.version); err != nil {
+			return err
+		}
 		outputDir, err := resolveCreateName(intCreateFlags.name, intCreateFlags.outDir, sets)
 		if err != nil {
 			return err
@@ -67,7 +71,7 @@ var intCreateCmd = &cobra.Command{
 		if err := template.Create(ctx, template.CreateOptions{
 			Template:   args[0],
 			OutputDir:  outputDir,
-			Version:    intCreateFlags.version,
+			Version:    intCreateFlags.templateVersion,
 			SetValues:  sets,
 			Files:      intCreateFlags.values,
 			Force:      intCreateFlags.force,
@@ -117,7 +121,7 @@ func init() {
 		return []string{"json"}, cobra.ShellCompDirectiveNoFileComp
 	})
 	f.StringVarP(&intCreateFlags.name, "name", "n", "", "integration name; sets the template's 'name' parameter and, unless --out-dir is set, becomes the output directory")
-	f.StringVar(&intCreateFlags.version, "version", "", "template release tag (default: latest)")
+	registerTemplateVersionFlag(intCreateCmd, &intCreateFlags.templateVersion, &intCreateFlags.version)
 	f.StringArrayVarP(&intCreateFlags.values, "values", "f", nil, "values file in YAML/JSON (repeatable; use - to read one doc from stdin)")
 	f.StringArrayVarP(&intCreateFlags.sets, "set", "s", nil, "set a value as key=value (repeatable)")
 	f.BoolVar(&intCreateFlags.force, "force", false, "allow rendering into a non-empty output directory")

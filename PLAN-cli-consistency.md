@@ -66,7 +66,7 @@ So `int create` has *both* a `--version` template tag flag and a separate `--out
 
 ---
 
-### 3. `--version` means three different things (MEDIUM)
+### 3. `--version` means three different things (MEDIUM) ✅ DONE
 
 | Context | `--version` meaning |
 |---|---|

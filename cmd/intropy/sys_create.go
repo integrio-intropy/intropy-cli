@@ -12,12 +12,13 @@ import (
 )
 
 type sysCreateFlags struct {
-	name       string
-	outDir     string
-	output     string // --output: "json" selects the result document on stdout; any other value is a deprecated alias for --out-dir
-	version    string
-	force      bool
-	outputJSON string
+	name            string
+	outDir          string
+	output          string // --output: "json" selects the result document on stdout; any other value is a deprecated alias for --out-dir
+	templateVersion string
+	version         string // deprecated alias for templateVersion
+	force           bool
+	outputJSON      string
 }
 
 var sysCreateFlagValues sysCreateFlags
@@ -49,12 +50,15 @@ var sysCreateCmd = &cobra.Command{
 		if sysCreateFlagValues.outputJSON == "-" && sysCreateFlagValues.output != "json" {
 			fmt.Fprintln(cmd.ErrOrStderr(), "warning: --output-json - is deprecated; use --output json")
 		}
+		if err := resolveTemplateVersion(cmd, &sysCreateFlagValues.templateVersion, &sysCreateFlagValues.version); err != nil {
+			return err
+		}
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 		return system.Create(ctx, system.CreateOptions{
 			Name:       sysCreateFlagValues.name,
 			OutputDir:  sysCreateFlagValues.outDir,
-			Version:    sysCreateFlagValues.version,
+			Version:    sysCreateFlagValues.templateVersion,
 			Force:      sysCreateFlagValues.force,
 			OutputJSON: sysCreateFlagValues.outputJSON,
 			Stdout:     cmd.OutOrStdout(),
@@ -77,7 +81,7 @@ func init() {
 	_ = sysCreateCmd.RegisterFlagCompletionFunc("output", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 		return []string{"json"}, cobra.ShellCompDirectiveNoFileComp
 	})
-	f.StringVar(&sysCreateFlagValues.version, "version", "", "system-host template release tag (default: latest)")
+	registerTemplateVersionFlag(sysCreateCmd, &sysCreateFlagValues.templateVersion, &sysCreateFlagValues.version)
 	f.BoolVar(&sysCreateFlagValues.force, "force", false, "allow rendering into a non-empty output directory")
 	f.StringVar(&sysCreateFlagValues.outputJSON, "output-json", "", "write a machine-readable result document to this path (for stdout, use --output json instead of --output-json -)")
 	_ = sysCreateCmd.MarkFlagRequired("name")
