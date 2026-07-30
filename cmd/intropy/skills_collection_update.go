@@ -31,7 +31,7 @@ republished under the same tag).
 With --ref, the stored ref is replaced with the new value and the cache is
 refreshed from it — use this to bump a registered collection from one
 version tag to another.`,
-	Args:              cobra.ExactArgs(1),
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validateOutputFlag(skillsCollectionUpdateOpts.output, "json", "plain"); err != nil {
 			return err

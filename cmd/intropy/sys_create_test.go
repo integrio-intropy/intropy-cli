@@ -62,5 +62,3 @@ func TestSysCreateOutputValidation(t *testing.T) {
 		}
 	})
 }
-
-

@@ -76,8 +76,6 @@ func TestProjectPaths(t *testing.T) {
 	}
 }
 
-
-
 func TestProjectManifestRoundTrip(t *testing.T) {
 	tmp := t.TempDir()
 	p := &Project{Root: tmp}

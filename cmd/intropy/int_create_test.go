@@ -91,5 +91,3 @@ func TestIntCreateOutputValidation(t *testing.T) {
 		}
 	})
 }
-
-

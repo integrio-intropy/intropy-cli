@@ -85,8 +85,6 @@ func TestReleaseListTakesExactlyOneComponent(t *testing.T) {
 	}
 }
 
-
-
 func TestReleaseRejectsUnknownOutputFormat(t *testing.T) {
 	for _, args := range [][]string{
 		{"create", "order-extractor", "--version", "1.4.2", "--output", "yaml"},

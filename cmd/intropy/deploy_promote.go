@@ -42,7 +42,7 @@ var deployPromoteCmd = &cobra.Command{
 		"bits ran.\n\n" +
 		"With --plan the overlay is rendered and diffed but nothing is written to git. Environments that sync " +
 		"manually record the intent and stop, printing the sync command to run.",
-	Args:              cobra.ExactArgs(1),
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validateOutputFlag(promoteFlagValues.output, deploy.OutputPlain, deploy.OutputJSON); err != nil {
 			return err

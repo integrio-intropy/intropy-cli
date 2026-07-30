@@ -24,7 +24,7 @@ var releaseViewCmd = &cobra.Command{
 	Long: "Read the release manifest for a version and print what it records: the source commit, the pinned image " +
 		"digests, what the notes were measured against, and the notes themselves.\n\n" +
 		"It changes no source repository, GitOps remote, or environment. Use it to sanity-check generated notes before deploying anything from the release.",
-	Args:              cobra.ExactArgs(2),
+	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validateOutputFlag(releaseViewOpts.output, release.OutputPlain, release.OutputJSON); err != nil {
 			return err

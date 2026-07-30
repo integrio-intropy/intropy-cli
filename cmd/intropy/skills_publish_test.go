@@ -67,9 +67,6 @@ func TestSkillsPublishVersionFlag(t *testing.T) {
 		}
 	})
 
-
-
-
 }
 
 func resetSkillsPublishState(t *testing.T, stdout, stderr *bytes.Buffer) {

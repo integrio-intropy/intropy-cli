@@ -113,8 +113,6 @@ func TestInstallerSyncPartialFailure(t *testing.T) {
 	}
 }
 
-
-
 func TestInstallerPullFails(t *testing.T) {
 	tmp := t.TempDir()
 	p := &Project{Root: tmp}
