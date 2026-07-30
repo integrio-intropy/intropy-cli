@@ -69,6 +69,39 @@ func TestHelpTextUsePattern(t *testing.T) {
 	}
 }
 
+func TestHelpTextCommandVerbsAreDocumented(t *testing.T) {
+	// The verb set documented in AGENTS.md under "Command verbs". A command
+	// introducing a verb outside this set fails here; the fix is either to
+	// use an existing verb or to document the new one in AGENTS.md first.
+	documentedVerbs := map[string]bool{
+		"list": true, "show": true, "status": true, "diff": true,
+		"create": true, "add": true, "update": true, "init": true,
+		"publish": true, "pin": true, "promote": true, "sync": true,
+	}
+	// Nouns, command groups, and standalone commands that are not verbs and
+	// so are not governed by the AGENTS.md verb table.
+	notVerbs := map[string]bool{
+		"intropy": true, "int": true, "template": true, "skills": true,
+		"collection": true, "deploy": true, "release": true, "sys": true,
+		"version": true, "dashboard": true,
+		// Hidden stub kept so old muscle memory gets a pointer, not an
+		// unknown-command error; see int_describe.go.
+		"describe": true,
+		// Cobra's built-ins and the shell names it registers under
+		// 'completion'; none are authored verbs.
+		"help": true, "completion": true,
+		"bash": true, "zsh": true, "fish": true, "powershell": true,
+	}
+	for _, cmd := range walkCommands(rootCmd, nil) {
+		name := cmd.Name()
+		if notVerbs[name] || documentedVerbs[name] {
+			continue
+		}
+		t.Errorf("%s: verb %q is not documented in AGENTS.md 'Command verbs' — use an existing verb or document the new one there",
+			cmd.CommandPath(), name)
+	}
+}
+
 func TestHelpTextSharedFlagsUseConstants(t *testing.T) {
 	// The descriptions shared flags must carry, from flagtext.go. A command
 	// that re-introduces a hand-written variant fails here.

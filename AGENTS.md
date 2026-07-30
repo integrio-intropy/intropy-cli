@@ -103,16 +103,55 @@ parsing. The two never share a stream.
 
 ### Command verbs
 
-One verb per meaning, used on every noun (`int`, `template`, `skills`, ...):
+One verb per meaning, used on every noun (`int`, `template`, `skills`, ...).
+The full set, grouped by what the verb does to the world:
+
+**Read-only** — exit 0 even when the answer is "they disagree", never write
+to git, never trigger a sync:
 
 - **`list`** enumerates a collection: integrations on disk, templates in the
-  library, installed skills. It never prints one item's details.
+  library, installed skills, published releases. It never prints one item's
+  details.
 - **`show`** prints the details of exactly one thing: a template's manifest,
   an integration's scaffold record. It never enumerates.
+- **`status`** reports one component across every environment, one row
+  each, and whether the rows agree. It never prints one environment's
+  details — that is `show`.
+- **`diff`** prints the rendered change a `sync` would apply, as the
+  resources themselves. Both sides are committed revisions; it never diffs
+  an uncommitted worktree.
+
+**Create or change local project state** — may write files under the
+project, never push:
+
+- **`create`** makes something new from a template or from scaffolded
+  parts: an integration, a system host, a release manifest to publish.
+- **`add`** attaches something that already exists elsewhere to this
+  project: a skill from a registry, a collection registration. Unlike
+  `create`, the content is pulled, not generated.
+- **`update`** reconciles something installed against the ref its source
+  now pins: a skill against its collection, the cached collection index
+  against the registry. It never changes which ref is pinned — that is
+  the publisher's job.
+- **`init`** scaffolds the GitOps tree a system needs, as a branch pushed
+  for review. One per system; it never touches the default branch.
+
+**Move or publish** — change what runs somewhere or what others can pull:
+
+- **`publish`** pushes an immutable artifact to an OCI registry: a skill,
+  a collection, a release manifest. What is published cannot be edited in
+  place; a new version is a new publish.
+- **`pin`** writes one component's image digest into one environment's
+  overlay.
+- **`promote`** copies the digests one environment runs into the next
+  environment in the promotion graph.
+- **`sync`** applies an environment's pending change through ArgoCD. It
+  never decides what the change is — that is `pin` and `promote`.
 
 Do not import kubectl's `get`/`describe` split — `int describe` was retired
 because it described templates, not integrations. New verbs need a reason
-that `list` and `show` cannot express.
+that the set above cannot express, and the reason goes in this file with
+the verb, not in a commit message.
 
 ---
 
