@@ -313,10 +313,17 @@ func buildPubSubs(t *topology.Topology, appIDs map[string]string) []InitPubSub {
 func buildConnectors(connectors []topology.Connector, appIDs map[string]string) []InitConnector {
 	out := make([]InitConnector, 0, len(connectors))
 	for _, c := range connectors {
+		// A declared deployed transport is what the rendered manifests must
+		// materialize; the local transport is the fallback for connectors whose
+		// local shape also applies to deployed environments.
+		transport := c.Transport.Type
+		if c.DeployedTransport != nil {
+			transport = c.DeployedTransport.Type
+		}
 		out = append(out, InitConnector{
 			Name:           c.Name,
 			ExternalSystem: c.ExternalSystem,
-			Transport:      c.Transport.Type,
+			Transport:      transport,
 			Directions:     slices.Sorted(slices.Values(c.Directions)),
 			AppIDs:         sortedAppIDs(appIDs, c.UsedBy),
 		})

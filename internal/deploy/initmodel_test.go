@@ -144,6 +144,48 @@ func TestInitModelConnectors(t *testing.T) {
 	}
 }
 
+// A connector with a declared deployed transport renders with the deployed
+// type; one without keeps its local type. This is the whole point of the
+// deployed-transport field: F5 runs on the local transport, manifests on the
+// deployed one.
+func TestInitModelConnectorsPreferDeployedTransport(t *testing.T) {
+	topo, err := topology.Decode(strings.NewReader(`{
+		"apiVersion": "topology.intropy.io/v1",
+		"kind": "SystemTopology",
+		"system": "distribution",
+		"components": [
+			{"name": "order-loader", "kind": "loader",
+			 "connectors": [{"connector": "erp", "direction": "out"}]},
+			{"name": "noop", "kind": "loader",
+			 "connectors": [{"connector": "archive", "direction": "out"}]}
+		],
+		"connectors": [
+			{"name": "erp",
+			 "transport": {"type": "file", "supportsInput": true, "supportsOutput": true},
+			 "deployedTransport": {"type": "sftp", "supportsInput": false, "supportsOutput": true},
+			 "directions": ["out"], "usedBy": ["order-loader"]},
+			{"name": "archive",
+			 "transport": {"type": "file", "supportsInput": true, "supportsOutput": true},
+			 "directions": ["out"], "usedBy": ["noop"]}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	m := newInitModel(topo, nil)
+
+	byName := make(map[string]InitConnector, len(m.Connectors))
+	for _, c := range m.Connectors {
+		byName[c.Name] = c
+	}
+	if got := byName["erp"].Transport; got != "sftp" {
+		t.Errorf("erp transport = %q, want deployed %q", got, "sftp")
+	}
+	if got := byName["archive"].Transport; got != "file" {
+		t.Errorf("archive transport = %q, want local fallback %q", got, "file")
+	}
+}
+
 // Without a scaffold record there is no appId to read, and the component's own
 // name is the only honest answer.
 func TestInitModelAppIDFallsBackToName(t *testing.T) {

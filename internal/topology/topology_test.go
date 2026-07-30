@@ -97,6 +97,54 @@ func TestDecodeValid(t *testing.T) {
 	}
 }
 
+// A connector that declares a deployed transport decodes it alongside its
+// local transport; the two are independent.
+func TestDecodeConnectorDeployedTransport(t *testing.T) {
+	got, err := Decode(strings.NewReader(`{
+		"apiVersion": "topology.intropy.io/v1",
+		"system": "x",
+		"connectors": [
+			{"name": "erp",
+			 "transport": {"type": "file", "supportsInput": true, "supportsOutput": true},
+			 "deployedTransport": {"type": "sftp", "supportsInput": false, "supportsOutput": true}}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	c := got.Connectors[0]
+	if c.Transport.Type != "file" {
+		t.Errorf("local transport = %q, want %q", c.Transport.Type, "file")
+	}
+	if c.DeployedTransport == nil {
+		t.Fatal("DeployedTransport = nil, want sftp")
+	}
+	if c.DeployedTransport.Type != "sftp" ||
+		c.DeployedTransport.SupportsInput ||
+		!c.DeployedTransport.SupportsOutput {
+		t.Errorf("DeployedTransport = %+v, want {sftp false true}", c.DeployedTransport)
+	}
+}
+
+// A connector without a deployedTransport (an older host, or a connector whose
+// local transport also applies to deployment) decodes with a nil DeployedTransport.
+func TestDecodeConnectorWithoutDeployedTransport(t *testing.T) {
+	got, err := Decode(strings.NewReader(`{
+		"apiVersion": "topology.intropy.io/v1",
+		"system": "x",
+		"connectors": [
+			{"name": "erp",
+			 "transport": {"type": "file", "supportsInput": true, "supportsOutput": true}}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if c := got.Connectors[0]; c.DeployedTransport != nil {
+		t.Errorf("DeployedTransport = %+v, want nil", c.DeployedTransport)
+	}
+}
+
 // A record without contracts[] (an older host) still decodes; the section is
 // simply absent.
 func TestDecodeWithoutContracts(t *testing.T) {
