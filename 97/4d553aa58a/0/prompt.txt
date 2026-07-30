@@ -1,0 +1,5 @@
+This is a plan task. No changes until planned is approved. I want to make the cli more lean so I want you to identify parameters and options that likely will not be used very often. We have no users on this so we can just remove stuff. I rather have a lean simple cli and add more options when a need is surfaced
+
+---
+
+Apply the proposed removals in a branch off feature/v-next
