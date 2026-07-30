@@ -1,0 +1,15 @@
+implement the plan on a new branch off v-next
+
+---
+
+yes
+
+---
+
+I the integration tests broke. Not sure if they are flaky or if we introduced a real issue? 
+--- PASS: TestDecodeOldSchemaIsRejected (0.00s)
+PASS
+ok      github.com/integrio-intropy/intropy-cli/internal/topology    1.014s
+?       github.com/integrio-intropy/intropy-cli/web    [no test files]
+FAIL
+Error: Process completed with exit code 1.
