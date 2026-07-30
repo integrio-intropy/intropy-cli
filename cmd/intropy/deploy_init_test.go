@@ -31,12 +31,12 @@ func TestDeployInitIsRegisteredUnderDeploy(t *testing.T) {
 	t.Fatal("init is not registered under deploy")
 }
 
-// The subcommand name has to win over the component argument, and the help text
-// has to say so — otherwise a component actually called init is silently
-// unreachable.
-func TestDeployHelpNamesInitAsReserved(t *testing.T) {
+// deploy is not runnable, so a component called init is reachable via
+// 'deploy pin init' like any other — there are no reserved names to warn
+// about, and the parent's help lists init as a subcommand.
+func TestDeployHelpNamesInitAsSubcommand(t *testing.T) {
 	if !strings.Contains(deployCmd.Long, "init") {
-		t.Error("deploy's long help must list init among the reserved subcommand names")
+		t.Error("deploy's long help must list init among its subcommands")
 	}
 }
 
@@ -77,8 +77,8 @@ func TestDeployInitHasNoArgocdOrDirtyFlags(t *testing.T) {
 
 func TestDeployInitDocumentedFlagsExist(t *testing.T) {
 	for _, name := range []string{
-		"domain", "system", "env", "topology", "source-dir",
-		"version", "values", "set", "no-input", "plan", "force",
+		"domain", "system", "environments", "topology", "source-dir",
+		"template-version", "version", "values", "set", "no-input", "plan", "force",
 		"gitops-repo", "output",
 	} {
 		if deployInitCmd.Flags().Lookup(name) == nil {
@@ -87,37 +87,74 @@ func TestDeployInitDocumentedFlagsExist(t *testing.T) {
 	}
 }
 
-// --version names the template release, matching int create and int describe.
-// The root command's own --version is the CLI's, and cobra keeps that local to
-// the root rather than persistent — so this name is free, but only as long as
-// nobody makes it persistent.
+// --template-version names the template release; --version is its deprecated
+// alias, kept because it predates the release command where --version means
+// the version being published. The alias usage string must match int create's
+// so the two commands read the same whichever spelling a user finds.
 func TestDeployInitVersionIsTheTemplateRelease(t *testing.T) {
-	f := deployInitCmd.Flags().Lookup("version")
+	f := deployInitCmd.Flags().Lookup("template-version")
 	if f == nil {
-		t.Fatal("init must define --version")
+		t.Fatal("init must define --template-version")
 	}
 	if !strings.Contains(f.Usage, "template") {
-		t.Errorf("--version usage = %q, want it to say it is the template release", f.Usage)
+		t.Errorf("--template-version usage = %q, want it to say it is the template release", f.Usage)
 	}
 
 	create, _, _ := rootCmd.Find([]string{"int", "create"})
 	if create == nil {
 		t.Fatal("could not find int create")
 	}
-	if got, want := f.Usage, create.Flags().Lookup("version").Usage; got != want {
-		t.Errorf("--version usage differs from int create:\n  init:   %q\n  create: %q", got, want)
+	if got, want := f.Usage, create.Flags().Lookup("template-version").Usage; got != want {
+		t.Errorf("--template-version usage differs from int create:\n  init:   %q\n  create: %q", got, want)
+	}
+
+	alias := deployInitCmd.Flags().Lookup("version")
+	if alias == nil {
+		t.Fatal("init must keep --version as a deprecated alias")
+	}
+	if alias.Hidden != true {
+		t.Error("deprecated --version alias must be hidden from help")
 	}
 }
 
-// Reaching --version on the subcommand must set the template release, not be
-// swallowed by the root command's version flag.
+// Reaching --template-version on the subcommand must set the template
+// release, not be swallowed by the root command's version flag.
 func TestDeployInitVersionFlagBinds(t *testing.T) {
 	resetInitState(t, &bytes.Buffer{}, &bytes.Buffer{})
-	if err := deployInitCmd.Flags().Set("version", "v1.2.3"); err != nil {
+	if err := deployInitCmd.Flags().Set("template-version", "v1.2.3"); err != nil {
 		t.Fatal(err)
 	}
 	if initFlagValues.templateVersion != "v1.2.3" {
 		t.Errorf("templateVersion = %q, want v1.2.3", initFlagValues.templateVersion)
+	}
+}
+
+// Everywhere else --env/-e names the single target environment a deploy acts
+// on; init selects which overlays to scaffold, so it takes --environments
+// (plural, repeatable) with no shorthand. A value with a comma must survive:
+// StringSlice would split it, StringArray does not.
+func TestDeployInitEnvironmentFlagShape(t *testing.T) {
+	if deployInitCmd.Flags().Lookup("env") != nil {
+		t.Error("init must not define --env: that name means a single target environment in the other deploy commands")
+	}
+	envs := deployInitCmd.Flags().Lookup("environments")
+	if envs == nil {
+		t.Fatal("init must define --environments")
+	}
+	if envs.Shorthand != "" {
+		t.Errorf("--environments shorthand = %q, want none (-e would collide with the single-env commands)", envs.Shorthand)
+	}
+
+	values := deployInitCmd.Flags().Lookup("values")
+	if values == nil {
+		t.Fatal("init must define --values")
+	}
+	if values.Value.Type() != "stringArray" {
+		t.Errorf("--values type = %q, want stringArray (no comma splitting, matching int create)", values.Value.Type())
+	}
+	envsType := deployInitCmd.Flags().Lookup("environments").Value.Type()
+	if envsType != "stringArray" {
+		t.Errorf("--environments type = %q, want stringArray (no comma splitting)", envsType)
 	}
 }
 

@@ -97,6 +97,18 @@ func TestReleaseListRejectsNegativeLimit(t *testing.T) {
 	}
 }
 
+// -n means --name in int/sys create. A shorthand that changes meaning between
+// commands is worse than no shorthand, so --limit stays long-only.
+func TestReleaseListLimitHasNoShorthand(t *testing.T) {
+	f := releaseListCmd.Flags().Lookup("limit")
+	if f == nil {
+		t.Fatal("release list must define --limit")
+	}
+	if f.Shorthand != "" {
+		t.Errorf("--limit shorthand = %q, want none (-n would collide with --name)", f.Shorthand)
+	}
+}
+
 func TestReleaseRejectsUnknownOutputFormat(t *testing.T) {
 	for _, args := range [][]string{
 		{"create", "order-extractor", "--version", "1.4.2", "--output", "yaml"},

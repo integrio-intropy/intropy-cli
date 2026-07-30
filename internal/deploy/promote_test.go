@@ -193,7 +193,7 @@ func TestPromoteRefusesAnUnpinnedSource(t *testing.T) {
 	if !strings.Contains(err.Error(), "staging pins nothing for") {
 		t.Errorf("error %q should say staging pins nothing", err)
 	}
-	if !strings.Contains(err.Error(), "intropy deploy order-extractor --env staging") {
+	if !strings.Contains(err.Error(), "intropy deploy pin order-extractor --env staging") {
 		t.Errorf("error %q should say how to fix it", err)
 	}
 	f.requireNothingWritten(t)

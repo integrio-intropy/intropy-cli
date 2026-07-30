@@ -136,7 +136,7 @@ func validateCreateOptions(opts CreateOptions) error {
 		return err
 	}
 	if opts.OutputDir == "" {
-		return errors.New("--output is required")
+		return errors.New("--out-dir is required")
 	}
 	return nil
 }

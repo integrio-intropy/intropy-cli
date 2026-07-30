@@ -90,10 +90,11 @@ func TestStatusSubcommandWinsOverTheComponentArgument(t *testing.T) {
 	}
 }
 
-// deploy's help names the subcommands a component cannot be called. Leaving
-// status out of that list would be a promise the command tree does not keep.
-func TestDeployHelpNamesStatusAsReserved(t *testing.T) {
+// deploy is not runnable, so a component called status deploys via
+// 'deploy pin status' like any other. The parent's help lists status as a
+// subcommand.
+func TestDeployHelpNamesStatusAsSubcommand(t *testing.T) {
 	if !strings.Contains(deployCmd.Long, "status") {
-		t.Error("deploy's Long should name status among the reserved subcommand names")
+		t.Error("deploy's Long should name status among its subcommands")
 	}
 }

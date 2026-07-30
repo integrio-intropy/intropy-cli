@@ -19,6 +19,7 @@ type initFlags struct {
 	topology        string
 	sourceDir       string
 	templateVersion string
+	version         string // deprecated alias for templateVersion
 	values          []string
 	sets            []string
 	noInput         bool
@@ -69,6 +70,9 @@ var deployInitCmd = &cobra.Command{
 	ValidArgsFunction: completeInitComponents,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validateOutputFlag(initFlagValues.output, deploy.OutputPlain, deploy.OutputJSON); err != nil {
+			return err
+		}
+		if err := resolveTemplateVersion(cmd, &initFlagValues.templateVersion, &initFlagValues.version); err != nil {
 			return err
 		}
 		sets, err := template.ParseSets(initFlagValues.sets)
@@ -146,15 +150,17 @@ func init() {
 	f := deployInitCmd.Flags()
 	f.StringVar(&initFlagValues.domain, "domain", "", "domain to place the system under (default: where it already is in the GitOps tree, else the workspace's domains/<domain>/ layout)")
 	f.StringVar(&initFlagValues.system, "system", "", "system to scaffold; selects the host when the workspace holds several (default: the only one)")
-	f.StringSliceVarP(&initFlagValues.envs, "env", "e", nil, "environments to create overlays for (default: every environment in deploy.yaml)")
+	// Plural, and no -e: everywhere else in the CLI --env/-e names the single
+	// target environment a deploy acts on, while this selects which overlays
+	// to scaffold. The different spelling makes the different cardinality
+	// visible at the command line.
+	f.StringArrayVar(&initFlagValues.envs, "environments", nil, "environments to create overlays for (repeatable; default: every environment in deploy.yaml)")
 	f.StringVar(&initFlagValues.topology, "topology", "", "read the topology record from a file instead of running the host's graph verb (- for stdin)")
 	f.StringVar(&initFlagValues.sourceDir, "source-dir", ".", "workspace to discover the system host and scaffold records in")
-	// Named --version to match int create and int describe. It is the template
-	// library's release tag, not the CLI's: the root command owns --version for
-	// that, and cobra keeps it local to the root rather than persistent, so the
-	// name is free here.
-	f.StringVar(&initFlagValues.templateVersion, "version", "", "template release tag (default: latest)")
-	f.StringSliceVarP(&initFlagValues.values, "values", "f", nil, "values file (repeatable; - reads one document from stdin)")
+	registerTemplateVersionFlag(deployInitCmd, &initFlagValues.templateVersion, &initFlagValues.version)
+	// StringArray, matching int create: StringSlice would split on commas, and
+	// a file path containing a comma must survive the round trip.
+	f.StringArrayVarP(&initFlagValues.values, "values", "f", nil, "values file (repeatable; - reads one document from stdin)")
 	f.StringArrayVarP(&initFlagValues.sets, "set", "s", nil, "set a template value as key=value (repeatable)")
 	f.BoolVar(&initFlagValues.noInput, "no-input", false, "never prompt; fail if a required value is missing")
 	f.BoolVar(&initFlagValues.plan, "plan", false, "report what would be written without writing it or touching git")
@@ -167,7 +173,7 @@ func init() {
 	// configure. No --allow-dirty either — no source working tree is read for
 	// correctness, only for the topology the host itself reports.
 	_ = deployInitCmd.RegisterFlagCompletionFunc("domain", completeDeployDomains)
-	_ = deployInitCmd.RegisterFlagCompletionFunc("env", completeDeployEnvironments)
+	_ = deployInitCmd.RegisterFlagCompletionFunc("environments", completeDeployEnvironments)
 	_ = deployInitCmd.RegisterFlagCompletionFunc("output", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 		return []string{deploy.OutputPlain, deploy.OutputJSON}, cobra.ShellCompDirectiveNoFileComp
 	})

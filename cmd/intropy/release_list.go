@@ -64,7 +64,9 @@ func init() {
 	f.StringVar(&releaseListOpts.system, "system", "", "disambiguate the component by system")
 	f.StringVar(&releaseListOpts.gitopsRepo, "gitops-repo", "", "GitOps repository URL (default: gitopsRepo from config, or INTROPY_GITOPS_REPO)")
 	f.StringVarP(&releaseListOpts.output, "output", "o", release.OutputPlain, "output format (plain, json)")
-	f.IntVarP(&releaseListOpts.limit, "limit", "n", defaultReleaseListLimit, "maximum releases to show, newest first (0 for all)")
+	// No -n shorthand: -n means --name in int/sys create, and a shorthand that
+	// changes meaning between commands is worse than no shorthand.
+	f.IntVar(&releaseListOpts.limit, "limit", defaultReleaseListLimit, "maximum releases to show, newest first (0 for all)")
 
 	_ = releaseListCmd.RegisterFlagCompletionFunc("output", completeReleaseOutput)
 

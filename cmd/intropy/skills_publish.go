@@ -13,11 +13,12 @@ import (
 )
 
 type skillsPublishFlags struct {
-	path  string
-	ref   string
-	tag   string
-	force bool
-	sign  bool
+	path    string
+	ref     string
+	version string
+	tag     string // deprecated alias for version
+	force   bool
+	sign    bool
 }
 
 var skillsPublishOpts skillsPublishFlags
@@ -26,14 +27,35 @@ var skillsPublishCmd = &cobra.Command{
 	Use:   "publish",
 	Short: "Publish a skill to an OCI registry",
 	Long: `Packages a skill directory as an OCI artifact and pushes it to a
-registry. --ref is the OCI repository path (without tag); --tag is the version
-to publish. The tag becomes the skill version in the OCI config.
+registry. --ref is the OCI repository path (without tag); --version is the
+version to publish. The version becomes the OCI tag and the skill version in
+the OCI config.
 
 Example:
-  intropy skills publish --path ./skills/pr-review --ref ghcr.io/example/skills/pr-review --tag 1.2.0`,
+  intropy skills publish --path ./skills/pr-review --ref ghcr.io/example/skills/pr-review --version 1.2.0`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ref := skillsPublishOpts.ref + ":" + skillsPublishOpts.tag
+		// --version is the cross-CLI spelling (release create, deploy's
+		// positional version); --tag predates that convention and stays as a
+		// deprecated alias. The tag is the skill version in the OCI config,
+		// so the two names never meant different things.
+		version := skillsPublishOpts.version
+		tagSet := cmd.Flags().Changed("tag")
+		versionSet := cmd.Flags().Changed("version")
+		switch {
+		case tagSet && versionSet && skillsPublishOpts.tag != version:
+			return newUsageErrorf("cannot combine --tag with --version (they are the same flag; --tag is deprecated)")
+		case tagSet:
+			fmt.Fprintln(cmd.ErrOrStderr(), "warning: --tag is deprecated; use --version (matching release create and the deploy version argument)")
+			if !versionSet {
+				version = skillsPublishOpts.tag
+			}
+		}
+		if version == "" {
+			return newUsageErrorf("required flag(s) \"version\" not set")
+		}
+
+		ref := skillsPublishOpts.ref + ":" + version
 		if _, err := oci.ParseReference(ref); err != nil {
 			return fmt.Errorf("publish: invalid ref %q: %w", ref, err)
 		}
@@ -92,8 +114,11 @@ func init() {
 		"Path to the skill directory (required)")
 	skillsPublishCmd.Flags().StringVar(&skillsPublishOpts.ref, "ref", "",
 		"OCI repository reference without tag (required)")
+	skillsPublishCmd.Flags().StringVar(&skillsPublishOpts.version, "version", "",
+		"Version to publish; becomes the OCI tag and the skill version (required)")
 	skillsPublishCmd.Flags().StringVar(&skillsPublishOpts.tag, "tag", "",
-		"Version tag to publish (required)")
+		"Version to publish (deprecated: use --version)")
+	_ = skillsPublishCmd.Flags().MarkHidden("tag")
 	skillsPublishCmd.Flags().BoolVar(&skillsPublishOpts.force, "force", false,
 		"Overwrite the tag if it already exists")
 	skillsPublishCmd.Flags().BoolVar(&skillsPublishOpts.sign, "sign", false,
@@ -101,7 +126,8 @@ func init() {
 
 	_ = skillsPublishCmd.MarkFlagRequired("path")
 	_ = skillsPublishCmd.MarkFlagRequired("ref")
-	_ = skillsPublishCmd.MarkFlagRequired("tag")
+	// One of --version or its deprecated alias --tag must be given; cobra's
+	// required-flag machinery can't express that, so RunE checks it.
 
 	skillsCmd.AddCommand(skillsPublishCmd)
 }

@@ -19,6 +19,7 @@ func TestExitCode(t *testing.T) {
 		{"runtime error", errors.New("something broke"), 1},
 		{"usage error", newUsageErrorf("bad flag"), 2},
 		{"cobra usage error", errors.New("unknown flag: --nope"), 2},
+		{"cobra shorthand error", errors.New("unknown shorthand flag: 'n' in -n"), 2},
 		{
 			// A missing dependency is "command not found", which scripts and CI
 			// can react to differently from a genuine failure.

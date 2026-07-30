@@ -143,7 +143,7 @@ intropy version
 intropy int describe hello-world
 
 # Render it into a new directory
-intropy int create hello-world -o ./my-integration
+intropy int create hello-world -o ./my-integration   # -o is --out-dir here
 ```
 
 ### Install a skill from a collection
@@ -169,7 +169,8 @@ intropy
 │   └── list [dir]             List scaffolded integrations under a directory
 ├── sys                    Manage integration systems
 │   └── create                 Assemble scaffolded integrations into a system host
-├── deploy <component>     Pin a component's image digest into an environment
+├── deploy                 Move components between environments via the GitOps repository
+│   ├── pin <component> [ver]  Pin a component's image digest into an environment
 │   ├── init [component...]    Scaffold a system's manifests into the GitOps repository
 │   ├── promote <component>    Copy the digests one environment runs into another
 │   ├── diff <component>       Show the rendered change a sync would apply
@@ -202,28 +203,34 @@ Inspect what parameters a template accepts before scaffolding it:
 
 ```sh
 intropy int describe hello-world
-intropy int describe hello-world --version v1.2.0
+intropy int describe hello-world --template-version v1.2.0
 intropy int describe hello-world -o json   # machine-readable; same schema Backstage renders
 ```
 
-Without `--version`, the latest GitHub release is used.
+Without `--template-version`, the latest GitHub release is used. (`--version` is a
+deprecated alias — it predates `release create`, where `--version` names the version
+being published.)
 
 ### Create an integration
 
 ```sh
-intropy int create hello-world --output ./my-integration
+intropy int create hello-world --out-dir ./my-integration
 ```
 
 Name the integration and scaffold it in one step. `-n/--name` sets the template's
-`name` parameter (so you're not prompted for it) and, unless `-o` is given, becomes
-the output directory — the same split as `dotnet new`, where `-o` is the literal
-output location and `-n` only names the artifacts:
+`name` parameter (so you're not prompted for it) and, unless `-o/--out-dir` is given,
+becomes the output directory — the same split as `dotnet new`, where `-o` is the literal
+output location and `-n` only names the artifacts.
+
+> **Note:** in `int create` and `sys create`, `--output json` selects the result document
+> on stdout like everywhere else in the CLI; any other `--output` value is a deprecated
+> alias for `--out-dir`. `-o` always means `--out-dir` here.
 
 ```sh
 # scaffolds into ./orders and sets name=orders
 intropy int create hello-world -n orders
 
-# -o overrides the output directory: scaffolds into ./order-extractor with name=OrderExtractor
+# -o/--out-dir overrides the output directory: scaffolds into ./order-extractor with name=OrderExtractor
 intropy int create hello-world -n OrderExtractor -o ./order-extractor
 ```
 
@@ -239,7 +246,10 @@ intropy int create hello-world -o ./out -f values.yaml
 # disable interactive prompts (fail fast on missing required values)
 intropy int create hello-world -o ./out --no-input -f values.yaml
 
-# write a machine-readable result document (consumed by chained scaffolders)
+# print the machine-readable result document to stdout (same as every other command)
+intropy int create hello-world -o ./out --output json
+
+# or write it to a file (consumed by chained scaffolders)
 intropy int create hello-world -o ./out --output-json result.json
 ```
 
@@ -292,7 +302,7 @@ record are reported as warnings on stderr without hiding the rest.
 Run from the workspace root that holds your scaffolded integrations:
 
 ```sh
-intropy sys create -n OrderFlow -o system-host
+intropy sys create -n OrderFlow -o system-host   # -o is --out-dir here
 ```
 
 The command reads before it writes: it scans the workspace for the
@@ -325,11 +335,14 @@ else comes from the scaffold records.
 intropy sys create -n OrderFlow
 
 # pin the system-host template release
-intropy sys create -n OrderFlow -o system-host --version v1.5.0
+intropy sys create -n OrderFlow -o system-host --template-version v1.5.0
 
 # machine-readable result document with the assembled model
-intropy sys create -n OrderFlow -o system-host --output-json -
+intropy sys create -n OrderFlow -o system-host --output json
 ```
+
+> **Note:** as with `int create`, `--output json` prints the result document to stdout;
+> any other `--output` value is a deprecated alias for `--out-dir`.
 
 Records without a `blockKind` (scaffolded by an older CLI) or with a block
 kind other than extractor/loader are skipped with a warning; records
@@ -446,19 +459,19 @@ dotnet run --project ./OrderSync.SystemHost -- graph > topology.json
 intropy deploy init --topology topology.json
 ```
 
-The manifests come from the template library's latest release. `--version` pins
-a tag instead — the same flag `intropy int create` uses, and the one that makes
+The manifests come from the template library's latest release. `--template-version`
+pins a tag instead — the same flag `intropy int create` uses, and the one that makes
 a re-run reproducible while the templates are still moving:
 
 ```sh
-intropy deploy init --version v0.4.0
+intropy deploy init --template-version v0.4.0
 ```
 
 The resolved tag is echoed as it fetches and recorded as `template` in
 `--output json`, so a reviewer of the pushed branch can tell which release
 produced the tree.
 
-## Deployment (`intropy deploy`)
+## Deployment (`intropy deploy pin`)
 
 Pin the image digest that CI built for your current commit into one
 environment's kustomize overlay in the GitOps repository.
@@ -466,14 +479,14 @@ environment's kustomize overlay in the GitOps repository.
 Run it inside the component's source repository:
 
 ```sh
-intropy deploy order-extractor --env dev --plan
+intropy deploy pin order-extractor --env dev --plan
 ```
 
 `--plan` renders the overlay before and after the change and prints a diff
 without writing anything. Drop it to commit and push:
 
 ```sh
-intropy deploy order-extractor --env dev
+intropy deploy pin order-extractor --env dev
 ```
 
 That stages only the overlay's `kustomization.yaml`, commits it with trailers
@@ -483,7 +496,7 @@ branch.
 To ship a published release rather than the current commit, pass its version:
 
 ```sh
-intropy deploy order-extractor 1.4.2 --env staging
+intropy deploy pin order-extractor 1.4.2 --env staging
 ```
 
 The release manifest already records the digests, so nothing reads the source
@@ -499,7 +512,7 @@ believes succeeded. Re-run to deploy on top of theirs.
 
 ### What happens
 
-For `intropy deploy order-extractor --env dev`, the CLI:
+For `intropy deploy pin order-extractor --env dev`, the CLI:
 
 1. Verifies that `git` and `kustomize` are available and resolves the GitOps
    repository from the flag, environment, or user configuration.
@@ -856,7 +869,7 @@ Progress goes to stderr and the diff to stdout, so `--plan` is pipeable. Use
 `-o json` for a machine-readable result instead of the diff:
 
 ```sh
-intropy deploy order-extractor --env dev --plan -o json | jq .appName
+intropy deploy pin order-extractor --env dev --plan -o json | jq .appName
 ```
 
 `deploy diff` is the one command whose diff travels *inside* its JSON, as
@@ -1069,7 +1082,7 @@ itself. It verifies that the requested OCI tag and the manifest's declared
 version agree.
 
 Ship the inspected release with
-`intropy deploy <component> <version> --env <env>`.
+`intropy deploy pin <component> <version> --env <env>`.
 
 ## Skills (`intropy skills`)
 
@@ -1131,11 +1144,12 @@ Package a skill directory as an OCI artifact and push it:
 intropy skills publish \
   --path ./skills/intropy-pipeline \
   --ref harbor.intropy.io/skills/intropy-pipeline \
-  --tag 0.1.0
+  --version 0.1.0
 ```
 
 Use `--force` to overwrite an existing tag, and `--sign` to sign the artifact
-with `cosign` after publishing (requires `cosign` on `PATH`).
+with `cosign` after publishing (requires `cosign` on `PATH`). `--tag` is a
+deprecated alias for `--version`.
 
 ## Collections
 

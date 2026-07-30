@@ -11,8 +11,9 @@ import (
 )
 
 type describeFlags struct {
-	version string
-	output  string
+	templateVersion string
+	version         string // deprecated alias for templateVersion
+	output          string
 }
 
 var intDescribeFlags describeFlags
@@ -28,11 +29,14 @@ var intDescribeCmd = &cobra.Command{
 		if err := validateOutputFlag(intDescribeFlags.output, "json", "plain"); err != nil {
 			return err
 		}
+		if err := resolveTemplateVersion(cmd, &intDescribeFlags.templateVersion, &intDescribeFlags.version); err != nil {
+			return err
+		}
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 		result, err := template.Describe(ctx, template.DescribeOptions{
 			Template:  args[0],
-			Version:   intDescribeFlags.version,
+			Version:   intDescribeFlags.templateVersion,
 			UserAgent: "intropy-cli/" + version,
 		})
 		if err != nil {
@@ -50,7 +54,7 @@ var intDescribeCmd = &cobra.Command{
 
 func init() {
 	f := intDescribeCmd.Flags()
-	f.StringVar(&intDescribeFlags.version, "version", "", "template release tag (default: latest)")
+	registerTemplateVersionFlag(intDescribeCmd, &intDescribeFlags.templateVersion, &intDescribeFlags.version)
 	f.StringVarP(&intDescribeFlags.output, "output", "o", "plain", "output format: plain or json")
 	intCmd.AddCommand(intDescribeCmd)
 }
