@@ -25,6 +25,8 @@ type Extractor interface {
 
 type tarGzExtractor struct{}
 
+// NewTarGzExtractor returns the only Extractor implementation: tar+gzip,
+// the content layer format the skills OCI spec mandates.
 func NewTarGzExtractor() Extractor { return tarGzExtractor{} }
 
 func (tarGzExtractor) Extract(ctx context.Context, layer io.Reader, dests []string) error {

@@ -165,7 +165,7 @@ func TestReportPlaceholdersSaysImagesAreNotIncluded(t *testing.T) {
 	})
 
 	got := stdout.String()
-	for _, want := range []string{"1 placeholder", "1 file", "secrets.yaml:4", "intropy deploy pins digests"} {
+	for _, want := range []string{"1 placeholder", "1 file", "secrets.yaml:4", "pins digests"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("output missing %q:\n%s", want, got)
 		}

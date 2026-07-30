@@ -10,6 +10,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// dashboard serves the local integration dashboard. The HTTP server and
+// JSON API live in internal/dashboard; this file is flag plumbing.
 type dashboardFlags struct {
 	port      int
 	noBrowser bool

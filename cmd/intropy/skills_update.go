@@ -11,6 +11,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// skills update reconciles installed skills against the refs pinned by the
+// registered collections' cached indexes. The reconciliation logic is in
+// internal/skill.Updater; this file is flag plumbing and output formatting.
 type skillsUpdateFlags struct {
 	all    bool
 	output string
@@ -65,7 +68,7 @@ Pass --all to reconcile every installed skill at once.`,
 				return fmt.Errorf("update: %w", err)
 			}
 			if len(manifest.Skills) == 0 {
-				fmt.Fprintln(cmd.ErrOrStderr(), "No skills installed.")
+				fmt.Fprintln(cmd.ErrOrStderr(), "no skills installed")
 				return nil
 			}
 			for _, e := range manifest.Skills {
@@ -84,7 +87,7 @@ Pass --all to reconcile every installed skill at once.`,
 			results = append(results, result)
 			if skillsUpdateOpts.output == "plain" {
 				if result.Changed {
-					fmt.Fprintf(cmd.ErrOrStderr(), "Updated %s: %s -> %s\n", name, result.OldVersion, result.NewVersion)
+					fmt.Fprintf(cmd.ErrOrStderr(), "updated %s: %s -> %s\n", name, result.OldVersion, result.NewVersion)
 				} else {
 					fmt.Fprintf(cmd.ErrOrStderr(), "%s already at %s\n", name, result.OldVersion)
 				}
@@ -104,7 +107,7 @@ Pass --all to reconcile every installed skill at once.`,
 			}
 		}
 		if changed == 0 {
-			fmt.Fprintln(cmd.ErrOrStderr(), "Nothing to update.")
+			fmt.Fprintln(cmd.ErrOrStderr(), "nothing to update")
 		}
 
 		return nil
@@ -116,6 +119,6 @@ func init() {
 		&skillsUpdateOpts.all, "all", false,
 		"Update every installed skill",
 	)
-	skillsUpdateCmd.Flags().StringVarP(&skillsUpdateOpts.output, "output", "o", "plain", "output format: plain or json")
+	skillsUpdateCmd.Flags().StringVarP(&skillsUpdateOpts.output, "output", "o", "plain", flagUsageOutput)
 	skillsCmd.AddCommand(skillsUpdateCmd)
 }

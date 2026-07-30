@@ -101,7 +101,7 @@ func reportPlaceholders(out output, found []Placeholder) {
 		fmt.Fprintf(tw, "  %s:%d\t%s\n", p.File, p.Line, p.Token)
 	}
 	_ = tw.Flush()
-	fmt.Fprintf(out.Stdout, "\nImage tags are not in this list: intropy deploy pins digests, so leave them alone.\n")
+	fmt.Fprintf(out.Stdout, "\nimage tags are not placeholders: 'intropy deploy' pins digests, so leave them alone\n")
 }
 
 func summarisePlaceholders(found []Placeholder) string {

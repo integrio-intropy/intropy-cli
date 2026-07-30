@@ -115,7 +115,7 @@ func TestStatusReportsDivergingDigests(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	out, _ := f.status(t, f.statusOptions(&stdout, &stderr))
 
-	if !strings.Contains(out, "do not all run the same bits") {
+	if !strings.Contains(out, "environments disagree") {
 		t.Errorf("output should report the divergence:\n%s", out)
 	}
 	// Named in promotion order, and grouped: the two that agree together.
@@ -215,7 +215,7 @@ func TestStatusDistinguishesATagPinFromNoPinAtAll(t *testing.T) {
 		t.Errorf("prod's note should say it has never been deployed to:\n%s", out)
 	}
 	// Nothing is comparable, so the summary must not claim a disagreement.
-	if strings.Contains(out, "do not all run the same bits") {
+	if strings.Contains(out, "environments disagree") {
 		t.Errorf("with nothing comparable there is no disagreement to report:\n%s", out)
 	}
 	if !strings.Contains(out, "nothing to compare") {

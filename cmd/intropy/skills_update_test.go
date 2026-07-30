@@ -51,8 +51,8 @@ func TestSkillsUpdateNoSkills(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
-	if !bytes.Contains(stderr.Bytes(), []byte("No skills installed.")) {
-		t.Errorf("expected 'No skills installed.' on stderr, got %q", stderr.String())
+	if !bytes.Contains(stderr.Bytes(), []byte("no skills installed")) {
+		t.Errorf("expected 'no skills installed' on stderr, got %q", stderr.String())
 	}
 }
 

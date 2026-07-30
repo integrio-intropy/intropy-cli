@@ -150,7 +150,7 @@ func assertForceIsSafe(destRoot string, actions []FileAction) error {
 	if len(pinned) == 0 {
 		return nil
 	}
-	return fmt.Errorf("--force would overwrite %d overlay%s that pin a digest, un-deploying what they run:\n%s\n\nRemove those paths from the scaffold, or delete the overlay deliberately first.",
+	return fmt.Errorf("--force would overwrite %d overlay%s that pin a digest:\n%s\n\nremove those paths from the scaffold, or delete the overlay first",
 		len(pinned), plural(len(pinned)), strings.Join(pinned, "\n"))
 }
 

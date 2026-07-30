@@ -46,7 +46,6 @@ func Sync(ctx context.Context, opts SyncOptions) error {
 		return err
 	}
 
-	overlayRel := coord.OverlayRelPath(opts.Environment)
 	revision, err := pendingRevision(ctx, repo, coord, opts.Environment)
 	if err != nil {
 		return err
@@ -55,8 +54,8 @@ func Sync(ctx context.Context, opts SyncOptions) error {
 	// The reviewed-revision guard. If the branch has moved on since the diff was
 	// read, the approval was given for something else.
 	if opts.Revision != "" && !sameRevision(opts.Revision, revision) {
-		return fmt.Errorf("%s's pending change is %s, not %s.\n%s has advanced since you reviewed it — read the new diff before syncing",
-			opts.Environment, git.ShortSHA(revision), git.ShortSHA(opts.Revision), overlayRel)
+		return fmt.Errorf("pending change for %s is %s, not the %s you reviewed\nrun 'intropy deploy diff %s --env %s' before syncing",
+			opts.Environment, git.ShortSHA(revision), git.ShortSHA(opts.Revision), coord.Component, opts.Environment)
 	}
 
 	appName := coord.AppName(opts.Environment)

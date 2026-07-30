@@ -9,6 +9,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// release view prints a published release manifest. Fetching and rendering
+// live in internal/release.View; this file is flag plumbing.
 type releaseViewFlags struct {
 	domain     string
 	system     string
@@ -49,10 +51,10 @@ var releaseViewCmd = &cobra.Command{
 
 func init() {
 	f := releaseViewCmd.Flags()
-	f.StringVar(&releaseViewOpts.domain, "domain", "", "disambiguate the component by domain")
-	f.StringVar(&releaseViewOpts.system, "system", "", "disambiguate the component by system")
-	f.StringVar(&releaseViewOpts.gitopsRepo, "gitops-repo", "", "GitOps repository URL (default: gitopsRepo from config, or INTROPY_GITOPS_REPO)")
-	f.StringVarP(&releaseViewOpts.output, "output", "o", release.OutputPlain, "output format (plain, json)")
+	f.StringVar(&releaseViewOpts.domain, "domain", "", flagUsageDomain)
+	f.StringVar(&releaseViewOpts.system, "system", "", flagUsageSystem)
+	f.StringVar(&releaseViewOpts.gitopsRepo, "gitops-repo", "", flagUsageGitopsRepo)
+	f.StringVarP(&releaseViewOpts.output, "output", "o", release.OutputPlain, flagUsageOutput)
 
 	releaseCmd.AddCommand(releaseViewCmd)
 }

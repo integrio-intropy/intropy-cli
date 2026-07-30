@@ -1,5 +1,8 @@
 package registry
 
+// Descriptor is what the registry knows about a pushed or resolved object:
+// its identity (digest, size), its shape (media and artifact types), and
+// any annotations the publisher attached.
 type Descriptor struct {
 	MediaType    string
 	ArtifactType string
@@ -16,6 +19,9 @@ type Blob struct {
 	Data      []byte
 }
 
+// Artifact is a manifest under construction or just pulled: a config blob
+// and ordered content layers, plus the annotations that ride on the
+// manifest itself.
 type Artifact struct {
 	ArtifactType string
 	Config       Blob
@@ -23,6 +29,8 @@ type Artifact struct {
 	Annotations  map[string]string
 }
 
+// Index is an OCI Image Index under construction: a list of manifests
+// (already pushed elsewhere) bound together under one ref.
 type Index struct {
 	ArtifactType string
 	Annotations  map[string]string
@@ -31,7 +39,8 @@ type Index struct {
 
 // IndexManifest is one entry of an Index. When SourceRef is set, PushIndex
 // copies the referenced manifest from that repository into the index's
-// target repository before pushing the index.
+// target repository before pushing the index — an index is only as durable
+// as the repository it lives in, so its members must live there too.
 type IndexManifest struct {
 	Descriptor Descriptor
 	SourceRef  string

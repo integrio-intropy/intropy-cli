@@ -89,7 +89,7 @@ is created in the current directory.`,
 			enc.SetIndent("", "  ")
 			return enc.Encode(entry)
 		}
-		fmt.Fprintf(cmd.ErrOrStderr(), "Added %s @ %s\n", entry.Name, entry.Source.Tag)
+		fmt.Fprintf(cmd.ErrOrStderr(), "added %s @ %s\n", entry.Name, entry.Source.Tag)
 		fmt.Fprintf(cmd.ErrOrStderr(), "  digest: %s\n", entry.Source.Digest)
 		fmt.Fprintf(cmd.ErrOrStderr(), "  path:   %s\n", entry.Path)
 		return nil
@@ -131,6 +131,6 @@ func init() {
 		"collection", "",
 		"Restrict --name lookup to a single registered collection",
 	)
-	skillsAddCmd.Flags().StringVarP(&skillsAddOpts.output, "output", "o", "plain", "output format: plain or json")
+	skillsAddCmd.Flags().StringVarP(&skillsAddOpts.output, "output", "o", "plain", flagUsageOutput)
 	skillsCmd.AddCommand(skillsAddCmd)
 }

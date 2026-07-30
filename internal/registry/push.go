@@ -13,6 +13,12 @@ import (
 
 // PushArtifact uploads an Artifact to the registry at ref. The ref must
 // include a tag.
+//
+// The flow is: stage every blob in an in-memory store, pack the manifest
+// against those staged descriptors, tag it, then copy store→registry in
+// one pass. Staging first means a malformed artifact fails before anything
+// leaves the process, and the copy sees a complete, self-consistent
+// manifest rather than a stream of partial state.
 func (c *Client) PushArtifact(ctx context.Context, ref string, art Artifact) (Descriptor, error) {
 	parsed, err := ParseReference(ref)
 	if err != nil {

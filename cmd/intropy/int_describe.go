@@ -10,6 +10,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// int describe prints a template's manifest. Fetching and parsing the
+// manifest live in internal/template; this file is flag plumbing and output
+// formatting.
 type describeFlags struct {
 	templateVersion string
 	output          string
@@ -49,7 +52,7 @@ var intDescribeCmd = &cobra.Command{
 
 func init() {
 	f := intDescribeCmd.Flags()
-	f.StringVar(&intDescribeFlags.templateVersion, "template-version", "", "template release tag (default: latest)")
-	f.StringVarP(&intDescribeFlags.output, "output", "o", "plain", "output format: plain or json")
+	f.StringVar(&intDescribeFlags.templateVersion, "template-version", "", flagUsageTemplateVer)
+	f.StringVarP(&intDescribeFlags.output, "output", "o", "plain", flagUsageOutput)
 	intCmd.AddCommand(intDescribeCmd)
 }

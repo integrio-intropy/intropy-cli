@@ -7,16 +7,21 @@ import (
 	"github.com/integrio-intropy/intropy-cli/internal/skill/oci"
 )
 
+// Adder resolves a skill ref, installs it, and records it in both the
+// manifest and the lockfile. It is the engine behind 'intropy skills add'.
 type Adder struct {
 	registry  Registry
 	installer *Installer
 	project   *Project
 }
 
+// NewAdder wires an Adder from its three collaborators.
 func NewAdder(r Registry, i *Installer, p *Project) *Adder {
 	return &Adder{registry: r, installer: i, project: p}
 }
 
+// AddOptions carries the knobs for Add. Empty today; reserved so a future
+// option does not change the signature.
 type AddOptions struct{}
 
 // Add adds a skill to the project, installs it, and persists both files.
@@ -36,7 +41,9 @@ func (a *Adder) Add(ctx context.Context, ref string, opts AddOptions) (LockEntry
 	}
 
 	skillName := artifact.Config.Name
-	artifact.Content.Close() // we'll re-pull during installer.Install
+	// Closed again immediately: the install below re-pulls rather than
+	// reusing this reader, and a leaked body holds a connection open.
+	artifact.Content.Close()
 
 	// Check the manifest for duplicates.
 	manifest, err := a.project.LoadManifest()

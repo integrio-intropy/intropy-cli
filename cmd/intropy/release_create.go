@@ -9,6 +9,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// release create publishes an immutable release manifest for HEAD. Digest
+// resolution, notes generation, the manifest push, and the git tag all live
+// in internal/release.Create; this file is flag plumbing.
 type releaseCreateFlags struct {
 	version    string
 	domain     string
@@ -65,12 +68,12 @@ var releaseCreateCmd = &cobra.Command{
 func init() {
 	f := releaseCreateCmd.Flags()
 	f.StringVar(&releaseCreateOpts.version, "version", "", "version to publish (required)")
-	f.StringVar(&releaseCreateOpts.domain, "domain", "", "disambiguate the component by domain")
-	f.StringVar(&releaseCreateOpts.system, "system", "", "disambiguate the component by system")
-	f.StringVar(&releaseCreateOpts.gitopsRepo, "gitops-repo", "", "GitOps repository URL (default: gitopsRepo from config, or INTROPY_GITOPS_REPO)")
+	f.StringVar(&releaseCreateOpts.domain, "domain", "", flagUsageDomain)
+	f.StringVar(&releaseCreateOpts.system, "system", "", flagUsageSystem)
+	f.StringVar(&releaseCreateOpts.gitopsRepo, "gitops-repo", "", flagUsageGitopsRepo)
 	f.BoolVar(&releaseCreateOpts.allowDirty, "allow-dirty", false, "release despite uncommitted changes under the component's source paths")
 	f.BoolVarP(&releaseCreateOpts.watch, "watch", "w", false, "wait for the commit's images to appear in the registry instead of failing immediately")
-	f.StringVarP(&releaseCreateOpts.output, "output", "o", release.OutputPlain, "output format (plain, json)")
+	f.StringVarP(&releaseCreateOpts.output, "output", "o", release.OutputPlain, flagUsageOutput)
 
 	_ = releaseCreateCmd.MarkFlagRequired("version")
 

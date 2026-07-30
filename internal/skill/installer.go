@@ -8,12 +8,16 @@ import (
 	"github.com/integrio-intropy/intropy-cli/internal/skill/oci"
 )
 
+// Installer pulls skill artifacts and extracts them into a project's
+// .agents/skills directory. It records what it did as lockfile entries;
+// persisting the lockfile is the caller's job.
 type Installer struct {
 	registry  Registry
 	extractor Extractor
 	project   *Project
 }
 
+// NewInstaller wires an Installer from its three collaborators.
 func NewInstaller(r Registry, e Extractor, p *Project) *Installer {
 	return &Installer{registry: r, extractor: e, project: p}
 }
