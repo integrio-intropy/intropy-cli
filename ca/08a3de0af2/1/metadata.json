@@ -1,0 +1,53 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "ca08a3de0af2",
+  "session_id": "019fb285-fd4c-7ace-9d1d-4c9c285a8d1f",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-30T10:57:14.44637Z",
+  "branch": "docs/writing-quality",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "CONTRIBUTING.md"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "e2ddadff5953",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 88750,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 13510592,
+    "output_tokens": 48085,
+    "api_call_count": 137
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-30T10:57:14.405196Z",
+    "agent_lines": 118,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 118,
+    "total_lines_changed": 118,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 52,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 51
+      }
+    }
+  ]
+}
