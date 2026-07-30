@@ -164,7 +164,7 @@ func TestSyncRefusesAStaleReviewedRevision(t *testing.T) {
 	if err == nil {
 		t.Fatal("a sync of a revision other than the pending one must be refused")
 	}
-	for _, want := range []string{"pending change is", "has advanced since you reviewed it"} {
+	for _, want := range []string{"pending change for", "you reviewed", "deploy diff"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q should contain %q", err, want)
 		}
