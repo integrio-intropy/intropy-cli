@@ -1109,11 +1109,12 @@ Package a skill directory as an OCI artifact and push it:
 intropy skills publish \
   --path ./skills/intropy-pipeline \
   --ref harbor.intropy.io/skills/intropy-pipeline \
-  --tag 0.1.0
+  --version 0.1.0
 ```
 
 Use `--force` to overwrite an existing tag, and `--sign` to sign the artifact
-with `cosign` after publishing (requires `cosign` on `PATH`).
+with `cosign` after publishing (requires `cosign` on `PATH`). `--tag` is a
+deprecated alias for `--version`.
 
 ## Collections
 

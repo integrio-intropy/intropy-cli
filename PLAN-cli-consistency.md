@@ -82,7 +82,7 @@ The comment in `deploy_init.go` shows the authors know about this ("Named --vers
 
 ---
 
-### 4. Version as positional vs flag (MEDIUM)
+### 4. Version as positional vs flag (MEDIUM) ✅ DONE (`skills publish --tag` → `--version`; positional/flag alignment of release create/view left as-is by design)
 
 | Command | Version passed as |
 |---|---|
