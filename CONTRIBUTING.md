@@ -159,8 +159,15 @@ docs(readme): update install instructions for macOS
 - [ ] Commit messages follow the convention above
 - [ ] Only relevant files are committed (no `git add .`)
 - [ ] No debug code, `fmt.Printf` artifacts, or temporary files
+- [ ] Help text, output text, and code comments follow `AGENTS.md`
 
 ## Code Standards
+
+### Writing style
+
+`AGENTS.md` defines the house style for code comments, `--help` output, flag
+descriptions, and runtime output text. Read it before adding or changing any
+user-facing string. `CLAUDE.md` points at the same file.
 
 ### Go style
 
