@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "e8f9ac80b104",
+  "session_id": "019fb2bb-1a3d-727e-b693-d73de8cccb04",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-30T11:33:41.381955Z",
+  "branch": "feat/template-command",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "8b6de7580631",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 71067,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 3084608,
+    "output_tokens": 20320,
+    "api_call_count": 60
+  },
+  "session_metrics": {
+    "turn_count": 1
+  }
+}
