@@ -3,3 +3,9 @@ Start with analysis, do not make any changes. Challenge me if you think I am bei
 int describe currently describes the template which does not fit in under the int command. int describe should describe an integration. We do need to be able to retrieve information about templates so I was wondering if we should create a separate command at the root level, template. If we look at kubectl you use get to get the details of a resource so perhaps it should be template get hello-world? I also wonder if it should support --output yaml
 
 We also need to be able to list templates, but I am not sure about the implementation here if we should have some sort of index file in the root of the repo so that the cli does not need to traverse the repo?
+
+---
+
+1. We can go for show as long as we are consistent along all commands. Perhaps that should be in AGENTS.md?
+2. Hard cut and perhaps use show for consistency?
+3. Keep names-only
