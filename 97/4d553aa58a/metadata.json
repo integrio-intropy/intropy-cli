@@ -3,7 +3,7 @@
   "checkpoint_id": "974d553aa58a",
   "strategy": "manual-commit",
   "branch": "feature/lean-cli",
-  "checkpoints_count": 2,
+  "checkpoints_count": 3,
   "files_touched": [
     "README.md",
     "cmd/intropy/completions.go",
@@ -62,13 +62,20 @@
       "compact_transcript": "/97/4d553aa58a/0/transcript.jsonl",
       "content_hash": "/97/4d553aa58a/0/content_hash.txt",
       "prompt": "/97/4d553aa58a/0/prompt.txt"
+    },
+    {
+      "metadata": "/97/4d553aa58a/1/metadata.json",
+      "transcript": "/97/4d553aa58a/1/full.jsonl",
+      "compact_transcript": "/97/4d553aa58a/1/transcript.jsonl",
+      "content_hash": "/97/4d553aa58a/1/content_hash.txt",
+      "prompt": "/97/4d553aa58a/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 147687,
+    "input_tokens": 431240,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 28065472,
-    "output_tokens": 59746,
-    "api_call_count": 233
+    "cache_read_tokens": 53504960,
+    "output_tokens": 117911,
+    "api_call_count": 454
   }
 }
