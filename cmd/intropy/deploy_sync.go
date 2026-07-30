@@ -39,7 +39,6 @@ var deploySyncCmd = &cobra.Command{
 		"the sync is refused rather than spending your approval on something you did not read.\n\n" +
 		"Nothing is written to git, and kubectl is never invoked.",
 	Args:              cobra.ExactArgs(1),
-	ValidArgsFunction: completeDeployComponents,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validateOutputFlag(syncFlagValues.output, deploy.OutputPlain, deploy.OutputJSON); err != nil {
 			return err
@@ -82,10 +81,6 @@ func init() {
 	f.StringVarP(&syncFlagValues.output, "output", "o", deploy.OutputPlain, "output format (plain, json)")
 
 	_ = deploySyncCmd.MarkFlagRequired("env")
-	_ = deploySyncCmd.RegisterFlagCompletionFunc("env", completeDeployEnvironments)
-	_ = deploySyncCmd.RegisterFlagCompletionFunc("output", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
-		return []string{deploy.OutputPlain, deploy.OutputJSON}, cobra.ShellCompDirectiveNoFileComp
-	})
 
 	deployCmd.AddCommand(deploySyncCmd)
 }

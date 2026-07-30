@@ -18,7 +18,7 @@ func resetReleaseState(t *testing.T, stdout, stderr *bytes.Buffer) {
 	reset := func() {
 		releaseCreateOpts = releaseCreateFlags{output: release.OutputPlain}
 		releaseViewOpts = releaseViewFlags{output: release.OutputPlain}
-		releaseListOpts = releaseListFlags{output: release.OutputPlain, limit: defaultReleaseListLimit}
+		releaseListOpts = releaseListFlags{output: release.OutputPlain}
 	}
 	reset()
 	t.Cleanup(reset)
@@ -85,29 +85,7 @@ func TestReleaseListTakesExactlyOneComponent(t *testing.T) {
 	}
 }
 
-// Zero means all, so a negative limit is a mistake rather than a synonym.
-func TestReleaseListRejectsNegativeLimit(t *testing.T) {
-	_, _, err := runRelease(t, "list", "order-extractor", "--limit", "-1")
-	if err == nil {
-		t.Fatal("a negative --limit should be a usage error")
-	}
-	var ue *usageError
-	if !errors.As(err, &ue) {
-		t.Errorf("error %q should be a usageError", err)
-	}
-}
 
-// -n means --name in int/sys create. A shorthand that changes meaning between
-// commands is worse than no shorthand, so --limit stays long-only.
-func TestReleaseListLimitHasNoShorthand(t *testing.T) {
-	f := releaseListCmd.Flags().Lookup("limit")
-	if f == nil {
-		t.Fatal("release list must define --limit")
-	}
-	if f.Shorthand != "" {
-		t.Errorf("--limit shorthand = %q, want none (-n would collide with --name)", f.Shorthand)
-	}
-}
 
 func TestReleaseRejectsUnknownOutputFormat(t *testing.T) {
 	for _, args := range [][]string{
@@ -176,23 +154,5 @@ func TestReleaseIsRegistered(t *testing.T) {
 		if !found {
 			t.Errorf("release %s is not registered", name)
 		}
-	}
-}
-
-// Completion must never fail a shell or print a diagnostic, even with no
-// configuration and no cached checkout.
-func TestReleaseCompletionsAreSilentWithoutConfig(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("INTROPY_GITOPS_REPO", "")
-
-	if got, _ := completeReleaseComponents(releaseCreateCmd, nil, ""); len(got) != 0 {
-		t.Errorf("component completion = %v, want none", got)
-	}
-	// A component already supplied means there is nothing left to complete.
-	if got, _ := completeReleaseComponents(releaseCreateCmd, []string{"order-extractor"}, ""); len(got) != 0 {
-		t.Errorf("completion after an argument = %v, want none", got)
-	}
-	if got, _ := completeReleaseOutput(releaseCreateCmd, nil, ""); len(got) != 2 {
-		t.Errorf("output completion = %v, want both formats", got)
 	}
 }

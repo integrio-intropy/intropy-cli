@@ -14,10 +14,9 @@ import (
 )
 
 type skillsAddFlags struct {
-	additionalBasePaths []string
-	name                string
-	collection          string
-	output              string
+	name       string
+	collection string
+	output     string
 }
 
 var skillsAddOpts skillsAddFlags
@@ -80,9 +79,7 @@ is created in the current directory.`,
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 
-		entry, err := adder.Add(ctx, ref, skill.AddOptions{
-			AdditionalBasePaths: skillsAddOpts.additionalBasePaths,
-		})
+		entry, err := adder.Add(ctx, ref, skill.AddOptions{})
 		if err != nil {
 			return fmt.Errorf("add: %w", err)
 		}
@@ -124,11 +121,6 @@ func resolveOrBootstrapProject(startDir string) (*skill.Project, error) {
 }
 
 func init() {
-	skillsAddCmd.Flags().StringSliceVar(
-		&skillsAddOpts.additionalBasePaths,
-		"also-install-to", nil,
-		"Additional directories to install the skill into (can be repeated)",
-	)
 	skillsAddCmd.Flags().StringVar(
 		&skillsAddOpts.name,
 		"name", "",
@@ -140,6 +132,5 @@ func init() {
 		"Restrict --name lookup to a single registered collection",
 	)
 	skillsAddCmd.Flags().StringVarP(&skillsAddOpts.output, "output", "o", "plain", "output format: plain or json")
-	_ = skillsAddCmd.RegisterFlagCompletionFunc("collection", completeRegisteredCollections)
 	skillsCmd.AddCommand(skillsAddCmd)
 }

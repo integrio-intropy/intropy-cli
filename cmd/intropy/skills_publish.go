@@ -16,7 +16,6 @@ type skillsPublishFlags struct {
 	path    string
 	ref     string
 	version string
-	tag     string // deprecated alias for version
 	force   bool
 	sign    bool
 }
@@ -35,22 +34,7 @@ Example:
   intropy skills publish --path ./skills/pr-review --ref ghcr.io/example/skills/pr-review --version 1.2.0`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// --version is the cross-CLI spelling (release create, deploy's
-		// positional version); --tag predates that convention and stays as a
-		// deprecated alias. The tag is the skill version in the OCI config,
-		// so the two names never meant different things.
 		version := skillsPublishOpts.version
-		tagSet := cmd.Flags().Changed("tag")
-		versionSet := cmd.Flags().Changed("version")
-		switch {
-		case tagSet && versionSet && skillsPublishOpts.tag != version:
-			return newUsageErrorf("cannot combine --tag with --version (they are the same flag; --tag is deprecated)")
-		case tagSet:
-			fmt.Fprintln(cmd.ErrOrStderr(), "warning: --tag is deprecated; use --version (matching release create and the deploy version argument)")
-			if !versionSet {
-				version = skillsPublishOpts.tag
-			}
-		}
 		if version == "" {
 			return newUsageErrorf("required flag(s) \"version\" not set")
 		}
@@ -116,9 +100,6 @@ func init() {
 		"OCI repository reference without tag (required)")
 	skillsPublishCmd.Flags().StringVar(&skillsPublishOpts.version, "version", "",
 		"Version to publish; becomes the OCI tag and the skill version (required)")
-	skillsPublishCmd.Flags().StringVar(&skillsPublishOpts.tag, "tag", "",
-		"Version to publish (deprecated: use --version)")
-	_ = skillsPublishCmd.Flags().MarkHidden("tag")
 	skillsPublishCmd.Flags().BoolVar(&skillsPublishOpts.force, "force", false,
 		"Overwrite the tag if it already exists")
 	skillsPublishCmd.Flags().BoolVar(&skillsPublishOpts.sign, "sign", false,
@@ -126,8 +107,6 @@ func init() {
 
 	_ = skillsPublishCmd.MarkFlagRequired("path")
 	_ = skillsPublishCmd.MarkFlagRequired("ref")
-	// One of --version or its deprecated alias --tag must be given; cobra's
-	// required-flag machinery can't express that, so RunE checks it.
 
 	skillsCmd.AddCommand(skillsPublishCmd)
 }

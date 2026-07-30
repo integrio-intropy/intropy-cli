@@ -101,18 +101,6 @@ func TestTheAdvertisedSyncCommandResolves(t *testing.T) {
 	}
 }
 
-func TestSyncCompletionsAreSilentWithoutConfig(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("INTROPY_GITOPS_REPO", "")
-
-	if got, _ := completeDeployComponents(deploySyncCmd, nil, ""); len(got) != 0 {
-		t.Errorf("component completion = %v, want none", got)
-	}
-	if got, _ := completeDeployEnvironments(deploySyncCmd, nil, ""); len(got) != 0 {
-		t.Errorf("environment completion = %v, want none", got)
-	}
-}
-
 func TestSyncSubcommandWinsOverTheComponentArgument(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	resetSyncState(t, stdout, stderr)

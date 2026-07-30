@@ -207,9 +207,7 @@ intropy int describe hello-world --template-version v1.2.0
 intropy int describe hello-world -o json   # machine-readable; same schema Backstage renders
 ```
 
-Without `--template-version`, the latest GitHub release is used. (`--version` is a
-deprecated alias — it predates `release create`, where `--version` names the version
-being published.)
+Without `--template-version`, the latest GitHub release is used.
 
 ### Create an integration
 
@@ -223,8 +221,7 @@ becomes the output directory — the same split as `dotnet new`, where `-o` is t
 output location and `-n` only names the artifacts.
 
 > **Note:** in `int create` and `sys create`, `--output json` selects the result document
-> on stdout like everywhere else in the CLI; any other `--output` value is a deprecated
-> alias for `--out-dir`. `-o` always means `--out-dir` here.
+> on stdout like everywhere else in the CLI. `-o` always means `--out-dir` here.
 
 ```sh
 # scaffolds into ./orders and sets name=orders
@@ -248,9 +245,6 @@ intropy int create hello-world -o ./out --no-input -f values.yaml
 
 # print the machine-readable result document to stdout (same as every other command)
 intropy int create hello-world -o ./out --output json
-
-# or write it to a file (consumed by chained scaffolders)
-intropy int create hello-world -o ./out --output-json result.json
 ```
 
 Use `--force` to render into a non-empty directory.
@@ -341,8 +335,7 @@ intropy sys create -n OrderFlow -o system-host --template-version v1.5.0
 intropy sys create -n OrderFlow -o system-host --output json
 ```
 
-> **Note:** as with `int create`, `--output json` prints the result document to stdout;
-> any other `--output` value is a deprecated alias for `--out-dir`.
+> **Note:** as with `int create`, `--output json` prints the result document to stdout.
 
 Records without a `blockKind` (scaffolded by an older CLI) or with a block
 kind other than extractor/loader are skipped with a warning; records
@@ -452,12 +445,6 @@ lists them and stops rather than guessing.
 declares, your name wins and the run says so.
 
 The topology comes from the host's `graph` verb, which builds the project first.
-In CI, capture it once and skip the build:
-
-```sh
-dotnet run --project ./OrderSync.SystemHost -- graph > topology.json
-intropy deploy init --topology topology.json
-```
 
 The manifests come from the template library's latest release. `--template-version`
 pins a tag instead — the same flag `intropy int create` uses, and the one that makes
@@ -1024,11 +1011,10 @@ For `intropy release create component-x --version 1.4.2`, the CLI:
 1. Verifies that `git` is available, then locks and refreshes its cached GitOps
    checkout to find `component-x` and read its source paths and images.
 2. Checks that the relevant source paths are clean and that the commit to
-   release is pushed. The commit is `HEAD` by default; `--ref` selects another
-   pushed revision.
+   release is pushed. The commit is `HEAD`.
 3. Resolves the exact image digests CI built for that commit and generates notes
-   from the component-scoped commits since the closest ancestor release, or from
-   the explicit `--since` baseline. If the pipeline has not published the
+   from the component-scoped commits since the closest ancestor release. If the
+   pipeline has not published the
    commit's image yet, this is where the command fails; pass `--watch` (`-w`)
    to poll the registry until the image appears instead. There is no timeout —
    like `kubectl --watch`, the wait ends when the image arrives or you
@@ -1063,10 +1049,9 @@ is publication order rather than a guess at a versioning scheme. Each row costs
 one manifest fetch and no blob transfer, because the version, date, commit, and
 first line of the notes are mirrored onto the manifest as annotations. Anything
 in that repository that is not a readable release is skipped with a note on
-stderr. The 20 newest are shown by default; `--limit 0` prints them all, and a
-limit that hides releases says how many. A component that has never been released
-is reported as such rather than treated as an error. `-o json` adds `total`, the
-count before the limit, and each release's full digest.
+stderr. A component that has never been released
+is reported as such rather than treated as an error. `-o json` adds `total` and
+each release's full digest.
 
 Inspect a published release before shipping it:
 
@@ -1096,8 +1081,7 @@ vice-versa). The CLI maintains two files at the project root:
 - `skills.lock.json` — pins resolved digests and install paths (committed).
 
 Skills install into `.agents/skills/<name>/` (the canonical layout from §9 of
-the spec). Additional install locations can be configured per skill via
-`--also-install-to`.
+the spec).
 
 ### Add a skill
 
@@ -1148,8 +1132,7 @@ intropy skills publish \
 ```
 
 Use `--force` to overwrite an existing tag, and `--sign` to sign the artifact
-with `cosign` after publishing (requires `cosign` on `PATH`). `--tag` is a
-deprecated alias for `--version`.
+with `cosign` after publishing (requires `cosign` on `PATH`).
 
 ## Collections
 

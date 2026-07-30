@@ -19,11 +19,10 @@ const CurrentLockfileVersion = 1
 
 // LockEntry is one resolved skill in the lockfile.
 type LockEntry struct {
-	Name            string     `json:"name"`
-	Path            string     `json:"path"`
-	AdditionalPaths []string   `json:"additionalPaths,omitempty"`
-	Source          LockSource `json:"source"`
-	InstalledAt     time.Time  `json:"installedAt"`
+	Name        string     `json:"name"`
+	Path        string     `json:"path"`
+	Source      LockSource `json:"source"`
+	InstalledAt time.Time  `json:"installedAt"`
 }
 
 type LockSource struct {

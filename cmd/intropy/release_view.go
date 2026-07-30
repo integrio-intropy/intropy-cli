@@ -25,7 +25,6 @@ var releaseViewCmd = &cobra.Command{
 		"digests, what the notes were measured against, and the notes themselves.\n\n" +
 		"It changes no source repository, GitOps remote, or environment. Use it to sanity-check generated notes before deploying anything from the release.",
 	Args:              cobra.ExactArgs(2),
-	ValidArgsFunction: completeReleaseComponents,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validateOutputFlag(releaseViewOpts.output, release.OutputPlain, release.OutputJSON); err != nil {
 			return err
@@ -54,8 +53,6 @@ func init() {
 	f.StringVar(&releaseViewOpts.system, "system", "", "disambiguate the component by system")
 	f.StringVar(&releaseViewOpts.gitopsRepo, "gitops-repo", "", "GitOps repository URL (default: gitopsRepo from config, or INTROPY_GITOPS_REPO)")
 	f.StringVarP(&releaseViewOpts.output, "output", "o", release.OutputPlain, "output format (plain, json)")
-
-	_ = releaseViewCmd.RegisterFlagCompletionFunc("output", completeReleaseOutput)
 
 	releaseCmd.AddCommand(releaseViewCmd)
 }

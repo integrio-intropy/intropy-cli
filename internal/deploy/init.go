@@ -70,10 +70,11 @@ type InitOptions struct {
 	Environments []string
 
 	// TopologyFile reads the record from a file instead of running the host's
-	// graph verb; "-" reads stdin. Both the CI path and the test seam.
+	// graph verb; "-" reads stdin. Internal test seam — not exposed as a CLI flag.
 	TopologyFile string
 
 	// SourceDir is where system hosts and scaffold records are discovered.
+	// Internal test seam — not exposed as a CLI flag.
 	SourceDir string
 
 	// TemplateVersion pins the template library release.
@@ -279,15 +280,12 @@ type discoveredTopology struct {
 	Topology  *topology.Topology
 	Scaffolds []template.ScaffoldEntry
 
-	// HostDir is the system host the record came from, empty when --topology
-	// supplied it instead. Its path is the best source for the domain.
+	// HostDir is the system host the record came from. Its path is the best
+	// source for the domain.
 	HostDir string
 }
 
 // resolveInitTopology obtains the record and the workspace's scaffold records.
-//
-// A file beats the graph verb: it is how CI avoids paying for a dotnet build, and
-// how tests avoid needing dotnet at all.
 func resolveInitTopology(ctx context.Context, opts InitOptions) (discoveredTopology, error) {
 	scaffolds, warnings := template.ListScaffolds(opts.SourceDir)
 	for _, w := range warnings {
@@ -299,14 +297,14 @@ func resolveInitTopology(ctx context.Context, opts InitOptions) (discoveredTopol
 		if opts.TopologyFile != "-" {
 			f, err := os.Open(opts.TopologyFile)
 			if err != nil {
-				return discoveredTopology{}, fmt.Errorf("read --topology: %w", err)
+				return discoveredTopology{}, fmt.Errorf("read topology: %w", err)
 			}
 			defer f.Close()
 			r = f
 		}
 		topo, err := topology.Decode(r)
 		if err != nil {
-			return discoveredTopology{}, fmt.Errorf("read --topology %s: %w", opts.TopologyFile, err)
+			return discoveredTopology{}, fmt.Errorf("read topology %s: %w", opts.TopologyFile, err)
 		}
 		return discoveredTopology{Topology: topo, Scaffolds: scaffolds}, nil
 	}
@@ -348,7 +346,7 @@ func resolveInitTopology(ctx context.Context, opts InitOptions) (discoveredTopol
 // error — picking one arbitrarily would scaffold the wrong system.
 func selectHost(hosts []template.ScaffoldEntry, system, sourceDir string) (template.ScaffoldEntry, error) {
 	if len(hosts) == 0 {
-		return template.ScaffoldEntry{}, fmt.Errorf("no system host found under %s; run this from a system workspace, or pass --topology with the output of `dotnet run --project <host> -- graph`", sourceDir)
+		return template.ScaffoldEntry{}, fmt.Errorf("no system host found under %s; run this from a system workspace", sourceDir)
 	}
 
 	if system != "" {
@@ -379,7 +377,7 @@ func selectHost(hosts []template.ScaffoldEntry, system, sourceDir string) (templ
 	if len(hosts) == 1 {
 		return hosts[0], nil
 	}
-	return template.ScaffoldEntry{}, fmt.Errorf("%s holds %d system hosts; pass --system to pick one (or --topology to skip discovery):\n%s",
+	return template.ScaffoldEntry{}, fmt.Errorf("%s holds %d system hosts; pass --system to pick one:\n%s",
 		sourceDir, len(hosts), describeHosts(hosts))
 }
 
@@ -491,7 +489,7 @@ func newInitFacts(opts InitOptions, s *session, found discoveredTopology) (initF
 			return initFacts{}, err
 		}
 		if c.Dir == "" {
-			fmt.Fprintf(opts.Stderr, "warning: %s has no scaffold record under %s; its manifests will be generated without an appId or sourcePaths\n", c.Name, opts.SourceDir)
+			fmt.Fprintf(opts.Stderr, "warning: %s has no scaffold record under the workspace root; its manifests will be generated without an appId or sourcePaths\n", c.Name)
 		}
 	}
 

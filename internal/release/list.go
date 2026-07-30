@@ -73,11 +73,9 @@ func List(ctx context.Context, opts Options) error {
 	}
 
 	result := ListResult{Component: t.coord.Component, Releases: releases, Total: len(releases)}
-	// A limit that hides releases says so: a truncated list that looks
-	// complete is worse than a long one.
 	if opts.Limit > 0 && len(releases) > opts.Limit {
 		result.Releases = releases[:opts.Limit]
-		fmt.Fprintf(opts.Stderr, "showing %d of %d releases; use --limit 0 for all\n", opts.Limit, result.Total)
+		fmt.Fprintf(opts.Stderr, "showing %d of %d releases\n", opts.Limit, result.Total)
 	}
 
 	if opts.OutputFormat == OutputJSON {

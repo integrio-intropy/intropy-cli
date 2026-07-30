@@ -68,26 +68,6 @@ func (p *Project) SkillRelPath(name string) string {
 	return path.Join(".agents", "skills", name)
 }
 
-// AdditionalDirs returns the absolute paths from a manifest entry's
-// additionalBasePaths, with skill name appended to each. Returns an empty
-// slice if the entry has no additionalBasePaths.
-func (p *Project) AdditionalDirs(entry ManifestEntry) []string {
-	out := make([]string, 0, len(entry.AdditionalBasePaths))
-	for _, base := range entry.AdditionalBasePaths {
-		out = append(out, filepath.Join(p.Root, base, entry.Name))
-	}
-
-	return out
-}
-
-func (p *Project) AdditionalRelPaths(entry ManifestEntry) []string {
-	out := make([]string, 0, len(entry.AdditionalBasePaths))
-	for _, base := range entry.AdditionalBasePaths {
-		out = append(out, path.Join(filepath.ToSlash(base), entry.Name))
-	}
-	return out
-}
-
 // LoadManifest reads and parses skills.json from the project root.
 func (p *Project) LoadManifest() (*Manifest, error) {
 	return LoadManifest(p.ManifestPath())

@@ -11,7 +11,6 @@ import (
 )
 
 type dashboardFlags struct {
-	addr      string
 	port      int
 	noBrowser bool
 }
@@ -42,7 +41,7 @@ var dashboardCmd = &cobra.Command{
 
 		return dashboard.Serve(ctx, dashboard.Options{
 			Root:        root,
-			Addr:        dashboardOpts.addr,
+			Addr:        "127.0.0.1",
 			Port:        dashboardOpts.port,
 			OpenBrowser: !dashboardOpts.noBrowser,
 			Version:     version,
@@ -54,7 +53,6 @@ var dashboardCmd = &cobra.Command{
 
 func init() {
 	f := dashboardCmd.Flags()
-	f.StringVar(&dashboardOpts.addr, "addr", "127.0.0.1", "host/interface to bind")
 	f.IntVarP(&dashboardOpts.port, "port", "p", 8730, "port to bind (0 picks a free port)")
 	f.BoolVar(&dashboardOpts.noBrowser, "no-browser", false, "do not open the dashboard in a browser")
 	rootCmd.AddCommand(dashboardCmd)

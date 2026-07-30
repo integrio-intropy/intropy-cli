@@ -76,36 +76,7 @@ func TestProjectPaths(t *testing.T) {
 	}
 }
 
-func TestProjectAdditionalPaths(t *testing.T) {
-	p := &Project{Root: "/project"}
-	entry := ManifestEntry{
-		Name:                "foo",
-		Source:              "ghcr.io/example/foo",
-		AdditionalBasePaths: []string{"tools", "scripts"},
-	}
 
-	dirs := p.AdditionalDirs(entry)
-	want := []string{"/project/tools/foo", "/project/scripts/foo"}
-	if len(dirs) != len(want) {
-		t.Fatalf("AdditionalDirs: got %v, want %v", dirs, want)
-	}
-	for i, d := range dirs {
-		if d != want[i] {
-			t.Errorf("AdditionalDirs[%d]: got %q, want %q", i, d, want[i])
-		}
-	}
-
-	rels := p.AdditionalRelPaths(entry)
-	wantRels := []string{"tools/foo", "scripts/foo"}
-	if len(rels) != len(wantRels) {
-		t.Fatalf("AdditionalRelPaths: got %v, want %v", rels, wantRels)
-	}
-	for i, r := range rels {
-		if r != wantRels[i] {
-			t.Errorf("AdditionalRelPaths[%d]: got %q, want %q", i, r, wantRels[i])
-		}
-	}
-}
 
 func TestProjectManifestRoundTrip(t *testing.T) {
 	tmp := t.TempDir()

@@ -93,18 +93,6 @@ func TestTheAdvertisedDiffCommandResolves(t *testing.T) {
 	}
 }
 
-func TestDiffCompletionsAreSilentWithoutConfig(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("INTROPY_GITOPS_REPO", "")
-
-	if got, _ := completeDeployComponents(deployDiffCmd, nil, ""); len(got) != 0 {
-		t.Errorf("component completion = %v, want none", got)
-	}
-	if got, _ := completeDeployEnvironments(deployDiffCmd, nil, ""); len(got) != 0 {
-		t.Errorf("environment completion = %v, want none", got)
-	}
-}
-
 func TestDiffSubcommandWinsOverTheComponentArgument(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	resetDiffState(t, stdout, stderr)

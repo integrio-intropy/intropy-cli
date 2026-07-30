@@ -37,7 +37,6 @@ var deployDiffCmd = &cobra.Command{
 		"A non-empty diff still exits 0 — this reports, it does not gate. Nothing is written to git, and " +
 		"kubectl is never invoked.",
 	Args:              cobra.ExactArgs(1),
-	ValidArgsFunction: completeDeployComponents,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validateOutputFlag(diffFlagValues.output, deploy.OutputPlain, deploy.OutputJSON); err != nil {
 			return err
@@ -75,10 +74,6 @@ func init() {
 	f.StringVarP(&diffFlagValues.output, "output", "o", deploy.OutputPlain, "output format (plain, json)")
 
 	_ = deployDiffCmd.MarkFlagRequired("env")
-	_ = deployDiffCmd.RegisterFlagCompletionFunc("env", completeDeployEnvironments)
-	_ = deployDiffCmd.RegisterFlagCompletionFunc("output", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
-		return []string{deploy.OutputPlain, deploy.OutputJSON}, cobra.ShellCompDirectiveNoFileComp
-	})
 
 	deployCmd.AddCommand(deployDiffCmd)
 }

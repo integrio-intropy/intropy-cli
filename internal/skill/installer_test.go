@@ -113,37 +113,7 @@ func TestInstallerSyncPartialFailure(t *testing.T) {
 	}
 }
 
-func TestInstallerAdditionalPaths(t *testing.T) {
-	tmp := t.TempDir()
-	p := &Project{Root: tmp}
 
-	reg := &mockRegistry{
-		pullArtifact: artifactWithName("pr-review"),
-	}
-	extr := &mockExtractor{}
-	inst := NewInstaller(reg, extr, p)
-
-	entry := ManifestEntry{
-		Name:                "pr-review",
-		Source:              "ghcr.io/example/pr-review",
-		Version:             "1.0.0",
-		AdditionalBasePaths: []string{"tools", "scripts"},
-	}
-
-	lockEntry, err := inst.Install(context.Background(), entry)
-	if err != nil {
-		t.Fatalf("Install: %v", err)
-	}
-	if len(lockEntry.AdditionalPaths) != 2 {
-		t.Fatalf("expected 2 additional paths, got %d", len(lockEntry.AdditionalPaths))
-	}
-	if lockEntry.AdditionalPaths[0] != "tools/pr-review" {
-		t.Errorf("AdditionalPaths[0]: got %q, want tools/pr-review", lockEntry.AdditionalPaths[0])
-	}
-	if lockEntry.AdditionalPaths[1] != "scripts/pr-review" {
-		t.Errorf("AdditionalPaths[1]: got %q, want scripts/pr-review", lockEntry.AdditionalPaths[1])
-	}
-}
 
 func TestInstallerPullFails(t *testing.T) {
 	tmp := t.TempDir()

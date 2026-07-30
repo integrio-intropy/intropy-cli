@@ -43,7 +43,6 @@ var deployPromoteCmd = &cobra.Command{
 		"With --plan the overlay is rendered and diffed but nothing is written to git. Environments that sync " +
 		"manually record the intent and stop, printing the sync command to run.",
 	Args:              cobra.ExactArgs(1),
-	ValidArgsFunction: completeDeployComponents,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validateOutputFlag(promoteFlagValues.output, deploy.OutputPlain, deploy.OutputJSON); err != nil {
 			return err
@@ -99,11 +98,6 @@ func init() {
 
 	_ = deployPromoteCmd.MarkFlagRequired("from")
 	_ = deployPromoteCmd.MarkFlagRequired("to")
-	_ = deployPromoteCmd.RegisterFlagCompletionFunc("from", completeDeployEnvironments)
-	_ = deployPromoteCmd.RegisterFlagCompletionFunc("to", completeDeployEnvironments)
-	_ = deployPromoteCmd.RegisterFlagCompletionFunc("output", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
-		return []string{deploy.OutputPlain, deploy.OutputJSON}, cobra.ShellCompDirectiveNoFileComp
-	})
 
 	deployCmd.AddCommand(deployPromoteCmd)
 }

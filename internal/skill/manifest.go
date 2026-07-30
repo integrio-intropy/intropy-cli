@@ -14,10 +14,9 @@ type Manifest struct {
 
 // §6.3
 type ManifestEntry struct {
-	Name                string   `json:"name"`
-	Source              string   `json:"source"`
-	Version             string   `json:"version,omitempty"`
-	AdditionalBasePaths []string `json:"additionalBasePaths,omitempty"`
+	Name    string `json:"name"`
+	Source  string `json:"source"`
+	Version string `json:"version,omitempty"`
 }
 
 type ManifestCollection struct {

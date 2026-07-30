@@ -75,7 +75,7 @@ description: A skill for reviewing pull requests
 		"skills", "publish",
 		"--path", skillDir,
 		"--ref", "harbor.intropy.io/skills/pr-review",
-		"--tag", "1.2.0",
+		"--version", "1.2.0",
 	})
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("skills publish: %v", err)

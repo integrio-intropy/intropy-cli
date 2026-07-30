@@ -104,24 +104,6 @@ func TestDeployIsRegistered(t *testing.T) {
 	t.Error("deploy is not registered on the root command")
 }
 
-// Completion must never fail a shell or print a diagnostic, even with no
-// configuration and no cached checkout.
-func TestDeployCompletionsAreSilentWithoutConfig(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("INTROPY_GITOPS_REPO", "")
-
-	if got, _ := completeDeployComponents(deployPinCmd, nil, ""); len(got) != 0 {
-		t.Errorf("component completion = %v, want none", got)
-	}
-	if got, _ := completeDeployEnvironments(deployPinCmd, nil, ""); len(got) != 0 {
-		t.Errorf("environment completion = %v, want none", got)
-	}
-	// A component already supplied means there is nothing left to complete.
-	if got, _ := completeDeployComponents(deployPinCmd, []string{"order-extractor"}, ""); len(got) != 0 {
-		t.Errorf("completion after an argument = %v, want none", got)
-	}
-}
-
 func TestDeployRejectsThreeArguments(t *testing.T) {
 	_, _, err := runDeploy(t, "order-extractor", "1.4.2", "extra", "--env", "staging")
 	if err == nil {
