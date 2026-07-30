@@ -3,7 +3,7 @@
   "checkpoint_id": "e8f9ac80b104",
   "strategy": "manual-commit",
   "branch": "feat/template-command",
-  "checkpoints_count": 2,
+  "checkpoints_count": 3,
   "files_touched": [
     "cmd/intropy/int_describe.go",
     "cmd/intropy/int_show.go",
@@ -26,13 +26,20 @@
       "compact_transcript": "/e8/f9ac80b104/1/transcript.jsonl",
       "content_hash": "/e8/f9ac80b104/1/content_hash.txt",
       "prompt": "/e8/f9ac80b104/1/prompt.txt"
+    },
+    {
+      "metadata": "/e8/f9ac80b104/2/metadata.json",
+      "transcript": "/e8/f9ac80b104/2/full.jsonl",
+      "compact_transcript": "/e8/f9ac80b104/2/transcript.jsonl",
+      "content_hash": "/e8/f9ac80b104/2/content_hash.txt",
+      "prompt": "/e8/f9ac80b104/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 71067,
+    "input_tokens": 71220,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 3084608,
-    "output_tokens": 20320,
-    "api_call_count": 60
+    "cache_read_tokens": 3116608,
+    "output_tokens": 20545,
+    "api_call_count": 61
   }
 }
