@@ -3,7 +3,7 @@
   "checkpoint_id": "5c2d6ba772d6",
   "strategy": "manual-commit",
   "branch": "feat/template-command",
-  "checkpoints_count": 2,
+  "checkpoints_count": 3,
   "files_touched": [
     "AGENTS.md",
     "PLAN-cli-consistency.md",
@@ -23,13 +23,20 @@
       "compact_transcript": "/5c/2d6ba772d6/1/transcript.jsonl",
       "content_hash": "/5c/2d6ba772d6/1/content_hash.txt",
       "prompt": "/5c/2d6ba772d6/1/prompt.txt"
+    },
+    {
+      "metadata": "/5c/2d6ba772d6/2/metadata.json",
+      "transcript": "/5c/2d6ba772d6/2/full.jsonl",
+      "compact_transcript": "/5c/2d6ba772d6/2/transcript.jsonl",
+      "content_hash": "/5c/2d6ba772d6/2/content_hash.txt",
+      "prompt": "/5c/2d6ba772d6/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 71067,
+    "input_tokens": 71335,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 3084608,
-    "output_tokens": 20320,
-    "api_call_count": 60
+    "cache_read_tokens": 3116864,
+    "output_tokens": 20470,
+    "api_call_count": 61
   }
 }
