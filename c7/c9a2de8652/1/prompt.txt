@@ -1,0 +1,97 @@
+Task: You are a delegated subagent running from a fork of the parent session. Treat the inherited conversation as reference-only context, not a live thread to continue. Do not continue or answer prior messages as if they are waiting for a reply. Your sole job is to execute the task below and return a focused result for that task using your tools.
+
+Task:
+Update /Users/robinhultman/dev/intropy/tooling/intropy-cli/README.md to reflect the following CLI flag removals. Work directly on the file. Only update sections that reference removed flags — leave everything else untouched.
+
+## Removed flags
+
+1. **Root persistent flags**: `--verbose` / `-v` and `--quiet` / `-q` removed. `--no-color` and `--directory` / `-C` remain.
+
+2. **Deprecated `--version` alias for `--template-version`**: All commands now only accept `--template-version`. No deprecated alias exists. Remove mentions like "(`--version` is a deprecated alias — it predates `release create`, where `--version` names the version being published.)"
+
+3. **Deprecated `--tag` alias in `skills publish`**: Only `--version` is accepted now. Remove "`--tag` is a deprecated alias for `--version`."
+
+4. **Deprecated `--output` as directory alias**: `--output` now only accepts `json` in `int create` and `sys create`. Remove ALL notes saying things like "any other `--output` value is a deprecated alias for `--out-dir`" and the associated Note blocks.
+
+5. **`--output-json` removed from `int create` and `sys create`**: Use `--output json` instead (writes to stdout). Remove all references to `--output-json`.
+
+6. **`skills add --also-install-to` removed**: Skills install only to `.agents/skills/<name>/`. Remove mentions of `--also-install-to` and "Additional install locations can be configured per skill via `--also-install-to`."
+
+7. **`dashboard --addr` removed**: The dashboard always binds to 127.0.0.1. Remove `--addr` from any flag documentation. Only `--port` and `--no-browser` remain.
+
+8. **`deploy init --source-dir` removed**: Always discovers from the current directory. Remove documentation for `--source-dir`.
+
+9. **`deploy init --topology` removed**: Always uses the host's graph verb. Remove the section about `--topology` including the "In CI, capture it once and skip the build" passage with the `dotnet run --project ./OrderSync.SystemHost -- graph > topology.json` example and `intropy deploy init --topology topology.json` example.
+
+10. **`release list --limit` removed**: All releases are always shown. Remove `--limit` documentation. Remove "The 20 newest are shown by default; `--limit 0` prints them all, and a limit that hides releases says how many."
+
+11. **`release create --since` removed**: Notes are generated from the previous release only. Remove `--since` documentation and the passage about "on a first release there is no predecessor to measure against, and `--since` names a starting point explicitly."
+
+12. **`release create --ref` removed**: Always releases HEAD. Change "The commit is `HEAD` by default; `--ref` selects another pushed revision." to "The commit is `HEAD`." Remove `--ref` from any flag documentation.
+
+## Guidelines
+- Keep the README's voice and structure
+- Remove references to removed flags cleanly
+- Where a removed flag was mentioned as an aside in a larger section, just remove that aside
+- Don't restructure sections — surgical edits only
+- Where `--version` was described as a "deprecated alias" for template versions, remove the note about deprecation entirely — just describe `--template-version`
+
+
+## Acceptance Contract
+Acceptance level: checked
+Completion is not accepted from prose alone. End with a structured acceptance report.
+
+Criteria:
+- criterion-1: Implement the requested change without widening scope
+- criterion-2: Return evidence sufficient for an independent acceptance review
+
+Required evidence: changed-files, tests-added, commands-run, residual-risks, no-staged-files
+
+Review gate: required by reviewer.
+
+Finish with a fenced JSON block tagged `acceptance-report` in this shape:
+Use empty arrays when no items apply; array fields contain strings unless object entries are shown.
+`criteriaSatisfied[].status` must be exactly one of: satisfied, not-satisfied, not-applicable.
+`commandsRun[].result` must be exactly one of: passed, failed, not-run.
+`manualNotes` and `notes` are optional strings; an empty string means no note and does not satisfy `manual-notes` evidence.
+```acceptance-report
+{
+  "criteriaSatisfied": [
+    {
+      "id": "criterion-1",
+      "status": "satisfied",
+      "evidence": "specific proof"
+    },
+    {
+      "id": "criterion-2",
+      "status": "satisfied",
+      "evidence": "specific proof"
+    }
+  ],
+  "changedFiles": [
+    "src/file.ts"
+  ],
+  "testsAddedOrUpdated": [
+    "test/file.test.ts"
+  ],
+  "commandsRun": [
+    {
+      "command": "command",
+      "result": "passed",
+      "summary": "short result"
+    }
+  ],
+  "validationOutput": [
+    "validation output or concise summary"
+  ],
+  "residualRisks": [
+    "none"
+  ],
+  "noStagedFiles": true,
+  "diffSummary": "short description of the diff",
+  "reviewFindings": [
+    "blocker: file.ts:12 - issue found, or no blockers"
+  ],
+  "manualNotes": "anything else the parent should know"
+}
+```
