@@ -1,1 +1,5 @@
 Analyze this go cli for inconsistencies in command names, parameter names, incosistencies between positional and options and such. Start with a plan
+
+---
+
+Ok start with 1, we go for your recommendation. Work on a branch of feature/v-next that I will merge myself later
