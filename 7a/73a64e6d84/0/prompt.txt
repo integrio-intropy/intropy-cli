@@ -1,0 +1,1 @@
+Analyze this go cli for inconsistencies in command names, parameter names, incosistencies between positional and options and such. Start with a plan
