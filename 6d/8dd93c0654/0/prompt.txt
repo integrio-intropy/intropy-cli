@@ -1,13 +1,1 @@
-This is a pure analysis task, no changes. I want you to look at code comments. They should be there to explain what the code does so that it makes it easier for a human to understand it. They should not document a change that was made or be overly bloated. There should be comments on all important parts of the code
-
----
-
-Can we include cli documentation (what you get when you run --help and such in the cli) And also static output text. I think they are sometimes a bit hard to understand and sometimes a bit bloated
-
----
-
-Can you make a plan based on the recommendations both on comments and on cli helper text and static output? It should also include giving guidance in AGENTS.md and CLAUDE.md for how to write cli text and comments
-
----
-
 implement the plan on a new branch off v-next
