@@ -218,8 +218,9 @@ Name the integration and scaffold it in one step. `-n/--name` sets the template'
 becomes the output directory — the same split as `dotnet new`, where `-o` is the literal
 output location and `-n` only names the artifacts.
 
-> **Note:** `--output` is a deprecated alias for `--out-dir` in `int create` and `sys create`.
-> Everywhere else in the CLI `-o/--output` selects a result format (`plain` or `json`).
+> **Note:** in `int create` and `sys create`, `--output json` selects the result document
+> on stdout like everywhere else in the CLI; any other `--output` value is a deprecated
+> alias for `--out-dir`. `-o` always means `--out-dir` here.
 
 ```sh
 # scaffolds into ./orders and sets name=orders
@@ -241,7 +242,10 @@ intropy int create hello-world -o ./out -f values.yaml
 # disable interactive prompts (fail fast on missing required values)
 intropy int create hello-world -o ./out --no-input -f values.yaml
 
-# write a machine-readable result document (consumed by chained scaffolders)
+# print the machine-readable result document to stdout (same as every other command)
+intropy int create hello-world -o ./out --output json
+
+# or write it to a file (consumed by chained scaffolders)
 intropy int create hello-world -o ./out --output-json result.json
 ```
 
@@ -330,10 +334,11 @@ intropy sys create -n OrderFlow
 intropy sys create -n OrderFlow -o system-host --version v1.5.0
 
 # machine-readable result document with the assembled model
-intropy sys create -n OrderFlow -o system-host --output-json -
+intropy sys create -n OrderFlow -o system-host --output json
 ```
 
-> **Note:** as with `int create`, `--output` is a deprecated alias for `--out-dir` in `sys create`.
+> **Note:** as with `int create`, `--output json` prints the result document to stdout;
+> any other `--output` value is a deprecated alias for `--out-dir`.
 
 Records without a `blockKind` (scaffolded by an older CLI) or with a block
 kind other than extractor/loader are skipped with a warning; records

@@ -82,3 +82,59 @@ func TestSysCreateDeprecatedOutputAlias(t *testing.T) {
 		}
 	})
 }
+
+func TestSysCreateOutputJSONFormat(t *testing.T) {
+	resetFlags := func(t *testing.T) {
+		t.Helper()
+		sysCreateFlagValues = sysCreateFlags{}
+		t.Cleanup(func() { sysCreateFlagValues = sysCreateFlags{} })
+	}
+
+	t.Run("--output json maps to outputJSON stdout", func(t *testing.T) {
+		resetFlags(t)
+		var stdout, stderr bytes.Buffer
+		resetRootIO(t, &stdout, &stderr)
+		t.Chdir(t.TempDir())
+
+		rootCmd.SetArgs([]string{"sys", "create", "-n", "OrderFlow", "--output", "json"})
+		_ = rootCmd.Execute() // scaffold-discovery error expected; flag wiring is what we assert
+		if sysCreateFlagValues.outputJSON != "-" {
+			t.Errorf("outputJSON = %q, want %q (--output json maps to stdout)", sysCreateFlagValues.outputJSON, "-")
+		}
+		if sysCreateFlagValues.outDir != "" {
+			t.Errorf("outDir = %q, want empty (--output json is not a directory)", sysCreateFlagValues.outDir)
+		}
+	})
+
+	t.Run("--output json with --output-json path is a usage error", func(t *testing.T) {
+		resetFlags(t)
+		var stdout, stderr bytes.Buffer
+		resetRootIO(t, &stdout, &stderr)
+		t.Chdir(t.TempDir())
+
+		rootCmd.SetArgs([]string{"sys", "create", "-n", "OrderFlow", "--output", "json", "--output-json", "result.json"})
+		err := rootCmd.Execute()
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "cannot combine") {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if exitCode(err) != 2 {
+			t.Errorf("exitCode = %d, want 2", exitCode(err))
+		}
+	})
+
+	t.Run("--output-json - alone warns about deprecation", func(t *testing.T) {
+		resetFlags(t)
+		var stdout, stderr bytes.Buffer
+		resetRootIO(t, &stdout, &stderr)
+		t.Chdir(t.TempDir())
+
+		rootCmd.SetArgs([]string{"sys", "create", "-n", "OrderFlow", "--output-json", "-"})
+		_ = rootCmd.Execute() // scaffold-discovery error expected
+		if !strings.Contains(stderr.String(), "--output-json - is deprecated") {
+			t.Errorf("expected deprecation warning for --output-json -, got: %q", stderr.String())
+		}
+	})
+}

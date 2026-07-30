@@ -52,7 +52,7 @@ A user who learns `-o` = format from `skills list -o json` will be surprised whe
 
 ---
 
-### 2. `--output-json` vs `--output json` — two machine-readable conventions (HIGH)
+### 2. `--output-json` vs `--output json` — two machine-readable conventions (HIGH) ✅ DONE
 
 | Command | Machine-readable output |
 |---|---|

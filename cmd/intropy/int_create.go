@@ -12,7 +12,7 @@ import (
 
 type createFlags struct {
 	outDir            string
-	output            string // deprecated alias for outDir
+	output            string // --output: "json" selects the result document on stdout; any other value is a deprecated alias for --out-dir
 	name              string
 	version           string
 	values            []string
@@ -37,12 +37,26 @@ var intCreateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if intCreateFlags.output != "" {
-			if intCreateFlags.outDir != "" {
-				return newUsageErrorf("cannot combine --output with --out-dir (they are the same flag; --output is deprecated)")
+		// --output json is the cross-CLI spelling for a result document on
+		// stdout. Any other --output value is the deprecated directory alias
+		// from before --out-dir existed; it still works but warns.
+		switch intCreateFlags.output {
+		case "":
+			// not given
+		case "json":
+			if intCreateFlags.outputJSON != "" && intCreateFlags.outputJSON != "-" {
+				return newUsageErrorf("cannot combine --output json with --output-json <path> (use one or the other)")
 			}
-			fmt.Fprintln(cmd.ErrOrStderr(), "warning: --output is deprecated; use --out-dir (in every other command --output selects a result format)")
+			intCreateFlags.outputJSON = "-"
+		default:
+			if intCreateFlags.outDir != "" {
+				return newUsageErrorf("cannot combine --output with --out-dir (they are the same flag; --output as a directory is deprecated)")
+			}
+			fmt.Fprintln(cmd.ErrOrStderr(), "warning: --output as a directory is deprecated; use --out-dir (--output now selects a result format, e.g. --output json)")
 			intCreateFlags.outDir = intCreateFlags.output
+		}
+		if intCreateFlags.outputJSON == "-" && intCreateFlags.output != "json" {
+			fmt.Fprintln(cmd.ErrOrStderr(), "warning: --output-json - is deprecated; use --output json")
 		}
 		outputDir, err := resolveCreateName(intCreateFlags.name, intCreateFlags.outDir, sets)
 		if err != nil {
@@ -92,14 +106,16 @@ func resolveCreateName(name, output string, sets map[string]any) (string, error)
 
 func init() {
 	f := intCreateCmd.Flags()
-	// --out-dir, not --output: everywhere else in the CLI -o/--output selects
-	// a result format (plain|json), and a flag that silently writes a
-	// directory instead is the worst kind of surprise. --output stays as a
-	// hidden, deprecated alias so existing scripts keep working for now.
+	// --out-dir is the destination directory. --output json selects the
+	// machine-readable result document on stdout, matching every other
+	// command in the CLI; any other --output value is treated as the old
+	// (deprecated) spelling of --out-dir so existing scripts keep working.
 	f.StringVarP(&intCreateFlags.outDir, "out-dir", "o", "", "destination directory (defaults to --name)")
-	f.StringVar(&intCreateFlags.output, "output", "", "destination directory (deprecated: use --out-dir)")
-	_ = f.MarkHidden("output")
+	f.StringVar(&intCreateFlags.output, "output", "", "output format: 'json' writes the result document to stdout (any other value is a deprecated alias for --out-dir)")
 	_ = intCreateCmd.MarkFlagDirname("out-dir")
+	_ = intCreateCmd.RegisterFlagCompletionFunc("output", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+		return []string{"json"}, cobra.ShellCompDirectiveNoFileComp
+	})
 	f.StringVarP(&intCreateFlags.name, "name", "n", "", "integration name; sets the template's 'name' parameter and, unless --out-dir is set, becomes the output directory")
 	f.StringVar(&intCreateFlags.version, "version", "", "template release tag (default: latest)")
 	f.StringArrayVarP(&intCreateFlags.values, "values", "f", nil, "values file in YAML/JSON (repeatable; use - to read one doc from stdin)")
@@ -109,7 +125,7 @@ func init() {
 	f.BoolVar(&intCreateFlags.installSkills, "install-skills", false, "install the Intropy agent skills collection without prompting")
 	f.BoolVar(&intCreateFlags.skipInstallSkills, "skip-install-skills", false, "skip the agent skills install without prompting")
 	intCreateCmd.MarkFlagsMutuallyExclusive("install-skills", "skip-install-skills")
-	f.StringVar(&intCreateFlags.outputJSON, "output-json", "", "write a machine-readable result document to this path (- for stdout)")
+	f.StringVar(&intCreateFlags.outputJSON, "output-json", "", "write a machine-readable result document to this path (for stdout, use --output json instead of --output-json -)")
 	// "output" is in the group so the deprecated alias still satisfies the
 	// requirement; the alias copy in RunE handles the value.
 	intCreateCmd.MarkFlagsOneRequired("out-dir", "name", "output")
