@@ -1,0 +1,33 @@
+Analyze this go cli for inconsistencies in command names, parameter names, incosistencies between positional and options and such. Start with a plan
+
+---
+
+Ok start with 1, we go for your recommendation. Work on a branch of feature/v-next that I will merge myself later
+
+---
+
+for 2. What do you think about the kubectl way of doing it with --json --yaml etc?
+
+---
+
+Ok implement 2 as you suggested
+
+---
+
+yes do #3
+
+---
+
+yes do #4
+
+---
+
+For #5 i want the symmetry but I am not sure about pin. Perhaps we shouldnt use a verb at the top level at all? instead have something like deployment create? We do not have any users of this so we do not need to think about backward compatability
+
+---
+
+ok go for Option C
+
+---
+
+yes
