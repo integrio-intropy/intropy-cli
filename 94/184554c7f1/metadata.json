@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "94184554c7f1",
+  "strategy": "manual-commit",
+  "branch": "feature/v-next",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "README.md",
+    "cmd/intropy/release_list.go",
+    "cmd/intropy/release_show.go",
+    "cmd/intropy/release_test.go",
+    "internal/release/list.go",
+    "internal/release/list_test.go",
+    "internal/release/show.go",
+    "internal/release/show_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/94/184554c7f1/0/metadata.json",
+      "transcript": "/94/184554c7f1/0/full.jsonl",
+      "compact_transcript": "/94/184554c7f1/0/transcript.jsonl",
+      "content_hash": "/94/184554c7f1/0/content_hash.txt",
+      "prompt": "/94/184554c7f1/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 53401,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1644928,
+    "output_tokens": 9785,
+    "api_call_count": 44
+  }
+}
