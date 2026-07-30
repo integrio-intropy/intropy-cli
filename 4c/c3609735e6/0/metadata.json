@@ -1,0 +1,38 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "4cc3609735e6",
+  "session_id": "019fb18e-8af1-7926-a135-fc432fd69dc0",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-30T06:02:21.886797Z",
+  "branch": "feature/cli-output-json-parity",
+  "checkpoints_count": 2,
+  "save_step_count": 1,
+  "files_touched": [],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "c1a5da107d98",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 83439,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 6637952,
+    "output_tokens": 29296,
+    "api_call_count": 92
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 52,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 51
+      }
+    }
+  ]
+}
