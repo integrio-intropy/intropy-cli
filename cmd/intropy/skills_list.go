@@ -28,7 +28,7 @@ var skillsListCmd = &cobra.Command{
 		project, err := skill.FindProject(".")
 		if err != nil {
 			if errors.Is(err, skill.ErrProjectNotFound) {
-				fmt.Fprintln(cmd.ErrOrStderr(), "No skills installed.")
+				fmt.Fprintln(cmd.ErrOrStderr(), "no skills installed")
 				return nil
 			}
 			return fmt.Errorf("list: %w", err)
@@ -40,8 +40,8 @@ var skillsListCmd = &cobra.Command{
 		}
 
 		if len(lockfile.Skills) == 0 {
-			fmt.Fprintln(cmd.ErrOrStderr(), "No skills installed.")
-			fmt.Fprintln(cmd.ErrOrStderr(), "Use `intropy skills add <ref>` to add one.")
+			fmt.Fprintln(cmd.ErrOrStderr(), "no skills installed")
+			fmt.Fprintln(cmd.ErrOrStderr(), "use 'intropy skills add <ref>' to add one")
 			return nil
 		}
 
@@ -77,6 +77,6 @@ func shortDigest(d string) string {
 
 func init() {
 	f := skillsListCmd.Flags()
-	f.StringVarP(&skillsListOpts.output, "output", "o", "plain", "output format: plain or json")
+	f.StringVarP(&skillsListOpts.output, "output", "o", "plain", flagUsageOutput)
 	skillsCmd.AddCommand(skillsListCmd)
 }

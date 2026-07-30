@@ -10,6 +10,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// sys create assembles scaffolded integrations into a system host. The
+// scan, render, and assembly live in internal/system.Create; this file is
+// flag plumbing.
 type sysCreateFlags struct {
 	name            string
 	outDir          string
@@ -54,9 +57,9 @@ func init() {
 	f := sysCreateCmd.Flags()
 	f.StringVarP(&sysCreateFlagValues.name, "name", "n", "", "system name; PascalCase or kebab-case (OrderFlow and order-flow are equivalent)")
 	f.StringVarP(&sysCreateFlagValues.outDir, "out-dir", "o", "", "destination directory (default: the kebab-cased name)")
-	f.StringVar(&sysCreateFlagValues.output, "output", "", "output format: 'json' writes the result document to stdout")
+	f.StringVar(&sysCreateFlagValues.output, "output", "", flagUsageOutputJSONOnly)
 	_ = sysCreateCmd.MarkFlagDirname("out-dir")
-	f.StringVar(&sysCreateFlagValues.templateVersion, "template-version", "", "template release tag (default: latest)")
+	f.StringVar(&sysCreateFlagValues.templateVersion, "template-version", "", flagUsageTemplateVer)
 	f.BoolVar(&sysCreateFlagValues.force, "force", false, "allow rendering into a non-empty output directory")
 	_ = sysCreateCmd.MarkFlagRequired("name")
 	sysCmd.AddCommand(sysCreateCmd)

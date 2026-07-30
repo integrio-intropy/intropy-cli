@@ -9,6 +9,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// release list prints the versions published for a component. Fetching and
+// rendering live in internal/release.List; this file is flag plumbing.
 type releaseListFlags struct {
 	domain     string
 	system     string
@@ -49,10 +51,10 @@ var releaseListCmd = &cobra.Command{
 
 func init() {
 	f := releaseListCmd.Flags()
-	f.StringVar(&releaseListOpts.domain, "domain", "", "disambiguate the component by domain")
-	f.StringVar(&releaseListOpts.system, "system", "", "disambiguate the component by system")
-	f.StringVar(&releaseListOpts.gitopsRepo, "gitops-repo", "", "GitOps repository URL (default: gitopsRepo from config, or INTROPY_GITOPS_REPO)")
-	f.StringVarP(&releaseListOpts.output, "output", "o", release.OutputPlain, "output format (plain, json)")
+	f.StringVar(&releaseListOpts.domain, "domain", "", flagUsageDomain)
+	f.StringVar(&releaseListOpts.system, "system", "", flagUsageSystem)
+	f.StringVar(&releaseListOpts.gitopsRepo, "gitops-repo", "", flagUsageGitopsRepo)
+	f.StringVarP(&releaseListOpts.output, "output", "o", release.OutputPlain, flagUsageOutput)
 
 	releaseCmd.AddCommand(releaseListCmd)
 }

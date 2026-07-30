@@ -11,6 +11,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// skills collection update refreshes (or, with --ref, re-points) the
+// cached index of a registered collection. Cache mechanics live in
+// internal/skill's collectioncache; this file is flag plumbing.
 type skillsCollectionUpdateFlags struct {
 	ref    string
 	output string
@@ -105,7 +108,7 @@ version tag to another.`,
 				"cachedSkills": len(index.Manifests),
 			})
 		}
-		fmt.Fprintf(cmd.ErrOrStderr(), "Refreshed collection %q from %s\n", alias, ref)
+		fmt.Fprintf(cmd.ErrOrStderr(), "refreshed collection %s from %s\n", alias, ref)
 		fmt.Fprintf(cmd.ErrOrStderr(), "  cached %d skill(s)\n", len(index.Manifests))
 		return nil
 	},
@@ -116,6 +119,6 @@ func init() {
 		&skillsCollectionUpdateOpts.ref, "ref", "",
 		"Replace the registered ref with this OCI reference before refreshing",
 	)
-	skillsCollectionUpdateCmd.Flags().StringVarP(&skillsCollectionUpdateOpts.output, "output", "o", "plain", "output format: plain or json")
+	skillsCollectionUpdateCmd.Flags().StringVarP(&skillsCollectionUpdateOpts.output, "output", "o", "plain", flagUsageOutput)
 	skillsCollectionCmd.AddCommand(skillsCollectionUpdateCmd)
 }

@@ -11,6 +11,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// deploy sync asks ArgoCD to apply the pending commit for one
+// environment. The revision guard, sync call, and wait loop live in
+// internal/deploy.Sync; this file is flag plumbing.
 type syncFlags struct {
 	env          string
 	revision     string
@@ -70,15 +73,15 @@ var deploySyncCmd = &cobra.Command{
 
 func init() {
 	f := deploySyncCmd.Flags()
-	f.StringVarP(&syncFlagValues.env, "env", "e", "", "environment to apply (required)")
+	f.StringVarP(&syncFlagValues.env, "env", "e", "", flagUsageEnv)
 	f.StringVar(&syncFlagValues.revision, "revision", "", "the commit whose diff you reviewed; refuse if the pending change is another one")
-	f.StringVar(&syncFlagValues.domain, "domain", "", "disambiguate the component by domain")
-	f.StringVar(&syncFlagValues.system, "system", "", "disambiguate the component by system")
-	f.StringVar(&syncFlagValues.gitopsRepo, "gitops-repo", "", "GitOps repository URL (default: gitopsRepo from config, or INTROPY_GITOPS_REPO)")
-	f.StringVar(&syncFlagValues.argocdServer, "argocd-server", "", "ArgoCD server to sync through (default: argocdServer from config, ARGOCD_SERVER, or deploy.yaml)")
+	f.StringVar(&syncFlagValues.domain, "domain", "", flagUsageDomain)
+	f.StringVar(&syncFlagValues.system, "system", "", flagUsageSystem)
+	f.StringVar(&syncFlagValues.gitopsRepo, "gitops-repo", "", flagUsageGitopsRepo)
+	f.StringVar(&syncFlagValues.argocdServer, "argocd-server", "", flagUsageArgocd)
 	f.BoolVar(&syncFlagValues.noWait, "no-wait", false, "return once the sync is accepted, without waiting for it to converge")
 	f.DurationVar(&syncFlagValues.timeout, "timeout", argocd.DefaultTimeout, "how long to wait for ArgoCD to converge")
-	f.StringVarP(&syncFlagValues.output, "output", "o", deploy.OutputPlain, "output format (plain, json)")
+	f.StringVarP(&syncFlagValues.output, "output", "o", deploy.OutputPlain, flagUsageOutput)
 
 	_ = deploySyncCmd.MarkFlagRequired("env")
 

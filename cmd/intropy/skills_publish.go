@@ -12,6 +12,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// skills publish packages a skill directory as an OCI artifact and pushes
+// it. Packaging rules live in internal/skill/oci (Pack, Push); the optional
+// cosign signature is a thin exec wrapper below.
 type skillsPublishFlags struct {
 	path    string
 	ref     string
@@ -71,7 +74,7 @@ Example:
 			return fmt.Errorf("publish: push: %w", err)
 		}
 
-		cmd.Printf("Published %s\n", ref)
+		cmd.Printf("published %s\n", ref)
 		cmd.Printf("  digest: %s\n", desc.Digest)
 		cmd.Printf("  size:   %d bytes\n", desc.Size)
 

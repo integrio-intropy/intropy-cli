@@ -100,7 +100,7 @@ name via 'intropy skills add --name <skill-name>'.`,
 				"cachedSkills": len(index.Manifests),
 			})
 		}
-		fmt.Fprintf(cmd.ErrOrStderr(), "Registered collection %q -> %s\n", skillsCollectionAddOpts.name, skillsCollectionAddOpts.ref)
+		fmt.Fprintf(cmd.ErrOrStderr(), "registered collection %s -> %s\n", skillsCollectionAddOpts.name, skillsCollectionAddOpts.ref)
 		fmt.Fprintf(cmd.ErrOrStderr(), "  cached %d skill(s)\n", len(index.Manifests))
 		return nil
 	},
@@ -115,6 +115,6 @@ func init() {
 		&skillsCollectionAddOpts.ref, "ref", "",
 		"OCI reference of the collection",
 	)
-	skillsCollectionAddCmd.Flags().StringVarP(&skillsCollectionAddOpts.output, "output", "o", "plain", "output format: plain or json")
+	skillsCollectionAddCmd.Flags().StringVarP(&skillsCollectionAddOpts.output, "output", "o", "plain", flagUsageOutput)
 	skillsCollectionCmd.AddCommand(skillsCollectionAddCmd)
 }

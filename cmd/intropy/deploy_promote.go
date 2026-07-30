@@ -32,9 +32,7 @@ var deployPromoteCmd = &cobra.Command{
 	Long: "Copy the image digests a component has pinned in one environment into another environment's " +
 		"overlay.\n\n" +
 		"Promotion resolves nothing. It does not look a version up in the registry and does not read a source " +
-		"repository — it reads the digests --from currently pins and writes those exact values. A release tag " +
-		"that has since been moved, or a registry that answers differently than it did an hour ago, therefore " +
-		"cannot change what the target ends up running.\n\n" +
+		"repository — it reads the digests --from currently pins and writes those exact values.\n\n" +
 		"Two policies in deploy.yaml are enforced rather than reported. The target's promotesFrom must permit " +
 		"the edge, so dev → prod is refused when prod promotes from staging. And where the target sets " +
 		"requireSourceHealthy, the source's ArgoCD application must be Synced and Healthy at the revision its " +
@@ -87,14 +85,14 @@ func init() {
 	f := deployPromoteCmd.Flags()
 	f.StringVar(&promoteFlagValues.from, "from", "", "environment to copy the pinned digests from (required)")
 	f.StringVar(&promoteFlagValues.to, "to", "", "environment to write them into (required)")
-	f.StringVar(&promoteFlagValues.domain, "domain", "", "disambiguate the component by domain")
-	f.StringVar(&promoteFlagValues.system, "system", "", "disambiguate the component by system")
-	f.StringVar(&promoteFlagValues.gitopsRepo, "gitops-repo", "", "GitOps repository URL (default: gitopsRepo from config, or INTROPY_GITOPS_REPO)")
-	f.StringVar(&promoteFlagValues.argocdServer, "argocd-server", "", "ArgoCD server to consult (default: argocdServer from config, ARGOCD_SERVER, or deploy.yaml)")
+	f.StringVar(&promoteFlagValues.domain, "domain", "", flagUsageDomain)
+	f.StringVar(&promoteFlagValues.system, "system", "", flagUsageSystem)
+	f.StringVar(&promoteFlagValues.gitopsRepo, "gitops-repo", "", flagUsageGitopsRepo)
+	f.StringVar(&promoteFlagValues.argocdServer, "argocd-server", "", flagUsageArgocd)
 	f.BoolVar(&promoteFlagValues.plan, "plan", false, "render and diff the change without writing to git")
 	f.BoolVar(&promoteFlagValues.noWait, "no-wait", false, "push without waiting for ArgoCD to sync")
 	f.DurationVar(&promoteFlagValues.timeout, "timeout", argocd.DefaultTimeout, "how long to wait for ArgoCD to converge")
-	f.StringVarP(&promoteFlagValues.output, "output", "o", deploy.OutputPlain, "output format (plain, json)")
+	f.StringVarP(&promoteFlagValues.output, "output", "o", deploy.OutputPlain, flagUsageOutput)
 
 	_ = deployPromoteCmd.MarkFlagRequired("from")
 	_ = deployPromoteCmd.MarkFlagRequired("to")

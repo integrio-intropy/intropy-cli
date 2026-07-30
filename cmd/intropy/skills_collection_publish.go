@@ -53,7 +53,7 @@ Example spec file:
 			return fmt.Errorf("collection publish: %w", err)
 		}
 
-		cmd.Printf("Published collection %s\n", collectionRef)
+		cmd.Printf("published collection %s\n", collectionRef)
 		cmd.Printf("  digest: %s\n", desc.Digest)
 		cmd.Printf("  skills: %d\n", len(spec.Skills))
 		return nil

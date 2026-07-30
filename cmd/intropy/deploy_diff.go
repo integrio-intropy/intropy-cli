@@ -9,6 +9,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// deploy diff renders an environment at the applied and pending revisions
+// and prints the difference. Rendering goes through ArgoCD, not a local
+// kustomize build; the logic lives in internal/deploy.Diff.
 type diffFlags struct {
 	env          string
 	domain       string
@@ -66,12 +69,12 @@ var deployDiffCmd = &cobra.Command{
 
 func init() {
 	f := deployDiffCmd.Flags()
-	f.StringVarP(&diffFlagValues.env, "env", "e", "", "environment to review (required)")
-	f.StringVar(&diffFlagValues.domain, "domain", "", "disambiguate the component by domain")
-	f.StringVar(&diffFlagValues.system, "system", "", "disambiguate the component by system")
-	f.StringVar(&diffFlagValues.gitopsRepo, "gitops-repo", "", "GitOps repository URL (default: gitopsRepo from config, or INTROPY_GITOPS_REPO)")
-	f.StringVar(&diffFlagValues.argocdServer, "argocd-server", "", "ArgoCD server to render through (default: argocdServer from config, ARGOCD_SERVER, or deploy.yaml)")
-	f.StringVarP(&diffFlagValues.output, "output", "o", deploy.OutputPlain, "output format (plain, json)")
+	f.StringVarP(&diffFlagValues.env, "env", "e", "", flagUsageEnv)
+	f.StringVar(&diffFlagValues.domain, "domain", "", flagUsageDomain)
+	f.StringVar(&diffFlagValues.system, "system", "", flagUsageSystem)
+	f.StringVar(&diffFlagValues.gitopsRepo, "gitops-repo", "", flagUsageGitopsRepo)
+	f.StringVar(&diffFlagValues.argocdServer, "argocd-server", "", flagUsageArgocd)
+	f.StringVarP(&diffFlagValues.output, "output", "o", deploy.OutputPlain, flagUsageOutput)
 
 	_ = deployDiffCmd.MarkFlagRequired("env")
 
