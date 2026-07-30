@@ -7,12 +7,16 @@ import (
 	"github.com/integrio-intropy/intropy-cli/internal/skill/oci"
 )
 
+// Updater reconciles installed skills against the refs pinned by the
+// project's registered collections. It is the engine behind
+// 'intropy skills update'.
 type Updater struct {
 	registry  Registry
 	installer *Installer
 	project   *Project
 }
 
+// NewUpdater wires an Updater from its three collaborators.
 func NewUpdater(r Registry, i *Installer, p *Project) *Updater {
 	return &Updater{registry: r, installer: i, project: p}
 }

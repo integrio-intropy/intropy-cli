@@ -16,6 +16,9 @@ import (
 	"oras.land/oras-go/v2/registry/remote/retry"
 )
 
+// Client speaks to OCI registries. It carries no opinion about what an
+// artifact should look like — that policy lives in the packages that use
+// it (internal/skill/oci, internal/release).
 type Client struct {
 	auth      *auth.Client
 	plainHTTP func(registry string) bool
@@ -28,6 +31,7 @@ type options struct {
 	plainHTTP  func(registry string) bool
 }
 
+// Option customises NewClient.
 type Option func(*options)
 
 // WithHTTPClient replaces the default retrying HTTP client.
@@ -52,6 +56,9 @@ func WithPlainHTTP(f func(registry string) bool) Option {
 	return func(o *options) { o.plainHTTP = f }
 }
 
+// NewClient builds a Client. Without options it authenticates through the
+// docker credential store, retries through the oras default HTTP client,
+// and speaks plain HTTP only to localhost registries.
 func NewClient(opts ...Option) (*Client, error) {
 	o := options{plainHTTP: isLocalRegistry}
 	for _, opt := range opts {

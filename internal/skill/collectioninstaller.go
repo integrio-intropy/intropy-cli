@@ -14,6 +14,7 @@ type CollectionInstaller struct {
 	project  *Project
 }
 
+// NewCollectionInstaller wires a CollectionInstaller from its collaborators.
 func NewCollectionInstaller(r Registry, a *Adder, p *Project) *CollectionInstaller {
 	return &CollectionInstaller{registry: r, adder: a, project: p}
 }

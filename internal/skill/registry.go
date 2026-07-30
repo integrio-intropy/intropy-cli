@@ -6,6 +6,9 @@ import (
 	"github.com/integrio-intropy/intropy-cli/internal/skill/oci"
 )
 
+// Registry is the subset of the OCI registry client the skill package
+// needs. It exists so tests can fake registry access without standing up
+// an OCI server.
 type Registry interface {
 	Pull(ctx context.Context, ref string) (oci.Artifact, error)
 	PullIndex(ctx context.Context, ref string) (oci.Index, error)

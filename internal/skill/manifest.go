@@ -7,18 +7,26 @@ import (
 	"os"
 )
 
+// Manifest is the root of skills.json: the skills a project has installed
+// and the collections it resolves bare names against.
 type Manifest struct {
 	Collections []ManifestCollection `json:"collections,omitempty"`
 	Skills      []ManifestEntry      `json:"skills"`
 }
 
-// §6.3
+// ManifestEntry is one installed skill. Source is the registry/repository
+// pair; Version is the OCI tag. A bare Source with no Version resolves to
+// the latest tag.
+//
+// §6.3 of the Agent Skills OCI spec.
 type ManifestEntry struct {
 	Name    string `json:"name"`
 	Source  string `json:"source"`
 	Version string `json:"version,omitempty"`
 }
 
+// ManifestCollection is one registered collection: a local alias and the
+// OCI ref of its published index.
 type ManifestCollection struct {
 	Name string `json:"name"`
 	Ref  string `json:"ref"`
@@ -63,6 +71,9 @@ func SaveManifest(path string, m *Manifest) error {
 	return os.WriteFile(path, data, 0644)
 }
 
+// Validate rejects a manifest with a nameless or sourceless entry, or a
+// duplicate skill name. Called on both load and save so a hand-edited file
+// fails at the point it is read, not at the point it is acted on.
 func (m *Manifest) Validate() error {
 	seen := map[string]struct{}{}
 	for i, e := range m.Skills {

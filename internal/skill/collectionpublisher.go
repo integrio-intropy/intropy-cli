@@ -17,6 +17,8 @@ type CollectionSpec struct {
 	Skills      []SpecSkill `yaml:"skills"`
 }
 
+// SpecSkill is one skill reference in a collection spec. The ref must
+// include a tag; Publish resolves it to a digest at publish time.
 type SpecSkill struct {
 	Ref string `yaml:"ref"`
 }
@@ -27,10 +29,15 @@ type CollectionPublisher struct {
 	registry Registry
 }
 
+// NewCollectionPublisher wires a CollectionPublisher from its registry.
 func NewCollectionPublisher(r Registry) *CollectionPublisher {
 	return &CollectionPublisher{registry: r}
 }
 
+// Publish resolves each spec skill to its current digest, builds an OCI
+// Image Index of those digests, and pushes it at collectionRef (which must
+// include a tag). An existing tag is refused unless force is set — a
+// collection others resolve by tag must not silently move.
 func (p *CollectionPublisher) Publish(
 	ctx context.Context,
 	spec *CollectionSpec,

@@ -8,10 +8,15 @@ import (
 	"path/filepath"
 )
 
+// Project is a directory tree rooted at a skills.json. All skill state —
+// the manifest, the lockfile, the installed skills under .agents/skills —
+// hangs off Root.
 type Project struct {
 	Root string
 }
 
+// ErrProjectNotFound is returned by FindProject when no skills.json exists
+// at or above the start directory.
 var ErrProjectNotFound = errors.New("no skills.json found in current directory or any parent")
 
 // FindProject walks up from startDir looking for skills.json.

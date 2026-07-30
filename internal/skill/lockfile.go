@@ -15,6 +15,9 @@ type Lockfile struct {
 	Skills          []LockEntry `json:"skills"`
 }
 
+// CurrentLockfileVersion is the only lockfile schema this client reads.
+// A lockfile written at any other version is rejected outright rather than
+// half-understood.
 const CurrentLockfileVersion = 1
 
 // LockEntry is one resolved skill in the lockfile.
@@ -25,6 +28,9 @@ type LockEntry struct {
 	InstalledAt time.Time  `json:"installedAt"`
 }
 
+// LockSource pins exactly what was installed: the registry, repository and
+// tag a human would recognise, plus the digest and the full ref that make
+// the record reproducible.
 type LockSource struct {
 	Registry   string `json:"registry"`
 	Repository string `json:"repository"`
@@ -33,6 +39,9 @@ type LockSource struct {
 	Ref        string `json:"ref"`
 }
 
+// LoadLockfile reads skills.lock.json. A missing file is not an error —
+// it just means no install has run yet — so an empty lockfile at the
+// current version is returned instead.
 func LoadLockfile(path string) (*Lockfile, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -59,6 +68,9 @@ func LoadLockfile(path string) (*Lockfile, error) {
 	return &l, nil
 }
 
+// SaveLockfile writes the lockfile with the current version and a fresh
+// timestamp. The lockfile is machine-managed; human edits are not expected
+// to survive the next install.
 func SaveLockfile(path string, l *Lockfile) error {
 	l.LockfileVersion = CurrentLockfileVersion
 	l.GeneratedAt = time.Now().UTC()

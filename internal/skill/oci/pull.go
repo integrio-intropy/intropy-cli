@@ -8,6 +8,11 @@ import (
 	"io"
 )
 
+// Pull fetches a skill artifact at ref and validates it against the skills
+// spec: the artifactType must be the skill type, the config must parse and
+// validate, and there must be exactly one content layer of the skill
+// tar+gzip type. Any deviation is reported as ErrNotSkill — pulling
+// something that is not a skill is a caller error, not a partial result.
 func (c *Client) Pull(ctx context.Context, ref string) (Artifact, error) {
 	parsed, err := ParseReference(ref)
 	if err != nil {
