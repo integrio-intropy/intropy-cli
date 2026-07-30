@@ -1,0 +1,43 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "bf654ca4303b",
+  "strategy": "manual-commit",
+  "branch": "docs/writing-quality",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "internal/registry/client.go",
+    "internal/registry/push.go",
+    "internal/registry/reference.go",
+    "internal/registry/types.go",
+    "internal/skill/adder.go",
+    "internal/skill/collectioninstaller.go",
+    "internal/skill/collectionpublisher.go",
+    "internal/skill/extractor.go",
+    "internal/skill/installer.go",
+    "internal/skill/lockfile.go",
+    "internal/skill/manifest.go",
+    "internal/skill/oci/client.go",
+    "internal/skill/oci/pull.go",
+    "internal/skill/oci/reference.go",
+    "internal/skill/oci/types.go",
+    "internal/skill/project.go",
+    "internal/skill/registry.go",
+    "internal/skill/updater.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/bf/654ca4303b/0/metadata.json",
+      "transcript": "/bf/654ca4303b/0/full.jsonl",
+      "compact_transcript": "/bf/654ca4303b/0/transcript.jsonl",
+      "content_hash": "/bf/654ca4303b/0/content_hash.txt",
+      "prompt": "/bf/654ca4303b/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 88961,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 13654208,
+    "output_tokens": 48334,
+    "api_call_count": 138
+  }
+}
