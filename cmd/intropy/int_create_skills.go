@@ -82,7 +82,7 @@ func maybeInstallSkills(ctx context.Context, in io.Reader, errW io.Writer, force
 		return err
 	}
 	for _, e := range entries {
-		fmt.Fprintf(errW, "  installed %s @ %s -> %s\n", e.Name, e.Source.Tag, e.Path)
+		fmt.Fprintf(errW, "  installed %s @ %s (%s)\n", e.Name, e.Source.Tag, e.Path)
 	}
 	fmt.Fprintf(errW, "installed %d skill(s) from %s\n", len(entries), ref)
 	return nil

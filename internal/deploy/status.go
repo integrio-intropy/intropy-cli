@@ -394,7 +394,7 @@ func summarise(rows []EnvironmentStatus) string {
 		if len(comparable) == 1 {
 			return fmt.Sprintf("only %s is onboarded, so there is nothing to compare it with", comparable[0].Environment)
 		}
-		return fmt.Sprintf("all %d environments run %s — these are the same bits, promoted rather than rebuilt",
+		return fmt.Sprintf("all %d environments run %s (same digest, promoted rather than rebuilt)",
 			len(comparable), describeSignatureString(signatures[0]))
 	}
 
@@ -407,7 +407,7 @@ func summarise(rows []EnvironmentStatus) string {
 		clauses = append(clauses, fmt.Sprintf("%s %s no digest at all",
 			englishList(environmentNames(unpinned)), conjugate(len(unpinned), "pin")))
 	}
-	return "the environments do not all run the same bits: " + strings.Join(clauses, "; ")
+	return "environments disagree: " + strings.Join(clauses, "; ")
 }
 
 func environmentNames(rows []EnvironmentStatus) []string {
@@ -468,7 +468,7 @@ func notes(coord gitops.Coordinate, comp *gitops.ComponentConfig, rows []Environ
 					continue
 				}
 				if pin.Tag != "" {
-					out = append(out, fmt.Sprintf("%s pins %s to the tag %q rather than a digest, so what it runs can change without a deployment",
+					out = append(out, fmt.Sprintf("%s pins %s to the tag %q rather than a digest — it can drift without a deployment",
 						row.Environment, pin.Image, pin.Tag))
 					continue
 				}
