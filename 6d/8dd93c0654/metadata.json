@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "6d8dd93c0654",
+  "strategy": "manual-commit",
+  "branch": "docs/writing-quality",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "cmd/intropy/int_create_skills.go",
+    "internal/deploy/placeholder.go",
+    "internal/deploy/scaffold.go",
+    "internal/deploy/status.go",
+    "internal/deploy/sync.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/6d/8dd93c0654/0/metadata.json",
+      "transcript": "/6d/8dd93c0654/0/full.jsonl",
+      "compact_transcript": "/6d/8dd93c0654/0/transcript.jsonl",
+      "content_hash": "/6d/8dd93c0654/0/content_hash.txt",
+      "prompt": "/6d/8dd93c0654/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 89401,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 13942720,
+    "output_tokens": 49280,
+    "api_call_count": 140
+  }
+}

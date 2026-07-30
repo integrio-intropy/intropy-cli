@@ -1,0 +1,43 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "6d8dd93c0654",
+  "session_id": "019fb285-fd4c-7ace-9d1d-4c9c285a8d1f",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-30T10:57:46.733559Z",
+  "branch": "docs/writing-quality",
+  "checkpoints_count": 3,
+  "save_step_count": 1,
+  "files_touched": [
+    "cmd/intropy/int_create_skills.go",
+    "internal/deploy/status.go",
+    "internal/deploy/scaffold.go",
+    "internal/deploy/sync.go",
+    "internal/deploy/placeholder.go"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "e2ddadff5953",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 89401,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 13942720,
+    "output_tokens": 49280,
+    "api_call_count": 140
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-30T10:57:46.698692Z",
+    "agent_lines": 8,
+    "agent_removed": 9,
+    "human_added": 8,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 16,
+    "total_lines_changed": 33,
+    "agent_percentage": 51.515151515151516,
+    "metric_version": 2
+  }
+}
