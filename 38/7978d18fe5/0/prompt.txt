@@ -1,0 +1,155 @@
+Tests seem to fail
+ok      github.com/integrio-intropy/intropy-cli/internal/dashboard    1.123s
+        Omit --global to set the identity only in this repository.
+        
+        fatal: empty ident name (for <runner@runnervmvrwv9.wymfr5ei2g4unblxoe4fek5heg.dx.internal.cloudapp.net>) not allowed
+        stderr: reading topology from /tmp/REDACTED/006/domains/x/distribution/system-host (building first; this can take a minute)
+        refreshing /tmp/REDACTED/001
+        warning: erp-loader has no scaffold record under the workspace root; its manifests will be generated without an appId or sourcePaths
+        warning: extractor has no scaffold record under the workspace root; its manifests will be generated without an appId or sourcePaths
+        warning: reconciler has no scaffold record under the workspace root; its manifests will be generated without an appId or sourcePaths
+        fetching o/r@v1.0.0
+--- FAIL: TestInitSelectsTheNamedSystemInAMultiSystemWorkspace (0.16s)
+=== RUN   TestInitWithoutSystemInAMultiSystemWorkspaceIsAnError
+--- PASS: TestInitWithoutSystemInAMultiSystemWorkspaceIsAnError (0.03s)
+=== RUN   TestInitWarnsWhenSystemRenamesTheTreeSegment
+    selecthost_test.go:267: Init: commit: git -c core.hooksPath=/dev/null -c core.fsmonitor=false commit --quiet --no-verify -m deploy-init(product-distribution): scaffold 21 files under sales -m Deploy-Domain: sales
+        Deploy-System: product-distribution
+        Deploy-Component: erp-loader
+        Deploy-Component: extractor
+        Deploy-Component: reconciler
+        Deploy-By: robinhultman: Author identity unknown
+        
+        *** Please tell me who you are.
+        
+        Run
+        
+          git config --global user.email "you@example.com"
+          git config --global user.name "Your Name"
+        
+        to set your account's default identity.
+        Omit --global to set the identity only in this repository.
+        
+        fatal: empty ident name (for <runner@runnervmvrwv9.wymfr5ei2g4unblxoe4fek5heg.dx.internal.cloudapp.net>) not allowed
+        stderr: reading topology from /tmp/TestInitWarnsWhenSystemRenamesTheTreeSegment3401082229/006/domains/x/distribution/system-host (building first; this can take a minute)
+        warning: the topology declares system "distribution"; using "product-distribution" as the tree segment
+        refreshing /tmp/TestInitWarnsWhenSystemRenamesTheTreeSegment3401082229/001
+        warning: erp-loader has no scaffold record under the workspace root; its manifests will be generated without an appId or sourcePaths
+        warning: extractor has no scaffold record under the workspace root; its manifests will be generated without an appId or sourcePaths
+        warning: reconciler has no scaffold record under the workspace root; its manifests will be generated without an appId or sourcePaths
+        fetching o/r@v1.0.0
+--- FAIL: TestInitWarnsWhenSystemRenamesTheTreeSegment (0.15s)
+=== RUN   TestRunPlanOnly
+--- PASS: TestRunPlanOnly (0.14s)
+=== RUN   TestRunLeavesTheCheckoutClean
+--- PASS: TestRunLeavesTheCheckoutClean (0.13s)
+=== RUN   TestRunJSONOutput
+--- PASS: TestRunJSONOutput (0.13s)
+=== RUN   TestRunUnknownEnvironment
+--- PASS: TestRunUnknownEnvironment (0.09s)
+=== RUN   TestRunUnknownComponent
+--- PASS: TestRunUnknownComponent (0.09s)
+=== RUN   TestRunWithoutConfiguredRepo
+--- PASS: TestRunWithoutConfiguredRepo (0.00s)
+=== RUN   TestRunFlagOverridesConfiguredRepo
+--- PASS: TestRunFlagOverridesConfiguredRepo (0.13s)
+=== RUN   TestRunAlreadyPinnedReportsNoOp
+    service_test.go:321: git commit --quiet -m pin: exit status 128
+        Author identity unknown
+        
+        *** Please tell me who you are.
+        
+        Run
+        
+          git config --global user.email "you@example.com"
+          git config --global user.name "Your Name"
+        
+        to set your account's default identity.
+        Omit --global to set the identity only in this repository.
+        
+        fatal: empty ident name (for <runner@runnervmvrwv9.wymfr5ei2g4unblxoe4fek5heg.dx.internal.cloudapp.net>) not allowed
+--- FAIL: TestRunAlreadyPinnedReportsNoOp (0.15s)
+=== RUN   TestRunWatchWaitsForTheImage
+    service_test.go:361: Run() with watch: commit: git -c core.hooksPath=/dev/null -c core.fsmonitor=false commit --quiet --no-verify -m deploy(order-extractor): dev → sha256:abc123abc123 (b40d936) -m Deploy-Component: order-extractor
+        Deploy-Domain: orders
+        Deploy-System: order-flow
+        Deploy-Env: dev
+        Deploy-Image: harbor.intropy.io/integrations/order-extractor
+        Deploy-Digest: sha256:abc123abc123abc123abc123abc123abc123abc123abc123abc123abc123abcd
+        Deploy-Source-Commit: b40d936616cf8dab3e82c9495d7be7dd15fa44bb
+        Deploy-By: robinhultman
+        Deploy-Cli: intropy-cli: Author identity unknown
+        
+        *** Please tell me who you are.
+        
+        Run
+        
+          git config --global user.email "you@example.com"
+          git config --global user.name "Your Name"
+        
+        to set your account's default identity.
+        Omit --global to set the identity only in this repository.
+        
+        fatal: empty ident name (for <runner@runnervmvrwv9.wymfr5ei2g4unblxoe4fek5heg.dx.internal.cloudapp.net>) not allowed
+        stderr: refreshing /tmp/REDACTED/001
+        resolving sha-b40d936
+        waiting for the sha-b40d936616cf8dab3e82c9495d7be7dd15fa44bb image(s) to appear in the registry (ctrl+c to stop)
+        sha-b40d936616cf8dab3e82c9495d7be7dd15fa44bb resolved after 2s
+--- FAIL: TestRunWatchWaitsForTheImage (2.17s)
+=== RUN   TestRunWithoutWatchFailsImmediately
+--- PASS: TestRunWithoutWatchFailsImmediately (0.10s)
+=== RUN   TestRunAppliesAndPushes
+    service_test.go:408: commit: git -c core.hooksPath=/dev/null -c core.fsmonitor=false commit --quiet --no-verify -m deploy(order-extractor): dev → sha256:abc123abc123 (3968035) -m Deploy-Component: order-extractor
+        Deploy-Domain: orders
+        Deploy-System: order-flow
+        Deploy-Env: dev
+        Deploy-Image: harbor.intropy.io/integrations/order-extractor
+        Deploy-Digest: sha256:abc123abc123abc123abc123abc123abc123abc123abc123abc123abc123abcd
+        Deploy-Source-Commit: 396803508d87285f4bfd185716da757f2e4ba020
+        Deploy-By: robinhultman
+        Deploy-Cli: intropy-cli: Author identity unknown
+        
+        *** Please tell me who you are.
+        
+        Run
+        
+          git config --global user.email "you@example.com"
+          git config --global user.name "Your Name"
+        
+        to set your account's default identity.
+        Omit --global to set the identity only in this repository.
+        
+        fatal: empty ident name (for <runner@runnervmvrwv9.wymfr5ei2g4unblxoe4fek5heg.dx.internal.cloudapp.net>) not allowed
+--- FAIL: TestRunAppliesAndPushes (0.14s)
+=== RUN   TestRunTwiceCreatesOneCommit
+    service_test.go:437: commit: git -c core.hooksPath=/dev/null -c core.fsmonitor=false commit --quiet --no-verify -m deploy(order-extractor): dev → sha256:abc123abc123 (eae192b) -m Deploy-Component: order-extractor
+        Deploy-Domain: orders
+
+---
+
+The question is if we really should run these kind of tests on the ci? They are more integration tests
+
+---
+
+The same goes for dependencies on argocd
+
+---
+
+It went to the next step:
+Run if [ -n "$(gofmt -l .)" ]; then
+The following files need formatting:
+cmd/intropy/deploy_diff.go
+cmd/intropy/deploy_pin.go
+cmd/intropy/deploy_promote.go
+cmd/intropy/deploy_status.go
+cmd/intropy/deploy_sync.go
+cmd/intropy/int_create_test.go
+cmd/intropy/release_test.go
+cmd/intropy/release_view.go
+cmd/intropy/skills_collection_update.go
+cmd/intropy/skills_publish_test.go
+cmd/intropy/skills_update.go
+cmd/intropy/sys_create_test.go
+internal/skill/installer_test.go
+internal/skill/project_test.go
+Error: Process completed with exit code 1.

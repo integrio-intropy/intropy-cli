@@ -1,0 +1,66 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "387978d18fe5",
+  "session_id": "019fb218-2ae8-74f1-8fdf-9c3474dc423d",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-30T09:27:15.598848Z",
+  "branch": "feature/lean-cli",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "cmd/intropy/deploy_diff.go",
+    "cmd/intropy/deploy_pin.go",
+    "cmd/intropy/deploy_promote.go",
+    "cmd/intropy/deploy_status.go",
+    "cmd/intropy/deploy_sync.go",
+    "cmd/intropy/int_create_test.go",
+    "cmd/intropy/release_test.go",
+    "cmd/intropy/release_view.go",
+    "cmd/intropy/skills_collection_update.go",
+    "cmd/intropy/skills_publish_test.go",
+    "cmd/intropy/skills_update.go",
+    "cmd/intropy/sys_create_test.go",
+    "internal/skill/installer_test.go",
+    "internal/skill/project_test.go"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "145ae922af17",
+  "checkpoint_transcript_start": 557,
+  "transcript_lines_at_start": 557,
+  "compact_transcript_start": 267,
+  "token_usage": {
+    "input_tokens": 800,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 572928,
+    "output_tokens": 472,
+    "api_call_count": 3
+  },
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-30T09:27:15.534971Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 8,
+    "human_removed": 13,
+    "total_committed": 0,
+    "total_lines_changed": 21,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 52,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 51
+      }
+    }
+  ]
+}
