@@ -1,0 +1,61 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "bf18d2f52bdf",
+  "session_id": "session",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-30T11:33:36.078743Z",
+  "branch": "feat/template-command",
+  "checkpoints_count": 1,
+  "files_touched": [],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "56260aa899f6",
+  "checkpoint_transcript_start": 20,
+  "transcript_lines_at_start": 20,
+  "compact_transcript_start": 6,
+  "token_usage": {
+    "input_tokens": 5296,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 149120,
+    "output_tokens": 793,
+    "api_call_count": 5
+  },
+  "session_metrics": {
+    "turn_count": 7
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 760,
+      "user_lines_removed": 131,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 51,
+        "AGENTS.md": 123,
+        "PLAN-cli-consistency.md": 4,
+        "README.md": 41,
+        "cmd/intropy/int_describe.go": 13,
+        "cmd/intropy/int_show.go": 93,
+        "cmd/intropy/int_show_test.go": 115,
+        "cmd/intropy/template.go": 13,
+        "cmd/intropy/template_list.go": 65,
+        "cmd/intropy/template_show.go": 58,
+        "internal/template/doc.go": 3,
+        "internal/template/github.go": 7,
+        "internal/template/list.go": 66,
+        "internal/template/list_test.go": 88,
+        "web/dist/index.html": 19
+      },
+      "user_removed_per_file": {
+        "PLAN-cli-consistency.md": 1,
+        "README.md": 10,
+        "cmd/intropy/int_describe.go": 40,
+        "internal/template/doc.go": 2,
+        "internal/template/github.go": 2,
+        "web/dist/index.html": 76
+      }
+    }
+  ]
+}
