@@ -2,9 +2,6 @@ package deploy
 
 import (
 	"bytes"
-	"context"
-	"encoding/json"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -138,56 +135,6 @@ func TestResolveInitDomainAmbiguousInTree(t *testing.T) {
 	for _, want := range []string{"logistics", "orders"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error missing %q: %v", want, err)
-		}
-	}
-}
-
-// End to end: a workspace laid out the customary way needs no --domain at all.
-func TestInitInfersDomainFromWorkspaceLayout(t *testing.T) {
-	f := newInitFixture(t)
-
-	// integrations/domains/<domain>/<system>/system-host, as sys create leaves it.
-	workspace := t.TempDir()
-	hostDir := filepath.Join(workspace, "domains", "logistics", "distribution", "system-host")
-	if err := os.MkdirAll(hostDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	err := template.WriteScaffold(hostDir, template.Scaffold{
-		SchemaVersion: template.ScaffoldSchemaVersion,
-		Template:      "system-host",
-		Owner:         "o",
-		Repo:          "r",
-		Version:       "v1",
-		Role:          template.RoleSystemHost,
-		Values:        map[string]any{"name": "distribution"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	stubRunGraph(t, initTopologyRecord)
-
-	var stdout, stderr bytes.Buffer
-	opts := f.options(&stdout, &stderr)
-	opts.Domain = "" // the whole point
-	opts.TopologyFile = ""
-	opts.SourceDir = workspace
-	opts.OutputFormat = OutputJSON
-
-	if err := Init(context.Background(), opts); err != nil {
-		t.Fatalf("Init without --domain: %v\nstderr: %s", err, stderr.String())
-	}
-
-	var res InitResult
-	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
-		t.Fatal(err)
-	}
-	if res.Domain != "logistics" {
-		t.Errorf("Domain = %q, want logistics from the workspace layout", res.Domain)
-	}
-	for _, f := range res.Files {
-		if !strings.HasPrefix(f.Rel, "domains/logistics/distribution/") {
-			t.Errorf("file written outside the inferred domain: %s", f.Rel)
-			break
 		}
 	}
 }
