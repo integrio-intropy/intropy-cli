@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "bf18d2f52bdf",
+  "session_id": "019fb239-561e-7ecd-b19c-190b63081e90",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-30T11:33:35.522178Z",
+  "branch": "feat/template-command",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "internal/template/doc.go",
+    "internal/template/github.go",
+    "internal/template/list.go",
+    "internal/template/list_test.go"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "b80239af37bc",
+  "checkpoint_transcript_start": 479,
+  "transcript_lines_at_start": 479,
+  "compact_transcript_start": 224,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-30T11:33:35.463626Z",
+    "agent_lines": 164,
+    "agent_removed": 4,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 164,
+    "total_lines_changed": 168,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
