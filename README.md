@@ -143,7 +143,7 @@ intropy version
 intropy int describe hello-world
 
 # Render it into a new directory
-intropy int create hello-world -o ./my-integration
+intropy int create hello-world -o ./my-integration   # -o is --out-dir here
 ```
 
 ### Install a skill from a collection
@@ -210,19 +210,22 @@ Without `--version`, the latest GitHub release is used.
 ### Create an integration
 
 ```sh
-intropy int create hello-world --output ./my-integration
+intropy int create hello-world --out-dir ./my-integration
 ```
 
 Name the integration and scaffold it in one step. `-n/--name` sets the template's
-`name` parameter (so you're not prompted for it) and, unless `-o` is given, becomes
-the output directory — the same split as `dotnet new`, where `-o` is the literal
-output location and `-n` only names the artifacts:
+`name` parameter (so you're not prompted for it) and, unless `-o/--out-dir` is given,
+becomes the output directory — the same split as `dotnet new`, where `-o` is the literal
+output location and `-n` only names the artifacts.
+
+> **Note:** `--output` is a deprecated alias for `--out-dir` in `int create` and `sys create`.
+> Everywhere else in the CLI `-o/--output` selects a result format (`plain` or `json`).
 
 ```sh
 # scaffolds into ./orders and sets name=orders
 intropy int create hello-world -n orders
 
-# -o overrides the output directory: scaffolds into ./order-extractor with name=OrderExtractor
+# -o/--out-dir overrides the output directory: scaffolds into ./order-extractor with name=OrderExtractor
 intropy int create hello-world -n OrderExtractor -o ./order-extractor
 ```
 
@@ -291,7 +294,7 @@ record are reported as warnings on stderr without hiding the rest.
 Run from the workspace root that holds your scaffolded integrations:
 
 ```sh
-intropy sys create -n OrderFlow -o system-host
+intropy sys create -n OrderFlow -o system-host   # -o is --out-dir here
 ```
 
 The command reads before it writes: it scans the workspace for the
@@ -329,6 +332,8 @@ intropy sys create -n OrderFlow -o system-host --version v1.5.0
 # machine-readable result document with the assembled model
 intropy sys create -n OrderFlow -o system-host --output-json -
 ```
+
+> **Note:** as with `int create`, `--output` is a deprecated alias for `--out-dir` in `sys create`.
 
 Records without a `blockKind` (scaffolded by an older CLI) or with a block
 kind other than extractor/loader are skipped with a warning; records

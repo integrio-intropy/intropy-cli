@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -62,6 +64,58 @@ func TestResolveCreateName(t *testing.T) {
 		}
 		if _, ok := sets["name"]; ok {
 			t.Errorf("sets should be untouched, got %v", sets)
+		}
+	})
+}
+
+func TestIntCreateDeprecatedOutputAlias(t *testing.T) {
+	resetCreateFlags := func(t *testing.T) {
+		t.Helper()
+		intCreateFlags = createFlags{}
+		t.Cleanup(func() { intCreateFlags = createFlags{} })
+	}
+
+	t.Run("alias alone satisfies the required group and warns", func(t *testing.T) {
+		resetCreateFlags(t)
+		var stdout, stderr bytes.Buffer
+		resetRootIO(t, &stdout, &stderr)
+		t.Chdir(t.TempDir())
+
+		rootCmd.SetArgs([]string{"int", "create", "hello-world", "--output", "./out", "--name", "x", "--no-input"})
+		err := rootCmd.Execute()
+		// We expect a template-fetch error (no network), but NOT a usage error
+		// about missing required flags.
+		if err != nil {
+			var ue *usageError
+			if errors.As(err, &ue) && strings.Contains(err.Error(), "required") {
+				t.Errorf("deprecated --output should satisfy the required group, got usage error: %v", err)
+			}
+		}
+		if !strings.Contains(stderr.String(), "deprecated") {
+			t.Errorf("expected deprecation warning on stderr, got: %q", stderr.String())
+		}
+		if intCreateFlags.outDir != "./out" {
+			t.Errorf("outDir = %q, want alias copy %q", intCreateFlags.outDir, "./out")
+		}
+	})
+
+	t.Run("alias and --out-dir together are a usage error", func(t *testing.T) {
+		resetCreateFlags(t)
+		var stdout, stderr bytes.Buffer
+		resetRootIO(t, &stdout, &stderr)
+		t.Chdir(t.TempDir())
+
+		rootCmd.SetArgs([]string{"int", "create", "hello-world", "--output", "./a", "--out-dir", "./b", "--name", "x"})
+		err := rootCmd.Execute()
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		var ue *usageError
+		if !errors.As(err, &ue) {
+			t.Errorf("error %v is not a usageError", err)
+		}
+		if !strings.Contains(err.Error(), "cannot combine") {
+			t.Errorf("unexpected error: %v", err)
 		}
 	})
 }

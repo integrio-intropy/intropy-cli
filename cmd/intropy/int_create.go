@@ -11,7 +11,8 @@ import (
 )
 
 type createFlags struct {
-	output            string
+	outDir            string
+	output            string // deprecated alias for outDir
 	name              string
 	version           string
 	values            []string
@@ -36,7 +37,14 @@ var intCreateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		outputDir, err := resolveCreateName(intCreateFlags.name, intCreateFlags.output, sets)
+		if intCreateFlags.output != "" {
+			if intCreateFlags.outDir != "" {
+				return newUsageErrorf("cannot combine --output with --out-dir (they are the same flag; --output is deprecated)")
+			}
+			fmt.Fprintln(cmd.ErrOrStderr(), "warning: --output is deprecated; use --out-dir (in every other command --output selects a result format)")
+			intCreateFlags.outDir = intCreateFlags.output
+		}
+		outputDir, err := resolveCreateName(intCreateFlags.name, intCreateFlags.outDir, sets)
 		if err != nil {
 			return err
 		}
@@ -84,8 +92,15 @@ func resolveCreateName(name, output string, sets map[string]any) (string, error)
 
 func init() {
 	f := intCreateCmd.Flags()
-	f.StringVarP(&intCreateFlags.output, "output", "o", "", "destination directory (defaults to --name)")
-	f.StringVarP(&intCreateFlags.name, "name", "n", "", "integration name; sets the template's 'name' parameter and, unless -o is set, becomes the output directory")
+	// --out-dir, not --output: everywhere else in the CLI -o/--output selects
+	// a result format (plain|json), and a flag that silently writes a
+	// directory instead is the worst kind of surprise. --output stays as a
+	// hidden, deprecated alias so existing scripts keep working for now.
+	f.StringVarP(&intCreateFlags.outDir, "out-dir", "o", "", "destination directory (defaults to --name)")
+	f.StringVar(&intCreateFlags.output, "output", "", "destination directory (deprecated: use --out-dir)")
+	_ = f.MarkHidden("output")
+	_ = intCreateCmd.MarkFlagDirname("out-dir")
+	f.StringVarP(&intCreateFlags.name, "name", "n", "", "integration name; sets the template's 'name' parameter and, unless --out-dir is set, becomes the output directory")
 	f.StringVar(&intCreateFlags.version, "version", "", "template release tag (default: latest)")
 	f.StringArrayVarP(&intCreateFlags.values, "values", "f", nil, "values file in YAML/JSON (repeatable; use - to read one doc from stdin)")
 	f.StringArrayVarP(&intCreateFlags.sets, "set", "s", nil, "set a value as key=value (repeatable)")
@@ -95,6 +110,8 @@ func init() {
 	f.BoolVar(&intCreateFlags.skipInstallSkills, "skip-install-skills", false, "skip the agent skills install without prompting")
 	intCreateCmd.MarkFlagsMutuallyExclusive("install-skills", "skip-install-skills")
 	f.StringVar(&intCreateFlags.outputJSON, "output-json", "", "write a machine-readable result document to this path (- for stdout)")
-	intCreateCmd.MarkFlagsOneRequired("output", "name")
+	// "output" is in the group so the deprecated alias still satisfies the
+	// requirement; the alias copy in RunE handles the value.
+	intCreateCmd.MarkFlagsOneRequired("out-dir", "name", "output")
 	intCmd.AddCommand(intCreateCmd)
 }

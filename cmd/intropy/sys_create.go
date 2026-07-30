@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,7 +13,8 @@ import (
 
 type sysCreateFlags struct {
 	name       string
-	output     string
+	outDir     string
+	output     string // deprecated alias for outDir
 	version    string
 	force      bool
 	outputJSON string
@@ -28,11 +30,18 @@ var sysCreateCmd = &cobra.Command{
 		"Run it from the workspace root that contains the scaffolded components and the shared contracts project.",
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if sysCreateFlagValues.output != "" {
+			if sysCreateFlagValues.outDir != "" {
+				return newUsageErrorf("cannot combine --output with --out-dir (they are the same flag; --output is deprecated)")
+			}
+			fmt.Fprintln(cmd.ErrOrStderr(), "warning: --output is deprecated; use --out-dir (in every other command --output selects a result format)")
+			sysCreateFlagValues.outDir = sysCreateFlagValues.output
+		}
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 		return system.Create(ctx, system.CreateOptions{
 			Name:       sysCreateFlagValues.name,
-			OutputDir:  sysCreateFlagValues.output,
+			OutputDir:  sysCreateFlagValues.outDir,
 			Version:    sysCreateFlagValues.version,
 			Force:      sysCreateFlagValues.force,
 			OutputJSON: sysCreateFlagValues.outputJSON,
@@ -46,7 +55,13 @@ var sysCreateCmd = &cobra.Command{
 func init() {
 	f := sysCreateCmd.Flags()
 	f.StringVarP(&sysCreateFlagValues.name, "name", "n", "", "system name; PascalCase or kebab-case (OrderFlow and order-flow are equivalent)")
-	f.StringVarP(&sysCreateFlagValues.output, "output", "o", "", "destination directory (default: the kebab-cased name)")
+	// --out-dir, not --output: everywhere else in the CLI -o/--output selects
+	// a result format (plain|json). --output stays as a hidden, deprecated
+	// alias so existing scripts keep working for now.
+	f.StringVarP(&sysCreateFlagValues.outDir, "out-dir", "o", "", "destination directory (default: the kebab-cased name)")
+	f.StringVar(&sysCreateFlagValues.output, "output", "", "destination directory (deprecated: use --out-dir)")
+	_ = f.MarkHidden("output")
+	_ = sysCreateCmd.MarkFlagDirname("out-dir")
 	f.StringVar(&sysCreateFlagValues.version, "version", "", "system-host template release tag (default: latest)")
 	f.BoolVar(&sysCreateFlagValues.force, "force", false, "allow rendering into a non-empty output directory")
 	f.StringVar(&sysCreateFlagValues.outputJSON, "output-json", "", "write a machine-readable result document to this path (- for stdout)")
