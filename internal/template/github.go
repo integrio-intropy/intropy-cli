@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 )
@@ -151,8 +152,9 @@ func (g *GitHub) Tarball(ctx context.Context, owner, repo, tag string) (io.ReadC
 }
 
 // ListTemplates returns the names of template directories at the root of
-// the templates repository. On any error an empty slice is returned.
-func (g *GitHub) ListTemplates(ctx context.Context, owner, repo string) ([]string, error) {
+// the templates repository at the given ref (a release tag). An empty ref
+// lists the default branch.
+func (g *GitHub) ListTemplates(ctx context.Context, owner, repo, ref string) ([]string, error) {
 	if owner == "" {
 		owner = defaultTemplateOwner
 	}
@@ -160,6 +162,9 @@ func (g *GitHub) ListTemplates(ctx context.Context, owner, repo string) ([]strin
 		repo = defaultTemplateRepo
 	}
 	u := fmt.Sprintf("%s/repos/%s/%s/contents/", g.BaseURL, owner, repo)
+	if ref != "" {
+		u += "?ref=" + url.QueryEscape(ref)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, err
