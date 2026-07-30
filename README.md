@@ -169,7 +169,8 @@ intropy
 │   └── list [dir]             List scaffolded integrations under a directory
 ├── sys                    Manage integration systems
 │   └── create                 Assemble scaffolded integrations into a system host
-├── deploy <component>     Pin a component's image digest into an environment
+├── deploy                 Move components between environments via the GitOps repository
+│   ├── pin <component> [ver]  Pin a component's image digest into an environment
 │   ├── init [component...]    Scaffold a system's manifests into the GitOps repository
 │   ├── promote <component>    Copy the digests one environment runs into another
 │   ├── diff <component>       Show the rendered change a sync would apply
@@ -469,7 +470,7 @@ The resolved tag is echoed as it fetches and recorded as `template` in
 `--output json`, so a reviewer of the pushed branch can tell which release
 produced the tree.
 
-## Deployment (`intropy deploy`)
+## Deployment (`intropy deploy pin`)
 
 Pin the image digest that CI built for your current commit into one
 environment's kustomize overlay in the GitOps repository.
@@ -477,14 +478,14 @@ environment's kustomize overlay in the GitOps repository.
 Run it inside the component's source repository:
 
 ```sh
-intropy deploy order-extractor --env dev --plan
+intropy deploy pin order-extractor --env dev --plan
 ```
 
 `--plan` renders the overlay before and after the change and prints a diff
 without writing anything. Drop it to commit and push:
 
 ```sh
-intropy deploy order-extractor --env dev
+intropy deploy pin order-extractor --env dev
 ```
 
 That stages only the overlay's `kustomization.yaml`, commits it with trailers
@@ -494,7 +495,7 @@ branch.
 To ship a published release rather than the current commit, pass its version:
 
 ```sh
-intropy deploy order-extractor 1.4.2 --env staging
+intropy deploy pin order-extractor 1.4.2 --env staging
 ```
 
 The release manifest already records the digests, so nothing reads the source
@@ -510,7 +511,7 @@ believes succeeded. Re-run to deploy on top of theirs.
 
 ### What happens
 
-For `intropy deploy order-extractor --env dev`, the CLI:
+For `intropy deploy pin order-extractor --env dev`, the CLI:
 
 1. Verifies that `git` and `kustomize` are available and resolves the GitOps
    repository from the flag, environment, or user configuration.
@@ -867,7 +868,7 @@ Progress goes to stderr and the diff to stdout, so `--plan` is pipeable. Use
 `-o json` for a machine-readable result instead of the diff:
 
 ```sh
-intropy deploy order-extractor --env dev --plan -o json | jq .appName
+intropy deploy pin order-extractor --env dev --plan -o json | jq .appName
 ```
 
 `deploy diff` is the one command whose diff travels *inside* its JSON, as
@@ -1047,7 +1048,7 @@ itself. It verifies that the requested OCI tag and the manifest's declared
 version agree.
 
 Ship the inspected release with
-`intropy deploy <component> <version> --env <env>`.
+`intropy deploy pin <component> <version> --env <env>`.
 
 ## Skills (`intropy skills`)
 

@@ -31,12 +31,12 @@ func TestDeployInitIsRegisteredUnderDeploy(t *testing.T) {
 	t.Fatal("init is not registered under deploy")
 }
 
-// The subcommand name has to win over the component argument, and the help text
-// has to say so — otherwise a component actually called init is silently
-// unreachable.
-func TestDeployHelpNamesInitAsReserved(t *testing.T) {
+// deploy is not runnable, so a component called init is reachable via
+// 'deploy pin init' like any other — there are no reserved names to warn
+// about, and the parent's help lists init as a subcommand.
+func TestDeployHelpNamesInitAsSubcommand(t *testing.T) {
 	if !strings.Contains(deployCmd.Long, "init") {
-		t.Error("deploy's long help must list init among the reserved subcommand names")
+		t.Error("deploy's long help must list init among its subcommands")
 	}
 }
 

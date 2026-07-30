@@ -125,7 +125,7 @@ Same flag name, same shorthand, different cardinality and optionality. A user ty
 
 ---
 
-### 7. `deploy` is both a runnable command and a parent (DESIGN NOTE)
+### 7. `deploy` is both a runnable command and a parent (DESIGN NOTE) ✅ DONE (deploy is now a pure parent; the runnable form is `deploy pin`)
 
 `intropy deploy <component>` works, and `intropy deploy diff|init|promote|status|sync` also works. Cobra resolves subcommand names before positional args, and the Long description even documents this: "The subcommand names win over the component argument, so a component actually called diff, init, promote, status or sync is not reachable this way."
 

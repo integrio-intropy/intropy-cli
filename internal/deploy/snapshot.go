@@ -58,11 +58,11 @@ func readSnapshot(ctx context.Context, repo *gitops.Repository, coord gitops.Coo
 	for _, img := range comp.Images {
 		entry, found := k.FindImage(img.Name)
 		if !found {
-			return snapshot{}, fmt.Errorf("%s pins nothing for %s, so there is nothing to promote out of it.\nDeploy to %s first: intropy deploy %s --env %s",
+			return snapshot{}, fmt.Errorf("%s pins nothing for %s, so there is nothing to promote out of it.\nDeploy to %s first: intropy deploy pin %s --env %s",
 				env, img.Name, env, coord.Component, env)
 		}
 		if entry.Digest == "" {
-			return snapshot{}, fmt.Errorf("%s pins %s at %s rather than a digest, so what it runs is not a fixed set of bits.\nA promotion copies digests — deploy to %s first: intropy deploy %s --env %s",
+			return snapshot{}, fmt.Errorf("%s pins %s at %s rather than a digest, so what it runs is not a fixed set of bits.\nA promotion copies digests — deploy to %s first: intropy deploy pin %s --env %s",
 				env, img.Name, entry.Pinned(), env, coord.Component, env)
 		}
 		// Tag stays empty on purpose: it means "the tag this digest was resolved

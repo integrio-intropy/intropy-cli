@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 // resetDeployState restores the flag-backing global between tests. These tests
@@ -21,7 +23,7 @@ func runDeploy(t *testing.T, args ...string) (stdout, stderr *bytes.Buffer, err 
 	t.Helper()
 	stdout, stderr = &bytes.Buffer{}, &bytes.Buffer{}
 	resetDeployState(t, stdout, stderr)
-	rootCmd.SetArgs(append([]string{"deploy"}, args...))
+	rootCmd.SetArgs(append([]string{"deploy", "pin"}, args...))
 	return stdout, stderr, rootCmd.Execute()
 }
 
@@ -75,8 +77,21 @@ func TestDeployAcceptsBothOutputFormats(t *testing.T) {
 // closest one, so it would shadow the root's and silently break -C/--directory
 // for this command alone.
 func TestDeployDoesNotShadowRootPersistentPreRun(t *testing.T) {
-	if deployCmd.PersistentPreRunE != nil || deployCmd.PersistentPreRun != nil {
-		t.Error("deploy must not define PersistentPreRunE; it would shadow the root's and break -C")
+	for _, cmd := range []*cobra.Command{deployCmd, deployPinCmd} {
+		if cmd.PersistentPreRunE != nil || cmd.PersistentPreRun != nil {
+			t.Errorf("%s must not define PersistentPreRunE; it would shadow the root's and break -C", cmd.Name())
+		}
+	}
+}
+
+// deploy is a pure parent — the runnable form is 'deploy pin' — so a
+// component called diff, pin or sync is never shadowed by a subcommand.
+func TestDeployIsNotRunnable(t *testing.T) {
+	if deployCmd.RunE != nil || deployCmd.Run != nil {
+		t.Error("deploy must not be runnable; the digest-pinning command is 'deploy pin'")
+	}
+	if deployPinCmd.RunE == nil {
+		t.Error("deploy pin must be the runnable digest-pinning command")
 	}
 }
 
@@ -95,14 +110,14 @@ func TestDeployCompletionsAreSilentWithoutConfig(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("INTROPY_GITOPS_REPO", "")
 
-	if got, _ := completeDeployComponents(deployCmd, nil, ""); len(got) != 0 {
+	if got, _ := completeDeployComponents(deployPinCmd, nil, ""); len(got) != 0 {
 		t.Errorf("component completion = %v, want none", got)
 	}
-	if got, _ := completeDeployEnvironments(deployCmd, nil, ""); len(got) != 0 {
+	if got, _ := completeDeployEnvironments(deployPinCmd, nil, ""); len(got) != 0 {
 		t.Errorf("environment completion = %v, want none", got)
 	}
 	// A component already supplied means there is nothing left to complete.
-	if got, _ := completeDeployComponents(deployCmd, []string{"order-extractor"}, ""); len(got) != 0 {
+	if got, _ := completeDeployComponents(deployPinCmd, []string{"order-extractor"}, ""); len(got) != 0 {
 		t.Errorf("completion after an argument = %v, want none", got)
 	}
 }
@@ -186,7 +201,7 @@ func TestVersionArg(t *testing.T) {
 
 // The --argocd-server flag is documented in the README, so it must exist.
 func TestDeployHasArgocdServerFlag(t *testing.T) {
-	if deployCmd.Flags().Lookup("argocd-server") == nil {
+	if deployPinCmd.Flags().Lookup("argocd-server") == nil {
 		t.Error("--argocd-server is documented but not registered")
 	}
 }
