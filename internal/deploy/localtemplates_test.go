@@ -114,6 +114,58 @@ func TestLocalTemplatesRenderAndBuild(t *testing.T) {
 	}
 }
 
+// A connector whose topology record declares a deployed transport renders its
+// Dapr binding with the deployed spec.type, not the local one: F5 runs on the
+// local transport, the rendered manifests on the deployed one.
+func TestLocalTemplatesRenderDeployedTransportBinding(t *testing.T) {
+	requireKustomize(t)
+	root := localTemplatesRoot(t)
+	f := newInitFixtureWith(t, localTemplateEntries(t, root))
+
+	// A system whose only connector is a local file folder that deploys as SFTP.
+	f.topologyFile = filepath.Join(t.TempDir(), "topology.json")
+	if err := os.WriteFile(f.topologyFile, []byte(`{
+		"apiVersion": "topology.intropy.io/v1",
+		"kind": "SystemTopology",
+		"system": "distribution",
+		"components": [
+			{"name": "order-loader", "kind": "loader",
+			 "connectors": [{"connector": "erp", "direction": "out"}]}
+		],
+		"connectors": [
+			{"name": "erp",
+			 "transport": {"type": "file", "supportsInput": true, "supportsOutput": true},
+			 "deployedTransport": {"type": "sftp", "supportsInput": false, "supportsOutput": true},
+			 "directions": ["out"], "usedBy": ["order-loader"]}
+		]
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Init(context.Background(), f.options(&stdout, &stderr)); err != nil {
+		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
+	}
+
+	work := f.clone(t, "deploy-init/sales-distribution")
+	bindings := readTreeFile(t, work, "domains/sales/distribution/host/base/bindings/bindings.yaml")
+
+	for _, want := range []string{
+		"type: bindings.sftp",
+		"REPLACE-ME-SFTP-ADDRESS",
+		"REPLACE-ME-SFTP-USERNAME",
+		"REPLACE-ME-SFTP-ROOT-PATH",
+	} {
+		if !strings.Contains(bindings, want) {
+			t.Errorf("rendered bindings.yaml missing %q\n%s", want, bindings)
+		}
+	}
+	// The deployed transport replaces the local one; the file binding must not render.
+	if strings.Contains(bindings, "bindings.localstorage") {
+		t.Errorf("rendered bindings.yaml carries the local transport for the erp connector\n%s", bindings)
+	}
+}
+
 func TestLocalTemplatesAzureRendersServiceBusAndNoSecrets(t *testing.T) {
 	requireKustomize(t)
 	root := localTemplatesRoot(t)

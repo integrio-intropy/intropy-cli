@@ -119,12 +119,20 @@ type Transport struct {
 // Connector is an external system integration point. ExternalSystem is the
 // system it fronts, Directions the directions it is wired in, and UsedBy the
 // components that use it.
+//
+// Transport is the connector's local materialization (what F5 runs use).
+// DeployedTransport, when the host declares one, is the value-free transport
+// shape the connector materializes as after deployment; it is nil for hosts
+// that predate the field or whose local transport also applies to deployed
+// environments. Connection values never appear here — they are placeholders in
+// the rendered GitOps overlays.
 type Connector struct {
-	Name           string    `json:"name"`
-	ExternalSystem string    `json:"externalSystem,omitempty"`
-	Transport      Transport `json:"transport"`
-	Directions     []string  `json:"directions,omitempty"`
-	UsedBy         []string  `json:"usedBy,omitempty"`
+	Name              string     `json:"name"`
+	ExternalSystem    string     `json:"externalSystem,omitempty"`
+	Transport         Transport  `json:"transport"`
+	DeployedTransport *Transport `json:"deployedTransport,omitempty"`
+	Directions        []string   `json:"directions,omitempty"`
+	UsedBy            []string   `json:"usedBy,omitempty"`
 }
 
 // Entry is one system's topology plus the workspace directory it belongs to,
