@@ -1,0 +1,813 @@
+Help me re-invent the developer portal. We are considering to move away from backstage, which feels to big for us. We are looking for something specific to our domain that uses our domain language, is easy to use and easy to maintain. It should have tight integration with our diagramming solution and monitoring solution. At this stage it isnt important what those tools are just that the first is where we document the architecture and the second is where we send our telemetry. For the scope of this analysis assume that any integration points with these tools we can dream of is possible. Like backstage it should be built around a catalogue but we like thinking outside the box so bonus points if we can come up with something very different from backstage. 
+
+One open question is target users. In this repo we have a dashboard. This dashboards gives developers what they needs mostly. I dont think there is a need to duplicate that kind of information. The architect is a given user. Ops person is more open, can we mix runtime and architecture in a good way or will it make the portal to broad?
+
+---
+
+<task-notification>
+<task-id>ae9ea1809aaa3bc7a</task-id>
+<tool-use-id>toolu_01UJtVp6H995NiUZfGENGiEN</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/25564163-98a3-4ff9-8bf8-f0b69920c8f6/tasks/ae9ea1809aaa3bc7a.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore dashboard and its data" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Branch situation
+
+No `feature/dashboard-v2` exists. Branches carrying dashboard work: `feature/dashboard` (3 commits: `2cdfc4e6` run subcommand, `e740ce3f` implement dashboard, `9ea6aaea` System) — fully merged into the current branch (`git log feature/v-next..feature/dashboard` is empty). **The dashboard on `feature/v-next` is the newest and a strict superset.** No `git show` needed; everything below is from the working tree.
+
+---
+
+## 1. What the dashboard shows
+
+`intropy dashboard [dir]` — `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/dashboard.go`. Long help is explicit: *"it does not start any integration processes."* Two top-level views (`web/src/App.tsx`, `VIEWS` const):
+
+**Integration Catalog** (`Sidebar.tsx` + `DetailPanel.tsx`)
+- Tree grouped domain → system → integration, derived from directory nesting plus a sibling system-host's declared `name`.
+- Per integration: template, version, source `owner/repo`, root-relative path, all `scaffold.json` values, pipeline steps (filenames under `src/Process/Steps`), Dapr components as chips, and rendered `AGENTS.md` / `README.md`.
+
+**Deployment ladder** (`web/src/components/Deployment.tsx`, inside the detail panel)
+- Table: Environment | Release | Image | Age | Sync | Health, in promotion order, plus the command's own `summary` sentence and `notes`.
+- `manual` and `waiting` (pending sync gate) badges; per-image digest pins; unpinned/tag-only called out; not-onboarded rows greyed with a reason.
+- Loads **on selection, not page load**, with an explicit Refresh — because reading it takes the same exclusive GitOps checkout lock `intropy deploy` takes.
+
+**Integration Flow** (`web/src/components/FlowView.tsx`, 711 lines, + `FlowDetail.tsx`)
+- React Flow canvas: system boundary group node, component nodes, pub/sub and state infra nodes inside, bindings drawn outside as sources/sinks, edges from the topology's inline `subscribes`/`publishes`/`connectors`.
+- System selector combobox, "Refresh topology" button, per-host error banner.
+- Click-through detail: Flow, Contract (JSON Schema field tree + fingerprint), Message docs (format, delimiter, encoding, file pattern, frequency, contact, lastReviewed, fields, redaction-gated sample, prose).
+
+---
+
+## 2. Data sources
+
+| Source | Feeds | Path |
+|---|---|---|
+| `.intropy/scaffold.json` walk | catalog, tree, values | `internal/template/scaffold_list.go` (`ListScaffolds`, `ListSystemHosts`), consumed in `internal/dashboard/handlers.go:scan` |
+| **Host `graph` verb stdout** | flow canvas topology | `internal/dashboard/topology.go` → `internal/topology/graph.go` (`dotnet build`, then `dotnet run --no-build --no-launch-profile --project &lt;host&gt; -- graph`); schema `topology.intropy.io/v1` in `internal/topology/topology.go` |
+| `deploy status` subprocess-in-process | deployment ladder | `internal/dashboard/deploy.go` (`statusCommandProvider`) → `internal/deploy` (`StatusResult` at `internal/deploy/result.go:161`) |
+| **ArgoCD** (indirectly) | Sync/Health/SyncedRevision columns only | via `internal/argocd`, reached only through `deploy.Status` |
+| **GitOps repo checkout** (indirectly) | Release, digests, revision, age | via `deploy.Status`; the only network-touching part of the package |
+| Dapr component YAML | flow infra nodes, chips | `internal/dashboard/components.go`, reads `&lt;int&gt;/local/dapr-components/*.yaml` |
+| `messages/&lt;connector&gt;.md` | authored payload docs | `internal/dashboard/messagedocs.go`, YAML frontmatter + prose |
+| Filesystem docs | detail panel | `AGENTS.md`, `README.md` (capped at 128 KiB), `src/Process/Steps/` |
+
+**Not present anywhere in the repo:** Tempo, OpenTelemetry, traces, Grafana, Loki, Prometheus, and `match.json` — I grepped all `.go/.ts/.tsx/.md` and got zero hits. **OCI registry** is used by `release`/`skills` but is *not* wired into the dashboard.
+
+Note: the Tempo-based `pipeline-runs` skill is a user-level skill, not in this repo — that capability lives entirely outside the dashboard.
+
+---
+
+## 3. Rendering
+
+**Local web server + embedded SPA.** Not a TUI, not static HTML.
+
+- Go stdlib `net/http`, bound to `127.0.0.1:8730` by default (`--port 0` picks free, `--no-browser` suppresses auto-open) — `internal/dashboard/server.go`, `browser.go`.
+- Read-only JSON API on `net/http` 1.22 method-pattern routing (`internal/dashboard/handlers.go:newHandler`): `GET /api/health`, `/api/integrations`, `/api/integrations/{path...}`, `/api/flow`, `/api/topology`, `POST /api/topology/refresh`, `GET|POST /api/deploy/{path...}` (GET serves cache, POST re-runs).
+- SPA: Vite + React 18 + TypeScript, `@xyflow/react` for the canvas, Material Symbols SVGs via `vite-plugin-svgr`. Embedded with `go:embed` at `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/embed.go`; served by `internal/dashboard/static.go`, which deliberately 404s missing *files* (paths with extensions) rather than falling back to `index.html`, so a binary built without `make web` names the missing asset instead of showing a blank page.
+- `web/dist/index.html` is a committed placeholder; `make bundle` = `make web &amp;&amp; make build`.
+- Light/dark/system theme, collapsible sidebar, both persisted to `localStorage`.
+
+Caching: topology computed once per process (the graph verb is a cold `dotnet build`, minutes on first run); deploy state cached per integration with the mutex held **across** the provider call to serialize the GitOps checkout lock (`deployStateTimeout = time.Minute`).
+
+---
+
+## 4. Personas
+
+Squarely the **integration developer working in a local scaffolded workspace**. Evidence: binds loopback only, no auth, no multi-tenancy, no persistence, workspace-root-scoped, auto-opens a browser, exits on Ctrl+C, runs `dotnet build` on your machine.
+
+Secondary lean toward a **developer doing a pre-promotion check** — the deployment ladder answers "does prod run the bits staging tested" without leaving the catalog.
+
+There's also a clear **AI-agent-adjacent** slant: `AGENTS.md` is a first-class rendered document, and message docs exist specifically to capture payload knowledge that has no machine spec.
+
+Explicitly *not* aimed at: SRE/on-call (no runtime health of running integrations, no logs, no alerts), business/support users (no message-level search or replay), or platform teams needing a fleet view (one workspace at a time).
+
+---
+
+## 5. Gaps — things it explicitly does not show
+
+**Stated in code comments as deliberate:**
+- No pipeline *executions* — `pipelineSteps` is a `os.ReadDir` of step filenames, i.e. the declared shape, never a run.
+- No polling. `App.tsx` comment: a tab fetching on a timer "would eventually fail your own `deploy` with a lock it was holding."
+- Deployment facts are never derived locally; `internal/dashboard/server.go` package doc: "the dashboard cannot claim something the command line would not."
+- Sync/Health omitted entirely when ArgoCD is unreachable, rather than guessed — and an empty ladder is never rendered for a lookup failure, because that would read as "not deployed."
+- `apis`, and each component's `provides`/`consumes`, are decoded as `json.RawMessage` and **not rendered** — shape not finalized (`internal/topology/topology.go`, mirrored in `web/src/api.ts`).
+- Message docs are documentation only; the comment is explicit that "the runtime never validates against it."
+
+**Absent with no accommodation made:**
+- Zero observability: no traces, spans, latency, throughput, error rates, dead-letter queues, or message history.
+- No release browsing — `release list` / `release show` exist as CLI commands but have no dashboard surface; the only release data shown is the `deploy.internal/release` annotation per environment row.
+- No CI/build status, no git status of the integration repos.
+- No write actions of any kind — no deploy, promote, sync, or scaffold from the UI. Only two POSTs, both cache-refresh.
+- No cross-system view: the flow canvas renders one selected system at a time.
+- No Backstage catalog integration despite it being central elsewhere in the Intropy toolchain.
+- No auth, TLS, or sharing — single local user by construction.</result>
+<usage><subagent_tokens>66653</subagent_tokens><tool_uses>23</tool_uses><duration_ms>119171</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>abb8423d19c391849</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/25564163-98a3-4ff9-8bf8-f0b69920c8f6/tasks/abb8423d19c391849.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore domain model and catalog" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Findings below. Everything is read-only exploration — no files were changed.
+
+---
+
+# 1. AGENTS.md — the verb contract
+
+`/Users/robinhultman/dev/intropy/tooling/intropy-cli/AGENTS.md` (162 lines) is a **writing-style + verb-set contract**, not an architecture doc. Sections: code comments, cobra help text, flag descriptions (constants in `cmd/intropy/flagtext.go`), runtime output (stdout = results, stderr = everything else), voice, errors, vocabulary, and — the load-bearing part for a portal — **Command verbs** (lines 104–154).
+
+The canonical verb set, grouped by effect on the world:
+
+| Group | Verb | Contract |
+|---|---|---|
+| Read-only (exit 0 even on disagreement, never write git, never sync) | `list` | enumerates a collection; never prints one item's details |
+| | `show` | details of exactly one thing; never enumerates |
+| | `status` | one component across **every** environment, one row each, plus whether rows agree |
+| | `diff` | the rendered change a `sync` would apply; both sides are committed revisions |
+| Local project state (may write files, never push) | `create` | makes something new from a template or scaffolded parts |
+| | `add` | attaches something that already exists elsewhere (pulled, not generated) |
+| | `update` | reconciles an installed thing against the ref its source pins; never changes the pin |
+| | `init` | scaffolds the GitOps tree a system needs, as a **branch pushed for review**; one per system |
+| Move / publish | `publish` | immutable artifact to an OCI registry; edits are new versions |
+| | `pin` | one component's image digest into one environment's overlay |
+| | `promote` | copies digests one env runs into the next in the promotion graph |
+| | `sync` | applies an env's pending change through ArgoCD; never decides what the change is |
+
+Explicit anti-rule: do not import kubectl's `get`/`describe` split — `int describe` was retired. `cmd/intropy/int_describe.go` remains only as a deprecation shim. New verbs need a written reason in this file.
+
+Vocabulary rules worth mirroring in a portal UI: **image digest** (never "bits"/"artifacts"), **environment** in prose (`--env` only when naming the flag), `-&gt;` for a transition, ` @ ` for a pin, 7-char short SHAs.
+
+---
+
+# 2. Domain glossary — where each term is defined
+
+## On `main` / `feature/v-next` (the shipped model)
+
+| Term | Definition site | Metadata it carries |
+|---|---|---|
+| **Integration** | `internal/template/scaffold.go` (`Scaffold`), `internal/template/scaffold_list.go` (`ScaffoldEntry`) | Identity = the directory holding `.intropy/scaffold.json`. Carries `schemaVersion, template, owner, repo, version, values{}, role, blockKind, dataFlow, dependsOn[]` |
+| **System** | `internal/topology/topology.go` (`Topology.System`), `internal/system/model.go` (`Model`) | A bare string name in topology v1. Assembled model carries `Name` (kebab), `ProjectName` (Pascal), `SystemClass`, `Components[]`, `Topics[]`, `Connectors[]`, `Shared` |
+| **Component** | `internal/topology/topology.go` (`Component`); GitOps sense in `internal/gitops/config.go` (`ComponentConfig`) + `layout.go` (`Coordinate`) | Topology: `name, kind, subscribes[], publishes[], connectors[], provides[], consumes[]`. GitOps: `schemaVersion, name, kind(service\|shared), sourcePaths[], images[].name, environments[]` |
+| **Block** | `internal/template/scaffold.go` consts `BlockKindExtractor`/`BlockKindLoader`; label `intropy.dev/block-kind` | Kinds seen in code: `extractor`, `loader`, `transactionalIntegration`. Frontend also knows `transactional`, `aggregator` (`web/src/components/FlowView.tsx` `KIND_DATA_FLOW`). `sys create` assembles **only** extractor/loader (`internal/system/assemble.go:47`) |
+| **Blueprint** | **Not present on main.** Zero hits. Lives on `feature-biztalk-migration` / `feature-migration` (see §7) | — |
+| **Connector** | `internal/topology/topology.go` (`Connector`), `internal/system/model.go` (`Connector`), `internal/deploy/initmodel.go` (`InitConnector`) | `name, externalSystem, transport{type,supportsInput,supportsOutput}, deployedTransport?, directions[], usedBy[]`. Never carries connection values — those are GitOps placeholders |
+| **Contract** | `internal/topology/topology.go` (`Contract`) | `name` (FQ type name), `kind` (`event`), `shortName` (join key to `scaffold.values.contract`), `mediaType`, `fingerprint` (hash over canonical schema form — equal fingerprints = equal shapes across systems), `schema` (raw JSON Schema, passed through uninterpreted) |
+| **Transport** | `internal/topology/topology.go` (`Transport`) | `type`, `supportsInput`, `supportsOutput`. Split into local vs `deployedTransport` (`internal/deploy/initmodel.go:316`) |
+| **Topic** | `internal/topology/topology.go` (`Topic`), `internal/system/model.go` (`TopicKey`) | `pubsub, topic, contract, publishers[], subscribers[]` |
+| **Release** | `internal/release/manifest.go` (`Manifest`) | `schemaVersion, component, version, createdAt, createdBy, source{commit,ref,repo}, images[]{name,digest}, notes, changes[]{commit,subject}, changeBasis{kind,version,commit,ref}` |
+| **Deploy / Environment** | `internal/gitops/config.go` (`DeployConfig`, `EnvironmentConfig`), `internal/deploy/result.go` | Env: `sync(auto\|manual), promotesFrom[], requireSourceHealthy, scratch`. Promotion order derived topologically (`DeployConfig.PromotionOrder`) |
+| **Domain** | `internal/gitops/layout.go` (`Coordinate`) | Top segment of `domains/&lt;domain&gt;/&lt;system&gt;/&lt;component&gt;/`; derived from GitOps tree first, workspace second |
+
+Three labels are the joint between templates and the domain model (`internal/template/scaffold.go:24-49`):
+- `intropy.dev/template-role` → `shared-library` | `system-host`
+- `intropy.dev/block-kind` → `extractor` | `loader` | …
+- `intropy.dev/data-flow` → `in` | `out`
+
+---
+
+# 3. The untracked `catalog/` directory — what it is
+
+`/Users/robinhultman/dev/intropy/tooling/intropy-cli/catalog/` is **untracked** (`git status` shows `?? catalog/`), 9 files, ~19 KB total. It is a **pilot of Google's Open Knowledge Format (OKF) v0.2 knowledge catalog** — an agent-facing knowledge catalog, *not* a Backstage-style software catalog.
+
+`catalog/index.md` frontmatter is literally `okf_version: "0.2"` and links to `GoogleCloudPlatform/knowledge-catalog/okf/SPEC.md`.
+
+Structure — four document types, all currently **skeletons with HTML-comment placeholders** and `status: draft`:
+
+```
+catalog/index.md                                  (OKF root + frontmatter profile)
+catalog/concepts/intropy-resource-model.md        type: Intropy Concept
+catalog/concepts/state-and-ownership.md           type: Intropy Concept
+catalog/concepts/releases-and-image-digests.md    type: Intropy Concept
+catalog/workflows/integration-to-production.md    type: Intropy Workflow
+catalog/workflows/onboard-a-system.md             type: Intropy Workflow
+catalog/workflows/manual-production-gate.md       type: Intropy Workflow
+catalog/contracts/gitops-repository-contract.md   type: Intropy Contract
+catalog/playbooks/deployment-troubleshooting.md   type: Intropy Playbook
+```
+
+Frontmatter profile (this is the reusable bit for a portal):
+- OKF-required: `type`
+- OKF-recommended: `title`, `description`, `tags`
+- Pilot additions: `status` (draft until verified), `sources[]` (`{id, resource, title}` — URLs pointing at README, CONTRIBUTING, and *specific Go files* the concept derives from), and **`commands[]` as a producer extension for command-oriented discovery** (e.g. `intropy deploy pin`)
+- Reserved-but-unused: `generated`, `verified`
+
+Stated scope boundary in `index.md`: *"Command syntax, flags, and complete invocation details remain authoritative in `intropy &lt;command&gt; --help`. The repository README.md remains the installation and quickstart entry point."* — i.e. this catalog is deliberately for cross-command knowledge only.
+
+The tables inside are the most useful skeleton for portal IA: `intropy-resource-model.md` has a `Concept | Meaning | Identity | Lifecycle` grid for Integration/System/Component/Release/Environment; `state-and-ownership.md` has a `Fact | Authoritative location | Written by | Read by` ownership map; `deployment-troubleshooting.md` has a 7-row `Symptom | Boundary | Evidence | Safe next action` triage map.
+
+**Verdict:** a catalog-format experiment, yes — but an *agent knowledge* catalog (OKF), orthogonal to a Backstage software catalog. It is unfinished and uncommitted.
+
+---
+
+# 4. Artifact inventory — machine-readable records and their fields
+
+### 4.1 `.intropy/scaffold.json` — `internal/template/scaffold.go`
+`ScaffoldSchemaVersion = 1`, path const `ScaffoldRelPath`. Found by walking **up** from cwd (`FindScaffold`) or **down** from a root (`ListScaffolds`, skipping `.git/.intropy/node_modules/bin/dist`, never nesting).
+
+```
+schemaVersion, template, owner, repo, version, values{},
+role?, blockKind?, dataFlow?, dependsOn[]{template, dir}
+```
+`ScaffoldEntry` = `{path} + flattened Scaffold` — this is the wire type for `int list -o json` and `/api/integrations`.
+
+### 4.2 Topology record — `topology.intropy.io/v1`
+`internal/topology/topology.go`. `APIVersion = "topology.intropy.io/v1"`, `Kind = "SystemTopology"`. **The CLI never derives it** — it runs the system host's `graph` verb (`internal/topology/graph.go`: `dotnet build` then `dotnet run --no-build --no-launch-profile -- graph`, 5-minute timeout, JSON on stdout only). An unknown apiVersion is an error, not a guess.
+
+```
+apiVersion, kind, system,
+components[]{name, kind, subscribes[]{pubsub,topic},
+             publishes[]{port,pubsub,topic},
+             connectors[]{connector,direction},
+             provides[], consumes[]}        # opaque json.RawMessage
+topics[]{pubsub, topic, contract, publishers[], subscribers[]}
+connectors[]{name, externalSystem, transport{type,supportsInput,supportsOutput},
+             deployedTransport?, directions[], usedBy[]}
+contracts[]{name, kind, shortName, mediaType, fingerprint, schema}
+apis[]                                       # opaque
+```
+Wiring is **inlined on components**; `topics[]`/`connectors[]` are lookup tables. `topology.Entry` = `{path} + Topology`.
+
+### 4.3 `contracts[]` registry
+`Contract` (above). Join keys: `Topic.contract` → `Contract.name` (FQ type name); `Contract.shortName` → `scaffold.values.contract`. `fingerprint` is a hash over the canonical schema form so equal fingerprints mean equal shapes **across systems** — the natural primary key for a cross-system contract catalog. `schema` is raw JSON Schema; the renderable subset is declared in `web/src/api.ts:241` (`JsonSchema`: type, format, properties, required, items, enum, $ref, $defs).
+
+### 4.4 `messages/&lt;connector&gt;.md` sidecars — `internal/dashboard/messagedocs.go`
+Per-**system** directory `messages/`, one Markdown file per connector, filename (minus `.md`) is the connector key. YAML frontmatter + prose body (body capped at 16 KB). Documentation, never enforcement.
+
+```
+format, delimiter, encoding, filePattern, frequency,
+contact, lastReviewed,
+fields[]{name, position, type, required, notes},
+sample{inline, redacted},         # sample DROPPED unless `redacted` is explicitly set
+body                               # prose, from the Markdown body
+```
+Notable safety rule: `docSample.Redacted` is a `*bool` so an absent value **rejects** the sample rather than defaulting it. Broken docs never fail a request — they surface in an error banner.
+
+### 4.5 GitOps repo contract — `internal/gitops/config.go`, `layout.go`
+`SchemaVersion = 1` for both files.
+
+`deploy.yaml` (root; its presence is what makes a repo deployable):
+```
+schemaVersion, registry, minimumCliVersion,
+platform{provider, pubsub, secretStore},     # e.g. beebyte / rabbitmq / kubernetes
+argocd{server, appNamespace},
+environments{&lt;name&gt;: {sync: auto|manual, promotesFrom[], requireSourceHealthy, scratch}}
+```
+Unknown YAML keys are rejected (`decodeFile` uses `KnownFields(true)`).
+
+`domains/&lt;domain&gt;/&lt;system&gt;/&lt;component&gt;/component.yaml`:
+```
+schemaVersion, name, kind(service|shared), sourcePaths[], images[]{name}, environments[]
+```
+`kind: shared` must declare **no** images. Coordinate helpers: `RelPath()`, `OverlayRelPath(env)`, `AppName(env)` = `&lt;domain&gt;-&lt;system&gt;-&lt;component&gt;-&lt;env&gt;` (matches the ApplicationSet template).
+
+Overlay annotations (`commonAnnotations`): `deploy.internal/source-commit`, `deploy.internal/release`.
+
+Commit trailers (README.md:774-812; documented as a *format*, renaming a key is breaking): `Deploy-Component, Deploy-Domain, Deploy-System, Deploy-Env, Deploy-Release?, Deploy-Image, Deploy-Digest, Deploy-Source-Commit, Deploy-Promoted-From?, Deploy-By, Deploy-Cli`.
+
+### 4.6 Deploy command JSON — `internal/deploy/result.go` (fields "stable and additive-only")
+- `Result` (pin/promote): `component, domain, system, environment, sourceCommit, appName, overlayPath, pins[]{image,previous,digest,tag}, changed, applied, revision, release, promotedFrom, upstreams[], syncPolicy, syncStatus, healthStatus, syncedRevision`
+- `SyncResult`: `…, revision, requested, syncPolicy, syncStatus, healthStatus, syncedRevision`
+- `DiffResult`: `…, pending (full sha), synced, applied, changed, diff (unified, never coloured in JSON), removedResources[], subject, release, promotedFrom, sourceCommit, deployedBy, syncPolicy, syncStatus, healthStatus`
+- `StatusResult`: `component, domain, system, kind, environments[], consistent, summary, notes[]` — `summary` deliberately travels *in* the result so no second presenter can draw a different conclusion from the same rows
+- `EnvironmentStatus`: `environment, appName, overlayPath, onboarded, reason, release, sourceCommit, pins[], revision, deployedAt, syncPolicy, syncStatus, healthStatus, syncedRevision, pending`
+- `InitResult` (deploy init): `system, domain, host, template, components[], files[]{path, action}, applied, branch, revision, placeholders[]{file, line, token}`
+- `FileAction.Action` ∈ `create | identical | skip-exists | overwrite` (`internal/deploy/scaffold.go:18-33`)
+
+### 4.7 `InitModel` — the manifest render context (`internal/deploy/initmodel.go`)
+Injected under the reserved template key `topology`; flattened + sorted for byte-identical re-renders.
+```
+system,
+components[]{name, kind, appId, workload(cronjob|deployment), dir, topics[], connectors[]}
+pubsubs[]{name, topics[], appIds[]}       # appIds = Dapr scopes
+topics[]{pubsub, topic, contract, publishers[], subscribers[]}
+connectors[]{name, externalSystem, transport, directions[], appIds[]}
+```
+Derivation rules worth surfacing in a portal: extractor ⇒ `CronJob`, everything else ⇒ `Deployment` (`workloadFor`). Scaffold↔topology join is by **directory basename first, then `values.appId`** (`matchScaffolds`, line 141) — a missing record is a warning, not a failure.
+
+Reserved template keys (`internal/template/reserved.go`): `topology`, `component`, `gitops`, `scaffold`, `env`.
+
+### 4.8 Release artifact — `internal/release/`
+- Manifest: `manifest.go` (§2 table above), `SchemaVersion = 1`, strict `Validate()`
+- OCI: `artifact.go` — media type `application/vnd.integrio.release.v1+json`, annotation `io.intropy.release.component`, plus `org.opencontainers.image.description`; stored in `&lt;image-repo&gt;/releases`
+- `release list` result: `list.go` — `{component, releases[]{version, createdAt, commit, digest, notes}, total}` (mirrored to OCI annotations so a listing costs one manifest fetch and no blob transfer)
+- Git tag: `&lt;component&gt;/v&lt;version&gt;` — a tag-push failure is a *warning*; the OCI manifest is the release
+
+### 4.9 Template manifest — `internal/template/manifest.go`
+`apiVersion: intropy.dev/v1`, `kind: Template`. Comment at line 16: *"The envelope mirrors the Kubernetes / Backstage shape so authors recognize it at a glance."*
+```
+metadata{name, title, description, tags[], labels{}}
+spec{parameters (raw JSON Schema, type: object),
+     values{},
+     files[]{path, when},              # glob + Go/sprig condition
+     dependencies[]{template, output, values{}}}
+```
+`DescribeResult` (`describe.go:41`) is the `template show -o json` wire type and is explicitly called out as **load-bearing for Backstage's frontend**: `{template, title, description, tags[], labels{}, owner, repo, version, parameters, dependencies[]}`.
+
+### 4.10 Skills — `internal/skill/`
+`skills.json` (`manifest.go`): `{collections[]{name, ref}, skills[]{name, source, version}}`.
+`skills.lock.json` (`lockfile.go`, `lockfileVersion: 1`): `{lockfileVersion, generatedAt, skills[]{name, path, source{registry, repository, tag, digest, ref}, installedAt}}`.
+
+### 4.11 `match.json` — **not on main**
+No `match.json`, no `inventory.json`, no BizTalk references exist on `main`/`feature/v-next`. See §7.
+
+---
+
+# 5. Command surface and JSON emission
+
+Shipped tree (README.md:162-198; `PLAN-cli-consistency.md:1-40` has the full flag inventory):
+
+```
+intropy
+├── int      create &lt;template&gt; | show [dir] | list [dir]
+├── template list | show &lt;template&gt;
+├── sys      create
+├── deploy   pin &lt;component&gt; [ver] | init [component...] | promote | diff | status | sync
+├── release  create &lt;component&gt; | list &lt;component&gt; | show &lt;component&gt; &lt;ver&gt;
+├── dashboard [dir]
+├── skills   add | list | update | publish | collection {add,update,publish}
+└── version
+```
+
+JSON emission:
+
+| Command | Flag | Payload type |
+|---|---|---|
+| `int create` | `--output json` (`-o` = `--out-dir` here!) | `template.CreateResult` |
+| `int show` | `-o json` | `template.Scaffold` (record unchanged) |
+| `int list` | `-o json` | `[]template.ScaffoldEntry` |
+| `template list` | `-o json` | `template.ListResult{owner,repo,version,templates[]}` |
+| `template show` | `-o json` | `template.DescribeResult` (Backstage-facing) |
+| `sys create` | `--output json` | `system.CreateResult{template,owner,repo,version,outputDir,values,system{name,components[],topics[],connectors[],sharedLibrary}}` |
+| `deploy pin/promote` | `-o json` | `deploy.Result` |
+| `deploy init` | `-o json` | `deploy.InitResult` |
+| `deploy diff` | `-o json` | `deploy.DiffResult` (diff travels *inside* `.diff`, colour forced off) |
+| `deploy status` | `--output json` | `deploy.StatusResult` (gate on `.consistent`) |
+| `deploy sync` | `-o json` | `deploy.SyncResult` |
+| `release create/show` | `-o json` | `release.Manifest` |
+| `release list` | `-o json` | `release.ListResult` (+`total`, full digests) |
+| `skills *` | `-o json` | lockfile entries / ad-hoc maps |
+
+`--output`/`-o` collision (`-o` = out-dir on `int create`/`sys create`, format everywhere else) is a known, documented wart — `PLAN-cli-consistency.md` finding #1.
+
+Exit codes: `0` success, `1` runtime, `2` usage, `127` missing binary (`git`, `kustomize`), `130` interrupt. `deploy status` is **always 0** even when environments disagree.
+
+## `intropy dashboard` — the existing portal
+`internal/dashboard/handlers.go:123-134` + `web/`. Go server + embedded React/ReactFlow SPA. Two views only (`web/src/App.tsx:11-15`): **Integration Catalog** and **Integration Flow**.
+
+```
+GET  /api/health                     {status, version}
+GET  /api/integrations               []integrationSummary   (= ScaffoldEntry + name/system/domain)
+GET  /api/integrations/{path...}     integrationDetail      (+ agents, readme, components[], pipelineSteps[])
+GET  /api/flow                       []integrationDetail
+GET  /api/topology                   {topologies[], errors[]}   (cached)
+POST /api/topology/refresh           same, recomputed
+GET  /api/deploy/{path...}           {status?, error?, diagnostics[], readAt}
+POST /api/deploy/{path...}           same, re-run
+```
+`web/src/api.ts` is a fully-commented TypeScript mirror of every Go wire type — **the single best artifact to read before designing a replacement portal**. Also `internal/dashboard/components.go` parses Dapr component YAML into `{name, type, category(pubsub|state|binding|other), direction(input|output|input,output), file}`.
+
+Design invariants the dashboard already encodes and a portal should preserve:
+- Deployment state is obtained by **running `deploy status` and passing its result through unchanged** — including `summary`/`notes` prose. The dashboard never re-derives.
+- It runs on **selection, not page load**, because reading GitOps state takes the same exclusive checkout lock `deploy` takes. Nothing polls.
+- Every refusal is shown **verbatim**; none renders as an empty ladder.
+- `KIND_DATA_FLOW` (`FlowView.tsx:70`) maps block kind → boundary direction and is used *only* for the card glyph — "never to invent wiring; every edge on the canvas comes from the declared topology."
+
+---
+
+# 6. Architecture documentation &amp; Backstage today
+
+There is **no** `catalog-info.yaml`, no TechDocs, no `mkdocs.yml`, and no Mermaid anywhere in this repo. Total Backstage footprint (7 hits):
+
+- `internal/template/manifest.go:16` — the manifest envelope deliberately mirrors the Kubernetes/Backstage shape
+- `internal/template/describe.go:39` — `DescribeResult` "shape is stable and additive-only — Backstage's frontend renders the form from Parameters (a raw JSON Schema), so this contract is load-bearing"
+- `internal/template/describe_test.go:64` — a test guarding "these breaks downstream Backstage consumers"
+- `internal/template/manifest_test.go:64` — a fixture using `scaffolder.backstage.io/v1beta3` (rejected: unsupported apiVersion)
+- `cmd/intropy/template_show.go:27` + `README.md:222` — "the same schema Backstage renders"
+- `web/src/components/FlowView.tsx:562` — an incidental comment about diagram crossings
+
+So the *only* live Backstage coupling is one JSON contract: **`template show -o json` feeds a Backstage scaffolder form**. Diagramming exists solely as the React Flow canvas in `web/`. Cloud deployment is explicitly *"handed off to the Backstage / GitOps deployment path"* (`skills/conversion-task-plan-rules/SKILL.md:135`, migration branch).
+
+The user-level skills you have installed (`backstage-scaffold`, `golden-path-docs`, `intropy-docs`, `pipeline-runs`) reference golden-record/distribution/point-to-point blueprints and TechDocs, but **none of that vocabulary exists in this repo** — see the next section for why.
+
+---
+
+# 7. Where Blueprint / BizTalk / match.json actually live (off-main branches)
+
+`main` and `feature/v-next` contain **zero** hits for "blueprint" or "BizTalk". Two feature branches carry a second, richer domain model. This is likely the most important thing for your portal design.
+
+## `feature-biztalk-migration` (older, simpler)
+- `internal/blueprint/` — a fork of `internal/template/` where `Template` is called a *blueprint*. Same `intropy.dev/v1` / `kind: Template` envelope. `CreateResult{blueprint, owner, repo, version, outputDir, values}` written to `--output-json` "so chained scaffolder steps (`publish:github`, `catalog:register`) can consume structured outputs".
+- `internal/migrate/` v1 — `intropy migrate discover &lt;source&gt; -o inventory.json | intropy migrate match - -o match.json`
+- `inventory.json` v0.1 (`internal/migrate/inventory.go`): `{version, source, flows[], pipelines[], schemas[], transforms[], gaps[]}` with `Flow{name, trigger{name,adapter,pipeline,message_format,schema}, destinations[]{name,adapter,pipeline,message_format,schema,transforms[]}}`
+- `match.json` v0.1 (`internal/migrate/match.go`): `{version, source, flows[]{flow, blueprint, trigger{name,transport}, destinations[]{name, processing_mode, pipeline_steps[]}}, gaps[]}` — canonical steps `deserialize/extract/validate/transform/serialize/send`, modes `streamed|poco`, `Blueprint = "Transactional"`, `Transport = "FILE"` always
+- `Gap{category, message, refs[]}` with categories `multiple_schemas, missing_source, missing_xslt, dangling_port, transport_override, dropped_transforms`
+
+## `feature-migration` (newer, much richer — the model to mine)
+Command surface: `intropy migrate inventory | match | plan check | verify`, plus `--list-sources`, `--format json|yaml|markdown`, `--validate`.
+
+- **`internal/migrate/inventory.json`** — a real, embedded **JSON Schema draft-07** document, `$id: https://intropy.dev/schemas/inventory.json`. Definitions: `flow` (`id, name, kind(flow|sub-flow), trigger(event-driven|scheduled|on-demand|unknown), sources[], destinations[], transformations[], flow_control[], sub_flows[], error_handling, config_refs[], schema_refs[], input_schema_ref, output_schema_ref, pipeline_refs[], shape_refs[], matcher_hints[], notes[]`), `systemRef` (`name, transport, filter[], config_refs[]`), `filterClause` (`property, operator ∈ {equals,not-equals,less-than,…,exists}, value`), `transformation` (`language, location, notes[]`), `errorHandling` (`strategy ∈ {propagate,continue,custom,none}, dlq, retry_policy`), `schemaArtifact` (`id, location, promoted_properties[], line_count`), `pipelineArtifact` (`id, direction(receive|send), location, stages[]`), `pipelineStage` (`order, category ∈ {decode,disassemble,validate,resolveparty,assemble,encode}, component, config_refs[]`), `orchestrationShape` (`id, flow_id, kind ∈ {scope,decide,loop,parallel,correlation,call,transform,send,receive}, name, called_flow_id, attributes`), `gap` (`id, category, severity ∈ {low,medium,high,critical}, source_feature, affected_refs[], resolution{strategy ∈ {auto,alternative,manual,skip}, pattern, notes[]}`)
+- **`match.json`** (`internal/migrate/match.go`) — `MatchReport{schema_version, source, inventory_path, matches[], gaps[]}`; `Recommendation{flow_id, kind ∈ {blueprint, blocks, out-of-scope}, blueprint, blocks[], confidence ∈ {high,medium,low}, trigger, destinations[], pipeline_steps[]}`; `PipelineStep{step, pattern, source_refs[], transform{kind,location}, decision_hint{type, input_schema_size_lines, recommended}}`. Matcher hints: `out-of-scope-human-workflow, api-service-candidate, likely-transactional, routes-on-promoted-property, orchestration-has-scope, has-correlation, composed-orchestration`. Patterns: `pass-through, xml-stream-through-deserialize/serialize, flatfile-deserialize/serialize, xsl-compiled-transform-embedded`.
+- **`migration-plan.md`** (`internal/migrate/plan.go`, `PlanSchemaVersion = 1`) — a Markdown state file with YAML frontmatter: `{schema_version, migration_id, source_export_root, source_id, migration_workspace_root, output_component_root, verify_corpus_root, current_phase, updated_at}` plus parsed tables `PlanStatusRow{Phase,Status,Artifacts[],Updated}`, `PlanUnitRow{ID, SourceFlow, Blueprint, Archetype, P4, P5, P6, Notes}`, `PlanBlockerRow{Unit,Category,Detail,Reference}`. Validated by `intropy migrate plan check` (schema, enums, **evidence-on-disk**).
+- **`references/biztalk-component-mapping.md`** (209 lines) — the construct lookup tables, kept in sync with Go constants by `internal/migrate/sources/biztalk/references_sync_test.go` (build fails when doc and code disagree). A working model for "docs gated by tests".
+- **`skills/`** (7 SKILL.md files, ~1900 lines) — `source-to-intropy-mapping/biztalk` (697 lines), `intropy-best-practices`, `intropy-migration`, `conversion-task-plan-rules`, `no-stubs-code-generation`, `runtime-validation-and-testing`, `execute-migration-task-plan`.
+
+### Domain vocabulary defined only on that branch
+- **Mapping Priority Ladder**: 1 Native Intropy Block (**Extractor / Loader / Reconciler / Assembler**) → 2 Dapr building block → 3 custom pipeline step → 4 Dapr Workflow (only for true parallelism) → 5 external service call
+- **Blueprint catalogue** (`source-to-intropy-mapping/biztalk/SKILL.md` §7): only **`transactional`** is wired, templated at `integrio-intropy/blueprints/transactional/`. Explicit warning: *"The names `golden-record`, `distribution`, `point-to-point`, and any archetype labels (`pub-sub`, `aggregator`, `api-service`) are NOT wired — they should never appear in match.json. If you see them in older artefacts, treat them as historical only."* (Your installed `backstage-scaffold` skill still advertises them.)
+- **Canonical transactional pipeline shape**: Receive = `Receive → Enqueue → Complete`; Send = `Deserialize → Extract → Idempotency-Check → Validate → Transform → Serialize → Idempotency-Record`
+- **`intropy.yaml`** — a per-component **run manifest** at the component root that wires Blocks, connectors and endpoints; sits beside `agent.md` and `Pipeline/`. This is the closest thing in the whole ecosystem to a `catalog-info.yaml`, and it does **not** exist on main.
+- **Component layout** (`conversion-task-plan-rules` §5): `src/Receive/`, `src/Send/`, `src/Model/`, `src/Configuration/`, `src/Transforms/`, `local/dapr-components/`, `intropy.yaml`, `agent.md`
+- Framework block docs live at `integrio-intropy/intropy-framework/docs/blocks/{blueprint}-integration.md`
+
+---
+
+# 8. Quick file index
+
+| Purpose | Path |
+|---|---|
+| Verb contract &amp; output style | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/AGENTS.md` |
+| Full user-facing narrative (53 KB) | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/README.md` |
+| Command/flag inventory + known inconsistencies | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/PLAN-cli-consistency.md` |
+| Package layering, config precedence, exit codes | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/CONTRIBUTING.md` (lines 180-230) |
+| OKF knowledge catalog pilot (untracked) | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/catalog/` |
+| Topology schema v1 | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/topology/topology.go` |
+| Host `graph` verb invocation | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/topology/graph.go` |
+| scaffold.json + the three `intropy.dev/*` labels | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/scaffold.go` |
+| Template manifest (Backstage-shaped) | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/manifest.go` |
+| `template show -o json` contract | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/describe.go` |
+| Assembled system model | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/model.go`, `assemble.go` |
+| deploy.yaml / component.yaml | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/gitops/config.go` |
+| GitOps coordinates &amp; ArgoCD app naming | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/gitops/layout.go` |
+| All deploy JSON result types | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/deploy/result.go` |
+| Manifest render context (topology → k8s) | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/deploy/initmodel.go` |
+| Reserved template keys | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/reserved.go` |
+| Release manifest + OCI annotations | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/release/manifest.go`, `artifact.go` |
+| messages/*.md sidecar parser | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/messagedocs.go` |
+| Existing portal API routes | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/handlers.go` |
+| **TypeScript mirror of every wire type** | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/api.ts` |
+| Topology canvas / visual vocabulary | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/components/FlowView.tsx` |
+| Why deploy init exists | `/Users/robinhultman/dev/intropy/tooling/intropy-cli/docs/deploy-init.md` |
+| Blueprint + migrate model (branches) | `git show feature-migration:internal/migrate/inventory.json`, `:internal/migrate/match.go`, `:internal/migrate/plan.go`, `:references/biztalk-component-mapping.md`, `:skills/` |
+
+---
+
+Three things stand out for the portal design. First, `web/src/api.ts` plus `internal/deploy/result.go` already constitute a complete, deliberately-versioned wire contract with commentary explaining *why* each field exists — that is your data model, not something to re-derive. Second, `catalog/` is an OKF agent-knowledge pilot, not a service catalog, and its `sources[]`/`commands[]` frontmatter extension is a genuinely reusable idea for tying docs to code and CLI verbs. Third, the Blueprint/Block/Archetype vocabulary your installed skills assume lives entirely on unmerged branches, and `feature-migration`'s own docs explicitly deprecate `golden-record`/`distribution`/`point-to-point` — worth resolving before you bake those names into a portal's information architecture.</result>
+<usage><subagent_tokens>185066</subagent_tokens><tool_uses>80</tool_uses><duration_ms>398128</duration_ms></usage>
+</task-notification>
+
+---
+
+I think we start with the concept but then move on to a skeleton that is runnable but 100% mocked data. I also want you to come up with three different concepts that I will select from
+
+---
+
+<task-notification>
+<task-id>aff9013ddbf1c1cb2</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/25564163-98a3-4ff9-8bf8-f0b69920c8f6/tasks/aff9013ddbf1c1cb2.output</output-file>
+<status>completed</status>
+<summary>Agent "Design concept A: domain catalogue" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I've explored the repo (web/src/api.ts, internal/topology/topology.go, catalog/, AGENTS.md) and grounded the design in the existing fact contracts. Here is the design.
+
+---
+
+# Concept: **The Exchange** — a fact-ledger catalogue in Intropy's own language
+
+## 1. Pitch
+
+Backstage is a catalogue you *author*: YAML files describing generic Components so a portal can render them. The Exchange is a catalogue you *cannot author*: every entry is a fact the `intropy` CLI already emitted — scaffold records, `topology.intropy.io/v1` graphs, OCI release manifests, `deploy status` results — ingested verbatim with provenance ("as reported by `deploy status`, commit `a1b2c3d`, 14:02"). Its kinds are Intropy's kinds (System, Component, Contract, Topic, Connector, Release, Environment, Domain), and its center of gravity is the one thing no generic catalogue has: the **contract fingerprint**, a hash that makes "these two systems exchange the same shape" a computable fact. Where Backstage answers "what services exist?", The Exchange answers the architect's real questions: *who else speaks this shape, what breaks if I change it, and does prod run the bits staging tested?*
+
+## 2. Core model
+
+**Unit of truth: the fact.** A fact is one versioned JSON document the CLI or a system host emitted, stored unmodified plus an envelope: `{urn, kind, observedAt, source (command + version + commit + CI run), payload}`. The portal never re-derives; it joins. This extends the codebase tenet — the portal cannot claim what the command line would not — into an ingestion rule.
+
+**Store: a git-backed fact ledger, no database.** A per-customer "catalogue repo": `facts/&lt;customer&gt;/&lt;domain&gt;/&lt;system&gt;/&lt;component&gt;/&lt;kind&gt;/&lt;observedAt&gt;.json`, plus `latest.json` pointers. The portal serves from an in-memory index rebuilt on start; history is `git log`. Small team, greppable truth, trivially backed up, and the fleet story is just cloning N customer ledgers into one Integrio index.
+
+**Population: push from where facts are born, pull for reconciliation.** CI pipelines run the verbs they already run (`release create`, topology `graph`, `deploy status --output json`) and POST the JSON to the portal's ingest endpoint (or run `intropy facts push`). A background reconciler pulls the GitOps repo, OCI registries, and ArgoCD (via the CLI in agent mode) so a quiet CI never means a stale portal — but pull results carry the same provenance envelope, never a portal-invented claim.
+
+**Identity:** URNs mirror the GitOps tree with customer as the leading segment from day one: `intropy://acme/logistics/erp-orders/order-extract`. Environments: `intropy://acme/~env/prod`. Contracts have two identities: the *name* (an alias, per system) and the *fingerprint* (the shape, global). Cross-system joins always go through fingerprint; names collide, shapes don't. Fleet aggregation later = merge indexes; URNs already disambiguate.
+
+## 3. Information architecture
+
+| Surface | Question it answers | For |
+|---|---|---|
+| **Estate** (home) | What do we run, where, and does it agree? Domains → systems grid with release currency, `consistent` flags, pending gates. Summaries rendered as served. | Architect, ops rotation |
+| **Contract Exchange** | Who publishes/consumes this shape, across systems? Which environments run an older fingerprint? Impact radius of a change. | Architect (the signature screen) |
+| **System** | One system's declared topology, components, contracts, connectors, release history, environment ladder — the org-persistent sibling of the dashboard's system view, built from ingested facts, not a workspace. | Everyone |
+| **Connector directory** | What touches SAP / the partner SFTP? External systems as first-class entries: transports per environment, `messages/*.md` payload docs, contacts, every component wired to them. | Architect, ops, onboarding |
+| **Ledger** | What changed, when, by whom? Chronological releases, pins, promotes, syncs across the estate, with `changes[]` and `changeBasis`. | Ops rotation, audits |
+| **Knowledge** | How do I think about / operate this? The OKF catalog rendered *contextually*: a doc's `sources[]`/`commands[]` frontmatter binds it to entities, so the deployment-troubleshooting playbook appears on any environment row whose sync failed. | Developers, agents |
+
+## 4. Runtime stance
+
+The line is the **fact boundary**: deployment *state* is in (pins, sync/health status, consistency, pending gates — all already CLI-emitted facts); *telemetry* is out (rates, latencies, traces render in the monitoring tool, never in the portal). Ops-on-rotation gets exactly three runtime affordances: the Estate consistency board, a pending-gates list, and per-entity deep links into monitoring. The portal also never *acts*: it renders the exact command to run (`intropy deploy promote order-extract --env prod`) rather than a button. That keeps identity crisp — it is the estate's memory, not a control plane.
+
+## 5. Tight integrations
+
+**Diagramming — diagrams as bound views.** Shapes on a canvas bind to catalogue URNs. Layout, grouping, and annotations are the architect's; edges, labels, contract names, and status chips **hydrate live** from the portal's graph API. Two dream behaviors: (a) *conformance diffing* — the architect draws a proposed component or edge as an unbound shape; the portal overlays "designed but not built / built but not drawn," turning the diagram into an architecture gate; (b) *staleness detection* — a binding whose URN vanished flags the diagram, so documentation can no longer silently rot. Diagrams embed back into System pages as live frames.
+
+**Monitoring — the portal exports identity, monitoring exports attention.** Outbound: every ingested deploy fact posts an annotation ("2.4.0 pinned to prod") onto the relevant dashboards; the URN taxonomy becomes monitoring's label scheme; the portal *generates* each system's baseline dashboard from topology (one panel per topic, per connector, per DLQ). Inbound: alerts carry URNs, so entities wear a single "attention" chip that deep-links to the firing alert — the portal knows *that* something is wrong and *who* it is, never *how much*.
+
+## 6. Relationship to dashboard and CLI
+
+CLI: the only writer and the only actor. Dashboard: *my workspace, now* — live disk state, single developer, mutable. Portal: *our estate, remembered* — ingested facts, multi-user, historical, cross-system. The dashboard reads a checkout; the portal reads the ledger. Shared TypeScript fact types keep the two renderings literally the same shapes (api.ts already mirrors the Go contracts).
+
+## 7. Why it wins / where it's weak
+
+**Wins:** zero authoring burden (the anti-`catalog-info.yaml`); the fingerprint join answers questions Backstage structurally cannot; provenance-everywhere makes it trustworthy in the exact way the CLI already is; git-backed store + one Go binary = a small team can own it; customer dimension is native, so the Integrio fleet view is a merge, not a migration.
+
+**Weak:** freshness depends on CI pushing facts — a customer with lazy pipelines gets a stale portal (mitigated, not solved, by the reconciler); read-only can feel passive next to portals with actions; no plugin ecosystem — every new need is portal code; git as a store is coarse for rich queries at fleet scale and may eventually force an index sidecar; the knowledge/entity binding is only as good as OKF frontmatter discipline.
+
+## 8. Mocked v0 skeleton
+
+Single Go binary `exchange serve --fixtures ./fixtures`, embedded Vite/React SPA (the existing `web/` pattern), fixtures as a fact-ledger directory — no git, no ingest, handlers read fixture JSON through the same envelope types real ingestion would produce. Fixtures: one customer, 2 domains, 3 systems, ~10 components; one contract fingerprint shared by 3 systems; one environment behind on that fingerprint; one `consistent:false` component; one pending manual gate; 2 OKF docs bound via `sources[]`. Pages: Estate, Contract Exchange (list + detail), one System page, Connector directory, Ledger. Mocked integration stubs: a "bound diagram" iframe placeholder and monitoring deep links, to make section 5 tangible in demos.
+
+## 9. Signature screen — Contract Exchange detail
+
+```
+CONTRACT  OrderConfirmed              fingerprint 9f3a1c2e
+shape shared by 3 systems - as reported by topology v1
+------------------------------------------------------------
+ PUBLISHERS                      SUBSCRIBERS
+ erp-orders/order-extract   -&gt;   webshop/order-loader
+   topic orders.confirmed   -&gt;   wms/pick-scheduler
+                            -&gt;   finance/invoice-builder
+
+ SCHEMA (since rel 2.4.0)        ALIASES
+ orderId    string  req          Contoso.Orders.OrderConfirmed
+ lines[]    object  req          Orders.Confirmed (wms)
+   sku      string  req
+   qty      number  req          DRIFT [!]
+ currency   enum(3)              wms prod pins rel 2.3.1
+                                 fingerprint b71d.. (older)
+------------------------------------------------------------
+ IMPACT IF CHANGED   4 components / 3 systems / 2 domains
+ ENVIRONMENTS        prod: 3 aligned, 1 behind (wms)
+ KNOWLEDGE           &gt; releases-and-image-digests (concept)
+ MONITORING          &gt; orders.confirmed rate / dlq       ^
+ DIAGRAM             &gt; order-flow canvas (bound, live)   ^
+```
+
+---
+
+### Critical Files for Implementation
+
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/topology/topology.go — the fact schema the Contract Exchange joins on (Contract.Fingerprint, Topic publishers/subscribers)
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/api.ts — the existing TypeScript mirrors of the Go fact contracts; the portal SPA should share these shapes
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/deploy/result.go — StatusResult/EnvironmentStatus, the deployment-state facts and the "render summaries as served" rule
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/catalog/index.md — OKF frontmatter profile (`sources[]`, `commands[]`) used for knowledge-to-entity binding
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/App.tsx — the embedded Go + Vite/React serving pattern the mocked v0 should copy</result>
+<usage><subagent_tokens>28614</subagent_tokens><tool_uses>6</tool_uses><duration_ms>121091</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a76c30d55cffd1f5b</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/25564163-98a3-4ff9-8bf8-f0b69920c8f6/tasks/a76c30d55cffd1f5b.output</output-file>
+<status>completed</status>
+<summary>Agent "Design concept B: living map" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have what I need from the codebase. Here is the design.
+
+---
+
+# Concept: **Atlas — the map IS the portal**
+
+## 1. Pitch
+
+Enterprise integration is not a list of services; it is literally a graph — data leaves SAP, crosses three system boundaries, and lands in a warehouse. Page-first portals (Backstage) shred that graph into entity pages and force the architect to rebuild the picture in their head. Atlas inverts it: one continuously true, machine-fed architecture map is the front door, and every question — "what talks to what?", "what runs in prod?", "where did tonight's file stop?" — is answered by pointing at the same picture at a different zoom level with a different overlay. The domain already earns this: topology is host-declared fact (`topology.intropy.io/v1`), contract fingerprints are cryptographic join keys across systems, and deploy state is versioned CLI JSON. Atlas never invents wiring; it only draws what was declared or provably joined.
+
+## 2. Core model
+
+**Four semantic layers, one graph store:**
+
+- **L0 Landscape** — systems (from each ingested topology's `system`), external systems (union of `connectors[].externalSystem` across all systems), domains as spatial regions.
+- **L1 System** — the exact graph FlowView renders today: components, topics, connectors inside a boundary.
+- **L2 Component** — pipeline steps, contract surfaces (provides/consumes), connector detail, deployment ladder.
+- **L3 Contract** — schema field tree, fingerprint, and every usage site estate-wide.
+
+**Cross-system edge derivation (the portal's one genuinely new computation), with explicit provenance types:**
+
+1. **Shared external system** (`externalSystem` name equality): System A's connector `out` to "SAP" and System B's connector `in` from "SAP" collapse onto one shared external-system node. This is fact-level — both declared it — but rendered as a *mediated path* A → SAP → B, never a direct A→B edge.
+2. **Fingerprint join** (`Contract.Fingerprint` equality): a contract published outward by A whose fingerprint equals one consumed by B yields a *derived edge*, drawn dashed and labeled "same shape". Equal fingerprints mean equal shapes, not proven data flow — so derived edges are visually distinct and **confirmable**: an architect promotes a derived edge to a confirmed one, which is stored as an intent annotation, not injected into topology.
+
+**Intent vs reality — GitOps for architecture:** Atlas holds two graphs. *Reality* is the aggregation of ingested topology + deploy facts (immutable, machine-owned). *Intent* is architect-owned: imported diagrams, confirmed edges, planned/ghost systems, ADR links. A reconciler diffs them continuously into drift states: **undocumented** (in reality, not intent), **planned** (in intent, not built), **mismatched** (direction/contract/fingerprint changed). Drift is a first-class map badge, not a report.
+
+## 3. Information architecture
+
+| Zoom | Shows | Question answered | For |
+|---|---|---|---|
+| Landscape | System boxes, external systems, mediated/derived/confirmed flows, drift badges, env-health rollup dots | "What talks to what across the estate? What's undocumented?" | Architect, leadership |
+| System | Components, topics, connectors (FlowView's picture) with cross-boundary edges stubbed to neighbors | "How does this system work, and who feeds it?" | Developer, architect |
+| Component | Pipeline steps, deployment ladder, contract in/out, telemetry sparkline | "What does this do, which release runs where, is it healthy?" | Dev wearing ops hat |
+| Contract | Schema tree, fingerprint, all publishers/consumers estate-wide | "Who breaks if this field changes?" | Architect |
+
+The **sidebar catalogue** is the map's index, never a destination: search/tree results *fly the camera* to the node and open its inspector panel. List-shaped queries ("everything on release 1.4", "everything touching contract X") become **highlight sets** — matching nodes glow, everything else dims — rather than table pages.
+
+## 4. Runtime/architecture stance
+
+Three exclusive **overlay modes** on the identical geometry:
+
+- **Design** — intent + reality + drift. No runtime at all.
+- **Deploy** — pick an environment: release/digest per component, sync/health from ArgoCD, promotion deltas ("staging is 2 releases ahead") as edge annotations on the ladder.
+- **Runtime** — per environment: flow rate as edge thickness/animation, error-rate heat on nodes, last-run recency, dead-letter depth badges, plus a **time scrubber** replaying the last 24h/7d of overlay state.
+
+**The line:** the map carries *aggregates only* — rates, counts, statuses, recency. Never logs, traces, or message bodies. Atlas answers "where is it broken and what's downstream of the break?"; one click deep-links into the monitoring tool pre-scoped to (component, environment, time window) for forensics. If a feature needs a log line, it belongs to the monitoring tool.
+
+## 5. Tool integrations
+
+**Diagramming (existential):** Phase 1 — *import as intent*: existing diagrams are bound shape-by-shape to Atlas node IDs (one-time manual binding, name-matching assisted); thereafter the diagram *is* the intent layer and drift is computed against it on every topology ingest. Drift results push back as markers/comments on the diagram ("this connector no longer exists"). Phase 2 — *embed flips direction*: the diagramming tool embeds live Atlas views (URL-addressable scope + overlay + time pin), so architecture docs stop rotting; hand-drawing survives only for ghost/planned elements, which round-trip into Atlas as intent nodes. Annotations (notes, decision links) authored in either tool sync both ways via the binding table.
+
+**Monitoring:** requires a labeling convention the deploy pipeline already can guarantee: every metric carries `{env, system, component, topic|connector}` matching topology identifiers. Atlas pulls series via query API: messages/sec per edge, error rate, p95 latency, dead-letter depth, last-success timestamp per component. Anomaly alerts from the monitoring tool arrive as webhook events rendered as map pins on the scrubber timeline; monitoring dashboards get a reciprocal "show on map" link.
+
+## 6. Relationship to dashboard and CLI
+
+The dashboard stays the *single-workspace, local, one-developer* surface (catalog, scaffold context, one system's flow, deploy actions). Atlas is *org-level, read-only, persistent*: CI on each system repo pushes the host's topology record and `deploy status --json` to Atlas's ingest endpoint (same versioned schemas — `internal/topology` and `internal/deploy/result.go` are already the wire contract). Code reuse is direct: extract FlowView's deterministic layout engine and node components (`web/src/components/FlowView.tsx`, ~700 lines, already theme-aware @xyflow/react) into a shared package — Atlas's L1 zoom is FlowView verbatim with a different data source; `web/src/api.ts` types become the ingest schema. Same Go-server-with-embedded-Vite-SPA shape. Customer becomes a future top-level dimension above Landscape (Integrio fleet view = L-1).
+
+## 7. Why it wins / where it's weak
+
+**Wins:** the domain is a graph and fingerprints give provable cross-system joins no generic portal has; drift-as-a-feature finally makes diagrams trustworthy; one spatial memory serves design, deploy, and incident triage; small ingest surface (two existing JSON schemas) keeps it maintainable.
+
+**Weak (honestly):** legibility past ~40 systems demands aggressive domain-clustering and a *persisted stable layout* — the map must be "the same place" every day, so layout anchors are stored, not recomputed. List-shaped questions are second-class (mitigated by highlight sets, but tables are sometimes just better). Diagram binding is manual toil at adoption. Runtime overlay is a permanent scope-creep temptation toward becoming a bad monitoring tool — the aggregates-only line must be policed.
+
+## 8. Mocked v0 skeleton
+
+A single Go binary (`atlas serve --fixtures ./fixtures`) embedding a Vite/React SPA (@xyflow/react), consistent with this repo. Fixtures: five `topology.intropy.io/v1` records sharing two fingerprints and three external systems; per-env deploy-status JSON (dev/staging/prod); a mocked metrics time-series JSON (24h at 5-min resolution); one intent fixture containing a planned system and a deliberately stale connector. Demonstrates: semantic zoom L0→L3 with camera fly-to, the three overlay modes, environment switcher, time scrubber animating edge thickness/error heat, drift badges with an intent-vs-reality diff panel, search-as-highlight. No auth, no real integrations — every API call served from fixtures behind the same handler interfaces real ingest would use.
+
+## 9. ASCII mockup — Landscape, Runtime overlay (prod)
+
+```
+┌─ ATLAS ── [Design|Deploy|●Runtime]  env:[prod▾]  🔍──────┐
+│ ◐ orders-sys        ══▶  ⬡ SAP  ──▶  ◐ finance-sys      │
+│  12 msg/s  err 0.1%       │            ▲ last run 2m    │
+│                           │            │                 │
+│ ◐ product-sys  ┅┅same shape┅┅▶ ◐ warehouse-sys          │
+│  ▲ 3 in DLQ ⚠             │     sync:OutOfSync ✗        │
+│                           ▼                              │
+│ ⬡ WebShop ──▶ ◐ customer-sys      ◇ crm-sys (planned)   │
+│               0.4 msg/s            drift: not built      │
+│                                                          │
+│ time ├────────────●───────┤ 14:05   ⏵ replay 24h        │
+├──────────────────────────┬───────────────────────────────┤
+│ SEARCH  contract:Order▸  │ warehouse-sys                 │
+│  ▸ domains/commerce      │ health ✗ 3 dead-letters       │
+│    ◐ orders-sys      ●   │ release 1.4.2 (staging: 1.5)  │
+│    ◐ warehouse-sys   ✗   │ drift: connector 'ftp-old'    │
+│  ▸ domains/finance       │  in diagram, not in topology  │
+│    ◐ finance-sys     ●   │ [open in monitoring ↗]        │
+│  ⬡ externals (4)         │ [open diagram ↗] [zoom in ⤢]  │
+└──────────────────────────┴───────────────────────────────┘
+ ── declared   ┅┅ derived(fingerprint)   ◇ intent-only
+```
+
+### Critical Files for Implementation
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/components/FlowView.tsx (layout engine + node components to extract for the L1 zoom)
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/topology/topology.go (ingest schema; fingerprints + externalSystem for cross-system derivation)
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/api.ts (TypeScript mirror of both wire contracts; basis for the portal's ingest types)
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/deploy/result.go (deploy-state schema feeding the Deploy overlay)
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/topology/graph.go (host `graph` verb invocation pattern the CI push replaces)</result>
+<usage><subagent_tokens>25294</subagent_tokens><tool_uses>4</tool_uses><duration_ms>115951</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a981c1a021944cfb7</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/25564163-98a3-4ff9-8bf8-f0b69920c8f6/tasks/a981c1a021944cfb7.output</output-file>
+<status>completed</status>
+<summary>Agent "Design concept C: fact ledger" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have enough context. Here is the design.
+
+---
+
+# Concept: **Chronicle** — the interrogatable ledger
+
+## 1. Pitch
+
+Chronicle is not a site you browse; it is a record you interrogate. Backstage's unit is the entity page — a hand-fed snapshot that is stale the moment you read it. Chronicle's unit is the **fact**: an append-only ledger of domain events derived from sources Intropy already produces (GitOps history with `Deploy-*` trailers, OCI release manifests, topology emissions, ArgoCD). Entity pages still exist, but each one is literally the fold of its facts — which means every page has a time scrubber, every difference has a cause, and every question of the form "what changed / since when / why" has a first-class answer. The same substrate serves humans and agents: the ledger plus the OKF knowledge catalog is one queryable brain.
+
+## 2. Core model
+
+**Fact types and sources** (payload is the CLI-emitted JSON verbatim — never re-derived):
+
+| Fact | Source |
+|---|---|
+| `release.created` | OCI registry: release manifest (version, source commit, images+digests, changes[], changeBasis) |
+| `env.pinned` | GitOps log: commit with `Deploy-Component/Env/Digest/By` trailers |
+| `env.promoted` | Same, with `Deploy-Promoted-From` |
+| `env.synced` | ArgoCD (webhook/poll): revision, health |
+| `gate.pending` / `gate.applied` | GitOps + ArgoCD: manual-sync env has committed-but-unapplied overlay |
+| `env.diverged` / `env.converged` | *Derived*: `StatusResult.Consistent` flips (marked derived, carries the in-payload Summary) |
+| `contract.changed` | topology.intropy.io/v1 snapshot diff: fingerprint changed |
+| `consumer.attached` / `detached` | Fingerprint equality across systems appears/disappears |
+| `component.scaffolded` | scaffold.json appears in source repo |
+| `gap.opened` / `gap.resolved` | Migration gap records (category, severity, resolution) |
+| `monitor.alerted` / `resolved`, `slo.breached` | Monitoring integration (curated; see §4) |
+| `knowledge.verified` | OKF catalog entry gains `verified` frontmatter (git history of catalog/) |
+
+**Materialization.** The ledger is a materialized view, not new infrastructure anyone must feed. Per-customer instance: pollers/webhooks fold the durable sources (git log, OCI tags, topology emissions) into an append-only store (SQLite is enough). Fact id = content hash → idempotent re-ingest; the whole ledger is rebuildable from scratch, so it holds no state anyone must protect. Unparseable GitOps commits become `fact.unrecognized` — visible, never silently dropped.
+
+**Identity.** URNs with the customer dimension present from day one: `urn:intropy:&lt;customer&gt;:&lt;domain&gt;:&lt;system&gt;:&lt;component&gt;`, sub-subjects `…:env/&lt;env&gt;`, `…:release/&lt;component&gt;@&lt;version&gt;`, `…:contract/&lt;fingerprint&gt;` (fingerprint is already a cross-system identity — equal fingerprint = same shape). Fleet-wide Integrio aggregation later is a union of ledgers over the same scheme.
+
+**Catalogue as projection.** A System page is `fold(facts where subject ∈ system)`: current pins per env, live contracts, open gaps — with its history one scroll below and an "as of" scrubber (fold up to T). The catalogue requirement is satisfied by construction, and it can never disagree with the timeline because it *is* the timeline, folded. Folds are cached snapshots; the 90% "current state" case never replays history.
+
+## 3. Information architecture
+
+- **The Ledger** (home): filtered timeline (type/system/env/actor), grouped by day, with a per-user **"since you were last here"** cursor. For the on-rotation person: "what changed since I was last on call?" is the default render. Primary persona: ops-hat.
+- **Ask**: a question box with **canned interrogatives as the contract** ("why is prod ≠ staging for X?", "who consumes contract F and since when?", "what happened to order flow X last Tuesday?") compiled to ledger queries; free text falls through to the agent (best-effort, clearly labeled). Personas: all.
+- **Diff**: `fold(A, t1)` vs `fold(B, t2)` — env-vs-env or then-vs-now — showing not just the delta but the facts that *caused* each difference. Persona: architect, approver at the manual gate.
+- **Catalogue**: browsable entity projections with scrubbers. Persona: newcomers, architects.
+- **Handover**: everything since cursor, prioritized — prod pins, pending gates, alerts correlated with deploys, unresolved gaps. Persona: rotation change.
+
+## 4. Runtime mixing stance
+
+Rule: **the ledger records state changes, never telemetry.** Alert fired/resolved, SLO breach entered/exited, anomaly *verdict* — discrete, low-cardinality, correlatable to deploys — enter as facts carrying deep links back. Metrics, logs, traces, raw flapping alerts stay in the monitoring tool. Chronicle answers "what changed and why"; monitoring answers "what is happening now". This line is what keeps Chronicle from becoming a second monitoring tool.
+
+## 5. Integrations
+
+**Diagramming.** Diagrams are time-addressable projections: "the architecture as of March" renders the diagramming tool from `fold(topology facts, March)`. Embedded diagrams get a scrubber that replays contract/pin facts; clicking an edge opens the ledger filtered to that contract. Ask can generate scoped diagrams ("everything consuming contract F, annotated with since-when").
+
+**Monitoring.** "Explain this alert": alert fact correlates by URN + window, and Chronicle walks backward — alert → last `env.synced` → pin trailers → release manifest → `changes[]` commits → `Deploy-By`. One click from alert to commit subjects and the human who deployed. Reverse direction: Chronicle pushes deploy markers to monitoring dashboards.
+
+## 6. Agent story
+
+One MCP server exposes (a) ledger tools — `facts(filter)`, `fold(subject, at)`, `diff(a, b)` — and (b) the OKF catalog (concepts/workflows/playbooks with `sources[]`/`commands[]`, as piloted in `catalog/`). The playbook triage table (Symptom | Boundary | Evidence | Safe-next-action) becomes executable: symptom → evidence rows resolve to ledger queries → safe action resolves to a CLI command. Agents may append **derived** facts (`actor: agent`, hypothesis-flagged) — e.g., "alert X correlates with pin Y" — which humans confirm or dismiss. The Ask surface *is* this agent; humans and agents share one substrate.
+
+## 7. Division of labor
+
+CLI: the only writer of domain state and emitter of canonical facts. Dashboard (`intropy dashboard`): the individual's now-view of one workspace. Chronicle: org-level memory — cross-system, cross-env, multi-user, historical. Chronicle never mutates: when action is needed it renders the command in backticks (house style) and you take it to the CLI.
+
+## 8. Why it wins / where it's weak
+
+**Wins:** zero new write paths (rebuildable from durable sources); catalogue can't rot (it's a fold); the on-call/handover story is unmatched; fingerprint-based consumer lineage ("who, since when") is a question Backstage structurally cannot answer; agent-first for free.
+
+**Weak:** a timeline is an intimidating front door for newcomers (mitigation: Catalogue + canned Ask questions as entry points); correctness depends on trailer discipline and connector coverage; temporal queries are the pitch but current-state is the daily use, so fold caching must be excellent; free-text Ask risks over-promising — canned questions are the contract; "gap" and monitoring connectors need per-customer adapters.
+
+## 9. Mocked v0 scope
+
+Go binary `chronicle serve` embedding a Vite/React SPA (same pattern as `web/embed.go` + `internal/dashboard`). Fixtures: ~120 hand-written facts (JSON under `fixtures/`) for 3 systems × 3 envs telling **one incident arc**: scaffold → `release.created` 1.4.0 → pin dev → promote staging → `contract.changed` → `monitor.alerted` staging → `gap.opened` → fix release → promote → `monitor.resolved` → `gate.pending` prod. Surfaces: Ledger with filters + since-cursor; one System fold page with as-of scrubber; staging-vs-prod diff; Ask with 4 canned questions wired to real queries (free text stubbed); the "explain this alert" trace-back panel. One arc demonstrates every claim in this document.
+
+## 10. Mockup — "explain this alert" over the ledger
+
+```
+CHRONICLE          [Ledger] [Ask] [Diff] [Catalogue]   robin
+────────────────────────────────────────────────────────────
+since your last visit (Tue 09:14) · staging · order-flow
+────────────────────────────────────────────────────────────
+▾ ALERT  order-intake latency SLO breach     Thu 14:02
+│  urn:…:erp:order-flow:env/staging      [open in grafana]
+│
+│  explain ⇢ walking back through the ledger:
+│   14:02  monitor.alerted   p99 4.1s &gt; 2s          ● now
+│   13:47  env.synced        staging @ rev 9f3c2a1
+│   13:45  env.promoted      dev -&gt; staging
+│          release order-intake @ 1.4.0  by anna
+│   13:40  contract.changed  OrderLine fp b81f-&gt;4dc0
+│          consumers: wms-sync (since Mar), billing
+│   12:10  release.created   1.4.0  3 commits
+│          "flatten orderline addr" (a1b2c3d) …
+│
+│  hypothesis (agent, unconfirmed): fp change 4dc0
+│  altered payload shape consumed by wms-sync
+│  playbook: deployment-troubleshooting §contract
+│  `intropy deploy diff order-intake --env staging`
+│                              [confirm] [dismiss]
+────────────────────────────────────────────────────────────
+▸ gate.pending  prod awaits sync since Thu 13:50   [diff]
+```
+
+### Critical Files for Implementation
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/release/manifest.go — canonical `release.created` fact shape (schemaVersion, changes[], changeBasis semantics the ledger must preserve)
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/deploy/result.go — pin/sync/status/diff payloads incl. trailers, `Consistent`, in-payload `Summary` (ingest, never re-derive)
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/topology/topology.go — topology.intropy.io/v1 emission; source of `contract.changed` / fingerprint-equality facts
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/catalog/playbooks/deployment-troubleshooting.md — OKF triage-table pattern the agent layer makes executable
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/web/embed.go — Go + embedded Vite/React SPA pattern the mocked v0 follows</result>
+<usage><subagent_tokens>29585</subagent_tokens><tool_uses>7</tool_uses><duration_ms>114849</duration_ms></usage>
+</task-notification>
+
+---
+
+Would it simplify things dramatically if we said that ops should mainly work in the monitoring tool and not in our new portal? 
+And wouldnt Concept B basically be building our own diagramming tool?
+
+---
+
+I think we need a table of systems in the start page, with filterable headers. It is probably enough it displays name, sourcesystems (can be many), entity, and destination systems (can be many)
+
+---
+
+I know we said to move away from backstage but I think the landing page should look more like the backstage landing page[Image #1]
+We can completely orient it around a system but domain should be visible as a column in the list. I guess lifecycle could be good to include. Otherwise you need to click on a system to get more details
+
+---
+
+Actually can we try a layout like this? The catalog isnt the landing page. That is a "Home" page with aggregated stuff for the user. The catalog can appear as a left-bar as in this screenshot: [Image #2]
