@@ -1,0 +1,9 @@
+I am looking in to OKF, https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing/ https://github.com/jkroepke/okf-crossplane-v2 and I wonder if it would be worth setting up OKF docs for the CLI tool? I guess it is not worth duplicating the docs that are in the cli that you access with --help but is there something that isnt easily captured in cli help pages that we should consider adding in an OKF format?
+
+---
+
+Should we keep it in a separate repo for the pilot?
+
+---
+
+can you generate a skeleton for me with suggested front matter?

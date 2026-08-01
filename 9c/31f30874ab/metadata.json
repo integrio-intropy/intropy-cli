@@ -3,7 +3,7 @@
   "checkpoint_id": "9c31f30874ab",
   "strategy": "manual-commit",
   "branch": "feature/dashboard-templates",
-  "checkpoints_count": 80,
+  "checkpoints_count": 85,
   "files_touched": [
     "catalog/concepts/intropy-resource-model.md",
     "catalog/concepts/releases-and-image-digests.md",
@@ -85,13 +85,20 @@
       "compact_transcript": "/9c/31f30874ab/8/transcript.jsonl",
       "content_hash": "/9c/31f30874ab/8/content_hash.txt",
       "prompt": "/9c/31f30874ab/8/prompt.txt"
+    },
+    {
+      "metadata": "/9c/31f30874ab/9/metadata.json",
+      "transcript": "/9c/31f30874ab/9/full.jsonl",
+      "compact_transcript": "/9c/31f30874ab/9/transcript.jsonl",
+      "content_hash": "/9c/31f30874ab/9/content_hash.txt",
+      "prompt": "/9c/31f30874ab/9/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 605970,
+    "input_tokens": 750956,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 41645120,
-    "output_tokens": 147386,
-    "api_call_count": 563
+    "cache_read_tokens": 44266048,
+    "output_tokens": 163931,
+    "api_call_count": 591
   }
 }

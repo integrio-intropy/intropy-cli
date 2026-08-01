@@ -1,0 +1,71 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "9c31f30874ab",
+  "session_id": "019fb6d5-4e04-7581-a30b-f8823a40fccc",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-01T14:08:25.907555Z",
+  "branch": "feature/dashboard-templates",
+  "checkpoints_count": 5,
+  "save_step_count": 1,
+  "files_touched": [
+    "catalog/concepts/intropy-resource-model.md",
+    "catalog/concepts/releases-and-image-digests.md",
+    "catalog/concepts/state-and-ownership.md",
+    "catalog/contracts/gitops-repository-contract.md",
+    "catalog/index.md",
+    "catalog/playbooks/deployment-troubleshooting.md",
+    "catalog/workflows/integration-to-production.md",
+    "catalog/workflows/manual-production-gate.md",
+    "catalog/workflows/onboard-a-system.md"
+  ],
+  "agent": "Pi",
+  "model": "gpt-5.6-sol",
+  "turn_id": "611ed75c176a",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 144986,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2620928,
+    "output_tokens": 16545,
+    "api_call_count": 28
+  },
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-01T14:08:25.870562Z",
+    "agent_lines": 520,
+    "agent_removed": 0,
+    "human_added": 1566,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 2086,
+    "total_lines_changed": 2106,
+    "agent_percentage": 24.691358024691358,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 52,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 51
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 52,
+      "user_lines_removed": 0,
+      "agent_lines_added": 520,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 51
+      }
+    }
+  ]
+}
