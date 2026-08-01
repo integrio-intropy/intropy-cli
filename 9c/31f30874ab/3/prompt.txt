@@ -1,0 +1,5 @@
+Do not implement anything. I just want a report.
+
+I am investigating if OKF (https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing/) can be something to use for intropy and have looked at this example: https://github.com/jkroepke/okf-crossplane-v2
+
+Perhaps it could be integrated with this CLI so that OKF resources are created when you are building with the cli
