@@ -3,7 +3,7 @@
   "checkpoint_id": "9c31f30874ab",
   "strategy": "manual-commit",
   "branch": "feature/dashboard-templates",
-  "checkpoints_count": 87,
+  "checkpoints_count": 121,
   "files_touched": [
     "catalog/concepts/intropy-resource-model.md",
     "catalog/concepts/releases-and-image-digests.md",
@@ -14,13 +14,24 @@
     "catalog/workflows/integration-to-production.md",
     "catalog/workflows/manual-production-gate.md",
     "catalog/workflows/onboard-a-system.md",
+    "cmd/intropy/dashboard.go",
     "internal/dashboard/handlers.go",
+    "internal/dashboard/server.go",
+    "internal/dashboard/templates.go",
+    "internal/dashboard/templates_test.go",
     "internal/system/codegen.go",
     "internal/system/create_test.go",
     "internal/template/create.go",
+    "internal/template/dependencies.go",
     "internal/template/describe.go",
+    "internal/template/library.go",
     "internal/template/manifest.go",
-    "web/dist/index.html"
+    "internal/template/prepare.go",
+    "web/dist/index.html",
+    "web/src/App.tsx",
+    "web/src/api.ts",
+    "web/src/components/TemplatesView.tsx",
+    "web/src/index.css"
   ],
   "sessions": [
     {
@@ -99,13 +110,20 @@
       "compact_transcript": "/9c/31f30874ab/10/transcript.jsonl",
       "content_hash": "/9c/31f30874ab/10/content_hash.txt",
       "prompt": "/9c/31f30874ab/10/prompt.txt"
+    },
+    {
+      "metadata": "/9c/31f30874ab/11/metadata.json",
+      "transcript": "/9c/31f30874ab/11/full.jsonl",
+      "compact_transcript": "/9c/31f30874ab/11/transcript.jsonl",
+      "content_hash": "/9c/31f30874ab/11/content_hash.txt",
+      "prompt": "/9c/31f30874ab/11/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 905151,
+    "input_tokens": 1091268,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 47918656,
-    "output_tokens": 180580,
-    "api_call_count": 644
+    "cache_read_tokens": 56769792,
+    "output_tokens": 222799,
+    "api_call_count": 795
   }
 }

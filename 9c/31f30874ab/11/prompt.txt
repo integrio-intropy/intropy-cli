@@ -1,0 +1,65 @@
+Can you design a new feature that adds a new page to the dashboard, "Templates". It should be built around the template and int commands of the cli. Their should be a list of available templates, if you select one it should be rendered based on the data from template show. There should be a run button that calls int create
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+yes, in a new branch off feature/v-next
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+just for test could you allow the developer select the version of the template library? Similar to the --template-version parameter
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again
