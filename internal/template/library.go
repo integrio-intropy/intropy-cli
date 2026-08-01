@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 )
 
 // DefaultLibrary reports the official template library the CLI targets.
@@ -126,4 +128,45 @@ func (l *Library) Open(name string) (*Template, string, error) {
 		return nil, "", fmt.Errorf("template %q is missing %s/ directory", name, templateSkeletonDir)
 	}
 	return tmpl, skeleton, nil
+}
+
+// List returns the sorted template directory names in the library — the same
+// names Open, Describe and Create accept. It mirrors the standalone List for
+// a caller that already fetched the release.
+func (l *Library) List() ([]string, error) {
+	ents, err := os.ReadDir(l.root)
+	if err != nil {
+		return nil, err
+	}
+	names := []string{}
+	for _, ent := range ents {
+		if ent.IsDir() && !strings.HasPrefix(ent.Name(), ".") {
+			names = append(names, ent.Name())
+		}
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+// Describe returns the machine-readable manifest of one template in the
+// library — the same document the standalone Describe produces, without a
+// second fetch. The library's resolved version is reported as the release.
+func (l *Library) Describe(name string) (*DescribeResult, error) {
+	tmpl, _, err := l.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	return &DescribeResult{
+		Template:      tmpl.Metadata.Name,
+		Title:         tmpl.Metadata.Title,
+		Description:   tmpl.Metadata.Description,
+		Tags:          tmpl.Metadata.Tags,
+		Labels:        tmpl.Metadata.Labels,
+		Owner:         l.Owner,
+		Repo:          l.Repo,
+		Version:       l.Version,
+		Parameters:    tmpl.Spec.Parameters,
+		Dependencies:  tmpl.Spec.Dependencies,
+		orderedFields: tmpl.Fields(),
+	}, nil
 }

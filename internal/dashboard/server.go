@@ -25,6 +25,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -41,6 +42,9 @@ type Options struct {
 	OpenBrowser bool
 	// Version is reported by GET /api/health.
 	Version string
+	// TemplateVersion pins the template library release the /api/templates
+	// endpoints fetch and render against. Empty resolves the latest release.
+	TemplateVersion string
 	// Stdout and Stderr receive program output and diagnostics; both default
 	// to the process streams when nil.
 	Stdout io.Writer
@@ -64,10 +68,20 @@ func Serve(ctx context.Context, opts Options) error {
 	if root == "" {
 		root = "."
 	}
+	// Resolve to an absolute path: the API mixes root-relative identifiers
+	// with absolute on-disk results (a create's outputDir), and relPath can
+	// only join the two when root itself is absolute.
+	if abs, err := filepath.Abs(root); err == nil {
+		root = abs
+	}
 
 	handler, err := newHandler(root, opts.Version, providers{
 		topology: hostGraphProvider(root),
 		deploy:   statusCommandProvider(opts.Version),
+		templates: templatesProvider{
+			version:   opts.TemplateVersion,
+			userAgent: "intropy-cli/" + opts.Version,
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("run: %w", err)

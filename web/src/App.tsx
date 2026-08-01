@@ -3,16 +3,18 @@ import { api, type DeployState, type Integration } from './api'
 import { Sidebar } from './components/Sidebar'
 import { Catalog } from './components/Catalog'
 import { FlowView } from './components/FlowView'
+import { TemplatesView } from './components/TemplatesView'
 import { DarkModeIcon, LightModeIcon, SystemThemeIcon } from './icons'
 
 const SIDEBAR_COLLAPSED_KEY = 'intropy.sidebar.collapsed'
 const THEME_KEY = 'intropy.theme'
 
-type View = 'catalog' | 'flow'
+type View = 'catalog' | 'flow' | 'templates'
 
 const VIEWS: { id: View; label: string }[] = [
   { id: 'catalog', label: 'Integration Catalog' },
   { id: 'flow', label: 'Integration Flow' },
+  { id: 'templates', label: 'Templates' },
 ]
 
 // Theme preference cycles light → dark → system. "system" follows the OS,
@@ -139,6 +141,17 @@ export default function App() {
       .finally(() => setDeployRefreshing(false))
   }, [selected])
 
+  // A template create lands here: re-scan the workspace, then open the new
+  // integration in the catalog.
+  const onTemplateCreated = useCallback((path: string) => {
+    api
+      .listIntegrations()
+      .then(setIntegrations)
+      .catch((e: unknown) => setError(errText(e)))
+    setSelected(path)
+    setView('catalog')
+  }, [])
+
   return (
     <div className="app">
       <header className="topbar">
@@ -187,9 +200,11 @@ export default function App() {
                 onRefresh: refreshDeploy,
               }}
             />
-          ) : (
+          ) : null}
+          {view === 'flow' && (
             <FlowView selected={selected} onSelect={setSelected} theme={resolvedTheme} />
           )}
+          {view === 'templates' && <TemplatesView onCreated={onTemplateCreated} />}
         </main>
       </div>
     </div>

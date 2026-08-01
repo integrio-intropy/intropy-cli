@@ -56,8 +56,20 @@ type DescribeResult struct {
 
 	// orderedFields preserves YAML declaration order for FormatText; YAML
 	// order is lost once Parameters round-trips through JSON, so we keep it
-	// here. Unexported so it stays out of the wire contract.
+	// here. Unexported so it stays out of the wire contract; callers that
+	// need the order (the dashboard's template form) use OrderedFields.
 	orderedFields []FieldSpec
+}
+
+// OrderedFields returns the parameter FieldSpecs in YAML declaration order —
+// the same sequence FormatText prints. A result that round-tripped through
+// JSON has lost that order, so the fall-back is alphabetical (deterministic,
+// like FormatText's). The slice is a copy; mutating it does not leak back.
+func (r *DescribeResult) OrderedFields() []FieldSpec {
+	if r.orderedFields == nil {
+		return fieldsFromSchema(r.Parameters)
+	}
+	return append([]FieldSpec(nil), r.orderedFields...)
 }
 
 // Describe fetches the template tarball at the requested version (or latest)

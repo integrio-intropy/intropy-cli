@@ -411,4 +411,79 @@ export const api = {
   refreshDeployState: (path: string) =>
     requestJSON<DeployState>(`/api/deploy/${path}`, { method: 'POST' }),
   health: () => getJSON<Health>('/api/health'),
+
+  // Template endpoints (internal/dashboard/templates.go). They wrap the
+  // `template` and `int create` commands: the library release the server
+  // fetched is the release the form renders against and the run creates from.
+  listTemplates: () => getJSON<TemplateList>('/api/templates'),
+  getTemplate: (name: string) => getJSON<TemplateDetail>(`/api/templates/${name}`),
+  /** Render a template into the workspace — the Run button's `int create`. */
+  createTemplate: (name: string, req: CreateRequest) =>
+    requestJSON<CreateResponse>(`/api/templates/${name}/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+    }),
+}
+
+// Template API (internal/dashboard/templates.go). The shapes mirror the Go
+// JSON contract the endpoints serve: template.List, template.DescribeResult
+// (plus the ordered `fields` JSON round-tripping would lose), and
+// template.CreateResult.
+
+/** The /api/templates payload: one library release's template names. */
+export interface TemplateList {
+  owner: string
+  repo: string
+  version: string
+  templates: string[]
+}
+
+/** One parameter of a template's schema, in YAML declaration order. Mirrors
+ *  template.FieldSpec — the form renders from these, never the raw schema. */
+export interface TemplateField {
+  name: string
+  title?: string
+  description?: string
+  type: 'string' | 'boolean' | 'integer' | 'number'
+  enum?: unknown[]
+  default?: unknown
+  pattern?: string
+  required: boolean
+}
+
+/** The /api/templates/{name} payload: `template show -o json` plus the
+ *  declaration-ordered field list. `parameters` is the raw JSON Schema. */
+export interface TemplateDetail {
+  template: string
+  title?: string
+  description?: string
+  tags?: string[]
+  labels?: Record<string, string>
+  owner: string
+  repo: string
+  version: string
+  parameters: Record<string, unknown>
+  dependencies?: { template: string; output: string }[]
+  fields: TemplateField[]
+}
+
+/** The POST body for create. `name` folds into values.name and becomes the
+ *  output directory under the workspace root, as `int create --name` does. */
+export interface CreateRequest {
+  name: string
+  values: Record<string, unknown>
+  force?: boolean
+}
+
+/** The 201 payload: template.CreateResult with a root-relative outputDir. */
+export interface CreateResponse {
+  template: string
+  owner: string
+  repo: string
+  version: string
+  outputDir: string
+  values: Record<string, unknown>
+  dependencies?: { template: string; outputDir: string; action: string }[]
+  diagnostics?: string[]
 }
