@@ -1,0 +1,3 @@
+In the dashboard I get this error when reading the deployment info. where is gitops.EnvironmentConfig?
+parse /Users/robinhultman/Library/Caches/intropy/gitops/dfbfa2608e385b47/deploy.yaml: yaml: unmarshal errors:
+  line 28: field verify not found in type gitops.EnvironmentConfig
