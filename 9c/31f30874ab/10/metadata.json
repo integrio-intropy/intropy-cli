@@ -1,0 +1,62 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "9c31f30874ab",
+  "session_id": "019fb6f0-5087-72a3-bbff-cc320b36cc74",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-01T14:08:26.214747Z",
+  "branch": "feature/dashboard-templates",
+  "checkpoints_count": 2,
+  "save_step_count": 1,
+  "files_touched": [
+    "internal/system/codegen.go",
+    "internal/system/create_test.go"
+  ],
+  "agent": "Pi",
+  "model": "gpt-5.6-sol",
+  "turn_id": "038c557ba97c",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 154195,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 3652608,
+    "output_tokens": 16649,
+    "api_call_count": 53
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-01T14:08:26.189395Z",
+    "agent_lines": 11,
+    "agent_removed": 5,
+    "human_added": 1559,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1570,
+    "total_lines_changed": 1592,
+    "agent_percentage": 1.0050251256281406,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 572,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 51,
+        "catalog/concepts/intropy-resource-model.md": 53,
+        "catalog/concepts/releases-and-image-digests.md": 57,
+        "catalog/concepts/state-and-ownership.md": 52,
+        "catalog/contracts/gitops-repository-contract.md": 71,
+        "catalog/index.md": 48,
+        "catalog/playbooks/deployment-troubleshooting.md": 66,
+        "catalog/workflows/integration-to-production.md": 57,
+        "catalog/workflows/manual-production-gate.md": 59,
+        "catalog/workflows/onboard-a-system.md": 57
+      }
+    }
+  ]
+}

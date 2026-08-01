@@ -1,0 +1,5 @@
+This CLI contains instructions on how to write code comments in its AGENTS.md. Can you see what of it translates to ~/dev/intropy/tooling/intropy-topology even though the cli is in go and the topology library is in C#
+
+---
+
+Can you update the code comments according to your recommendation and update AGENTS.md?
