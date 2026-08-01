@@ -1,0 +1,24 @@
+Can you explain the interface between the dashboard and the cli
+
+---
+
+Can you design a new tab in the dashboard for templates? It should list all templates (template list) and when you select one it should render a form with fields matching template show and there should be a button called run which executes int create. Start with the design first so I can comment before you make any changes
+
+---
+
+1. Yes
+2. skip-with-hint (default false)
+
+Can you create plan on that? It should be created as a new branch off feature/v-next. No PR
+
+---
+
+sounds good. Implement the plan and delete the plan file when you are done
+
+---
+
+did you get stuck?
+
+---
+
+is something wrong?
