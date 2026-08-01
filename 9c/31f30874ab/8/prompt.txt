@@ -1,0 +1,129 @@
+This repo have some guidance as to how to write descriptions and output text for the CLI in its AGENTS.md. Could you see if any of that is applicable to how we write descriptions for our templates in ~/dev/intropy/tooling/intropy-templates?
+
+---
+
+Yes, do 1-5 on the checkedout branch
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+the template subcommand is only in the preview installation of the cli aliased to i
+
+---
+
+the template subcommand is only in the preview installation of the cli aliased to i
+
+---
+
+the template subcommand is only in the preview installation of the cli aliased to i
+
+---
+
+the template subcommand is only in the preview installation of the cli aliased to i
+
+---
+
+the template subcommand is only in the preview installation of the cli aliased to i
+
+---
+
+the template subcommand is only in the preview installation of the cli aliased to i
+
+---
+
+the template subcommand is only in the preview installation of the cli aliased to i
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+I have made other changes to the documentation now so I think we need to re-plan this work
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+try again

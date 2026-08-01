@@ -3,9 +3,20 @@
   "checkpoint_id": "9c31f30874ab",
   "strategy": "manual-commit",
   "branch": "feature/dashboard-templates",
-  "checkpoints_count": 30,
+  "checkpoints_count": 80,
   "files_touched": [
+    "catalog/concepts/intropy-resource-model.md",
+    "catalog/concepts/releases-and-image-digests.md",
+    "catalog/concepts/state-and-ownership.md",
+    "catalog/contracts/gitops-repository-contract.md",
+    "catalog/index.md",
+    "catalog/playbooks/deployment-troubleshooting.md",
+    "catalog/workflows/integration-to-production.md",
+    "catalog/workflows/manual-production-gate.md",
+    "catalog/workflows/onboard-a-system.md",
     "internal/dashboard/handlers.go",
+    "internal/system/codegen.go",
+    "internal/system/create_test.go",
     "internal/template/create.go",
     "internal/template/describe.go",
     "internal/template/manifest.go",
@@ -67,13 +78,20 @@
       "compact_transcript": "/9c/31f30874ab/7/transcript.jsonl",
       "content_hash": "/9c/31f30874ab/7/content_hash.txt",
       "prompt": "/9c/31f30874ab/7/prompt.txt"
+    },
+    {
+      "metadata": "/9c/31f30874ab/8/metadata.json",
+      "transcript": "/9c/31f30874ab/8/full.jsonl",
+      "compact_transcript": "/9c/31f30874ab/8/transcript.jsonl",
+      "content_hash": "/9c/31f30874ab/8/content_hash.txt",
+      "prompt": "/9c/31f30874ab/8/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 457310,
+    "input_tokens": 605970,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 37113600,
-    "output_tokens": 132988,
-    "api_call_count": 422
+    "cache_read_tokens": 41645120,
+    "output_tokens": 147386,
+    "api_call_count": 563
   }
 }
