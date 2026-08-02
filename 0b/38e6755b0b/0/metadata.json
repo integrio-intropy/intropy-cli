@@ -1,0 +1,60 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "0b38e6755b0b",
+  "session_id": "019fc31e-ed7a-72aa-b48d-ed6bd9d0eb40",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-02T16:37:05.143675Z",
+  "branch": "feat/taskfile-graph-contract",
+  "checkpoints_count": 4,
+  "save_step_count": 2,
+  "files_touched": [],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "9670f3321c01",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 66358,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 4863040,
+    "output_tokens": 26270,
+    "api_call_count": 80
+  },
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 52,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 51
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 52,
+      "user_lines_removed": 0,
+      "agent_lines_added": 74,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 51
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 52,
+      "user_lines_removed": 0,
+      "agent_lines_added": 498,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 51
+      }
+    }
+  ]
+}
