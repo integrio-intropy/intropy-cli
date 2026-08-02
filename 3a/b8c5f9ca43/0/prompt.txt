@@ -1,0 +1,19 @@
+Do not edit any code. This is a brainstorm task.
+I am considering bringing in task (taskfile.dev) as a dependency to the cli. The idea would be to scaffold taskfiles with the integration and use that as the interface to the cli instead of coding into the cli the dotnet run command, or the copy command. The cli could depend on task run (or similar) and exactly what that does can evolve over time
+
+---
+
+Do you think this separation of concerns make sense?
+
+---
+
+I want to be able to start and stop services and trigger tests from the dashboard and that would increase the knowledge that cli needs to have of the dotnet cli and others. Also if anything changes in the other dotnet based tools we might need to ship a new cli.
+The strategy so far has been to not shador simple cli calls like dotnet run
+
+---
+
+continue creating a plan
+
+---
+
+can you implement the plan in a new branch off feature/v-next? No PR and no push

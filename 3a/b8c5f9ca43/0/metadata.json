@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "3ab8c5f9ca43",
+  "session_id": "019fc31e-ed7a-72aa-b48d-ed6bd9d0eb40",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-02T16:37:14.287275Z",
+  "branch": "feat/taskfile-graph-contract",
+  "checkpoints_count": 4,
+  "save_step_count": 1,
+  "files_touched": [
+    "docs/brainstorms/taskfile-interface-requirements.md",
+    "docs/plans/2026-08-02-001-feat-taskfile-graph-contract-plan.md"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "9670f3321c01",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 66491,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 4944192,
+    "output_tokens": 26426,
+    "api_call_count": 81
+  },
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-02T16:37:14.262753Z",
+    "agent_lines": 498,
+    "agent_removed": 0,
+    "human_added": 44,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 542,
+    "total_lines_changed": 542,
+    "agent_percentage": 91.88191881918819,
+    "metric_version": 2
+  }
+}
