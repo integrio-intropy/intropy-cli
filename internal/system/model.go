@@ -27,8 +27,9 @@ type Component struct {
 
 // Connector is one assembled connector: the named port an edge block reaches
 // the outside world through, and the identifier it gets in the generated
-// Connectors class. `sys create` resolves every connector to a local file
-// transport rooted in the host's test/ folder.
+// Connectors class. The declaration carries only the deployed transport
+// shape; `sys create` resolves every connector to a folder under the host's
+// test/ directory through the generated development definition.
 type Connector struct {
 	Name  string `json:"name"`
 	Field string `json:"-"`

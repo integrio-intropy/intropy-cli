@@ -30,6 +30,23 @@ public static class Topics
 
 const connectorsFileTmpl = `using Intropy.Topology;
 
+/// <summary>The system's connectors: the named ports its edge blocks reach the outside world through. Each declares its deployed transport; the development definition resolves it to a local folder under test/ so the system runs with zero external configuration.</summary>
+public static class Connectors
+{
+{{- range $i, $c := .Connectors }}
+{{- if $i }}
+{{ end }}
+    /// <summary>Deployed as SFTP; locally resolved to <c>./test/{{ $c.Name }}</c>.</summary>
+    public static readonly ConnectorRef {{ $c.Field }} = ConnectorRef.Define("{{ $c.Name }}", Transport.Sftp());
+{{- end }}
+}
+`
+
+// connectorsFileLegacyTmpl is the pre-development shape: a template release
+// without the Development.cs placeholder pins an Intropy.Topology whose
+// connectors carry a local file transport directly.
+const connectorsFileLegacyTmpl = `using Intropy.Topology;
+
 /// <summary>The system's connectors: the named ports its edge blocks reach the outside world through. Each defaults to a local file folder under test/ so the system runs with zero external configuration.</summary>
 public static class Connectors
 {
@@ -39,6 +56,25 @@ public static class Connectors
     /// <summary>Local file connector '{{ $c.Name }}' (folder ./test/{{ $c.Name }}). Point it at a real external system and transport when known.</summary>
     public static readonly ConnectorRef {{ $c.Field }} = ConnectorRef.Define("{{ $c.Name }}", Transport.File("./test/{{ $c.Name }}"));
 {{- end }}
+}
+`
+
+// The mock artifacts are static skeleton files, shipped by the same template
+// release that ships the Development.cs placeholder — the paths never vary.
+const developmentFileTmpl = `using Intropy.Topology.Generation;
+
+/// <summary>Local OpenAPI-backed substitutes and connector file resolutions for {{ .Name }}.</summary>
+public sealed class {{ .ProjectName }}Development : IDevelopmentDefinition
+{
+    /// <inheritdoc />
+    public void Define(DevelopmentBuilder development)
+    {
+        development.Mock(Services.Idempotency).FromOpenApi("mocks/idempotency-service.openapi.yaml");
+        development.Mock(Services.BusinessIncidents).FromOpenApi("mocks/business-incident-service.openapi.yaml");
+{{- range .Connectors }}
+        development.Files(Connectors.{{ .Field }}).RootPath("./test/{{ .Name }}");
+{{- end }}
+    }
 }
 `
 
@@ -69,9 +105,11 @@ public sealed class {{ .SystemClass }} : ISystemDefinition
 const defaultExtractorSchedule = "* * * * *"
 
 var (
-	topicsFile      = template.Must(template.New("Topics.cs").Parse(topicsFileTmpl))
-	connectorsFile  = template.Must(template.New("Connectors.cs").Parse(connectorsFileTmpl))
-	systemClassFile = template.Must(template.New("SystemClass.cs").Parse(systemClassFileTmpl))
+	topicsFile           = template.Must(template.New("Topics.cs").Parse(topicsFileTmpl))
+	connectorsFile       = template.Must(template.New("Connectors.cs").Parse(connectorsFileTmpl))
+	connectorsFileLegacy = template.Must(template.New("Connectors.cs").Parse(connectorsFileLegacyTmpl))
+	developmentFile      = template.Must(template.New("Development.cs").Parse(developmentFileTmpl))
+	systemClassFile      = template.Must(template.New("SystemClass.cs").Parse(systemClassFileTmpl))
 )
 
 // componentView is a Component with its builder call and chained wiring calls
@@ -88,19 +126,42 @@ func writeTopicsFile(dir string, m *Model) error {
 	return renderTo(filepath.Join(dir, "Topics.cs"), topicsFile, m)
 }
 
+// writeDevelopmentFile overwrites <dir>/<ProjectName>Development.cs with the
+// assembled development definition: the platform-service mocks plus one file
+// resolution per connector. Like the system class it refuses to create the
+// file — a missing placeholder means the template release predates
+// development definitions (and its pinned Intropy.Topology has no
+// IDevelopmentDefinition), so it reports false and the caller degrades the
+// connector and system-class shapes to that era instead of failing.
+func writeDevelopmentFile(dir string, m *Model, warnf func(format string, args ...any)) (bool, error) {
+	path := filepath.Join(dir, m.ProjectName+"Development.cs")
+	if _, err := os.Stat(path); err != nil {
+		warnf("template rendered no %sDevelopment.cs placeholder — this release predates development definitions; generating connectors with local file transports (upgrade with --version <newer tag> for deployed transports and local service mocks)", m.ProjectName)
+		return false, nil
+	}
+	return true, renderTo(path, developmentFile, m)
+}
+
 // writeConnectorsFile overwrites <dir>/Connectors.cs with the assembled
 // connector declarations. Like the system class it refuses to create the
 // file — but here a missing placeholder means the template release predates
-// connectors (and its pinned Intropy.Topology has no Transport.File), so the
-// system is generated without From/To instead of failing: it reports false
-// and the caller degrades the system class the same way.
-func writeConnectorsFile(dir string, m *Model, warnf func(format string, args ...any)) (bool, error) {
+// connectors entirely, so the system is generated without From/To instead of
+// failing: it reports false and the caller degrades the system class the
+// same way. withDevelopment=false (a release with connectors but no
+// development definitions) keeps the era's local file transports; otherwise
+// connectors declare their deployed transport shape and the development
+// definition owns the local resolution.
+func writeConnectorsFile(dir string, m *Model, withDevelopment bool, warnf func(format string, args ...any)) (bool, error) {
 	path := filepath.Join(dir, "Connectors.cs")
 	if _, err := os.Stat(path); err != nil {
 		warnf("template rendered no Connectors.cs placeholder — this release predates connectors; generating the system without From/To (upgrade with --version <newer tag> to wire them)")
 		return false, nil
 	}
-	return true, renderTo(path, connectorsFile, m)
+	tmpl := connectorsFile
+	if !withDevelopment {
+		tmpl = connectorsFileLegacy
+	}
+	return true, renderTo(path, tmpl, m)
 }
 
 // writeSystemClassFile overwrites <dir>/<SystemClass>.cs with the assembled
@@ -108,8 +169,10 @@ func writeConnectorsFile(dir string, m *Model, warnf func(format string, args ..
 // must have left the placeholder, or its name derivation disagrees with
 // this CLI and the write would add a second ISystemDefinition instead of
 // replacing the placeholder. withConnectors=false (a template release that
-// predates Connectors.cs) omits the From/To calls.
-func writeSystemClassFile(dir string, m *Model, withConnectors bool) error {
+// predates Connectors.cs) omits the From/To calls; withDevelopment=false
+// (a release that predates development definitions, whose skeleton ships no
+// Services.cs) omits the Uses calls.
+func writeSystemClassFile(dir string, m *Model, withConnectors, withDevelopment bool) error {
 	path := filepath.Join(dir, m.SystemClass+".cs")
 	if _, err := os.Stat(path); err != nil {
 		return fmt.Errorf("template rendered no %s.cs placeholder: the template's systemClass derivation disagrees with this CLI; upgrade intropy or pass --version <compatible tag>", m.SystemClass)
@@ -135,6 +198,7 @@ func writeSystemClassFile(dir string, m *Model, withConnectors bool) error {
 				v.Calls = append(v.Calls, ".From(Connectors."+field+")")
 			}
 			v.Calls = append(v.Calls, ".Publishes(Topics."+topicField+")")
+			v.Calls = append(v.Calls, usesCalls(withDevelopment)...)
 			// Gated on the same signal as From/To: a template release that
 			// predates Connectors.cs also pins an Intropy.Topology without
 			// WithSchedule, so the degraded shape must not call it.
@@ -147,6 +211,7 @@ func writeSystemClassFile(dir string, m *Model, withConnectors bool) error {
 			if hasConnector {
 				v.Calls = append(v.Calls, ".To(Connectors."+field+")")
 			}
+			v.Calls = append(v.Calls, usesCalls(withDevelopment)...)
 		}
 		views[i] = v
 	}
@@ -156,6 +221,18 @@ func writeSystemClassFile(dir string, m *Model, withConnectors bool) error {
 		SystemClass string
 		Components  []componentView
 	}{m.Name, m.SystemClass, views})
+}
+
+// usesCalls is the platform-service wiring every block gets: the framework's
+// block builders require idempotency and business-incident routing, and the
+// skeleton's Services.cs declares both refs. Gated on the development era —
+// earlier skeletons ship no Services.cs and pin an Intropy.Topology without
+// Uses.
+func usesCalls(withDevelopment bool) []string {
+	if !withDevelopment {
+		return nil
+	}
+	return []string{".Uses(Services.Idempotency)", ".Uses(Services.BusinessIncidents)"}
 }
 
 func renderTo(path string, tmpl *template.Template, data any) error {

@@ -335,20 +335,22 @@ The command reads before it writes: it scans the workspace for the
 renders the `system-host` template (a .NET Aspire AppHost), and assembles
 the typed system declaration from what the scaffolds recorded —
 `Topics.cs` defines each topic once as a `TopicRef<T>`, `Connectors.cs`
-defines each edge block's port to the outside world, and the
-`ISystemDefinition` class wires every extractor and loader to its topic
-plus its connector (`.From(...)` on extractors, `.To(...)` on loaders).
+defines each edge block's port to the outside world (its deployed
+transport shape — connection values are deployment configuration), and
+the `ISystemDefinition` class wires every extractor and loader to its
+topic plus its connector (`.From(...)` on extractors, `.To(...)` on
+loaders) and the platform services (`.Uses(...)`).
 The workspace's shared contracts project (template role `shared-library`,
 typically `Contracts/`) is referenced from the host, never declared as a
 component.
 
-Connectors resolve to local file transports by default: each gets a drop
-folder under the host's `test/` directory (created by the command), so
-the assembled system runs end-to-end with zero external configuration —
-drop a file into `test/<name>-source/`, collect the result from
-`test/<name>-destination/`. Point a connector at a real external system
-by editing its `ConnectorRef.Define(...)` when transport details are
-known.
+The generated development definition (`<Project>Development.cs`) owns the
+local-run picture: it mocks the platform services from the skeleton's
+OpenAPI documents and resolves each connector to a drop folder under the
+host's `test/` directory (created by the command), so the assembled
+system runs end-to-end with zero external configuration — drop a file
+into `test/<name>-source/`, collect the result from
+`test/<name>-destination/`.
 
 `-n` accepts PascalCase or kebab-case — `OrderFlow` kebab-cases to
 `order-flow`, the system's name. Unlike `int create` there are no `--set`

@@ -57,6 +57,7 @@ func systemHostFiles() map[string]string {
 		"system-host/skeleton/Program.cs":                                "// dispatch\n",
 		"system-host/skeleton/Topics.cs.tmpl":                            "// placeholder {{ .pubsub }}\n",
 		"system-host/skeleton/Connectors.cs.tmpl":                        "// placeholder\n",
+		"system-host/skeleton/{{ .projectName }}Development.cs.tmpl":     "// placeholder {{ .projectName }}\n",
 		"system-host/skeleton/{{ .systemClass }}.cs.tmpl":                "// placeholder {{ .systemClass }}\n",
 		"system-host/skeleton/{{ .projectName }}.SystemHost.csproj.tmpl": systemHostCsprojTmpl,
 	}
@@ -193,15 +194,51 @@ public sealed class OrderFlowSystem : ISystemDefinition
         builder.AddExtractor("order-extractor")
             .From(Connectors.OrderExtractorSource)
             .Publishes(Topics.Orders)
+            .Uses(Services.Idempotency)
+            .Uses(Services.BusinessIncidents)
             .WithSchedule("* * * * *");
         builder.AddLoader("order-loader")
             .Subscribes(Topics.Orders)
-            .To(Connectors.OrderLoaderDestination);
+            .To(Connectors.OrderLoaderDestination)
+            .Uses(Services.Idempotency)
+            .Uses(Services.BusinessIncidents);
     }
 }
 `
 
 const wantConnectorsCS = `using Intropy.Topology;
+
+/// <summary>The system's connectors: the named ports its edge blocks reach the outside world through. Each declares its deployed transport; the development definition resolves it to a local folder under test/ so the system runs with zero external configuration.</summary>
+public static class Connectors
+{
+    /// <summary>Deployed as SFTP; locally resolved to <c>./test/order-extractor-source</c>.</summary>
+    public static readonly ConnectorRef OrderExtractorSource = ConnectorRef.Define("order-extractor-source", Transport.Sftp());
+
+    /// <summary>Deployed as SFTP; locally resolved to <c>./test/order-loader-destination</c>.</summary>
+    public static readonly ConnectorRef OrderLoaderDestination = ConnectorRef.Define("order-loader-destination", Transport.Sftp());
+}
+`
+
+const wantDevelopmentCS = `using Intropy.Topology.Generation;
+
+/// <summary>Local OpenAPI-backed substitutes and connector file resolutions for order-flow.</summary>
+public sealed class OrderFlowDevelopment : IDevelopmentDefinition
+{
+    /// <inheritdoc />
+    public void Define(DevelopmentBuilder development)
+    {
+        development.Mock(Services.Idempotency).FromOpenApi("mocks/idempotency-service.openapi.yaml");
+        development.Mock(Services.BusinessIncidents).FromOpenApi("mocks/business-incident-service.openapi.yaml");
+        development.Files(Connectors.OrderExtractorSource).RootPath("./test/order-extractor-source");
+        development.Files(Connectors.OrderLoaderDestination).RootPath("./test/order-loader-destination");
+    }
+}
+`
+
+// wantPreDevelopmentConnectorsCS is the pre-development shape: a template
+// release without the Development.cs placeholder keeps connectors on local
+// file transports and its system class carries no Uses calls.
+const wantPreDevelopmentConnectorsCS = `using Intropy.Topology;
 
 /// <summary>The system's connectors: the named ports its edge blocks reach the outside world through. Each defaults to a local file folder under test/ so the system runs with zero external configuration.</summary>
 public static class Connectors
@@ -211,6 +248,26 @@ public static class Connectors
 
     /// <summary>Local file connector 'order-loader-destination' (folder ./test/order-loader-destination). Point it at a real external system and transport when known.</summary>
     public static readonly ConnectorRef OrderLoaderDestination = ConnectorRef.Define("order-loader-destination", Transport.File("./test/order-loader-destination"));
+}
+`
+
+const wantPreDevelopmentSystemCS = `using Intropy.Topology;
+
+/// <summary>The order-flow system: what exists, and what connects it.</summary>
+public sealed class OrderFlowSystem : ISystemDefinition
+{
+    public string SystemName => "order-flow";
+
+    public void Define(SystemBuilder builder)
+    {
+        builder.AddExtractor("order-extractor")
+            .From(Connectors.OrderExtractorSource)
+            .Publishes(Topics.Orders)
+            .WithSchedule("* * * * *");
+        builder.AddLoader("order-loader")
+            .Subscribes(Topics.Orders)
+            .To(Connectors.OrderLoaderDestination);
+    }
 }
 `
 
@@ -274,6 +331,14 @@ func TestCreateAssemblesSystem(t *testing.T) {
 		t.Errorf("Connectors.cs:\n%s\nwant:\n%s", connectors, wantConnectorsCS)
 	}
 
+	development, err := os.ReadFile(filepath.Join(outDir, "OrderFlowDevelopment.cs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(development) != wantDevelopmentCS {
+		t.Errorf("OrderFlowDevelopment.cs:\n%s\nwant:\n%s", development, wantDevelopmentCS)
+	}
+
 	for _, folder := range []string{"order-extractor-source", "order-loader-destination"} {
 		if fi, err := os.Stat(filepath.Join(outDir, "test", folder)); err != nil || !fi.IsDir() {
 			t.Errorf("expected connector test folder test/%s: %v", folder, err)
@@ -316,7 +381,9 @@ func TestCreateAssemblesSystem(t *testing.T) {
 
 func TestCreateWithoutConnectorsPlaceholderDegradesToLegacyOutput(t *testing.T) {
 	files := systemHostFiles()
+	// A release that predates connectors also predates development definitions.
 	delete(files, "system-host/skeleton/Connectors.cs.tmpl")
+	delete(files, "system-host/skeleton/{{ .projectName }}Development.cs.tmpl")
 	srv, _ := newSystemHostServer(t, "v1", files)
 	defer srv.Close()
 
@@ -341,6 +408,41 @@ func TestCreateWithoutConnectorsPlaceholderDegradesToLegacyOutput(t *testing.T) 
 		t.Errorf("test/ folders should not be created without connectors; stat err = %v", err)
 	}
 	if !strings.Contains(stderr.String(), "no Connectors.cs placeholder") {
+		t.Errorf("stderr should warn about the missing placeholder:\n%s", stderr.String())
+	}
+}
+
+func TestCreateWithoutDevelopmentPlaceholderDegradesToFileTransports(t *testing.T) {
+	files := systemHostFiles()
+	delete(files, "system-host/skeleton/{{ .projectName }}Development.cs.tmpl")
+	srv, _ := newSystemHostServer(t, "v1", files)
+	defer srv.Close()
+
+	ws := writeWorkspace(t)
+	outDir := filepath.Join(ws, "system-host")
+	_, stderr, err := runCreate(t, srv, CreateOptions{Name: "OrderFlow", StartDir: ws, OutputDir: outDir, Version: "v1"})
+	if err != nil {
+		t.Fatalf("Create: %v\nstderr: %s", err, stderr.String())
+	}
+
+	if _, err := os.Stat(filepath.Join(outDir, "OrderFlowDevelopment.cs")); !os.IsNotExist(err) {
+		t.Errorf("OrderFlowDevelopment.cs should not be created without the placeholder; stat err = %v", err)
+	}
+	connectors, err := os.ReadFile(filepath.Join(outDir, "Connectors.cs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(connectors) != wantPreDevelopmentConnectorsCS {
+		t.Errorf("Connectors.cs:\n%s\nwant pre-development shape:\n%s", connectors, wantPreDevelopmentConnectorsCS)
+	}
+	system, err := os.ReadFile(filepath.Join(outDir, "OrderFlowSystem.cs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(system) != wantPreDevelopmentSystemCS {
+		t.Errorf("OrderFlowSystem.cs:\n%s\nwant pre-development shape:\n%s", system, wantPreDevelopmentSystemCS)
+	}
+	if !strings.Contains(stderr.String(), "no OrderFlowDevelopment.cs placeholder") {
 		t.Errorf("stderr should warn about the missing placeholder:\n%s", stderr.String())
 	}
 }
@@ -381,11 +483,21 @@ func TestCreateWithRecordMissingConnectorOmitsItsFromTo(t *testing.T) {
 	if !strings.Contains(string(system), ".From(Connectors.OrderExtractorSource)") {
 		t.Errorf("extractor should keep its From:\n%s", system)
 	}
-	if !strings.Contains(string(system), ".Subscribes(Topics.Orders);") {
+	if strings.Contains(string(system), ".To(") {
 		t.Errorf("loader without a connector should have no To:\n%s", system)
 	}
 	if !strings.Contains(stderr.String(), "has no connector") {
 		t.Errorf("stderr should warn about the missing connector:\n%s", stderr.String())
+	}
+	development, err := os.ReadFile(filepath.Join(outDir, "OrderFlowDevelopment.cs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(development), `development.Files(Connectors.OrderExtractorSource).RootPath("./test/order-extractor-source");`) {
+		t.Errorf("development definition should resolve the extractor's connector:\n%s", development)
+	}
+	if strings.Contains(string(development), "order-loader") {
+		t.Errorf("development definition should have no resolution for the connector-less loader:\n%s", development)
 	}
 }
 

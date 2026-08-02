@@ -153,15 +153,19 @@ func Create(ctx context.Context, opts CreateOptions) error {
 	if err := writeTopicsFile(opts.OutputDir, model); err != nil {
 		return err
 	}
-	withConnectors, err := writeConnectorsFile(opts.OutputDir, model, warnf)
+	withDevelopment, err := writeDevelopmentFile(opts.OutputDir, model, warnf)
 	if err != nil {
 		return err
 	}
-	if err := writeSystemClassFile(opts.OutputDir, model, withConnectors); err != nil {
+	withConnectors, err := writeConnectorsFile(opts.OutputDir, model, withDevelopment, warnf)
+	if err != nil {
+		return err
+	}
+	if err := writeSystemClassFile(opts.OutputDir, model, withConnectors, withDevelopment); err != nil {
 		return err
 	}
 	if withConnectors {
-		// The drop folders behind the default file transports, so an
+		// The drop folders behind the connectors' local resolutions, so an
 		// extractor's first poll doesn't hit a missing directory.
 		for _, c := range model.Connectors {
 			if err := os.MkdirAll(filepath.Join(opts.OutputDir, "test", c.Name), 0o755); err != nil {
