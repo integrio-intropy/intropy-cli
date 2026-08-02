@@ -1,0 +1,102 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "0b38e6755b0b",
+  "session_id": "50dbb60b-080b-4497-847d-cc76cdd74ddb",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-02T16:37:05.474769Z",
+  "branch": "feat/taskfile-graph-contract",
+  "checkpoints_count": 2,
+  "save_step_count": 1,
+  "files_touched": [
+    "internal/dashboard/handlers.go"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "4ba77994d267",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 32,
+    "cache_creation_tokens": 40939,
+    "cache_read_tokens": 863039,
+    "output_tokens": 11464,
+    "api_call_count": 17
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-02T16:37:05.464609Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 294,
+    "human_modified": 34,
+    "human_removed": 0,
+    "total_committed": 294,
+    "total_lines_changed": 383,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 2196,
+      "user_lines_removed": 113,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 51,
+        "catalog/concepts/intropy-resource-model.md": 53,
+        "catalog/concepts/releases-and-image-digests.md": 57,
+        "catalog/concepts/state-and-ownership.md": 52,
+        "catalog/contracts/gitops-repository-contract.md": 71,
+        "catalog/index.md": 48,
+        "catalog/playbooks/deployment-troubleshooting.md": 66,
+        "catalog/workflows/integration-to-production.md": 57,
+        "catalog/workflows/manual-production-gate.md": 59,
+        "catalog/workflows/onboard-a-system.md": 57,
+        "cmd/intropy/dashboard.go": 12,
+        "internal/dashboard/handlers.go": 22,
+        "internal/dashboard/server.go": 14,
+        "internal/dashboard/templates.go": 272,
+        "internal/dashboard/templates_test.go": 352,
+        "internal/system/codegen.go": 3,
+        "internal/system/create_test.go": 9,
+        "internal/template/create.go": 13,
+        "internal/template/dependencies.go": 1,
+        "internal/template/describe.go": 13,
+        "internal/template/library.go": 43,
+        "internal/template/manifest.go": 11,
+        "internal/template/prepare.go": 156,
+        "web/dist/index.html": 19,
+        "web/src/App.tsx": 18,
+        "web/src/api.ts": 75,
+        "web/src/components/TemplatesView.tsx": 349,
+        "web/src/index.css": 242
+      },
+      "user_removed_per_file": {
+        "cmd/intropy/dashboard.go": 9,
+        "internal/dashboard/handlers.go": 8,
+        "internal/system/codegen.go": 1,
+        "internal/system/create_test.go": 2,
+        "internal/template/create.go": 3,
+        "internal/template/dependencies.go": 1,
+        "internal/template/describe.go": 1,
+        "internal/template/manifest.go": 9,
+        "web/dist/index.html": 76,
+        "web/src/App.tsx": 3
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 52,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2143,
+      "agent_lines_removed": 113,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 51
+      }
+    }
+  ]
+}
