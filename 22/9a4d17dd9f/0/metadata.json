@@ -14,6 +14,7 @@
   "agent": "Pi",
   "model": "moonshotai/Kimi-K3",
   "turn_id": "0ce0a8a647ab",
+  "compact_transcript_start": 0,
   "token_usage": {
     "input_tokens": 153790,
     "cache_creation_tokens": 0,

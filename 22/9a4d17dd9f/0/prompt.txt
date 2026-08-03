@@ -1,5 +1,9 @@
-We will start with the design before making any changes. I want to add testing capabilities to the dashboard. Encore has a "Call API" https://dev.to/encore/encore-cloud-20-development-platform-for-the-ai-era-552j feature in theirs but that is built around the component exposing an api, which is not always the case for us. I am thinking we should use the development graph of the topology to support files
+create the plan
 
 ---
 
-create the plan
+yes lets go for on demand
+
+---
+
+Do it on this branch, no PR
