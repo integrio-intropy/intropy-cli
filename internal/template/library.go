@@ -27,7 +27,8 @@ type LibraryOptions struct {
 	UserAgent string
 	Stderr    io.Writer
 
-	// Test overrides. Production callers leave these zero-valued.
+	// Owner and Repo select the template library; zero values target the
+	// official library. GitHubBaseURL is a test-only seam.
 	Owner         string
 	Repo          string
 	GitHubBaseURL string

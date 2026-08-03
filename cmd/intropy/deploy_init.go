@@ -19,6 +19,7 @@ type initFlags struct {
 	system          string
 	envs            []string
 	templateVersion string
+	templateRepo    string
 	values          []string
 	sets            []string
 	noInput         bool
@@ -57,6 +58,11 @@ var deployInitCmd = &cobra.Command{
 			return newUsageErrorf("%v", err)
 		}
 
+		owner, repo, err := resolveTemplateRepo(initFlagValues.templateRepo)
+		if err != nil {
+			return err
+		}
+
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 
@@ -79,6 +85,8 @@ var deployInitCmd = &cobra.Command{
 			Stdin:           cmd.InOrStdin(),
 			Stdout:          cmd.OutOrStdout(),
 			Stderr:          cmd.ErrOrStderr(),
+			Owner:           owner,
+			Repo:            repo,
 		})
 	},
 }
@@ -89,6 +97,7 @@ func init() {
 	f.StringVar(&initFlagValues.system, "system", "", flagUsageInitSystem)
 	f.StringArrayVar(&initFlagValues.envs, "environments", nil, "environments to create overlays for (repeatable; default: every environment in deploy.yaml)")
 	f.StringVar(&initFlagValues.templateVersion, "template-version", "", flagUsageTemplateVer)
+	f.StringVar(&initFlagValues.templateRepo, "template-repo", "", flagUsageTemplateRepo)
 	f.StringArrayVarP(&initFlagValues.values, "values", "f", nil, "values file (repeatable; - reads one document from stdin)")
 	f.StringArrayVarP(&initFlagValues.sets, "set", "s", nil, "set a template value as key=value (repeatable)")
 	f.BoolVar(&initFlagValues.noInput, "no-input", false, "never prompt; fail if a required value is missing")

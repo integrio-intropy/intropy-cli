@@ -37,8 +37,8 @@ type CreateOptions struct {
 	HTTP       *http.Client
 	UserAgent  string
 
-	// Test overrides. Production callers leave these zero-valued; the CLI
-	// always targets the official template library.
+	// Owner and Repo select the template library; zero values target the
+	// official library. GitHubBaseURL is a test-only seam.
 	Owner         string
 	Repo          string
 	GitHubBaseURL string
