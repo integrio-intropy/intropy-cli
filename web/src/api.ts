@@ -35,6 +35,10 @@ export interface Integration {
   system?: string
   /** Parent directory of the system; absent when the system sits at the root. */
   domain?: string
+  /** Root-relative directory of the system ("." when rooted at the workspace).
+   *  The unique system key — two directories can declare the same `system`
+   *  name — and the join key to a declared Topology's `path`. */
+  systemPath?: string
 }
 
 export interface FileDoc {

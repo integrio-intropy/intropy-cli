@@ -1,8 +1,8 @@
-# Dependencies and build caches — but NOT dist/index.html, which is committed
-# as a placeholder and embedded into the CLI binary via go:embed. Built assets
-# (dist/assets) are produced by `make web` / CI and never committed.
+# Dependencies and build caches. All of dist/ is vite build output and never
+# committed — the committed fallback page lives under placeholder/dist and the
+# go:embed marker dist/placeholder.html is produced by `make web`.
 node_modules
-dist/assets
+dist
 .tmp
 *.tsbuildinfo
 *.local

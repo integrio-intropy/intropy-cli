@@ -98,6 +98,12 @@ type integrationSummary struct {
 	Name   string `json:"name"`
 	System string `json:"system,omitempty"`
 	Domain string `json:"domain,omitempty"`
+	// SystemPath is the root-relative directory of the system the integration
+	// belongs to ("." when the system is rooted at the workspace itself).
+	// Unlike System — a declared name two directories can share — it is a
+	// unique grouping key, and it matches the `path` of the topology record
+	// the system's host produces. Absent when the integration has no system.
+	SystemPath string `json:"systemPath,omitempty"`
 }
 
 // integrationDetail is a single integration plus best-effort, on-disk
@@ -209,6 +215,7 @@ func (s *apiServer) summarize(e template.ScaffoldEntry, systems map[string]strin
 	parent := filepath.Dir(path)
 	if declared, ok := systems[parent]; ok && path != root {
 		sum.System = declared
+		sum.SystemPath = s.relPath(parent)
 		if grand := filepath.Dir(parent); parent != root && grand != root {
 			sum.Domain = filepath.Base(grand)
 		}
@@ -218,6 +225,7 @@ func (s *apiServer) summarize(e template.ScaffoldEntry, systems map[string]strin
 		return sum
 	}
 	sum.System = filepath.Base(parent)
+	sum.SystemPath = s.relPath(parent)
 	if grand := filepath.Dir(parent); grand != root {
 		sum.Domain = filepath.Base(grand)
 	}

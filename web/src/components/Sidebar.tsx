@@ -17,11 +17,15 @@ interface Props {
   onToggle: () => void
 }
 
-// SystemGroup keys carry the domain prefix so equally named systems under
-// different domains keep independent expand/collapse state.
+// SystemGroup keys are the system's root directory (falling back to a
+// domain-prefixed name), so equally named systems stay separate groups with
+// independent expand/collapse state.
 interface SystemGroup {
   key: string
   system: string
+  /** System root directory when the server provided one; disambiguates
+   *  equally named sibling systems. */
+  path?: string
   items: Integration[]
 }
 
@@ -219,10 +223,10 @@ function groupTree(integrations: Integration[]): {
       continue
     }
     const domain = it.domain ?? ''
-    const key = domain + '/' + it.system
+    const key = it.systemPath ?? domain + '/' + it.system
     let group = bySystem.get(key)
     if (!group) {
-      group = { key, system: it.system, items: [], domain }
+      group = { key, system: it.system, path: it.systemPath, items: [], domain }
       bySystem.set(key, group)
     }
     group.items.push(it)
@@ -248,9 +252,26 @@ function groupTree(integrations: Integration[]): {
   const domains = [...byDomain.values()].sort((a, b) =>
     byName(a.domain, b.domain),
   )
-  for (const d of domains) d.systems.sort((a, b) => byName(a.system, b.system))
+  for (const d of domains) {
+    disambiguate(d.systems)
+    d.systems.sort((a, b) => byName(a.system, b.system))
+  }
+  disambiguate(rootSystems)
   rootSystems.sort((a, b) => byName(a.system, b.system))
   return { domains, rootSystems, ungrouped }
+}
+
+// disambiguate relabels sibling systems that declare the same name (e.g. a
+// copied system directory) with their folder name, the thing that actually
+// tells them apart in the tree.
+function disambiguate(groups: SystemGroup[]) {
+  const uses = new Map<string, number>()
+  for (const g of groups) uses.set(g.system, (uses.get(g.system) ?? 0) + 1)
+  for (const g of groups) {
+    if ((uses.get(g.system) ?? 0) > 1 && g.path) {
+      g.system = g.path.split('/').pop() ?? g.system
+    }
+  }
 }
 
 function initial(name: string): string {

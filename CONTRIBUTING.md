@@ -52,10 +52,12 @@ make run ARGS="version"
 React + TypeScript app under [`web/`](web/); its production build (`web/dist`)
 is embedded into the Go binary via `//go:embed` (see `web/embed.go`).
 
-A minimal placeholder `web/dist/index.html` is committed so `go build` and
-`go test` work **without** a Node toolchain. The real assets are built on
-demand — locally with `make web`, and in CI / GoReleaser before the Go build —
-and are **not** committed (`web/.gitignore` excludes them).
+A minimal placeholder page (`web/placeholder/dist/index.html`) is committed
+so `go build` and `go test` work **without** a Node toolchain. The real
+assets are built on demand — locally with `make web`, and in CI / GoReleaser
+before the Go build. All of `web/dist` is gitignored, so a local build never
+dirties the tree; the embed prefers a built `web/dist` and falls back to the
+placeholder otherwise.
 
 To build the CLI with the real dashboard embedded:
 
@@ -73,9 +75,9 @@ Frontend dev loop (hot reload, talks to a running CLI):
 make web-dev   # or: cd web && npm run dev
 ```
 
-> Note: a local `npm run build` overwrites `web/dist/index.html` and adds
-> `web/dist/assets/`. Don't commit the modified index.html — `make web-clean`
-> (or `git checkout web/dist/index.html`) restores the placeholder.
+> Note: `make web-clean` removes a local build and restores the unbuilt
+> state. You only need it to verify the placeholder path; nothing built
+> under `web/dist` can be committed.
 
 The flow view renders each system's declared topology, which the server
 obtains by running the system host's `graph` verb (`dotnet build` followed by

@@ -125,30 +125,24 @@ interface TopicNodeData extends Record<string, unknown> {
   contract?: string
 }
 
-// systemKey/systemLabel identify a system by its domain/system folder pair so
-// two different domains that reuse a system name stay distinct. Integrations
-// scaffolded at the workspace root fall under a "Workspace" pseudo-system.
+// systemKey identifies a system by its root directory, the one grouping key
+// that stays unique when two directories declare the same system name (e.g. a
+// copied system). Integrations scaffolded at the workspace root fall under a
+// "Workspace" pseudo-system.
 function systemKey(it: IntegrationDetail): string {
-  return [it.domain, it.system].filter(Boolean).join('/') || WORKSPACE_KEY
+  return it.systemPath || WORKSPACE_KEY
 }
 
 function systemLabel(it: IntegrationDetail): string {
   return [it.domain, it.system].filter(Boolean).join(' / ') || 'Workspace'
 }
 
-// topologyFor picks the declared topology covering a system's integrations:
-// the record whose directory contains every integration in the group. A
-// record at the workspace root ('.') contains everything.
-function topologyFor(
-  items: IntegrationDetail[],
-  topologies: Topology[],
-): Topology | undefined {
-  if (items.length === 0) return undefined
-  return topologies.find((t) =>
-    items.every(
-      (it) => t.path === '.' || it.path === t.path || it.path.startsWith(t.path + '/'),
-    ),
-  )
+// topologyFor picks the declared topology for a system: the record its host
+// produced, which carries the system directory as its path. The Workspace
+// pseudo-system maps to a record at the root ('.').
+function topologyFor(key: string, topologies: Topology[]): Topology | undefined {
+  const path = key === WORKSPACE_KEY ? '.' : key
+  return topologies.find((t) => t.path === path)
 }
 
 export function FlowView({ selected, onSelect, theme }: Props) {
@@ -185,25 +179,30 @@ export function FlowView({ selected, onSelect, theme }: Props) {
 
   // The dropdown lists every system present, with an integration count. When
   // a declared topology covers a group its system name is the authoritative
-  // label, overriding the folder-derived one.
+  // label, overriding the folder-derived one. Systems that end up sharing a
+  // label are qualified with their directory so the options stay tellable
+  // apart — the underlying keys are always distinct.
   const systems = useMemo<ComboOption[]>(() => {
     if (!graph) return []
-    const groups = new Map<string, { opt: ComboOption; items: IntegrationDetail[] }>()
+    const opts = new Map<string, ComboOption>()
     for (const it of graph) {
       const key = systemKey(it)
-      const g =
-        groups.get(key) ?? { opt: { value: key, label: systemLabel(it), count: 0 }, items: [] }
-      g.opt.count = (g.opt.count ?? 0) + 1
-      g.items.push(it)
-      groups.set(key, g)
+      const opt = opts.get(key) ?? { value: key, label: systemLabel(it), count: 0 }
+      opt.count = (opt.count ?? 0) + 1
+      opts.set(key, opt)
     }
-    for (const g of groups.values()) {
-      const t = topologyFor(g.items, topologies)
-      if (t) g.opt.label = t.system
+    for (const opt of opts.values()) {
+      const t = topologyFor(opt.value, topologies)
+      if (t) opt.label = t.system
     }
-    return [...groups.values()]
-      .map((g) => g.opt)
-      .sort((a, b) => a.label.localeCompare(b.label))
+    const byLabel = new Map<string, ComboOption[]>()
+    for (const opt of opts.values()) {
+      byLabel.set(opt.label, [...(byLabel.get(opt.label) ?? []), opt])
+    }
+    for (const dup of byLabel.values()) {
+      if (dup.length > 1) for (const opt of dup) opt.label = `${opt.label} (${opt.value})`
+    }
+    return [...opts.values()].sort((a, b) => a.label.localeCompare(b.label))
   }, [graph, topologies])
 
   // Default to the first system once data lands.
@@ -218,7 +217,10 @@ export function FlowView({ selected, onSelect, theme }: Props) {
 
   // Only a declared topology is drawn — there is no inferred fallback. A
   // system whose host produced no record renders the empty state below.
-  const declared = useMemo(() => topologyFor(items, topologies), [items, topologies])
+  const declared = useMemo(
+    () => (system ? topologyFor(system, topologies) : undefined),
+    [system, topologies],
+  )
   const built = useMemo(
     () => (declared ? buildDeclaredGraph(declared, items) : { nodes: [], edges: [] }),
     [declared, items],

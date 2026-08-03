@@ -144,19 +144,20 @@ func TestIntegrationsTreeFields(t *testing.T) {
 		t.Fatalf("entries = %d, want 4", len(entries))
 	}
 
-	type coords struct{ system, domain string }
+	type coords struct{ system, domain, systemPath string }
 	got := map[string]coords{}
 	for _, e := range entries {
 		name, _ := e["name"].(string)
 		system, _ := e["system"].(string)
 		domain, _ := e["domain"].(string)
-		got[name] = coords{system, domain}
+		systemPath, _ := e["systemPath"].(string)
+		got[name] = coords{system, domain, systemPath}
 	}
 	want := map[string]coords{
-		"order-intake":   {"erp", "sales"},
-		"invoice-export": {"erp", "sales"},
-		"stock-sync":     {"erp", ""},
-		"standalone":     {"", ""},
+		"order-intake":   {"erp", "sales", "sales/erp"},
+		"invoice-export": {"erp", "sales", "sales/erp"},
+		"stock-sync":     {"erp", "", "erp"},
+		"standalone":     {"", "", ""},
 	}
 	for name, w := range want {
 		g, ok := got[name]
@@ -502,6 +503,11 @@ func TestIntegrationsSystemFromHost(t *testing.T) {
 		if _, present := e["domain"]; present {
 			t.Errorf("domain for %v = %v, want absent at workspace root", e["name"], e["domain"])
 		}
+		// The workspace root is the system directory, and "." is what the
+		// host's topology record carries as its path.
+		if e["systemPath"] != "." {
+			t.Errorf("systemPath for %v = %v, want .", e["name"], e["systemPath"])
+		}
 	}
 }
 
@@ -523,6 +529,45 @@ func TestIntegrationsSystemFromHostNested(t *testing.T) {
 	}
 	if entries[0]["system"] != "erp-sync" || entries[0]["domain"] != "sales" {
 		t.Errorf("coords = %v/%v, want erp-sync/sales", entries[0]["system"], entries[0]["domain"])
+	}
+	if entries[0]["systemPath"] != "sales/erp" {
+		t.Errorf("systemPath = %v, want sales/erp", entries[0]["systemPath"])
+	}
+}
+
+// TestIntegrationsSystemPathDistinct pins the repo-root regression: two
+// system directories whose hosts declare the same system name (e.g. one
+// copied from the other) must keep distinct systemPath keys, or every
+// consumer that groups by name merges them and can no longer match either
+// group to its declared topology.
+func TestIntegrationsSystemPathDistinct(t *testing.T) {
+	tmp := t.TempDir()
+	t.Chdir(tmp)
+	for _, sys := range []string{"fulfillment", "order-flow"} {
+		writeScaffold(t, filepath.Join(tmp, "orders", sys, "order-extractor"), "extractor", "v0.2.0")
+		writeSystemHost(t, filepath.Join(tmp, "orders", sys, "host"), "order-flow")
+	}
+
+	rec := get(t, testHandler(t, "."), "/api/integrations")
+	var entries []map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &entries); err != nil {
+		t.Fatalf("body not JSON: %v\n%s", err, rec.Body.String())
+	}
+	if len(entries) != 2 {
+		t.Fatalf("entries = %d, want 2", len(entries))
+	}
+	paths := map[string]bool{}
+	for _, e := range entries {
+		if e["system"] != "order-flow" {
+			t.Errorf("system for %v = %v, want the declared order-flow", e["path"], e["system"])
+		}
+		sp, _ := e["systemPath"].(string)
+		paths[sp] = true
+	}
+	for _, want := range []string{"orders/fulfillment", "orders/order-flow"} {
+		if !paths[want] {
+			t.Errorf("systemPaths = %v, want both orders/fulfillment and orders/order-flow", paths)
+		}
 	}
 }
 
@@ -616,23 +661,21 @@ func TestMissingAssetIsNotFound(t *testing.T) {
 	}
 }
 
-// Whatever dist/index.html the binary embeds — the committed placeholder or a
+// Whichever index.html the binary embeds — the committed placeholder or a
 // real `vite build` — every asset it links to must also be embedded. The
-// committed placeholder links to none; a real build links to bundles it just
-// wrote. Committing a built index.html breaks this: dist/assets is gitignored,
-// so the links survive but the files do not, and the dashboard renders blank.
+// placeholder links to none; a real build links to the bundles vite just
+// wrote into dist/, which embeds as a unit, so a broken reference here means
+// dist/ was hand-edited.
 func TestEmbeddedIndexAssetsExist(t *testing.T) {
-	index, err := fs.ReadFile(web.Assets, "dist/index.html")
+	index, err := fs.ReadFile(web.Assets, "index.html")
 	if err != nil {
 		t.Fatal(err)
 	}
 	refs := regexp.MustCompile(`(?:src|href)="(/assets/[^"]+)"`).FindAllStringSubmatch(string(index), -1)
 	for _, ref := range refs {
 		name := strings.TrimPrefix(ref[1], "/")
-		if _, err := fs.Stat(web.Assets, "dist/"+name); err != nil {
-			t.Errorf("dist/index.html references %s but it is not embedded; "+
-				"run `make web` to build it, or `make web-clean` to restore the "+
-				"placeholder before committing", ref[1])
+		if _, err := fs.Stat(web.Assets, name); err != nil {
+			t.Errorf("index.html references %s but it is not embedded", ref[1])
 		}
 	}
 }

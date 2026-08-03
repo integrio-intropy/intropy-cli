@@ -17,18 +17,15 @@ import (
 // A missing *file* (a path with an extension, e.g. /assets/index-abc123.js) is
 // a 404 rather than a fallback. Serving index.html there would answer a script
 // request with HTML and a 200, which the browser rejects on its MIME check and
-// reports only as an empty page — the failure mode when a binary is built
-// without `make web`. A 404 names the missing file instead.
+// reports only as an empty page. A 404 names the missing file instead.
 func staticHandler() (http.Handler, error) {
-	sub, err := fs.Sub(web.Assets, "dist")
+	index, err := fs.ReadFile(web.Assets, "index.html")
 	if err != nil {
-		return nil, fmt.Errorf("open embedded dashboard assets: %w", err)
-	}
-	index, err := fs.ReadFile(sub, "index.html")
-	if err != nil {
+		// web.Assets always carries an index.html — the real build or the
+		// committed placeholder — so this is unreachable by construction.
 		return nil, fmt.Errorf("embedded dashboard is missing index.html: %w", err)
 	}
-	fileServer := http.FileServerFS(sub)
+	fileServer := http.FileServerFS(web.Assets)
 
 	serveIndex := func(w http.ResponseWriter) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -41,7 +38,7 @@ func staticHandler() (http.Handler, error) {
 			serveIndex(w)
 			return
 		}
-		if _, err := fs.Stat(sub, name); err != nil {
+		if _, err := fs.Stat(web.Assets, name); err != nil {
 			if path.Ext(name) != "" {
 				http.NotFound(w, r)
 				return

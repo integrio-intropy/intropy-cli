@@ -40,8 +40,10 @@ clean: ## Remove build artifacts
 # ---------------------------------------------------------------------------
 # Dashboard SPA (embedded by `intropy dashboard`)
 # ---------------------------------------------------------------------------
-# The Go `web` package embeds web/dist via go:embed. A committed placeholder
-# lets `go build`/`test` work without Node; `make web` produces the real SPA.
+# The Go `web` package embeds web/dist via go:embed, falling back to the
+# committed placeholder under web/placeholder. The embed pattern must match
+# something at compile time, so dist/ carries a marker when unbuilt; `make web`
+# replaces it with the real SPA and `make web-clean` puts the marker back.
 
 .PHONY: web
 web: ## Build the dashboard SPA into web/dist
@@ -52,9 +54,10 @@ web-dev: ## Run the dashboard SPA dev server (proxies /api to a running `intropy
 	cd $(WEB_DIR) && npm run dev
 
 .PHONY: web-clean
-web-clean: ## Remove built SPA assets and restore the placeholder index.html
-	rm -rf $(WEB_DIR)/dist/assets
-	git checkout -- $(WEB_DIR)/dist/index.html
+web-clean: ## Remove the built SPA and restore the unbuilt embed marker
+	rm -rf $(WEB_DIR)/dist
+	mkdir -p $(WEB_DIR)/dist
+	cp $(WEB_DIR)/placeholder/dist/index.html $(WEB_DIR)/dist/placeholder.html
 
 .PHONY: bundle
 bundle: web build ## Build the SPA then the CLI with the real dashboard embedded
