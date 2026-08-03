@@ -1,0 +1,24 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "282bba0c0f88",
+  "strategy": "manual-commit",
+  "branch": "feat/taskfile-graph-contract",
+  "checkpoints_count": 1,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/28/2bba0c0f88/0/metadata.json",
+      "transcript": "/28/2bba0c0f88/0/full.jsonl",
+      "compact_transcript": "/28/2bba0c0f88/0/transcript.jsonl",
+      "content_hash": "/28/2bba0c0f88/0/content_hash.txt",
+      "prompt": "/28/2bba0c0f88/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 146572,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 18040064,
+    "output_tokens": 81735,
+    "api_call_count": 140
+  }
+}

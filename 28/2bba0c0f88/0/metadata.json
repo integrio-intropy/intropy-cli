@@ -1,0 +1,22 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "282bba0c0f88",
+  "session_id": "019fc5fc-c235-72b6-9fc8-c92284681b08",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-03T07:04:14.34399Z",
+  "branch": "feat/taskfile-graph-contract",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "0ce0a8a647ab",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 146572,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 18040064,
+    "output_tokens": 81735,
+    "api_call_count": 140
+  }
+}
