@@ -3,8 +3,12 @@
   "checkpoint_id": "2f5a949f0a3f",
   "strategy": "manual-commit",
   "branch": "feat/taskfile-graph-contract",
-  "checkpoints_count": 1,
-  "files_touched": null,
+  "checkpoints_count": 3,
+  "files_touched": [
+    "web/dist/index.html",
+    "web/src/App.tsx",
+    "web/src/index.css"
+  ],
   "sessions": [
     {
       "metadata": "/2f/5a949f0a3f/0/metadata.json",
@@ -12,6 +16,13 @@
       "compact_transcript": "/2f/5a949f0a3f/0/transcript.jsonl",
       "content_hash": "/2f/5a949f0a3f/0/content_hash.txt",
       "prompt": "/2f/5a949f0a3f/0/prompt.txt"
+    },
+    {
+      "metadata": "/2f/5a949f0a3f/1/metadata.json",
+      "transcript": "/2f/5a949f0a3f/1/full.jsonl",
+      "compact_transcript": "/2f/5a949f0a3f/1/transcript.jsonl",
+      "content_hash": "/2f/5a949f0a3f/1/content_hash.txt",
+      "prompt": "/2f/5a949f0a3f/1/prompt.txt"
     }
   ],
   "token_usage": {

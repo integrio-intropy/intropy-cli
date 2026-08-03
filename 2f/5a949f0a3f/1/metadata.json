@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "2f5a949f0a3f",
+  "session_id": "50dbb60b-080b-4497-847d-cc76cdd74ddb",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-03T07:09:52.021507Z",
+  "branch": "feat/taskfile-graph-contract",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "web/dist/index.html",
+    "web/src/App.tsx",
+    "web/src/index.css"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "4ba77994d267",
+  "checkpoint_transcript_start": 100,
+  "transcript_lines_at_start": 100,
+  "compact_transcript_start": 24,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-03T07:09:52.008441Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 1013,
+    "human_modified": 78,
+    "human_removed": 0,
+    "total_committed": 1013,
+    "total_lines_changed": 1091,
+    "agent_percentage": 0,
+    "metric_version": 2
+  }
+}
