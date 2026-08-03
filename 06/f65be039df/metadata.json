@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "06f65be039df",
+  "strategy": "manual-commit",
+  "branch": "feature/configurable-template-repo",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "README.md",
+    "cmd/intropy/deploy_init.go",
+    "cmd/intropy/flagtext.go",
+    "cmd/intropy/int_create.go",
+    "cmd/intropy/sys_create.go",
+    "cmd/intropy/template_list.go",
+    "cmd/intropy/template_repo.go",
+    "cmd/intropy/template_repo_test.go",
+    "cmd/intropy/template_show.go",
+    "internal/config/config.go",
+    "internal/config/config_test.go",
+    "internal/deploy/init.go",
+    "internal/system/create.go",
+    "internal/template/create.go",
+    "internal/template/describe.go",
+    "internal/template/library.go",
+    "internal/template/list.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/06/f65be039df/0/metadata.json",
+      "transcript": "/06/f65be039df/0/full.jsonl",
+      "compact_transcript": "/06/f65be039df/0/transcript.jsonl",
+      "content_hash": "/06/f65be039df/0/content_hash.txt",
+      "prompt": "/06/f65be039df/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 55264,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2443200,
+    "output_tokens": 15554,
+    "api_call_count": 50
+  }
+}
