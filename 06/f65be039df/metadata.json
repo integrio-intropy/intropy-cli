@@ -3,7 +3,7 @@
   "checkpoint_id": "06f65be039df",
   "strategy": "manual-commit",
   "branch": "feature/configurable-template-repo",
-  "checkpoints_count": 4,
+  "checkpoints_count": 6,
   "files_touched": [
     "README.md",
     "cmd/intropy/deploy_init.go",
@@ -30,6 +30,13 @@
       "compact_transcript": "/06/f65be039df/0/transcript.jsonl",
       "content_hash": "/06/f65be039df/0/content_hash.txt",
       "prompt": "/06/f65be039df/0/prompt.txt"
+    },
+    {
+      "metadata": "/06/f65be039df/1/metadata.json",
+      "transcript": "/06/f65be039df/1/full.jsonl",
+      "compact_transcript": "/06/f65be039df/1/transcript.jsonl",
+      "content_hash": "/06/f65be039df/1/content_hash.txt",
+      "prompt": "/06/f65be039df/1/prompt.txt"
     }
   ],
   "token_usage": {
