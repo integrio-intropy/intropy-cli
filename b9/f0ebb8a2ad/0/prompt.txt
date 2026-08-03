@@ -1,0 +1,9 @@
+Can you review the unstaged changes? Is the code quality good? Does it follow our code comment convention? Was the actual solution good or should we consider something else? Like validating the tree on start to flag duplicated names and such?
+
+---
+
+Can you investigate 1. I am not completely sure what it is and what our strategy around it should be?
+
+---
+
+Go with 2.
