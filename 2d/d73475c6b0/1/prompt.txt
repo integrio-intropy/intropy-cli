@@ -1,0 +1,9 @@
+i am trying ~/dev/intropy/customers/entrovia/integrations/domains/orders/order-flow as an example
+
+---
+
+is it possible to pass the development flag to the task should that be designed as two different tasks?
+
+---
+
+yes the dashboard scenario is the real case
