@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "ec87e0fae98d",
+  "strategy": "manual-commit",
+  "branch": "feat/taskfile-graph-contract",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "CONTRIBUTING.md",
+    "docs/contracts/graph-task.md",
+    "internal/topology/graph.go",
+    "internal/topology/graph_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ec/87e0fae98d/0/metadata.json",
+      "transcript": "/ec/87e0fae98d/0/full.jsonl",
+      "compact_transcript": "/ec/87e0fae98d/0/transcript.jsonl",
+      "content_hash": "/ec/87e0fae98d/0/content_hash.txt",
+      "prompt": "/ec/87e0fae98d/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 55481,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 379648,
+    "output_tokens": 2106,
+    "api_call_count": 11
+  }
+}
