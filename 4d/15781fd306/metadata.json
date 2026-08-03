@@ -3,7 +3,7 @@
   "checkpoint_id": "4d15781fd306",
   "strategy": "manual-commit",
   "branch": "feat/taskfile-graph-contract",
-  "checkpoints_count": 1,
+  "checkpoints_count": 2,
   "files_touched": [
     "internal/dashboard/development_test.go",
     "internal/dashboard/outputs.go"
@@ -15,13 +15,20 @@
       "compact_transcript": "/4d/15781fd306/0/transcript.jsonl",
       "content_hash": "/4d/15781fd306/0/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/4d/15781fd306/1/metadata.json",
+      "transcript": "/4d/15781fd306/1/full.jsonl",
+      "compact_transcript": "/4d/15781fd306/1/transcript.jsonl",
+      "content_hash": "/4d/15781fd306/1/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
-    "input_tokens": 0,
+    "input_tokens": 565,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 0,
-    "output_tokens": 0,
-    "api_call_count": 0
+    "cache_read_tokens": 429888,
+    "output_tokens": 208,
+    "api_call_count": 2
   }
 }
