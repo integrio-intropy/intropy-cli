@@ -15,6 +15,7 @@ import (
 // formatting.
 type templateShowFlags struct {
 	templateVersion string
+	templateRepo    string
 	output          string
 }
 
@@ -30,12 +31,18 @@ var templateShowCmd = &cobra.Command{
 		if err := validateOutputFlag(templateShowOpts.output, "json", "plain"); err != nil {
 			return err
 		}
+		owner, repo, err := resolveTemplateRepo(templateShowOpts.templateRepo)
+		if err != nil {
+			return err
+		}
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 		result, err := template.Describe(ctx, template.DescribeOptions{
 			Template:  args[0],
 			Version:   templateShowOpts.templateVersion,
 			UserAgent: "intropy-cli/" + version,
+			Owner:     owner,
+			Repo:      repo,
 		})
 		if err != nil {
 			return err
@@ -53,6 +60,7 @@ var templateShowCmd = &cobra.Command{
 func init() {
 	f := templateShowCmd.Flags()
 	f.StringVar(&templateShowOpts.templateVersion, "template-version", "", flagUsageTemplateVer)
+	f.StringVar(&templateShowOpts.templateRepo, "template-repo", "", flagUsageTemplateRepo)
 	f.StringVarP(&templateShowOpts.output, "output", "o", "plain", flagUsageOutput)
 	templateCmd.AddCommand(templateShowCmd)
 }

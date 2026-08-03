@@ -15,6 +15,7 @@ type createFlags struct {
 	output            string
 	name              string
 	templateVersion   string
+	templateRepo      string
 	values            []string
 	sets              []string
 	force             bool
@@ -46,6 +47,10 @@ var intCreateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		owner, repo, err := resolveTemplateRepo(intCreateFlags.templateRepo)
+		if err != nil {
+			return err
+		}
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 		if err := template.Create(ctx, template.CreateOptions{
@@ -61,6 +66,8 @@ var intCreateCmd = &cobra.Command{
 			Stdout:     cmd.OutOrStdout(),
 			Stderr:     cmd.ErrOrStderr(),
 			UserAgent:  "intropy-cli/" + version,
+			Owner:      owner,
+			Repo:       repo,
 		}); err != nil {
 			return err
 		}
@@ -95,6 +102,7 @@ func init() {
 	_ = intCreateCmd.MarkFlagDirname("out-dir")
 	f.StringVarP(&intCreateFlags.name, "name", "n", "", "integration name; sets the template's 'name' parameter and, unless --out-dir is set, becomes the output directory")
 	f.StringVar(&intCreateFlags.templateVersion, "template-version", "", flagUsageTemplateVer)
+	f.StringVar(&intCreateFlags.templateRepo, "template-repo", "", flagUsageTemplateRepo)
 	f.StringArrayVarP(&intCreateFlags.values, "values", "f", nil, "values file in YAML/JSON (repeatable; use - to read one doc from stdin)")
 	f.StringArrayVarP(&intCreateFlags.sets, "set", "s", nil, "set a value as key=value (repeatable)")
 	f.BoolVar(&intCreateFlags.force, "force", false, "allow rendering into a non-empty output directory")

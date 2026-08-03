@@ -18,6 +18,7 @@ type sysCreateFlags struct {
 	outDir          string
 	output          string
 	templateVersion string
+	templateRepo    string
 	force           bool
 }
 
@@ -38,6 +39,10 @@ var sysCreateCmd = &cobra.Command{
 		if sysCreateFlagValues.output == "json" {
 			outputJSON = "-"
 		}
+		owner, repo, err := resolveTemplateRepo(sysCreateFlagValues.templateRepo)
+		if err != nil {
+			return err
+		}
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 		return system.Create(ctx, system.CreateOptions{
@@ -49,6 +54,8 @@ var sysCreateCmd = &cobra.Command{
 			Stdout:     cmd.OutOrStdout(),
 			Stderr:     cmd.ErrOrStderr(),
 			UserAgent:  "intropy-cli/" + version,
+			Owner:      owner,
+			Repo:       repo,
 		})
 	},
 }
@@ -60,6 +67,7 @@ func init() {
 	f.StringVar(&sysCreateFlagValues.output, "output", "", flagUsageOutputJSONOnly)
 	_ = sysCreateCmd.MarkFlagDirname("out-dir")
 	f.StringVar(&sysCreateFlagValues.templateVersion, "template-version", "", flagUsageTemplateVer)
+	f.StringVar(&sysCreateFlagValues.templateRepo, "template-repo", "", flagUsageTemplateRepo)
 	f.BoolVar(&sysCreateFlagValues.force, "force", false, "allow rendering into a non-empty output directory")
 	_ = sysCreateCmd.MarkFlagRequired("name")
 	sysCmd.AddCommand(sysCreateCmd)

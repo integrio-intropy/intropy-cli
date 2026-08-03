@@ -17,7 +17,8 @@ type DescribeOptions struct {
 	HTTP      *http.Client
 	UserAgent string
 
-	// Test overrides; production callers leave these zero-valued.
+	// Owner and Repo select the template library; zero values target the
+	// official library. GitHubBaseURL is a test-only seam.
 	Owner         string
 	Repo          string
 	GitHubBaseURL string

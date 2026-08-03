@@ -27,8 +27,10 @@ type CreateOptions struct {
 	HTTP       *http.Client
 	UserAgent  string
 
-	// Test overrides. Production callers leave these zero-valued; the CLI
-	// always targets the official template library at integrio-intropy/intropy-templates.
+	// Owner and Repo select the template library. Zero values target the
+	// official library at integrio-intropy/intropy-templates; the CLI sets
+	// them from --template-repo, INTROPY_TEMPLATE_REPO, or templateRepo in
+	// the config file. GitHubBaseURL remains a test-only seam.
 	Owner         string
 	Repo          string
 	GitHubBaseURL string

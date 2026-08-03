@@ -827,6 +827,18 @@ gitopsRepo: git@gitlab.com:integrio/intropy/customers/acme/gitops.git
 Override it with `--gitops-repo` or `INTROPY_GITOPS_REPO`; flags win over the
 environment, which wins over the file. `git` and `kustomize` must be on `PATH`.
 
+The same file can point scaffolding at a private template library:
+
+```yaml
+templateRepo: acme/intropy-templates
+```
+
+The value is `owner/repo` on GitHub — the library is fetched over the GitHub
+API, so URLs and SSH remotes are rejected. Override it with `--template-repo`
+or `INTROPY_TEMPLATE_REPO`, on `int create`, `sys create`, `template list`,
+`template show`, and `deploy init`. Unset, the official library at
+`integrio-intropy/intropy-templates` is used.
+
 ### What the GitOps repository must contain
 
 A `deploy.yaml` at the root marks a repository as deployable:

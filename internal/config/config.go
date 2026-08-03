@@ -21,6 +21,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -37,6 +38,10 @@ const (
 	EnvArgocdServer    = "ARGOCD_SERVER"
 	EnvArgocdAuthToken = "ARGOCD_AUTH_TOKEN"
 
+	// EnvTemplateRepo overrides templateRepo. The value is the template
+	// library as owner/repo on GitHub.
+	EnvTemplateRepo = "INTROPY_TEMPLATE_REPO"
+
 	dirName  = "intropy"
 	fileName = "config.yaml"
 )
@@ -52,6 +57,10 @@ type Config struct {
 	// name an ArgoCD server. deploy.yaml wins when both are present, since it
 	// travels with the repository the overlays live in.
 	ArgocdServer string `yaml:"argocdServer"`
+
+	// TemplateRepo is the template library to scaffold from, as owner/repo on
+	// GitHub. Empty targets the official library.
+	TemplateRepo string `yaml:"templateRepo"`
 }
 
 // Flags carries the command-line values that take precedence over everything
@@ -59,6 +68,7 @@ type Config struct {
 type Flags struct {
 	GitopsRepo   string
 	ArgocdServer string
+	TemplateRepo string
 }
 
 // Dir returns the directory holding the configuration file. It honours
@@ -130,6 +140,7 @@ func (c Config) Resolve(flags Flags) Config {
 	return Config{
 		GitopsRepo:   cmp.Or(flags.GitopsRepo, os.Getenv(EnvGitopsRepo), c.GitopsRepo),
 		ArgocdServer: cmp.Or(flags.ArgocdServer, os.Getenv(EnvArgocdServer), c.ArgocdServer),
+		TemplateRepo: cmp.Or(flags.TemplateRepo, os.Getenv(EnvTemplateRepo), c.TemplateRepo),
 	}
 }
 
@@ -144,4 +155,23 @@ func (c Config) RequireGitopsRepo() (string, error) {
 		path = filepath.Join("~", ".config", dirName, fileName)
 	}
 	return "", fmt.Errorf("no GitOps repository configured; pass --gitops-repo, set %s, or add gitopsRepo to %s", EnvGitopsRepo, path)
+}
+
+// ParseTemplateRepo splits a templateRepo value into owner and repo. An empty
+// value is valid and yields empty results, meaning the official library. The
+// value must be exactly owner/repo: URLs and SSH remotes are rejected here
+// rather than failing later as a confusing 404 from the GitHub API, and the
+// library is fetched over the GitHub API, so nothing but GitHub can serve it.
+func ParseTemplateRepo(s string) (owner, repo string, err error) {
+	if s == "" {
+		return "", "", nil
+	}
+	if strings.ContainsAny(s, ":@") || strings.Contains(s, "://") {
+		return "", "", fmt.Errorf("template repository %q is not owner/repo — the template library is fetched from GitHub, so configure it as owner/repo (e.g. acme/intropy-templates)", s)
+	}
+	parts := strings.Split(s, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", fmt.Errorf("template repository %q is not owner/repo (e.g. acme/intropy-templates)", s)
+	}
+	return parts[0], parts[1], nil
 }

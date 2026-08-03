@@ -106,8 +106,8 @@ type InitOptions struct {
 	Stdout     io.Writer
 	Stderr     io.Writer
 
-	// Test overrides for the template library. Production callers leave these
-	// zero-valued.
+	// Owner and Repo select the template library; zero values target the
+	// official library. GitHubBaseURL is a test-only seam.
 	Owner         string
 	Repo          string
 	GitHubBaseURL string

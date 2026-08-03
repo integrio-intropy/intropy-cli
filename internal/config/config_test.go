@@ -171,6 +171,62 @@ func TestResolvePrecedence(t *testing.T) {
 	}
 }
 
+func TestResolveTemplateRepoPrecedence(t *testing.T) {
+	file := Config{TemplateRepo: "from-file/library"}
+
+	t.Run("file only", func(t *testing.T) {
+		t.Setenv(EnvTemplateRepo, "")
+		if got := file.Resolve(Flags{}).TemplateRepo; got != "from-file/library" {
+			t.Errorf("TemplateRepo = %q, want from-file/library", got)
+		}
+	})
+	t.Run("env beats file", func(t *testing.T) {
+		t.Setenv(EnvTemplateRepo, "from-env/library")
+		if got := file.Resolve(Flags{}).TemplateRepo; got != "from-env/library" {
+			t.Errorf("TemplateRepo = %q, want from-env/library", got)
+		}
+	})
+	t.Run("flag beats env", func(t *testing.T) {
+		t.Setenv(EnvTemplateRepo, "from-env/library")
+		got := file.Resolve(Flags{TemplateRepo: "from-flag/library"}).TemplateRepo
+		if got != "from-flag/library" {
+			t.Errorf("TemplateRepo = %q, want from-flag/library", got)
+		}
+	})
+}
+
+func TestParseTemplateRepo(t *testing.T) {
+	t.Run("empty means the official library", func(t *testing.T) {
+		owner, repo, err := ParseTemplateRepo("")
+		if err != nil || owner != "" || repo != "" {
+			t.Errorf("ParseTemplateRepo(\"\") = %q, %q, %v", owner, repo, err)
+		}
+	})
+	t.Run("owner/repo splits", func(t *testing.T) {
+		owner, repo, err := ParseTemplateRepo("acme/intropy-templates")
+		if err != nil || owner != "acme" || repo != "intropy-templates" {
+			t.Errorf("ParseTemplateRepo = %q, %q, %v", owner, repo, err)
+		}
+	})
+
+	for _, bad := range []string{
+		"acme",                      // no slash
+		"acme/x/y",                  // too many segments
+		"/x",                        // empty owner
+		"x/",                        // empty repo
+		"https://github.com/acme/x", // URL
+		"git@github.com:acme/x.git", // SSH remote
+	} {
+		t.Run("rejects "+bad, func(t *testing.T) {
+			if _, _, err := ParseTemplateRepo(bad); err == nil {
+				t.Errorf("ParseTemplateRepo(%q) should fail", bad)
+			} else if !strings.Contains(err.Error(), "owner/repo") {
+				t.Errorf("error %q should name the expected format", err)
+			}
+		})
+	}
+}
+
 func TestRequireGitopsRepo(t *testing.T) {
 	if _, err := (Config{GitopsRepo: "x"}).RequireGitopsRepo(); err != nil {
 		t.Errorf("RequireGitopsRepo() with a value should succeed, got %v", err)
