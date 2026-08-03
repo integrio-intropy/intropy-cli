@@ -1,0 +1,7 @@
+the integration flow does not work when I run the dashboard from the root of the repo
+ (~/dev/customers/entrovia/integrations)
+I have launched the dashboard at http://127.0.0.1:8730, use the chrome web tools mcp to replicate the bug
+
+---
+
+yes, implement the fix
