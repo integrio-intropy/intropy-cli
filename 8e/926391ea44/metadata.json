@@ -3,7 +3,7 @@
   "checkpoint_id": "8e926391ea44",
   "strategy": "manual-commit",
   "branch": "feat/taskfile-graph-contract",
-  "checkpoints_count": 1,
+  "checkpoints_count": 2,
   "files_touched": [
     "internal/topology/topology.go",
     "internal/topology/topology_test.go"
@@ -15,13 +15,20 @@
       "compact_transcript": "/8e/926391ea44/0/transcript.jsonl",
       "content_hash": "/8e/926391ea44/0/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/8e/926391ea44/1/metadata.json",
+      "transcript": "/8e/926391ea44/1/full.jsonl",
+      "compact_transcript": "/8e/926391ea44/1/transcript.jsonl",
+      "content_hash": "/8e/926391ea44/1/content_hash.txt",
+      "prompt": "/8e/926391ea44/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 0,
+    "input_tokens": 126385,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 0,
-    "output_tokens": 0,
-    "api_call_count": 0
+    "cache_read_tokens": 8508288,
+    "output_tokens": 54179,
+    "api_call_count": 87
   }
 }
