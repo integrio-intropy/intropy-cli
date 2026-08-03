@@ -1,17 +1,5 @@
-Start with analysis before implementation. How hard would it be to make the template repository configurable through the ~/.config/intropy/config.yaml?
-
----
-
-We do require that the template repo is a github repo currently, right?
-
----
-
-Regarding the decision I think that we require full owner/repo
-
----
-
-can you make an implementation plan?
-
----
-
 yes, do it on a new branch off feature/v-next
+
+---
+
+skip pr
