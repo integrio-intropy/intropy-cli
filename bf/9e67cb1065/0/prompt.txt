@@ -1,0 +1,1 @@
+In the dashboard where is the connector info comming from? For example "No message description yet. Describe what flows through this connector in messages/order-loader-destination.md:"
