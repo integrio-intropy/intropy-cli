@@ -16,11 +16,13 @@ interface Props {
   deploy: DeployProps
 }
 
-// How long to wait before the single re-fetch of a pending catalog entry. The
-// first topology computation runs a dotnet build per system host, so this is
-// an order-of-magnitude guess, not a bound — a still-pending answer leaves the
-// refresh to the user rather than polling.
-const PENDING_RETRY_MS = 15_000
+// How often to re-fetch a pending catalog entry, and for how long. The first
+// topology computation runs a dotnet build per system host, so a single retry
+// would routinely lose the race; polling every few seconds for up to three
+// minutes covers a cold build without polling forever. After the cap the
+// refresh is left to the user.
+const PENDING_RETRY_MS = 5_000
+const PENDING_RETRY_CAP = 36
 
 /** The catalog view: what a component is (header), what needs attention
  *  (checks), and what every environment runs. Identity and contracts come from
@@ -36,30 +38,32 @@ export function Catalog({ path, deploy }: Props) {
     }
     setEntry(null)
     let current = true
-    let retry: ReturnType<typeof setTimeout> | undefined
-    api
-      .catalog(path)
-      .then((e) => {
-        if (!current) return
-        setEntry(e)
-        // A cold topology cache answers pending; retry once rather than poll.
-        if (e.topologyPending) {
-          retry = setTimeout(() => {
-            api
-              .catalog(path)
-              .then((fresh) => {
-                if (current) setEntry(fresh)
-              })
-              .catch(() => {})
-          }, PENDING_RETRY_MS)
-        }
-      })
-      .catch(() => {
-        if (current) setEntry(null)
-      })
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let attempts = 0
+
+    const load = () => {
+      api
+        .catalog(path)
+        .then((e) => {
+          if (!current) return
+          setEntry(e)
+          // A cold topology cache answers pending while the server computes
+          // the graph in the background; keep re-fetching until it resolves
+          // or the cap leaves the refresh to the user.
+          if (e.topologyPending && attempts < PENDING_RETRY_CAP) {
+            attempts++
+            timer = setTimeout(load, PENDING_RETRY_MS)
+          }
+        })
+        .catch(() => {
+          if (current) setEntry(null)
+        })
+    }
+    load()
+
     return () => {
       current = false
-      if (retry) clearTimeout(retry)
+      if (timer) clearTimeout(timer)
     }
   }, [path])
 
