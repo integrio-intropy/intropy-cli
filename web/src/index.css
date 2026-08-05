@@ -773,6 +773,131 @@ body {
   margin-left: 0;
 }
 
+/* Catalog view: identity and contracts from the system graph, checks, then
+   the environment ladder. */
+.catalog-header {
+  margin-bottom: 4px;
+}
+
+.catalog-header .detail-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.catalog-kind {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: var(--surface);
+}
+
+.catalog-system {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* Identity rendered from the scaffold record rather than the graph is
+   provenance, not fact — the record can go stale, so it says where it came
+   from. */
+.catalog-provenance {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+}
+
+.catalog-contracts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.catalog-contract-group {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.catalog-contract-group .meta-label {
+  flex: 0 0 90px;
+}
+
+.catalog-repo {
+  margin: 10px 0 0;
+  font-size: 13px;
+}
+
+.catalog-repo a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.catalog-repo a:hover {
+  color: var(--text);
+}
+
+.catalog-repo .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.catalog-checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.catalog-check {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  white-space: pre-wrap;
+}
+
+/* Warns are marked; infos stay neutral — an unreachable host's own error
+   message is a fact about the lookup, not an alarm. */
+.catalog-check.warn {
+  border-left: 3px solid var(--danger);
+  color: var(--danger);
+}
+
+.catalog-check.info {
+  color: var(--text-muted);
+}
+
+/* Desired cell: release above the pins it pins. */
+.catalog-desired {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.catalog-promotion {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
 /* Flow view: a system-topology React Flow canvas with a system picker above */
 .flow-view {
   display: flex;

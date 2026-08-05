@@ -115,6 +115,10 @@ export interface EnvironmentStatus {
   syncStatus?: string
   healthStatus?: string
   syncedRevision?: string
+  /** What ArgoCD observed running in the cluster, as opposed to what the
+   *  overlay pins. Absent under the same rule as `syncStatus`: its absence
+   *  says nothing about the overlay or the cluster. */
+  liveImages?: string[]
   /** A committed overlay change ArgoCD has not applied. For a `manual`
    *  environment that is an unspent gate at rest, not a fault. */
   pending: boolean
@@ -140,6 +144,58 @@ export interface StatusResult {
   /** The command's qualifications: an environment that could not be read, one
    *  pinning a tag, one waiting on a sync gate. */
   notes?: string[]
+  /** The promotion graph restricted to this component's environments: for each
+   *  environment, the ones a promotion into it may draw from. Carried on the
+   *  result because deploy.yaml lives in the GitOps repository, which a
+   *  consumer without a session cannot read. */
+  promotesFrom?: Record<string, string[]>
+}
+
+// Catalog entry (internal/dashboard/catalog.go). Header identity and contracts
+// come from the cached system topology when it has the component, and from the
+// scaffold record — provenance only, it can go stale — otherwise. Deployment
+// state is deliberately not embedded; it stays on /api/deploy/{path}, which
+// costs a GitOps checkout refresh.
+
+/** One end of a pub/sub wire a component sits on. */
+export interface ContractEdge {
+  pubsub: string
+  topic: string
+  /** The topic's contract shortName when the registry carries it, the raw
+   *  contract name otherwise — the flow view's lookup rule. */
+  contract?: string
+}
+/** One finding about the integration's place in the system graph. */
+export interface CatalogCheck {
+  severity: 'warn' | 'info'
+  message: string
+}
+
+/** Why contracts are unknown, when they are: the catalog's join of the
+ *  integration against its system's declared graph. */
+export type GraphStatus =
+  | 'matched'
+  | 'no-topology'
+  | 'not-in-graph'
+  | 'topology-error'
+  | 'pending'
+
+export interface CatalogEntry {
+  /** Graph name when matched, scaffold record name otherwise. */
+  component: string
+  /** Topology block kind; absent in every non-matched state. */
+  kind?: string
+  system?: string
+  publishes?: ContractEdge[]
+  subscribes?: ContractEdge[]
+  /** "owner/repo" from the scaffold record — provenance only. */
+  repository?: string
+  graphStatus: GraphStatus
+  /** True while the first topology computation is in flight: the header
+   *  renders from scaffold data and contracts are unknown. */
+  topologyPending?: boolean
+  /** Graph-derived findings, warns before infos. */
+  checks?: CatalogCheck[]
 }
 
 /** The /api/deploy/{path} payload: what the deploy status command said about one
@@ -344,6 +400,8 @@ export const api = {
   /** Re-run every host's graph verb and return the fresh report. */
   refreshTopologies: () =>
     requestJSON<TopologyReport>('/api/topology/refresh', { method: 'POST' }),
+  /** One integration's catalog entry: header facts and graph-derived checks. */
+  catalog: (path: string) => getJSON<CatalogEntry>(`/api/catalog/${path}`),
   /** One integration's deployment state, read once and reused by the server. */
   deployState: (path: string) => getJSON<DeployState>(`/api/deploy/${path}`),
   /** Re-run `deploy status` for one integration and return the fresh result —

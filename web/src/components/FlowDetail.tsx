@@ -14,7 +14,7 @@ import {
   HubIcon,
   TuneIcon,
 } from '../icons'
-import { Meta, Section } from './DetailPanel'
+import { Meta, Section } from './chrome'
 
 /** What the flow canvas has put under inspection: a pub/sub topic (internal
  *  message) or a connector (external message). */
