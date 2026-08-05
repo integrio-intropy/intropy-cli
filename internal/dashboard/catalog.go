@@ -88,6 +88,12 @@ func (s *apiServer) catalog(w http.ResponseWriter, r *http.Request) {
 	s.byPath(w, r, func(e template.ScaffoldEntry, systems map[string]string) any {
 		sum := s.summarize(e, systems)
 		loaded, entries, errs := s.topologiesLoaded()
+		if !loaded {
+			// Answer pending now, compute in the background: the pending answer
+			// becomes a matched one on the next fetch, without the request
+			// queueing behind a dotnet build per host.
+			s.warmTopologies()
+		}
 		return buildCatalogEntry(sum, systems, loaded, entries, errs)
 	})
 }

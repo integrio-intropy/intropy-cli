@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/integrio-intropy/intropy-cli/internal/topology"
 )
@@ -266,10 +267,61 @@ func TestCatalogPendingWhenCacheIsCold(t *testing.T) {
 	if entry.Component != "order-extractor" {
 		t.Errorf("component = %q, want the scaffold name even while pending", entry.Component)
 	}
-	// The catalog never triggers the computation: the flow view owns that cost.
-	if calls != 0 {
-		t.Errorf("provider calls = %d, want 0 — the catalog must not warm the cache", calls)
+
+	// The pending answer must not stay pending: the request triggers a
+	// background warm-up, so once it finishes the next fetch joins the graph.
+	// The warm-up runs the provider asynchronously; wait for it rather than
+	// racing it.
+	deadline := time.Now().Add(5 * time.Second)
+	for calls == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
 	}
+	if calls == 0 {
+		t.Fatal("a pending answer should warm the topology cache in the background")
+	}
+}
+
+// The full cold-start arc: the first catalog request answers pending and
+// warms the cache in the background; a later request serves the joined entry.
+// This is the dashboard's default view, so it must converge without anyone
+// visiting the flow view first.
+func TestCatalogPendingResolvesAfterWarmUp(t *testing.T) {
+	tmp := t.TempDir()
+	t.Chdir(tmp)
+	writeScaffold(t, filepath.Join(tmp, "order-flow", "order-extractor"), "extractor", "v0.2.0")
+	writeSystemHost(t, filepath.Join(tmp, "order-flow", "host"), "order-flow")
+
+	h := testHandlerWithTopo(t, ".", topoOnce([]topology.Entry{testTopology()}, nil))
+
+	rec := get(t, h, "/api/catalog/order-flow/order-extractor")
+	var first CatalogEntry
+	if err := json.Unmarshal(rec.Body.Bytes(), &first); err != nil {
+		t.Fatal(err)
+	}
+	if first.GraphStatus != "pending" {
+		t.Fatalf("first graphStatus = %q, want pending", first.GraphStatus)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+		rec := get(t, h, "/api/catalog/order-flow/order-extractor")
+		var entry CatalogEntry
+		if err := json.Unmarshal(rec.Body.Bytes(), &entry); err != nil {
+			t.Fatal(err)
+		}
+		if entry.GraphStatus == "pending" {
+			continue
+		}
+		if entry.GraphStatus != "matched" {
+			t.Fatalf("graphStatus = %q, want matched after warm-up", entry.GraphStatus)
+		}
+		if len(entry.Publishes) != 1 || entry.Publishes[0].Contract != "RawOrder" {
+			t.Errorf("publishes = %+v, want the resolved contract", entry.Publishes)
+		}
+		return
+	}
+	t.Fatal("catalog still pending 5s after the warm-up started")
 }
 
 // Unknown paths 404, as on the detail endpoint: the two agree about which
