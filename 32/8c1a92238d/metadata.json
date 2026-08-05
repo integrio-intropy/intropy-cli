@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "328c1a92238d",
+  "strategy": "manual-commit",
+  "branch": "feature/catalog-redesign",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "internal/argocd/config.go",
+    "internal/argocd/config_test.go",
+    "internal/argocd/session_token.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/32/8c1a92238d/0/metadata.json",
+      "transcript": "/32/8c1a92238d/0/full.jsonl",
+      "compact_transcript": "/32/8c1a92238d/0/transcript.jsonl",
+      "content_hash": "/32/8c1a92238d/0/content_hash.txt",
+      "prompt": "/32/8c1a92238d/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 11340,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 4871040,
+    "output_tokens": 12403,
+    "api_call_count": 34
+  }
+}

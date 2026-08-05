@@ -1,0 +1,5 @@
+Now I have a token in the env var from the cli session-token. But it still does not wokr
+
+---
+
+It seems to work now. Can we implement refresh the token in the cli?
