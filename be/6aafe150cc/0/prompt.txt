@@ -1,17 +1,3 @@
-But nothing appears:
-
-order-extractor
-order-flow
-identity from scaffold record
-
-Computing system graph… contracts will appear here.
-
----
-
-do you have something running? on can you kill the thing listening to 127.0.0.1:8730?
-
----
-
 still nothing order-extractor
 order-flow
 identity from scaffold record
