@@ -449,6 +449,94 @@ func TestTableNoteBelongsToTheTableAndNotTheResult(t *testing.T) {
 // stdout and stderr, and only stdout is being compared.
 func mustFirst(stdout, _ string) string { return stdout }
 
+// What the overlay pins and what the cluster actually runs are different
+// facts; the live digests round-trip from ArgoCD's summary so a consumer can
+// hold them side by side.
+func TestStatusCarriesLiveImagesFromArgoCD(t *testing.T) {
+	f := newRunFixture(t)
+	f.pinAll(t, testDigest, testReleaseCommit, "1.4.2")
+
+	head := gittest.Run(t, f.gitopsOrigin, "rev-parse", "main")
+	live := func(images ...string) *argocd.Application {
+		app := healthyApp(head)
+		app.Status.Summary.Images = images
+		return app
+	}
+	stubArgo(t, &stubArgoClient{get: map[string]*argocd.Application{
+		"orders-order-flow-order-extractor-dev":     live("reg.example.com/order-extractor@" + testDigest),
+		"orders-order-flow-order-extractor-staging": live("reg.example.com/order-extractor@" + stagingDigest),
+		"orders-order-flow-order-extractor-prod":    live("reg.example.com/order-extractor@" + testDigest),
+	}})
+
+	var stdout, stderr bytes.Buffer
+	opts := f.statusOptions(&stdout, &stderr)
+	opts.OutputFormat = OutputJSON
+	res := statusJSON(t, mustFirst(f.status(t, opts)))
+
+	byEnv := map[string]EnvironmentStatus{}
+	for _, e := range res.Environments {
+		byEnv[e.Environment] = e
+	}
+	if got := byEnv["dev"].LiveImages; len(got) != 1 || got[0] != "reg.example.com/order-extractor@"+testDigest {
+		t.Errorf("dev.LiveImages = %v, want the live digest", got)
+	}
+	if got := byEnv["staging"].LiveImages; len(got) != 1 || got[0] != "reg.example.com/order-extractor@"+stagingDigest {
+		t.Errorf("staging.LiveImages = %v, want its own live digest", got)
+	}
+}
+
+// Absence — not an empty array — is what "ArgoCD was not read" looks like,
+// under the same rule as syncStatus: it says nothing about the overlay or the
+// cluster.
+func TestStatusOmitsLiveImagesWhenArgoCDIsUnreachable(t *testing.T) {
+	f := newRunFixture(t)
+	f.pinAll(t, testDigest, testReleaseCommit, "1.4.2")
+	stubArgo(t, &stubArgoClient{getErr: argocd.ErrUnreachable})
+
+	var stdout, stderr bytes.Buffer
+	opts := f.statusOptions(&stdout, &stderr)
+	opts.OutputFormat = OutputJSON
+	out := mustFirst(f.status(t, opts))
+
+	res := statusJSON(t, out)
+	for _, e := range res.Environments {
+		if e.LiveImages != nil {
+			t.Errorf("%s.LiveImages = %v, want absent when ArgoCD was not read", e.Environment, e.LiveImages)
+		}
+	}
+	if strings.Contains(out, `"liveImages"`) {
+		t.Errorf("the key itself should be omitted, not served empty:\n%s", out)
+	}
+}
+
+// The promotion graph lives in deploy.yaml inside the GitOps repository, which
+// a consumer without a session cannot read — so the edges travel on the
+// result, restricted to the component's environments.
+func TestStatusCarriesPromotionEdges(t *testing.T) {
+	f := newRunFixture(t)
+	f.pinAll(t, testDigest, testReleaseCommit, "1.4.2")
+	f.stubAllApps(t)
+
+	var stdout, stderr bytes.Buffer
+	opts := f.statusOptions(&stdout, &stderr)
+	opts.OutputFormat = OutputJSON
+	res := statusJSON(t, mustFirst(f.status(t, opts)))
+
+	want := map[string][]string{
+		"staging": {"dev"},
+		"prod":    {"staging"},
+	}
+	if len(res.PromotesFrom) != len(want) {
+		t.Fatalf("PromotesFrom = %v, want %v", res.PromotesFrom, want)
+	}
+	for env, sources := range want {
+		got := res.PromotesFrom[env]
+		if len(got) != len(sources) || got[0] != sources[0] {
+			t.Errorf("PromotesFrom[%s] = %v, want %v", env, got, sources)
+		}
+	}
+}
+
 // A read-only command must leave both repositories exactly as it found them,
 // and must never ask ArgoCD to do anything.
 func TestStatusWritesNothing(t *testing.T) {

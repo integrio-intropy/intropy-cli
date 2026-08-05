@@ -61,7 +61,26 @@ func Status(ctx context.Context, opts StatusOptions) error {
 
 	observeArgo(ctx, repo, deployCfg, s, opts, rows)
 
-	return reportStatus(out, coord, comp, rows)
+	return reportStatus(out, coord, comp, rows, promotionEdges(deployCfg, environments))
+}
+
+// promotionEdges is the promotion graph restricted to the reported
+// environments. It rides on the result because deploy.yaml lives in the GitOps
+// repository, which a consumer without a session cannot read. Nil when the
+// component's environments declare no edges.
+func promotionEdges(deployCfg *gitops.DeployConfig, environments []string) map[string][]string {
+	var edges map[string][]string
+	for _, env := range environments {
+		cfg, err := deployCfg.Environment(env)
+		if err != nil || len(cfg.PromotesFrom) == 0 {
+			continue
+		}
+		if edges == nil {
+			edges = map[string][]string{}
+		}
+		edges[env] = cfg.PromotesFrom
+	}
+	return edges
 }
 
 // statusEnvironments orders the environments to report.
@@ -181,6 +200,7 @@ func observeArgo(ctx context.Context, repo *gitops.Repository, deployCfg *gitops
 		rows[i].SyncStatus = app.Status.Sync.Status
 		rows[i].HealthStatus = app.Status.Health.Status
 		rows[i].SyncedRevision = app.Status.Sync.Revision
+		rows[i].LiveImages = app.Status.Summary.Images
 
 		// Pending is a git question, not an ArgoCD one: has the commit that
 		// last changed this overlay reached the cluster? A descendant counts,
@@ -239,7 +259,7 @@ func consistent(rows []EnvironmentStatus) bool {
 
 // reportStatus writes the table, then the answer to the question that prompted
 // it. Exit is always 0: this reports, it does not gate.
-func reportStatus(out output, coord gitops.Coordinate, comp *gitops.ComponentConfig, rows []EnvironmentStatus) error {
+func reportStatus(out output, coord gitops.Coordinate, comp *gitops.ComponentConfig, rows []EnvironmentStatus, promotesFrom map[string][]string) error {
 	// Built for both formats, and the table below renders from it rather than
 	// recomputing: two presenters deriving the same claim independently is how
 	// they come to disagree about it.
@@ -252,6 +272,7 @@ func reportStatus(out output, coord gitops.Coordinate, comp *gitops.ComponentCon
 		Consistent:   consistent(rows),
 		Summary:      summarise(rows),
 		Notes:        notes(coord, comp, rows),
+		PromotesFrom: promotesFrom,
 	}
 
 	if out.Format == OutputJSON {

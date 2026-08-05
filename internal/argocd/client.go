@@ -128,6 +128,11 @@ type Application struct {
 			Phase   string `json:"phase"`
 			Message string `json:"message"`
 		} `json:"operationState"`
+		Summary struct {
+			// Images is what ArgoCD observed running — the live digests, as
+			// opposed to what the overlay pins. Ground truth for "what runs".
+			Images []string `json:"images"`
+		} `json:"summary"`
 	} `json:"status"`
 }
 
