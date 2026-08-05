@@ -36,8 +36,8 @@ public static class Connectors
 {{- range $i, $c := .Connectors }}
 {{- if $i }}
 {{ end }}
-    /// <summary>Deployed as SFTP; locally resolved to <c>./test/{{ $c.Name }}</c>.</summary>
-    public static readonly ConnectorRef {{ $c.Field }} = ConnectorRef.Define("{{ $c.Name }}", Transport.Sftp());
+    /// <summary>Placeholder transport — replace with a concrete transport (e.g. <c>Transport.Sftp()</c>) before deployment. Locally resolved to <c>./test/{{ $c.Name }}</c>.</summary>
+    public static readonly ConnectorRef {{ $c.Field }} = ConnectorRef.Define("{{ $c.Name }}", Transport.Default());
 {{- end }}
 }
 `
