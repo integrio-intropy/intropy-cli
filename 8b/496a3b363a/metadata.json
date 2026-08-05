@@ -1,0 +1,24 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "8b496a3b363a",
+  "strategy": "manual-commit",
+  "branch": "feature/catalog-redesign",
+  "checkpoints_count": 2,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/8b/496a3b363a/0/metadata.json",
+      "transcript": "/8b/496a3b363a/0/full.jsonl",
+      "compact_transcript": "/8b/496a3b363a/0/transcript.jsonl",
+      "content_hash": "/8b/496a3b363a/0/content_hash.txt",
+      "prompt": "/8b/496a3b363a/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 137399,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 23764992,
+    "output_tokens": 72393,
+    "api_call_count": 207
+  }
+}
