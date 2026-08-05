@@ -1,0 +1,39 @@
+i am getting: warning: argocd unreachable: argocd.intropy.io rejected the token (run 'argocd login argocd.intropy.io') but I am authed
+
+---
+
+Are you sure about that? I am able to run this
+Mac domains/orders/order-flow on  main [$✘!?] ➜  argocd app list | grep "orders-order"  17:38
+{"level":"warning","msg":"Failed to invoke grpc call. Use flag --grpc-web in grpc calls. To avoid this warning message, use flag --grpc-web.","time":"2026-08-05T17:39:38+02:00"}
+customer-entrovia/orders-order-flow-order-extractor-prod                    https://2.56.29.185:6443                                                        prod-entrovia-integrations  entrovia-prod  Synced     Healthy      Manual      <none>                               git@gitlab.com:integrio/intropy/customers/entrovia/gitops.git  domains/orders/order-flow/order-extractor/overlays/prod                   HEAD
+customer-entrovia/orders-order-flow-order-extractor-test                    https://2.56.29.185:6443                                                        test-entrovia-integrations  entrovia-test  Synced     Healthy      Auto-Prune  <none>                               git@gitlab.com:integrio/intropy/customers/entrovia/gitops.git  domains/orders/order-flow/order-extractor/overlays/test                   HEAD
+
+---
+
+this worked before our changes. it still doesnt work in the dashboard but directly via the cli. Can you give me the counterpart to the api call in cli command so I can test that specific command with the right parameter values?
+
+---
+
+this works: intropy deploy status order-extractor --domain orders --system order-flow -o json
+
+---
+
+are you sure? I am running make build, make web and make bundle. I have an alias i, to that build output
+
+---
+
+I checked out the original branch and tested the old dashboard. It looks like this
+/Users/robinhultman/Library/Application\ Support/CleanShot/media/media_Y9Za2znuLK/CleanShot\ 2026-08-05\ at\ 17.52.04.png so it fails there aswell but if the age is not from argocd where does it come from?
+
+---
+
+Is this the problem? Services¶
+Applications API¶
+How to Avoid 403 Errors for Missing Applications¶
+All endpoints of the Applications API accept an optional project query string parameter. If the parameter is specified, and the specified Application does not exist, the API will return a 404 error.
+
+Additionally, if the project query string parameter is specified and the Application exists but is not in the given project, the API will return a 403 error. This is to prevent leaking information about the existence of Applications to users who do not have access to them.
+
+---
+
+Now I have a token in the env var from the cli session-token. But it still does not wokr
