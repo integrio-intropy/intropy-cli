@@ -1,5 +1,7 @@
-Now I have a token in the env var from the cli session-token. But it still does not wokr
+But nothing appears:
 
----
+order-extractor
+order-flow
+identity from scaffold record
 
-It seems to work now. Can we implement refresh the token in the cli?
+Computing system graph… contracts will appear here.
