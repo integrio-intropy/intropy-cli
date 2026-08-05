@@ -129,6 +129,7 @@ func newHandler(root, version string, p providers) (http.Handler, error) {
 	mux.HandleFunc("GET /api/health", api.health)
 	mux.HandleFunc("GET /api/integrations", api.listIntegrations)
 	mux.HandleFunc("GET /api/integrations/{path...}", api.getIntegration)
+	mux.HandleFunc("GET /api/catalog/{path...}", api.catalog)
 	mux.HandleFunc("GET /api/flow", api.flow)
 	mux.HandleFunc("GET /api/topology", api.topologies)
 	mux.HandleFunc("POST /api/topology/refresh", api.refreshTopologies)
@@ -309,6 +310,17 @@ func (s *apiServer) cachedTopologies(ctx context.Context, force bool) ([]topolog
 		s.topoErrs, s.topoLoaded = errs, true
 	}
 	return s.topoEntries, s.topoErrs
+}
+
+// topologiesLoaded reports whether the topology cache has been computed, and
+// serves the cached result if it has. It never triggers the computation:
+// computing runs every host's graph verb (a dotnet build on first run) under
+// one mutex, and the catalog endpoint must answer promptly rather than queue
+// behind that — the flow view or an explicit refresh is what warms the cache.
+func (s *apiServer) topologiesLoaded() (loaded bool, entries []topology.Entry, errs []string) {
+	s.topoMu.Lock()
+	defer s.topoMu.Unlock()
+	return s.topoLoaded, s.topoEntries, s.topoErrs
 }
 
 // messageDocs reads the authored connector payload descriptions beside a
