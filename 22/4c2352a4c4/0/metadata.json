@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "224c2352a4c4",
+  "session_id": "019fd274-10fb-7e44-8eeb-55028213b865",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-05T15:23:05.177554Z",
+  "branch": "feature/catalog-redesign",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "web/src/api.ts",
+    "web/src/components/FlowDetail.tsx",
+    "web/src/icons.ts",
+    "web/src/App.tsx",
+    "web/src/index.css"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "4739199144b5",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 85959,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 3885184,
+    "output_tokens": 27624,
+    "api_call_count": 60
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-05T15:23:05.149312Z",
+    "agent_lines": 192,
+    "agent_removed": 21,
+    "human_added": 621,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 813,
+    "total_lines_changed": 1223,
+    "agent_percentage": 17.41618969746525,
+    "metric_version": 2
+  }
+}

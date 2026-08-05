@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "224c2352a4c4",
+  "strategy": "manual-commit",
+  "branch": "feature/catalog-redesign",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "web/src/App.tsx",
+    "web/src/api.ts",
+    "web/src/components/FlowDetail.tsx",
+    "web/src/icons.ts",
+    "web/src/index.css"
+  ],
+  "sessions": [
+    {
+      "metadata": "/22/4c2352a4c4/0/metadata.json",
+      "transcript": "/22/4c2352a4c4/0/full.jsonl",
+      "compact_transcript": "/22/4c2352a4c4/0/transcript.jsonl",
+      "content_hash": "/22/4c2352a4c4/0/content_hash.txt",
+      "prompt": "/22/4c2352a4c4/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 85959,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 3885184,
+    "output_tokens": 27624,
+    "api_call_count": 60
+  }
+}
