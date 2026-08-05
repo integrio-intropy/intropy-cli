@@ -1,6 +1,7 @@
 package argocd
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,9 +32,12 @@ users:
 `
 
 // writeCLIConfig points ARGOCD_CONFIG at a temporary file, and clears the
-// environment overrides so each case starts from a known state.
+// environment overrides so each case starts from a known state. The argocd
+// CLI is stubbed out: these tests pin the static-configuration path, and a
+// real binary would answer with whatever the developer last logged into.
 func writeCLIConfig(t *testing.T, content string) string {
 	t.Helper()
+	stubSessionToken(t, "", errNoSessionToken)
 	path := filepath.Join(t.TempDir(), "config")
 	if content != "" {
 		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
@@ -44,6 +48,14 @@ func writeCLIConfig(t *testing.T, content string) string {
 	t.Setenv(EnvServer, "")
 	t.Setenv(EnvAuthToken, "")
 	return path
+}
+
+// stubSessionToken replaces what the argocd CLI would answer.
+func stubSessionToken(t *testing.T, token string, err error) {
+	t.Helper()
+	original := sessionTokenCommand
+	sessionTokenCommand = func(context.Context) (string, error) { return token, err }
+	t.Cleanup(func() { sessionTokenCommand = original })
 }
 
 func TestLoadCredentialsFollowsCurrentContext(t *testing.T) {
@@ -215,5 +227,75 @@ func TestNewClientScheme(t *testing.T) {
 func TestNewClientRequiresServer(t *testing.T) {
 	if _, err := NewClient(Options{}); err == nil {
 		t.Fatal("expected an error with no server")
+	}
+}
+
+// The argocd CLI mints a session token that refreshes itself, so it is the
+// one credential source that never goes stale — and it is preferred over the
+// static file entry, which an expired SSO session leaves behind.
+func TestLoadCredentialsPrefersAMintedSessionToken(t *testing.T) {
+	writeCLIConfig(t, cliConfig)
+	stubSessionToken(t, "minted-token", nil)
+
+	creds, err := LoadCredentials("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if creds.Token != "minted-token" {
+		t.Errorf("Token = %q, want the minted session token", creds.Token)
+	}
+}
+
+// An environment token is how CI and service accounts authenticate, and must
+// win over the minted token — asking the argocd CLI would both override it
+// and fail where argocd is not installed.
+func TestLoadCredentialsEnvironmentTokenSkipsMinting(t *testing.T) {
+	writeCLIConfig(t, cliConfig)
+	calls := 0
+	original := sessionTokenCommand
+	sessionTokenCommand = func(context.Context) (string, error) { calls++; return "minted-token", nil }
+	t.Cleanup(func() { sessionTokenCommand = original })
+	t.Setenv(EnvAuthToken, "ci-token")
+
+	creds, err := LoadCredentials("argocd.intropy.io")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if creds.Token != "ci-token" {
+		t.Errorf("Token = %q, want the environment token", creds.Token)
+	}
+	if calls != 0 {
+		t.Errorf("the argocd CLI was asked for a token it had no business minting")
+	}
+}
+
+// The minted token belongs to the configuration's current context; a server
+// resolved from elsewhere (deploy.yaml) must not borrow it.
+func TestLoadCredentialsDoesNotMintForAnotherServer(t *testing.T) {
+	writeCLIConfig(t, cliConfig)
+	stubSessionToken(t, "minted-token", nil)
+
+	creds, err := LoadCredentials("argocd.local.dev:30453")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if creds.Token != "local-token" {
+		t.Errorf("Token = %q, want the requested server's own token", creds.Token)
+	}
+}
+
+// Everything that makes minting unavailable — argocd not installed, never
+// logged in, a dead refresh token — falls back to the static configuration,
+// so the rest of the CLI is unaffected by argocd's absence.
+func TestLoadCredentialsFallsBackWhenMintingFails(t *testing.T) {
+	writeCLIConfig(t, cliConfig)
+	stubSessionToken(t, "", errNoSessionToken)
+
+	creds, err := LoadCredentials("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if creds.Token != "intropy-token" {
+		t.Errorf("Token = %q, want the static configuration's token", creds.Token)
 	}
 }

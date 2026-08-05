@@ -9,6 +9,7 @@
 package argocd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -129,12 +130,39 @@ func LoadCredentials(server string) (Credentials, error) {
 			break
 		}
 	}
-	if creds.Token == "" {
-		for _, u := range cfg.Users {
-			if u.Name == creds.Server {
-				creds.Token = u.AuthToken
-				break
-			}
+	// An explicit environment token always wins: it is how CI and service
+	// accounts authenticate, and asking the argocd CLI for anything would
+	// both override it and fail where argocd is not installed.
+	if creds.Token != "" {
+		return creds, nil
+	}
+
+	// The argocd CLI mints a fresh session token, refreshing the SSO token
+	// when it has expired — the only source that never goes stale, and one
+	// that keeps this CLI from storing credentials of its own. It mints for
+	// the configuration's current context, so it only applies when that is
+	// the server being resolved; a deploy.yaml pointing elsewhere must not
+	// borrow another server's token. Anything that makes minting
+	// unavailable — argocd not installed, never logged in, a dead refresh
+	// token — falls through to the static configuration below.
+	contextServer := ""
+	for _, c := range cfg.Contexts {
+		if c.Name == cfg.CurrentContext {
+			contextServer = c.Server
+			break
+		}
+	}
+	if contextServer == creds.Server {
+		if token, err := mintSessionToken(context.Background()); err == nil {
+			creds.Token = token
+			return creds, nil
+		}
+	}
+
+	for _, u := range cfg.Users {
+		if u.Name == creds.Server {
+			creds.Token = u.AuthToken
+			break
 		}
 	}
 
