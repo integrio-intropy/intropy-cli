@@ -112,6 +112,40 @@ func TestLoadCredentialsTokenFromEnvironmentWins(t *testing.T) {
 	}
 }
 
+// A working argocd CLI wins even over the environment token: the environment
+// token is static, and one exported into a long-lived process expires under
+// it. Minting is only skipped when the argocd CLI cannot answer — which is
+// how CI without it authenticates at all.
+func TestLoadCredentialsMintingWinsOverEnvironmentToken(t *testing.T) {
+	writeCLIConfig(t, cliConfig)
+	stubSessionToken(t, "minted-token", nil)
+	t.Setenv(EnvAuthToken, "stale-env-token")
+
+	creds, err := LoadCredentials("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if creds.Token != "minted-token" {
+		t.Errorf("Token = %q, want the minted token to win over a static environment token", creds.Token)
+	}
+}
+
+// The environment token is the fallback when minting is unavailable — argocd
+// not installed, never logged in, a dead refresh token.
+func TestLoadCredentialsEnvironmentTokenWhenMintingFails(t *testing.T) {
+	writeCLIConfig(t, cliConfig)
+	stubSessionToken(t, "", errNoSessionToken)
+	t.Setenv(EnvAuthToken, "ci-token")
+
+	creds, err := LoadCredentials("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if creds.Token != "ci-token" {
+		t.Errorf("Token = %q, want the environment token as fallback", creds.Token)
+	}
+}
+
 // Precedence lives in ResolveServer so it is applied once, matching the CLI's
 // flag > environment > file rule elsewhere.
 func TestResolveServer(t *testing.T) {
@@ -246,10 +280,10 @@ func TestLoadCredentialsPrefersAMintedSessionToken(t *testing.T) {
 	}
 }
 
-// An environment token is how CI and service accounts authenticate, and must
-// win over the minted token — asking the argocd CLI would both override it
-// and fail where argocd is not installed.
-func TestLoadCredentialsEnvironmentTokenSkipsMinting(t *testing.T) {
+// A server resolved from elsewhere than the current context must not mint
+// even to satisfy an environment token's absence — the minted token belongs
+// to the context's server.
+func TestLoadCredentialsEnvironmentTokenUsedForOtherServers(t *testing.T) {
 	writeCLIConfig(t, cliConfig)
 	calls := 0
 	original := sessionTokenCommand
@@ -257,7 +291,7 @@ func TestLoadCredentialsEnvironmentTokenSkipsMinting(t *testing.T) {
 	t.Cleanup(func() { sessionTokenCommand = original })
 	t.Setenv(EnvAuthToken, "ci-token")
 
-	creds, err := LoadCredentials("argocd.intropy.io")
+	creds, err := LoadCredentials("argocd.local.dev:30453")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +299,7 @@ func TestLoadCredentialsEnvironmentTokenSkipsMinting(t *testing.T) {
 		t.Errorf("Token = %q, want the environment token", creds.Token)
 	}
 	if calls != 0 {
-		t.Errorf("the argocd CLI was asked for a token it had no business minting")
+		t.Errorf("the argocd CLI was asked to mint for a server that is not its context")
 	}
 }
 
