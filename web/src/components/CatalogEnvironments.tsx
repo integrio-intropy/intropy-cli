@@ -100,14 +100,13 @@ function Ladder({
   )
 }
 
-/** The one-line answer under which the table sits. Agreement across every
- *  environment is the claim the command exists to make, so it is worth a
- *  sentence; a disagreement is positional and the markers on the rows say it
- *  better than naming digests the table already shows. */
+/** The one-line answer under which the table sits, rendered only when there
+ *  is one: agreement across every environment is the claim the command exists
+ *  to make and is worth a sentence. A disagreement is positional — the
+ *  markers on the rows already say which environment runs newer bits, and a
+ *  sentence here would repeat them. */
 function Verdict({ status }: { status: StatusResult }) {
-  if (!status.consistent) {
-    return <p className="deploy-verdict">environments disagree</p>
-  }
+  if (!status.consistent) return null
   return <p className="deploy-verdict agrees">{status.summary}</p>
 }
 
