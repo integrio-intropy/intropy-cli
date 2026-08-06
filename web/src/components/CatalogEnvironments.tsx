@@ -9,10 +9,10 @@ interface Props {
   onRefresh: () => void
 }
 
-/** The environment ladder: desired (what the overlay pins) against live (what
- *  ArgoCD observes running), with the SemVer distance across every promotion
- *  edge. Everything comes from `intropy deploy status`; the sentences it
- *  computed are rendered as served and nothing is inferred from absence. */
+/** The environment ladder: the release and image pins each environment's
+ *  overlay declares, plus sync/health when ArgoCD was readable. Everything
+ *  comes from `intropy deploy status`; the sentences it computed are rendered
+ *  as served and nothing is inferred from absence. */
 export function CatalogEnvironments({ state, loading, refreshing, onRefresh }: Props) {
   if (loading && !state) {
     return (
@@ -49,7 +49,6 @@ function Ladder({
 }) {
   const rows = status.environments ?? []
   const argocdRead = rows.some((e) => e.syncStatus || e.healthStatus)
-  const releaseByEnv = new Map(rows.map((e) => [e.environment, e.release]))
 
   return (
     <>
@@ -57,8 +56,8 @@ function Ladder({
 
       {!argocdRead && rows.length > 0 && (
         <div className="banner error">
-          ArgoCD could not be read, so live state, sync and health are unknown —
-          this says nothing about what the overlays pin.
+          ArgoCD could not be read, so sync and health are unknown — this says
+          nothing about what the overlays pin.
           {diagnostics?.length ? (
             <ul className="deploy-diagnostics">
               {diagnostics.map((d) => (
@@ -76,22 +75,15 @@ function Ladder({
           <thead>
             <tr>
               <th>Environment</th>
-              <th>Desired</th>
-              <th>Live</th>
+              <th>Version</th>
+              <th>Image</th>
               {argocdRead && <th>Sync</th>}
               <th>Age</th>
-              <th>Promotion</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((env) => (
-              <Row
-                key={env.environment}
-                env={env}
-                argocdRead={argocdRead}
-                sources={status.promotesFrom?.[env.environment] ?? []}
-                releaseByEnv={releaseByEnv}
-              />
+              <Row key={env.environment} env={env} argocdRead={argocdRead} />
             ))}
           </tbody>
         </table>
@@ -108,18 +100,8 @@ function Ladder({
   )
 }
 
-function Row({
-  env,
-  argocdRead,
-  sources,
-  releaseByEnv,
-}: {
-  env: EnvironmentStatus
-  argocdRead: boolean
-  sources: string[]
-  releaseByEnv: Map<string, string | undefined>
-}) {
-  const span = argocdRead ? 6 : 5
+function Row({ env, argocdRead }: { env: EnvironmentStatus; argocdRead: boolean }) {
+  const span = argocdRead ? 4 : 3
 
   return (
     <tr className={env.onboarded ? undefined : 'not-onboarded'}>
@@ -130,14 +112,9 @@ function Row({
       </th>
       {env.onboarded ? (
         <>
+          <td>{releaseCell(env)}</td>
           <td>
-            <div className="catalog-desired">
-              <span>{releaseCell(env)}</span>
-              <Pins env={env} />
-            </div>
-          </td>
-          <td>
-            <Live env={env} />
+            <Pins env={env} />
           </td>
           {argocdRead && (
             <td>
@@ -146,9 +123,6 @@ function Row({
             </td>
           )}
           <td>{ageCell(env)}</td>
-          <td>
-            <PromotionDiff env={env} sources={sources} releaseByEnv={releaseByEnv} />
-          </td>
         </>
       ) : (
         // Never omit the row: an environment the component declares but that
@@ -186,112 +160,6 @@ function Pins({ env }: { env: EnvironmentStatus }) {
       ))}
     </ul>
   )
-}
-
-/** What the cluster runs, from ArgoCD's summary. Agreement with the desired
- *  pins renders quietly; a mismatch renders both. Absent is unknown, and an
- *  empty cell is never a claim. */
-function Live({ env }: { env: EnvironmentStatus }) {
-  if (!env.liveImages) {
-    return <span className="muted">unknown</span>
-  }
-  if (env.liveImages.length === 0) {
-    return <span className="muted">{NONE}</span>
-  }
-  const desired = new Set((env.pins ?? []).filter((p) => p.digest).map((p) => p.digest))
-  return (
-    <ul className="deploy-pins">
-      {env.liveImages.map((image) => {
-        const digest = digestOf(image)
-        const agrees = digest !== undefined && desired.has(digest)
-        return (
-          <li key={image}>
-            <span title={image} className={agrees ? undefined : 'deploy-unpinned'}>
-              {digest ? shortDigest(digest) : shortImage(image)}
-            </span>
-          </li>
-        )
-      })}
-    </ul>
-  )
-}
-
-/** The SemVer distance to each environment this one promotes from, one line
- *  per source. A side that is not a release — commit-deployed or unpinned —
- *  makes no version claim at all. */
-function PromotionDiff({
-  env,
-  sources,
-  releaseByEnv,
-}: {
-  env: EnvironmentStatus
-  sources: string[]
-  releaseByEnv: Map<string, string | undefined>
-}) {
-  if (sources.length === 0) {
-    return <span className="muted">{NONE}</span>
-  }
-  return (
-    <ul className="catalog-promotion">
-      {sources.map((source) => {
-        const from = releaseByEnv.get(source)
-        const d = diffReleases(from, env.release)
-        return (
-          <li key={source}>
-            {d === null ? (
-              <span className="muted">{source}: not a release</span>
-            ) : d.relation === 'same' ? (
-              <span className="muted">{source}: in sync ({env.release})</span>
-            ) : (
-              <span>
-                {source} {from} → {env.release} · {d.magnitude} {d.relation}
-              </span>
-            )}
-          </li>
-        )
-      })}
-    </ul>
-  )
-}
-
-interface ReleaseDiff {
-  relation: 'same' | 'ahead' | 'behind'
-  magnitude: 'patch' | 'minor' | 'major'
-}
-
-/** diffReleases mirrors the command's DiffReleases: strict X.Y.Z with an
- *  optional v prefix and prerelease, non-parse is not comparable rather than
- *  an error. Inputs are release annotation strings the command already
- *  recorded; anything else makes no claim. */
-function diffReleases(from: string | undefined, to: string | undefined): ReleaseDiff | null {
-  const f = from ? parseRelease(from) : undefined
-  const t = to ? parseRelease(to) : undefined
-  if (!f || !t) return null
-
-  const cmp = compareRelease(f, t)
-  if (cmp === 0) return { relation: 'same', magnitude: 'patch' }
-  const magnitude = f[0] !== t[0] ? 'major' : f[1] !== t[1] ? 'minor' : 'patch'
-  return { relation: cmp < 0 ? 'ahead' : 'behind', magnitude }
-}
-
-// [major, minor, patch, prerelease]. A release without a prerelease sorts
-// after every prerelease of the same core — SemVer ordering.
-type ParsedRelease = [number, number, number, string]
-
-function parseRelease(v: string): ParsedRelease | undefined {
-  const m = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/.exec(v)
-  if (!m) return undefined
-  return [Number(m[1]), Number(m[2]), Number(m[3]), m[4] ?? '']
-}
-
-function compareRelease(a: ParsedRelease, b: ParsedRelease): number {
-  for (let i = 0; i < 3; i++) {
-    if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1
-  }
-  if (a[3] === b[3]) return 0
-  if (a[3] === '') return 1
-  if (b[3] === '') return -1
-  return a[3] < b[3] ? -1 : 1
 }
 
 function Provenance({ state, refreshing, onRefresh }: Omit<Props, 'loading'>) {
@@ -358,12 +226,4 @@ function shortDigest(digest: string): string {
 function shortImage(image: string): string {
   const parts = image.split('/')
   return parts.length <= 2 ? image : parts.slice(-2).join('/')
-}
-
-/** digestOf extracts the pinned digest from a live image reference, which may
- *  carry a tag, a digest, or both. Live images match desired pins by exact
- *  digest — a suffix match would equate two digests sharing a prefix. */
-function digestOf(image: string): string | undefined {
-  const at = image.indexOf('@')
-  return at >= 0 ? image.slice(at + 1) : undefined
 }
