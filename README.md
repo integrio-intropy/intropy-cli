@@ -356,10 +356,8 @@ collect the result from `test/<name>-destination/`.
 or values flags: the CLI assembles every value from the scaffold records,
 and the template never prompts.
 
-This CLI renders against the current `system-host` release. A template
-release may declare the minimum CLI version it renders correctly with;
-when this build is too old the command fails before writing anything —
-upgrade intropy or render an older release with `--template-version`.
+This CLI renders against the current `system-host` release; pin an older
+one with `--template-version`.
 
 ```sh
 # default output directory: the kebab-cased name (./order-flow)

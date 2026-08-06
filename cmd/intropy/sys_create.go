@@ -50,7 +50,6 @@ var sysCreateCmd = &cobra.Command{
 			Name:       sysCreateFlagValues.name,
 			OutputDir:  sysCreateFlagValues.outDir,
 			Version:    sysCreateFlagValues.templateVersion,
-			CLIVersion: version,
 			Force:      sysCreateFlagValues.force,
 			OutputJSON: outputJSON,
 			Stdout:     cmd.OutOrStdout(),

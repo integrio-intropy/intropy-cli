@@ -36,13 +36,6 @@ type Spec struct {
 	Files        []FileRule        `yaml:"files,omitempty"`
 	Dependencies []DependencySpec  `yaml:"dependencies,omitempty"`
 
-	// MinCLI is the minimum CLI version (SemVer) that may render this
-	// template. Optional and unenforced by the engine itself; callers
-	// compare it against their own build version (see the OnManifest hook
-	// on CreateOptions) so a template that expects a newer value contract
-	// fails before rendering instead of at the consumer's build.
-	MinCLI string `yaml:"minCLI,omitempty"`
-
 	// parameterOrder captures the declaration order of properties in
 	// spec.parameters.properties, since Go maps don't preserve YAML order.
 	// Populated by UnmarshalYAML.
@@ -98,7 +91,6 @@ func (s *Spec) UnmarshalYAML(node *yaml.Node) error {
 		Values       map[string]string `yaml:"values,omitempty"`
 		Files        []FileRule        `yaml:"files,omitempty"`
 		Dependencies []DependencySpec  `yaml:"dependencies,omitempty"`
-		MinCLI       string            `yaml:"minCLI,omitempty"`
 	}
 	var r rawSpec
 	if err := node.Decode(&r); err != nil {
@@ -108,7 +100,6 @@ func (s *Spec) UnmarshalYAML(node *yaml.Node) error {
 	s.Values = r.Values
 	s.Files = r.Files
 	s.Dependencies = r.Dependencies
-	s.MinCLI = r.MinCLI
 	s.parameterOrder = extractPropertyOrder(node)
 	return nil
 }

@@ -57,57 +57,6 @@ spec:
 	}
 }
 
-func TestLoadTemplateMinCLI(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, templateManifestName)
-	body := `
-apiVersion: intropy.dev/v1
-kind: Template
-metadata:
-  name: gated
-spec:
-  minCLI: "0.4.0"
-  parameters:
-    type: object
-    properties: {}
-`
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	tmpl, err := LoadTemplate(path)
-	if err != nil {
-		t.Fatalf("LoadTemplate: %v", err)
-	}
-	if tmpl.Spec.MinCLI != "0.4.0" {
-		t.Errorf("MinCLI = %q, want 0.4.0", tmpl.Spec.MinCLI)
-	}
-}
-
-func TestLoadTemplateMinCLIOptional(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, templateManifestName)
-	body := `
-apiVersion: intropy.dev/v1
-kind: Template
-metadata:
-  name: ungated
-spec:
-  parameters:
-    type: object
-    properties: {}
-`
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	tmpl, err := LoadTemplate(path)
-	if err != nil {
-		t.Fatalf("LoadTemplate: %v", err)
-	}
-	if tmpl.Spec.MinCLI != "" {
-		t.Errorf("MinCLI = %q, want empty when undeclared", tmpl.Spec.MinCLI)
-	}
-}
-
 func TestLoadTemplateRejectsUnknownAPIVersion(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, templateManifestName)

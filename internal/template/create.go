@@ -38,8 +38,7 @@ type CreateOptions struct {
 	// OnManifest, when set, runs after the manifest loads and before
 	// values resolve, render, dependency processing, or the scaffold
 	// record write. A non-nil error aborts the create. Callers use it for
-	// gates that must run before any output is written, such as a
-	// version check against spec.minCLI.
+	// gates that must run before any output is written.
 	OnManifest func(*Template) error
 }
 

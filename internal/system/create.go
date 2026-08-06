@@ -31,7 +31,6 @@ type CreateOptions struct {
 	StartDir   string // workspace scan root; default "."
 	OutputDir  string // default: the kebab-cased name
 	Version    string // template release tag; default: latest
-	CLIVersion string // this build's version, checked against the template's spec.minCLI; non-semver ("dev") skips the gate
 	Force      bool
 	OutputJSON string // path to write CreateResult JSON; "-" means stdout
 	Stdout     io.Writer
@@ -133,7 +132,6 @@ func Create(ctx context.Context, opts CreateOptions) error {
 		Owner:         opts.Owner,
 		Repo:          opts.Repo,
 		GitHubBaseURL: opts.GitHubBaseURL,
-		OnManifest:    checkMinCLI(opts.CLIVersion),
 	}); err != nil {
 		return err
 	}
