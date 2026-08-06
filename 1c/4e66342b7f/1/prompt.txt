@@ -1,0 +1,11 @@
+The topology package ~/dev/intropy/tooling/intropy-topology/ have undergone significant changes which required changes to the templates ~/dev/intropy/tooling/intropy-templates/. Make a plan for the changes we must do in the cli. No changes only plan
+
+---
+
+we havent released this cli yet so we shouldnt worry about backwards compatiblity and version floor. It will not be possible to use incompatible versions as of now.
+
+Otherwise do you feel that the plan is clear enough or should we do some extra validations?
+
+---
+
+Implement on a new branch of feature/v-next but do not push and no PR

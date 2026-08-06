@@ -3,9 +3,15 @@
   "checkpoint_id": "1c4e66342b7f",
   "strategy": "manual-commit",
   "branch": "feature/topology-0.4-minted-facts",
-  "checkpoints_count": 1,
+  "checkpoints_count": 3,
   "files_touched": [
-    "internal/system/create_test.go"
+    "internal/dashboard/dashboard_test.go",
+    "internal/deploy/initmodel.go",
+    "internal/deploy/initmodel_test.go",
+    "internal/deploy/localtemplates_test.go",
+    "internal/system/create_test.go",
+    "internal/topology/topology.go",
+    "internal/topology/topology_test.go"
   ],
   "sessions": [
     {
@@ -14,13 +20,20 @@
       "compact_transcript": "/1c/4e66342b7f/0/transcript.jsonl",
       "content_hash": "/1c/4e66342b7f/0/content_hash.txt",
       "prompt": "/1c/4e66342b7f/0/prompt.txt"
+    },
+    {
+      "metadata": "/1c/4e66342b7f/1/metadata.json",
+      "transcript": "/1c/4e66342b7f/1/full.jsonl",
+      "compact_transcript": "/1c/4e66342b7f/1/transcript.jsonl",
+      "content_hash": "/1c/4e66342b7f/1/content_hash.txt",
+      "prompt": "/1c/4e66342b7f/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 17317,
+    "input_tokens": 67133,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 306752,
-    "output_tokens": 5845,
-    "api_call_count": 16
+    "cache_read_tokens": 2755520,
+    "output_tokens": 22088,
+    "api_call_count": 79
   }
 }

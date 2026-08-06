@@ -1,0 +1,59 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "1c4e66342b7f",
+  "session_id": "019fd6a4-441a-7422-9602-c7047991c361",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-06T10:54:56.41799Z",
+  "branch": "feature/topology-0.4-minted-facts",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "internal/topology/topology.go",
+    "internal/topology/topology_test.go",
+    "internal/deploy/initmodel.go",
+    "internal/deploy/initmodel_test.go",
+    "internal/deploy/localtemplates_test.go",
+    "internal/dashboard/dashboard_test.go",
+    "internal/system/create_test.go"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "3a5720b3e882",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 49816,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2448768,
+    "output_tokens": 16243,
+    "api_call_count": 63
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-06T10:54:56.398116Z",
+    "agent_lines": 44,
+    "agent_removed": 166,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 44,
+    "total_lines_changed": 210,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 818,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "PLAN-catalog-redesign.md": 384,
+        "PLAN-template-owns-codegen.md": 374
+      }
+    }
+  ]
+}
