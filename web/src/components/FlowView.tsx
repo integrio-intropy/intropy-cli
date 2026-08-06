@@ -382,8 +382,8 @@ function buildDeclaredGraph(
 ): { nodes: Node[]; edges: Edge[] } {
   const comps = topo.components ?? []
 
-  // Metadata lookups: topics carry the contract, connectors the transport and
-  // external system a component's inline reference resolves against.
+  // Metadata lookups: topics carry the contract, connectors the external
+  // system a component's inline reference resolves against.
   const topicMeta = new Map(
     (topo.topics ?? []).map((t) => [`${t.pubsub}/${t.topic}`, t]),
   )
@@ -592,7 +592,7 @@ function buildDeclaredGraph(
       const extId = `ext:${use.connector}`
       const data: ExtNodeData = {
         name: conn?.externalSystem ? refName(conn.externalSystem) : use.connector,
-        type: conn?.transport.type ?? 'connector',
+        type: 'connector',
         direction: isInput ? 'input' : undefined,
         connector: use.connector,
       }
