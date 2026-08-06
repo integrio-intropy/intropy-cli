@@ -3,8 +3,13 @@
 // (blocks) and the wiring between them, expressed inline on each component —
 // the topics it subscribes to and publishes on, the API contracts it provides
 // and consumes, and the external connectors it uses. Top-level topics[] and
-// connectors[] sections carry the shared metadata (contracts, transports,
-// external systems) those inline references point at.
+// connectors[] sections carry the shared metadata (contracts, external
+// systems) those inline references point at.
+//
+// The record carries only minted facts: the Dapr binding a connector deploys
+// as (its spec.type, address, credentials) is environment-owned deployment
+// configuration in the GitOps repo, and an extractor's cadence is its CronJob
+// there. Neither appears here.
 //
 // The CLI never derives a topology itself: the system host's `graph` verb
 // prints the record — JSON only, on stdout — and consumers decode that stream.
@@ -29,7 +34,7 @@ const (
 // rather than kept in a separate edge list: a component names the topics it
 // subscribes to and publishes on and the connectors it uses. The top-level
 // Topics and Connectors sections are lookup tables the inline references
-// resolve against (contract, transport, external system).
+// resolve against (contract, external system).
 type Topology struct {
 	APIVersion string      `json:"apiVersion"`
 	Kind       string      `json:"kind,omitempty"`
@@ -108,31 +113,16 @@ type Contract struct {
 	Schema      json.RawMessage `json:"schema,omitempty"`
 }
 
-// Transport describes how a connector moves data. SupportsInput/SupportsOutput
-// declare the directions the transport itself can carry.
-type Transport struct {
-	Type           string `json:"type"`
-	SupportsInput  bool   `json:"supportsInput"`
-	SupportsOutput bool   `json:"supportsOutput"`
-}
-
-// Connector is an external system integration point. ExternalSystem is the
-// system it fronts, Directions the directions it is wired in, and UsedBy the
-// components that use it.
-//
-// Transport is the connector's local materialization (what F5 runs use).
-// DeployedTransport, when the host declares one, is the value-free transport
-// shape the connector materializes as after deployment; it is nil for hosts
-// that predate the field or whose local transport also applies to deployed
-// environments. Connection values never appear here — they are placeholders in
-// the rendered GitOps overlays.
+// Connector is an external system integration point. The name is its whole
+// identity — the deployed Dapr binding type, address, and credentials are
+// environment-owned deployment configuration, never part of the record.
+// ExternalSystem is the system it fronts, Directions the directions it is
+// wired in, and UsedBy the components that use it.
 type Connector struct {
-	Name              string     `json:"name"`
-	ExternalSystem    string     `json:"externalSystem,omitempty"`
-	Transport         Transport  `json:"transport"`
-	DeployedTransport *Transport `json:"deployedTransport,omitempty"`
-	Directions        []string   `json:"directions,omitempty"`
-	UsedBy            []string   `json:"usedBy,omitempty"`
+	Name           string   `json:"name"`
+	ExternalSystem string   `json:"externalSystem,omitempty"`
+	Directions     []string `json:"directions,omitempty"`
+	UsedBy         []string `json:"usedBy,omitempty"`
 }
 
 // Entry is one system's topology plus the workspace directory it belongs to,

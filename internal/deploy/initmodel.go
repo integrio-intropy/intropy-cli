@@ -90,13 +90,13 @@ type InitTopic struct {
 	Subscribers []string `json:"subscribers,omitempty"`
 }
 
-// InitConnector is an external integration point. Transport is the transport
-// type only: the topology carries no address, host or credential, which is
-// exactly why those are placeholders in the rendered manifests.
+// InitConnector is an external integration point. The topology mints only
+// its name: the deployed Dapr binding type, address, host and credential are
+// environment-owned deployment configuration, which is exactly why they are
+// placeholders in the rendered manifests.
 type InitConnector struct {
 	Name           string   `json:"name"`
 	ExternalSystem string   `json:"externalSystem,omitempty"`
-	Transport      string   `json:"transport"`
 	Directions     []string `json:"directions,omitempty"`
 	AppIDs         []string `json:"appIds,omitempty"`
 }
@@ -313,17 +313,9 @@ func buildPubSubs(t *topology.Topology, appIDs map[string]string) []InitPubSub {
 func buildConnectors(connectors []topology.Connector, appIDs map[string]string) []InitConnector {
 	out := make([]InitConnector, 0, len(connectors))
 	for _, c := range connectors {
-		// A declared deployed transport is what the rendered manifests must
-		// materialize; the local transport is the fallback for connectors whose
-		// local shape also applies to deployed environments.
-		transport := c.Transport.Type
-		if c.DeployedTransport != nil {
-			transport = c.DeployedTransport.Type
-		}
 		out = append(out, InitConnector{
 			Name:           c.Name,
 			ExternalSystem: c.ExternalSystem,
-			Transport:      transport,
 			Directions:     slices.Sorted(slices.Values(c.Directions)),
 			AppIDs:         sortedAppIDs(appIDs, c.UsedBy),
 		})

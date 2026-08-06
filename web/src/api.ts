@@ -272,17 +272,12 @@ export interface TopologyTopic {
   subscribers?: string[]
 }
 
-export interface TopologyTransport {
-  type: string
-  supportsInput: boolean
-  supportsOutput: boolean
-}
-
-/** An external system integration point. */
+/** An external system integration point. The name is its whole identity —
+ *  the deployed Dapr binding type is environment-owned deployment
+ *  configuration, never part of the record. */
 export interface TopologyConnector {
   name: string
   externalSystem?: string
-  transport: TopologyTransport
   directions?: Array<'in' | 'out'>
   usedBy?: string[]
 }

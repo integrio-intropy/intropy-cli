@@ -218,7 +218,6 @@ function ConnectorDetail({ name, topology }: { name: string; topology: Topology 
     <>
       <div className="meta-grid">
         <Meta label="Connector" value={name} />
-        <Meta label="Transport" value={conn?.transport.type ?? '—'} />
         {conn?.externalSystem && (
           <Meta label="External system" value={conn.externalSystem} />
         )}

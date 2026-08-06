@@ -381,8 +381,7 @@ func TestTopologyMessageDocs(t *testing.T) {
 				APIVersion: topology.APIVersion,
 				System:     system,
 				Connectors: []topology.Connector{{
-					Name:      "erp",
-					Transport: topology.Transport{Type: "file", SupportsInput: true, SupportsOutput: true},
+					Name: "erp",
 				}},
 			},
 		}}, nil
