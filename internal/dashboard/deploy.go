@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/integrio-intropy/intropy-cli/internal/deploy"
+	"github.com/integrio-intropy/intropy-cli/internal/gitops"
 )
 
 // deployProvider reports what one integration has deployed, where.
@@ -30,7 +32,8 @@ type deployState struct {
 	// repository, a component name that matches several, a checkout another
 	// deploy is holding. Served rather than restated: those messages already
 	// name every way to resolve them, and a paraphrase here would be a second
-	// thing to keep true.
+	// thing to keep true. The one exception is a component the GitOps tree
+	// does not know at all, which describeError renders as "not deployed yet".
 	//
 	// None of them is a statement about the integration. Only the environments
 	// inside Status say whether something is deployed.
@@ -74,7 +77,7 @@ func statusCommandProvider(version string) deployProvider {
 
 		state := deployState{Diagnostics: diagnosticLines(logs.String()), ReadAt: time.Now()}
 		if err != nil {
-			state.Error = err.Error()
+			state.Error = describeError(s, err)
 			return state
 		}
 
@@ -88,6 +91,20 @@ func statusCommandProvider(version string) deployProvider {
 		state.Status = &res
 		return state
 	}
+}
+
+// describeError serves the command's message verbatim, with one exception:
+// every component-not-found reads in the dashboard as "not deployed yet".
+// The command's variants — listing what the repository defines, or pointing
+// at the coordinate a mistyped --domain/--system missed — are actionable at
+// a prompt. Here the domain and system come from the workspace folders, so
+// the correction is noise and the fact is the same: nothing is deployed
+// under that name.
+func describeError(s integrationSummary, err error) string {
+	if errors.Is(err, gitops.ErrComponentNotFound) {
+		return fmt.Sprintf("%s is not deployed yet", s.Name)
+	}
+	return err.Error()
 }
 
 // diagnosticLines splits captured stderr into entries, dropping blanks. Nil for

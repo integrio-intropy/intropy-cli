@@ -40,6 +40,11 @@ type CatalogEntry struct {
 	// System is the declared system name, when the integration has one.
 	System string `json:"system,omitempty"`
 
+	// SystemPath is the system directory the topology record joins on. It
+	// travels so a consumer fetching the topology (for the contract registry,
+	// which this payload does not embed) can match the right system.
+	SystemPath string `json:"systemPath,omitempty"`
+
 	// Contracts the component publishes/subscribes on, resolved against the
 	// topology's contracts registry. Absent in every non-matched state.
 	Publishes  []ContractEdge `json:"publishes,omitempty"`
@@ -70,6 +75,12 @@ type ContractEdge struct {
 	// and the topic's raw contract name otherwise — the same lookup the flow
 	// view's detail panel makes.
 	Contract string `json:"contract,omitempty"`
+
+	// Publishers and Subscribers are every component the topic declares on each
+	// end of the wire, so a contract can be inspected as the connection between
+	// components rather than as a name. Absent when the topic declares neither.
+	Publishers  []string `json:"publishers,omitempty"`
+	Subscribers []string `json:"subscribers,omitempty"`
 }
 
 // Check is one finding about the integration's place in the system graph.
@@ -104,6 +115,7 @@ func buildCatalogEntry(sum integrationSummary, systems map[string]string, loaded
 	entry := CatalogEntry{
 		Component:  sum.Name,
 		System:     sum.System,
+		SystemPath: sum.SystemPath,
 		Repository: sum.Owner + "/" + sum.Repo,
 	}
 
@@ -219,12 +231,19 @@ func appendCheck(checks []Check, c Check) []Check {
 // contractEdge resolves one (pubsub, topic) reference against the topology's
 // topics and contracts registry: the contract is the registry entry's
 // shortName when the topic names a contract and the registry carries it, and
-// the raw contract name otherwise — the same lookup the flow view makes.
+// the raw contract name otherwise — the same lookup the flow view makes. The
+// topic's declared publishers and subscribers ride along, so a contract can
+// be shown as the connection between components rather than as a name.
 func contractEdge(topo *topology.Entry, pubsub, topic string) ContractEdge {
 	edge := ContractEdge{Pubsub: pubsub, Topic: topic}
 	for _, t := range topo.Topics {
-		if t.PubSub != pubsub || t.Topic != topic || t.Contract == "" {
+		if t.PubSub != pubsub || t.Topic != topic {
 			continue
+		}
+		edge.Publishers = t.Publishers
+		edge.Subscribers = t.Subscribers
+		if t.Contract == "" {
+			break
 		}
 		edge.Contract = t.Contract
 		for _, c := range topo.Contracts {

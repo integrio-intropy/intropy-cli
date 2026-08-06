@@ -3,6 +3,8 @@ package dashboard
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"reflect"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	"github.com/integrio-intropy/intropy-cli/internal/deploy"
+	"github.com/integrio-intropy/intropy-cli/internal/gitops"
 )
 
 // deployWorkspace writes the layout `sys create` produces inside a domain
@@ -103,6 +106,7 @@ func TestDeployStateCarriesTheCommandResultThrough(t *testing.T) {
 // statements about the lookup rather than about the integration, and the command
 // already words each of them well. Rewriting one here would be a second thing to
 // keep true, and would risk turning "we could not find out" into "not deployed".
+// The single exception is the not-found case itself, which describeError owns.
 func TestDeployStateServesTheCommandErrorVerbatim(t *testing.T) {
 	path := deployWorkspace(t)
 	const msg = "no GitOps repository configured; pass --gitops-repo, set INTROPY_GITOPS_REPO, or add gitopsRepo to /home/x/.config/intropy/config.yaml"
@@ -139,6 +143,31 @@ func TestDeployStateServesTheCommandDiagnostics(t *testing.T) {
 	}
 	if got[0] != "refreshing git@example.com:acme/gitops.git" {
 		t.Errorf("first diagnostic = %v, want the repository it refreshed", got[0])
+	}
+}
+
+// The not-found translation is the one exception to verbatim pass-through:
+// both of the command's not-found variants read as "not deployed yet" here,
+// because the dashboard's domain and system come from the workspace folders,
+// so the command's corrective detail is noise next to an empty ladder.
+func TestDescribeError(t *testing.T) {
+	sum := integrationSummary{Name: "order-extractor"}
+
+	notFound := fmt.Errorf("%w: no component.yaml for %q under domains/\nthe repository defines: order-extractor",
+		gitops.ErrComponentNotFound, "order-loader")
+	if got := describeError(sum, notFound); got != "order-extractor is not deployed yet" {
+		t.Errorf("describeError(not found) = %q, want the not-deployed phrasing", got)
+	}
+
+	wrongPlace := fmt.Errorf("%w: %q exists at orders/order-flow/order-extractor, not under the domain/system given",
+		gitops.ErrComponentNotFound, "order-extractor")
+	if got := describeError(sum, wrongPlace); got != "order-extractor is not deployed yet" {
+		t.Errorf("describeError(wrong domain) = %q, want the not-deployed phrasing", got)
+	}
+
+	other := errors.New("no GitOps repository configured")
+	if got := describeError(sum, other); got != other.Error() {
+		t.Errorf("describeError(other) = %q, want the command's message unchanged", got)
 	}
 }
 

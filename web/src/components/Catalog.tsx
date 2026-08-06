@@ -1,7 +1,16 @@
 import { useEffect, useState } from 'react'
-import { api, type CatalogCheck, type CatalogEntry, type DeployState } from '../api'
+import {
+  api,
+  type CatalogCheck,
+  type CatalogEntry,
+  type Contract,
+  type ContractEdge,
+  type DeployState,
+  type Topology,
+} from '../api'
 import { Section } from './chrome'
 import { CatalogEnvironments } from './CatalogEnvironments'
+import { ContractDetail } from './ContractDetail'
 import { CategoryIcon, OpenInNewIcon } from '../icons'
 
 export interface DeployProps {
@@ -30,13 +39,19 @@ const PENDING_RETRY_CAP = 36
  *  it can go stale. */
 export function Catalog({ path, deploy }: Props) {
   const [entry, setEntry] = useState<CatalogEntry | null>(null)
+  const [selectedContract, setSelectedContract] = useState<ContractEdge | null>(null)
+  const [topology, setTopology] = useState<Topology | null>(null)
 
   useEffect(() => {
     if (!path) {
       setEntry(null)
+      setSelectedContract(null)
+      setTopology(null)
       return
     }
     setEntry(null)
+    setSelectedContract(null)
+    setTopology(null)
     let current = true
     let timer: ReturnType<typeof setTimeout> | undefined
     let attempts = 0
@@ -60,12 +75,32 @@ export function Catalog({ path, deploy }: Props) {
         })
     }
     load()
-
     return () => {
       current = false
       if (timer) clearTimeout(timer)
     }
   }, [path])
+
+  // The contract registry (schemas) rides on the topology payload, which the
+  // catalog endpoint does not embed. Fetch it once the entry names a system,
+  // matched by systemPath so the right system's registry is used.
+  useEffect(() => {
+    if (!entry?.systemPath) {
+      setTopology(null)
+      return
+    }
+    let current = true
+    api
+      .topologies()
+      .then((report) => {
+        if (!current) return
+        setTopology(report.topologies.find((t) => t.path === entry.systemPath) ?? null)
+      })
+      .catch(() => {})
+    return () => {
+      current = false
+    }
+  }, [entry?.systemPath])
 
   if (!path) {
     return <p className="empty">Select an integration to see its catalog entry.</p>
@@ -78,7 +113,7 @@ export function Catalog({ path, deploy }: Props) {
 
   return (
     <article className="detail">
-      <CatalogHeader entry={entry} />
+      <CatalogHeader entry={entry} onSelectContract={setSelectedContract} />
       <CatalogChecks checks={checks} />
       <CatalogEnvironments
         state={deploy.state}
@@ -86,14 +121,36 @@ export function Catalog({ path, deploy }: Props) {
         refreshing={deploy.refreshing}
         onRefresh={deploy.onRefresh}
       />
+      {selectedContract && (
+        <ContractDetail
+          entry={entry}
+          edge={selectedContract}
+          contract={contractFor(selectedContract, topology)}
+          onClose={() => setSelectedContract(null)}
+        />
+      )}
     </article>
   )
+}
+
+/** contractFor resolves the registry entry for a wire's contract, so its
+ *  schema renders when the host published one. The topology is only fetched
+ *  for this lookup — the registry the catalog payload does not carry. */
+function contractFor(edge: ContractEdge, topology: Topology | null): Contract | undefined {
+  if (!topology || !edge.contract) return undefined
+  return topology.contracts?.find((c) => c.name === edge.contract || c.shortName === edge.contract)
 }
 
 /** Component identity and contracts. In non-matched states the header renders
  *  from the scaffold record — provenance, not fact — and says where contracts
  *  went. */
-function CatalogHeader({ entry }: { entry: CatalogEntry }) {
+function CatalogHeader({
+  entry,
+  onSelectContract,
+}: {
+  entry: CatalogEntry
+  onSelectContract: (edge: ContractEdge) => void
+}) {
   const matched = entry.graphStatus === 'matched'
 
   return (
@@ -107,8 +164,8 @@ function CatalogHeader({ entry }: { entry: CatalogEntry }) {
 
       {matched ? (
         <div className="catalog-contracts">
-          <ContractGroup label="Publishes" edges={entry.publishes} />
-          <ContractGroup label="Subscribes" edges={entry.subscribes} />
+          <ContractGroup label="Publishes" edges={entry.publishes} onSelect={onSelectContract} />
+          <ContractGroup label="Subscribes" edges={entry.subscribes} onSelect={onSelectContract} />
         </div>
       ) : (
         <p className="muted">{contractsUnknown(entry)}</p>
@@ -134,9 +191,11 @@ function CatalogHeader({ entry }: { entry: CatalogEntry }) {
 function ContractGroup({
   label,
   edges,
+  onSelect,
 }: {
   label: string
   edges: CatalogEntry['publishes']
+  onSelect: (edge: ContractEdge) => void
 }) {
   return (
     <div className="catalog-contract-group">
@@ -146,9 +205,16 @@ function ContractGroup({
       ) : (
         <ul className="chips">
           {edges.map((e) => (
-            <li key={`${e.pubsub}/${e.topic}`} className="chip" title={`${e.pubsub}/${e.topic}`}>
-              {e.topic}
-              {e.contract && <span className="chip-sub">{e.contract}</span>}
+            <li key={`${e.pubsub}/${e.topic}`}>
+              <button
+                type="button"
+                className="chip chip-button"
+                title={`${e.pubsub}/${e.topic} — inspect the contract`}
+                onClick={() => onSelect(e)}
+              >
+                {e.topic}
+                {e.contract && <span className="chip-sub">{e.contract}</span>}
+              </button>
             </li>
           ))}
         </ul>

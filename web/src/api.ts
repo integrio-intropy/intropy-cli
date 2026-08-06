@@ -164,6 +164,10 @@ export interface ContractEdge {
   /** The topic's contract shortName when the registry carries it, the raw
    *  contract name otherwise — the flow view's lookup rule. */
   contract?: string
+  /** Every component the topic declares on each end of the wire — a contract
+   *  shown as the connection between components, not a name. */
+  publishers?: string[]
+  subscribers?: string[]
 }
 /** One finding about the integration's place in the system graph. */
 export interface CatalogCheck {
@@ -186,6 +190,9 @@ export interface CatalogEntry {
   /** Topology block kind; absent in every non-matched state. */
   kind?: string
   system?: string
+  /** System directory the topology record joins on — for matching the
+   *  contract registry when fetching /api/topology. */
+  systemPath?: string
   publishes?: ContractEdge[]
   subscribes?: ContractEdge[]
   /** "owner/repo" from the scaffold record — provenance only. */

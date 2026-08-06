@@ -861,6 +861,47 @@ body {
   flex: 0 0 90px;
 }
 
+/* A contract chip is a button: it opens the contract detail. */
+.chip-button {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  padding: 3px 10px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.chip-button:hover {
+  border-color: var(--accent);
+}
+
+.contract-detail {
+  margin-top: 30px;
+}
+
+/* The schema section renders placeholder data until the topology library
+   emits a real one — and says so, so it is never mistaken for the contract. */
+.contract-placeholder-note {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  padding: 8px 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  background: var(--surface-2);
+}
+
+.contract-fingerprint {
+  margin: 12px 0 0;
+  font-size: 11.5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 .catalog-repo {
   margin: 10px 0 0;
   font-size: 13px;
