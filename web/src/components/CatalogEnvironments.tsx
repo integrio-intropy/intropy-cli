@@ -52,7 +52,7 @@ function Ladder({
 
   return (
     <>
-      <p className={`deploy-verdict${status.consistent ? ' agrees' : ''}`}>{status.summary}</p>
+      <Verdict status={status} />
 
       {!argocdRead && rows.length > 0 && (
         <div className="banner error">
@@ -82,8 +82,8 @@ function Ladder({
             </tr>
           </thead>
           <tbody>
-            {rows.map((env) => (
-              <Row key={env.environment} env={env} argocdRead={argocdRead} />
+            {rows.map((env, i) => (
+              <Row key={env.environment} env={env} argocdRead={argocdRead} relation={relationToLast(rows, i)} />
             ))}
           </tbody>
         </table>
@@ -100,13 +100,103 @@ function Ladder({
   )
 }
 
-function Row({ env, argocdRead }: { env: EnvironmentStatus; argocdRead: boolean }) {
+/** The one-line answer under which the table sits. Agreement across every
+ *  environment is the claim the command exists to make, so it is worth a
+ *  sentence; a disagreement is positional and the markers on the rows say it
+ *  better than naming digests the table already shows. */
+function Verdict({ status }: { status: StatusResult }) {
+  if (!status.consistent) {
+    return <p className="deploy-verdict">environments disagree</p>
+  }
+  return <p className="deploy-verdict agrees">{status.summary}</p>
+}
+
+/** Whether an environment runs the same bits as the furthest-downstream one:
+ *  'same', 'ahead', 'behind', 'differs', or undefined when either side pins
+ *  no digest (nothing to compare, never a disagreement claim). 'ahead' and
+ *  'behind' are stated only when both sides carry a SemVer release to order
+ *  by; a digest difference with no version to rank it is 'differs'. The
+ *  furthest-downstream environment itself is always 'same'. */
+function relationToLast(rows: EnvironmentStatus[], index: number): 'same' | 'ahead' | 'behind' | 'differs' | undefined {
+  const self = rows[index]
+  const last = [...rows].reverse().find((r) => r.onboarded && pinSignature(r))
+  if (!last || last === self || !self.onboarded) return undefined
+  const mine = pinSignature(self)
+  if (!mine) return undefined
+  if (mine === pinSignature(last)) return 'same'
+
+  const mineV = self.release ? parseRelease(self.release) : undefined
+  const lastV = last.release ? parseRelease(last.release) : undefined
+  if (mineV && lastV) {
+    const cmp = compareRelease(mineV, lastV)
+    if (cmp < 0) return 'behind'
+    if (cmp > 0) return 'ahead'
+  }
+  return 'differs'
+}
+
+// [major, minor, patch, prerelease]. A release without a prerelease sorts
+// after every prerelease of the same core — SemVer ordering.
+type ParsedRelease = [number, number, number, string]
+
+function parseRelease(v: string): ParsedRelease | undefined {
+  const m = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/.exec(v)
+  if (!m) return undefined
+  return [Number(m[1]), Number(m[2]), Number(m[3]), m[4] ?? '']
+}
+
+function compareRelease(a: ParsedRelease, b: ParsedRelease): number {
+  for (let i = 0; i < 3; i++) {
+    if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1
+  }
+  if (a[3] === b[3]) return 0
+  if (a[3] === '') return 1
+  if (b[3] === '') return -1
+  return a[3] < b[3] ? -1 : 1
+}
+
+/** pinSignature is an environment's digests in declared order, or undefined
+ *  when any pin is missing — there is then no set of bits to compare. */
+function pinSignature(env: EnvironmentStatus): string | undefined {
+  const pins = env.pins ?? []
+  if (pins.length === 0) return undefined
+  const digests: string[] = []
+  for (const p of pins) {
+    if (!p.digest) return undefined
+    digests.push(p.digest)
+  }
+  return digests.join(' ')
+}
+
+function Row({
+  env,
+  argocdRead,
+  relation,
+}: {
+  env: EnvironmentStatus
+  argocdRead: boolean
+  relation?: 'same' | 'ahead' | 'behind' | 'differs'
+}) {
   const span = argocdRead ? 4 : 3
 
   return (
     <tr className={env.onboarded ? undefined : 'not-onboarded'}>
       <th>
         {env.environment}
+        {relation && relation !== 'same' && (
+          <span
+            className={`deploy-drift ${relation}`}
+            title={
+              relation === 'ahead'
+                ? 'runs a newer release than the furthest-downstream environment — an unpromoted change'
+                : relation === 'behind'
+                  ? 'runs an older release than the furthest-downstream environment'
+                  : 'runs different bits than the furthest-downstream environment'
+            }
+          >
+            {relation === 'ahead' ? '↑ ahead' : relation === 'behind' ? '↓ behind' : '≠ differs'}
+          </span>
+        )}
         {env.syncPolicy === 'manual' && <span className="deploy-tag">manual</span>}
         {env.pending && <span className="deploy-tag waiting">waiting</span>}
       </th>

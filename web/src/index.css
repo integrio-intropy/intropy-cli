@@ -696,6 +696,37 @@ body {
   background: var(--accent-soft);
 }
 
+/* Positional marker against the furthest-downstream environment. 'ahead' is
+   the pipeline working as intended (an unpromoted change), so it is marked
+   rather than alarming; 'behind' and 'differs' are the states worth a second
+   look. The arrow reads against the pipeline, not the clock. */
+.deploy-drift {
+  margin-left: 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  vertical-align: 1px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  background: var(--bg);
+}
+
+.deploy-drift.ahead {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.deploy-drift.behind,
+.deploy-drift.differs {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
 /* Every declared image, one per line. The terminal shows only the first because
    its row has no space; this does, so the note apologising for that is absent
    from the result the panel reads. */
