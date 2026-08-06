@@ -1,0 +1,37 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "f4128f64d13e",
+  "strategy": "manual-commit",
+  "branch": "feature/template-owns-codegen",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "README.md",
+    "cmd/intropy/sys_create.go",
+    "internal/system/create.go",
+    "internal/system/create_test.go",
+    "internal/system/mincli.go",
+    "internal/system/payload.go",
+    "internal/system/payload_test.go",
+    "internal/template/create.go",
+    "internal/template/create_test.go",
+    "internal/template/manifest.go",
+    "internal/template/manifest_test.go",
+    "internal/template/values_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/f4/128f64d13e/0/metadata.json",
+      "transcript": "/f4/128f64d13e/0/full.jsonl",
+      "compact_transcript": "/f4/128f64d13e/0/transcript.jsonl",
+      "content_hash": "/f4/128f64d13e/0/content_hash.txt",
+      "prompt": "/f4/128f64d13e/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 53602,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2040512,
+    "output_tokens": 18383,
+    "api_call_count": 49
+  }
+}

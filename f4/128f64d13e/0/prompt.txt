@@ -1,0 +1,1 @@
+Implement the plan in PLAN-template-owns-codegen.md. You should only focus on the changes to the cli. I will make the template changes separately. Work on a new branch off feature/v-next. Do not push anything and do not make a PR
