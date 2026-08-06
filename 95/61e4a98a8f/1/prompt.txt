@@ -1,0 +1,6 @@
+In the dashboard "component not found: no component.yaml for "order-loader" under domains/
+the repository defines: order-extractor" is printed when it is a new component. This is a bit confusing. It could simply state something like this component is not deployed yet. You can make the change directly on this branch. No push and no PR
+
+---
+
+It seems the text is still displayed. version v0.8.0-75-g334e89cd component not found: "order-extractor" exists at orders/order-flow/order-extractor, not under the domain/system given
