@@ -1,11 +1,3 @@
-i am getting argocd rejected token again, didnt we fix that?
-
----
-
-What does "verify pins nothing for harbor.intropy.io/entrovia/orders-order-flow-order-extractor, so it has never been deployed there" mean?
-
----
-
 I wonder if this could be done in a cleaner way "environments disagree: test runs sha256:f7550d1962fb; prod runs sha256:9f6822e2fa3b"
 
 In my terminal I have different characters indicating where I am related to origin. Perhaps we could use something similar in the table instead of the text? main [$✘!?] 
