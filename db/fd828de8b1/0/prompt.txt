@@ -1,9 +1,1 @@
-Do not making any changes. I am just after some feedback. Could the dashboard implemented here be implemented in a TUI instead? How much more/less complex would the new ui be? What would we loose? What would we gain? Should we?
-
----
-
-there is an old branch called feature/dashboard-templates which adds an additional page. Could that page work well in a TUI?
-
----
-
 could you implement a tui for the catalog page in a new branch off feature/v-next?
