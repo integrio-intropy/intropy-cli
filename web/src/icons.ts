@@ -19,6 +19,7 @@ export { default as SystemThemeIcon } from '@material-symbols/svg-400/outlined/b
 export { default as LeftPanelCloseIcon } from '@material-symbols/svg-400/outlined/left_panel_close.svg?react'
 export { default as LeftPanelOpenIcon } from '@material-symbols/svg-400/outlined/left_panel_open.svg?react'
 export { default as MemoryIcon } from '@material-symbols/svg-400/outlined/memory.svg?react'
+export { default as OpenInNewIcon } from '@material-symbols/svg-400/outlined/open_in_new.svg?react'
 export { default as OutputIcon } from '@material-symbols/svg-400/outlined/output.svg?react'
 export { default as RouteIcon } from '@material-symbols/svg-400/outlined/route.svg?react'
 export { default as SearchIcon } from '@material-symbols/svg-400/outlined/search.svg?react'

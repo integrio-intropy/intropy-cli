@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, type DeployState, type Integration, type IntegrationDetail } from './api'
+import { api, type DeployState, type Integration } from './api'
 import { Sidebar } from './components/Sidebar'
-import { DetailPanel } from './components/DetailPanel'
+import { Catalog } from './components/Catalog'
 import { FlowView } from './components/FlowView'
 import { DarkModeIcon, LightModeIcon, SystemThemeIcon } from './icons'
 
@@ -37,7 +37,6 @@ function resolveTheme(pref: ThemePref): 'light' | 'dark' {
 export default function App() {
   const [integrations, setIntegrations] = useState<Integration[] | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
-  const [detail, setDetail] = useState<IntegrationDetail | null>(null)
   const [deployState, setDeployState] = useState<DeployState | null>(null)
   const [deployLoading, setDeployLoading] = useState(false)
   const [deployRefreshing, setDeployRefreshing] = useState(false)
@@ -95,21 +94,10 @@ export default function App() {
     }
   }, [integrations, selected])
 
-  useEffect(() => {
-    if (!selected) {
-      setDetail(null)
-      return
-    }
-    setDetail(null)
-    api
-      .getIntegration(selected)
-      .then(setDetail)
-      .catch((e: unknown) => setError(errText(e)))
-  }, [selected])
-
   // Deployment state loads on its own, because it costs its own thing: reading
-  // it refreshes a GitOps checkout over the network, while the detail above is
-  // local files. Keeping them apart lets the panel render straight away.
+  // it refreshes a GitOps checkout over the network, while the catalog entry
+  // is local files plus a cached topology. Keeping them apart lets the page
+  // render straight away.
   //
   // A failed lookup is not an error banner: the reason travels inside the state
   // and belongs in the Deployment section, next to the Refresh that retries it.
@@ -190,9 +178,8 @@ export default function App() {
         <main className="content">
           {error && <div className="banner error">{error}</div>}
           {view === 'catalog' ? (
-            <DetailPanel
-              detail={detail}
-              hasSelection={!!selected}
+            <Catalog
+              path={selected}
               deploy={{
                 state: deployState,
                 loading: deployLoading,

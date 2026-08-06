@@ -14,7 +14,7 @@ import {
   HubIcon,
   TuneIcon,
 } from '../icons'
-import { Meta, Section } from './DetailPanel'
+import { Meta, Section } from './chrome'
 
 /** What the flow canvas has put under inspection: a pub/sub topic (internal
  *  message) or a connector (external message). */
@@ -116,8 +116,9 @@ function TopicDetail({
 
 /** SchemaTree renders a contract's JSON Schema as the field tree a developer
  *  actually asks for: name, type, hierarchy, required. Constructs it does not
- *  recognize degrade to a plain type label — never an error. */
-function SchemaTree({ schema }: { schema: JsonSchema }) {
+ *  recognize degrade to a plain type label — never an error. Exported for the
+ *  catalog's contract detail, which renders the same tree. */
+export function SchemaTree({ schema }: { schema: JsonSchema }) {
   const defs = schema.$defs ?? {}
   const rows: ReactNode[] = []
 

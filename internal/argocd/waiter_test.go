@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -303,28 +302,50 @@ func TestGetNotFoundNamesTheNamespace(t *testing.T) {
 // An expired token is reported as unreachable so a caller that has already
 // pushed warns rather than claiming the deployment failed.
 func TestUnauthorizedIsUnreachableWithLoginHint(t *testing.T) {
-	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
-		t.Run(fmt.Sprint(status), func(t *testing.T) {
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(status)
-			}))
-			t.Cleanup(srv.Close)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(srv.Close)
 
-			c, err := NewClient(Options{
-				Credentials: Credentials{Server: strings.TrimPrefix(srv.URL, "http://"), PlainText: true},
-				HTTP:        srv.Client(),
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			_, err = c.Get(context.Background(), "app")
-			if !errors.Is(err, ErrUnreachable) {
-				t.Fatalf("status %d: error %v should be ErrUnreachable", status, err)
-			}
-			if !strings.Contains(err.Error(), "argocd login") {
-				t.Errorf("error %q should tell the user to log in", err)
-			}
-		})
+	c, err := NewClient(Options{
+		Credentials: Credentials{Server: strings.TrimPrefix(srv.URL, "http://"), PlainText: true},
+		HTTP:        srv.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.Get(context.Background(), "app")
+	if !errors.Is(err, ErrUnreachable) {
+		t.Fatalf("error %v should be ErrUnreachable", err)
+	}
+	if !strings.Contains(err.Error(), "argocd login") {
+		t.Errorf("error %q should tell the user to log in", err)
+	}
+}
+
+// ArgoCD answers 403 rather than 404 for an application the caller may not
+// see, so the response cannot leak whether it exists. Either way the
+// application is not readable: the caller treats it as not found, not as an
+// authentication failure — the token was accepted.
+func TestForbiddenIsAppNotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	t.Cleanup(srv.Close)
+
+	c, err := NewClient(Options{
+		Credentials: Credentials{Server: strings.TrimPrefix(srv.URL, "http://"), PlainText: true},
+		HTTP:        srv.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.Get(context.Background(), "app")
+	if !errors.Is(err, ErrAppNotFound) {
+		t.Fatalf("error %v should be ErrAppNotFound", err)
+	}
+	if strings.Contains(err.Error(), "argocd login") {
+		t.Errorf("error %q must not send the user to re-login for an accepted token", err)
 	}
 }
 

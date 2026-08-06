@@ -128,6 +128,11 @@ type Application struct {
 			Phase   string `json:"phase"`
 			Message string `json:"message"`
 		} `json:"operationState"`
+		Summary struct {
+			// Images is what ArgoCD observed running — the live digests, as
+			// opposed to what the overlay pins. Ground truth for "what runs".
+			Images []string `json:"images"`
+		} `json:"summary"`
 	} `json:"status"`
 }
 
@@ -281,10 +286,17 @@ func (c *Client) do(ctx context.Context, method, path string, body io.Reader, ou
 	defer resp.Body.Close()
 
 	switch {
-	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden:
+	case resp.StatusCode == http.StatusUnauthorized:
 		// Tokens expire, and the raw body is unhelpful. Treated as unreachable
 		// so a caller that has already pushed warns rather than fails.
 		return fmt.Errorf("%w: %s rejected the token (run 'argocd login %s')", ErrUnreachable, c.base.Host, c.base.Host)
+	case resp.StatusCode == http.StatusForbidden:
+		// ArgoCD answers 403 rather than 404 for an application the caller may
+		// not see, so the response cannot leak whether it exists. The two are
+		// indistinguishable by design; either way the application is not
+		// readable, and reporting an authentication failure would send the user
+		// to re-login for a token the server accepted.
+		return fmt.Errorf("%w: %s (a 403 can also mean the application exists but your account may not read it)", ErrAppNotFound, describeNotFound(c.appNamespace))
 	case resp.StatusCode == http.StatusNotFound:
 		return fmt.Errorf("%w: %s", ErrAppNotFound, describeNotFound(c.appNamespace))
 	case resp.StatusCode >= 300:

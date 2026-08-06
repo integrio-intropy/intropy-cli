@@ -52,6 +52,7 @@ type apiServer struct {
 	// explicit refresh.
 	topoMu      sync.Mutex
 	topoLoaded  bool
+	topoWarming bool
 	topoEntries []topology.Entry
 	topoErrs    []string
 
@@ -129,6 +130,7 @@ func newHandler(root, version string, p providers) (http.Handler, error) {
 	mux.HandleFunc("GET /api/health", api.health)
 	mux.HandleFunc("GET /api/integrations", api.listIntegrations)
 	mux.HandleFunc("GET /api/integrations/{path...}", api.getIntegration)
+	mux.HandleFunc("GET /api/catalog/{path...}", api.catalog)
 	mux.HandleFunc("GET /api/flow", api.flow)
 	mux.HandleFunc("GET /api/topology", api.topologies)
 	mux.HandleFunc("POST /api/topology/refresh", api.refreshTopologies)
@@ -309,6 +311,45 @@ func (s *apiServer) cachedTopologies(ctx context.Context, force bool) ([]topolog
 		s.topoErrs, s.topoLoaded = errs, true
 	}
 	return s.topoEntries, s.topoErrs
+}
+
+// topologiesLoaded reports whether the topology cache has been computed, and
+// serves the cached result if it has. It never blocks on the computation:
+// computing runs every host's graph verb (a dotnet build on first run) under
+// one mutex, and the catalog endpoint must answer promptly rather than queue
+// behind that. Instead the caller asks warmTopologies to compute in the
+// background, so the pending answer becomes a matched one on the next fetch
+// without anyone visiting the flow view first.
+func (s *apiServer) topologiesLoaded() (loaded bool, entries []topology.Entry, errs []string) {
+	s.topoMu.Lock()
+	defer s.topoMu.Unlock()
+	return s.topoLoaded, s.topoEntries, s.topoErrs
+}
+
+// warmTopologies triggers the topology computation in the background when the
+// cache is cold. Only one warm-up runs at a time — cachedTopologies
+// serialises on topoMu, and warming guards against stacking requests behind
+// it. A detached context keeps the hosts' graph verbs running after the
+// request that prompted them has been answered.
+func (s *apiServer) warmTopologies() {
+	s.topoMu.Lock()
+	if s.topoLoaded || s.topoWarming {
+		s.topoMu.Unlock()
+		return
+	}
+	s.topoWarming = true
+	s.topoMu.Unlock()
+
+	go func() {
+		defer func() {
+			s.topoMu.Lock()
+			s.topoWarming = false
+			s.topoMu.Unlock()
+		}()
+		// The catalog requests that triggered this are already answered; the
+		// computation is for the next one.
+		_, _ = s.cachedTopologies(context.Background(), false)
+	}()
 }
 
 // messageDocs reads the authored connector payload descriptions beside a

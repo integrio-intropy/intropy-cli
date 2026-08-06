@@ -198,6 +198,13 @@ type StatusResult struct {
 	// The plain output adds one more note that is about its own table rather
 	// than about the deployment, and so is deliberately absent here.
 	Notes []string `json:"notes,omitempty"`
+
+	// PromotesFrom is the promotion graph restricted to this component's
+	// environments: for each environment, the environments a promotion into it
+	// may draw from. It rides on the result because deploy.yaml lives in the
+	// GitOps repository, which a consumer without a session cannot read.
+	// Absent when the component's environments declare no promotion edges.
+	PromotesFrom map[string][]string `json:"promotesFrom,omitempty"`
 }
 
 // EnvironmentStatus is one environment's row.
@@ -235,6 +242,11 @@ type EnvironmentStatus struct {
 	SyncStatus     string `json:"syncStatus,omitempty"`
 	HealthStatus   string `json:"healthStatus,omitempty"`
 	SyncedRevision string `json:"syncedRevision,omitempty"`
+
+	// LiveImages is what ArgoCD observed running in the cluster, as opposed
+	// to what the overlay pins. Absent under the same rule as SyncStatus:
+	// its absence says nothing about the overlay or the cluster.
+	LiveImages []string `json:"liveImages,omitempty"`
 
 	// Pending reports a committed overlay change ArgoCD has not applied. For a
 	// manual-sync environment that is the normal resting state of an unspent
