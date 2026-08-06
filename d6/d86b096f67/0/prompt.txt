@@ -1,0 +1,12 @@
+I wonder if this could be done in a cleaner way "environments disagree: test runs sha256:f7550d1962fb; prod runs sha256:9f6822e2fa3b"
+
+In my terminal I have different characters indicating where I am related to origin. Perhaps we could use something similar in the table instead of the text? main [$✘!?] 
+We only care if we are ahead of prod, not what the different versions are (that you can see in the version/image column)
+
+---
+
+shut down the running dashboard so that I can start it myself
+
+---
+
+then I think we can remove "environments disagree"
