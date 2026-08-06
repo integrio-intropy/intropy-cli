@@ -10,9 +10,9 @@ import (
 	"github.com/integrio-intropy/intropy-cli/internal/topology"
 )
 
-// A record covering what the model has to derive: two wired components, a topic
-// with a subscriber that is not a component of this system, two transports, and
-// an unwired component.
+// A record covering what the model has to derive: two wired components, a
+// topic with a subscriber that is not a component of this system, two
+// connectors, and an unwired component.
 const initTopologyRecord = `{
   "apiVersion": "topology.intropy.io/v1",
   "kind": "SystemTopology",
@@ -43,10 +43,8 @@ const initTopologyRecord = `{
   ],
   "connectors": [
     {"name": "price-master", "externalSystem": "price-master",
-     "transport": {"type": "sftp", "supportsInput": true, "supportsOutput": true},
      "directions": ["in"], "usedBy": ["extractor"]},
     {"name": "erp", "externalSystem": "erp",
-     "transport": {"type": "http", "supportsInput": false, "supportsOutput": true},
      "directions": ["out"], "usedBy": ["erp-loader"]}
   ]
 }`
@@ -133,56 +131,14 @@ func TestInitModelConnectors(t *testing.T) {
 		t.Errorf("connectors not sorted: %q, %q", m.Connectors[0].Name, m.Connectors[1].Name)
 	}
 	erp := m.Connectors[0]
-	if erp.Transport != "http" {
-		t.Errorf("erp transport = %q", erp.Transport)
+	if erp.ExternalSystem != "erp" {
+		t.Errorf("erp externalSystem = %q", erp.ExternalSystem)
 	}
 	if strings.Join(erp.Directions, ",") != "out" {
 		t.Errorf("erp directions = %v", erp.Directions)
 	}
 	if strings.Join(erp.AppIDs, ",") != "erp-loader" {
 		t.Errorf("erp appIds = %v", erp.AppIDs)
-	}
-}
-
-// A connector with a declared deployed transport renders with the deployed
-// type; one without keeps its local type. This is the whole point of the
-// deployed-transport field: F5 runs on the local transport, manifests on the
-// deployed one.
-func TestInitModelConnectorsPreferDeployedTransport(t *testing.T) {
-	topo, err := topology.Decode(strings.NewReader(`{
-		"apiVersion": "topology.intropy.io/v1",
-		"kind": "SystemTopology",
-		"system": "distribution",
-		"components": [
-			{"name": "order-loader", "kind": "loader",
-			 "connectors": [{"connector": "erp", "direction": "out"}]},
-			{"name": "noop", "kind": "loader",
-			 "connectors": [{"connector": "archive", "direction": "out"}]}
-		],
-		"connectors": [
-			{"name": "erp",
-			 "transport": {"type": "file", "supportsInput": true, "supportsOutput": true},
-			 "deployedTransport": {"type": "sftp", "supportsInput": false, "supportsOutput": true},
-			 "directions": ["out"], "usedBy": ["order-loader"]},
-			{"name": "archive",
-			 "transport": {"type": "file", "supportsInput": true, "supportsOutput": true},
-			 "directions": ["out"], "usedBy": ["noop"]}
-		]
-	}`))
-	if err != nil {
-		t.Fatalf("Decode: %v", err)
-	}
-	m := newInitModel(topo, nil)
-
-	byName := make(map[string]InitConnector, len(m.Connectors))
-	for _, c := range m.Connectors {
-		byName[c.Name] = c
-	}
-	if got := byName["erp"].Transport; got != "sftp" {
-		t.Errorf("erp transport = %q, want deployed %q", got, "sftp")
-	}
-	if got := byName["archive"].Transport; got != "file" {
-		t.Errorf("archive transport = %q, want local fallback %q", got, "file")
 	}
 }
 

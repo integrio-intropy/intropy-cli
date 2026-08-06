@@ -114,15 +114,14 @@ func TestLocalTemplatesRenderAndBuild(t *testing.T) {
 	}
 }
 
-// A connector whose topology record declares a deployed transport renders its
-// Dapr binding with the deployed spec.type, not the local one: F5 runs on the
-// local transport, the rendered manifests on the deployed one.
-func TestLocalTemplatesRenderDeployedTransportBinding(t *testing.T) {
+// The topology mints only a connector's name and scopes; the binding's
+// spec.type and metadata are owned by the rendered manifests, so every
+// connector renders as a REPLACE-ME scaffold.
+func TestLocalTemplatesRenderConnectorBindingScaffold(t *testing.T) {
 	requireKustomize(t)
 	root := localTemplatesRoot(t)
 	f := newInitFixtureWith(t, localTemplateEntries(t, root))
 
-	// A system whose only connector is a local file folder that deploys as SFTP.
 	f.topologyFile = filepath.Join(t.TempDir(), "topology.json")
 	if err := os.WriteFile(f.topologyFile, []byte(`{
 		"apiVersion": "topology.intropy.io/v1",
@@ -134,8 +133,6 @@ func TestLocalTemplatesRenderDeployedTransportBinding(t *testing.T) {
 		],
 		"connectors": [
 			{"name": "erp",
-			 "transport": {"type": "file", "supportsInput": true, "supportsOutput": true},
-			 "deployedTransport": {"type": "sftp", "supportsInput": false, "supportsOutput": true},
 			 "directions": ["out"], "usedBy": ["order-loader"]}
 		]
 	}`), 0o644); err != nil {
@@ -151,18 +148,18 @@ func TestLocalTemplatesRenderDeployedTransportBinding(t *testing.T) {
 	bindings := readTreeFile(t, work, "domains/sales/distribution/host/base/bindings/bindings.yaml")
 
 	for _, want := range []string{
-		"type: bindings.sftp",
-		"REPLACE-ME-SFTP-ADDRESS",
-		"REPLACE-ME-SFTP-USERNAME",
-		"REPLACE-ME-SFTP-ROOT-PATH",
+		"name: erp",
+		"type: REPLACE-ME-BINDING-TYPE",
+		"  - order-loader",
 	} {
 		if !strings.Contains(bindings, want) {
 			t.Errorf("rendered bindings.yaml missing %q\n%s", want, bindings)
 		}
 	}
-	// The deployed transport replaces the local one; the file binding must not render.
-	if strings.Contains(bindings, "bindings.localstorage") {
-		t.Errorf("rendered bindings.yaml carries the local transport for the erp connector\n%s", bindings)
+	// No binding type is pre-chosen: the topology has no transport to switch
+	// on, so no spec.type line names a real Dapr binding.
+	if strings.Contains(bindings, "type: bindings.") {
+		t.Errorf("rendered bindings.yaml pre-chose a binding type\n%s", bindings)
 	}
 }
 

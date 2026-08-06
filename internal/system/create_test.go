@@ -54,9 +54,6 @@ spec:
       sharedContracts:
         type: object
         additionalProperties: true
-      extractorSchedule:
-        type: string
-        default: "* * * * *"
   values:
     projectName: '{{ .name | replace "-" " " | title | replace " " "" }}'
     systemClass: '{{ .name | replace "-" " " | title | replace " " "" }}System'
@@ -82,7 +79,7 @@ const connectorsCSTmpl = `using Intropy.Topology;
 public static class Connectors
 {
 {{- range .connectors }}
-    public static readonly ConnectorRef {{ .field }} = ConnectorRef.Define("{{ .name }}", Transport.Default());
+    public static readonly ConnectorRef {{ .field }} = ConnectorRef.Define("{{ .name }}");
 {{- end }}
 }
 `
@@ -110,8 +107,7 @@ const systemClassCSTmpl = `public sealed class {{ .systemClass }} : ISystemDefin
 {{- if .connectorField }}
             .From(Connectors.{{ .connectorField }})
 {{- end }}
-            .Publishes(Topics.{{ .topicField }})
-            .WithSchedule("{{ $.extractorSchedule }}");
+            .Publishes(Topics.{{ .topicField }});
 {{- else }}
         builder.AddLoader("{{ .appId }}")
             .Subscribes(Topics.{{ .topicField }})
@@ -297,7 +293,6 @@ func TestCreateAssemblesSystem(t *testing.T) {
 		`builder.AddExtractor("order-extractor")`,
 		".From(Connectors.OrderExtractorSource)",
 		".Publishes(Topics.Orders)",
-		`.WithSchedule("* * * * *")`,
 		`builder.AddLoader("order-loader")`,
 		".Subscribes(Topics.Orders)",
 		".To(Connectors.OrderLoaderDestination)",
@@ -312,8 +307,8 @@ func TestCreateAssemblesSystem(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		`ConnectorRef OrderExtractorSource = ConnectorRef.Define("order-extractor-source", Transport.Default());`,
-		`ConnectorRef OrderLoaderDestination = ConnectorRef.Define("order-loader-destination", Transport.Default());`,
+		`ConnectorRef OrderExtractorSource = ConnectorRef.Define("order-extractor-source");`,
+		`ConnectorRef OrderLoaderDestination = ConnectorRef.Define("order-loader-destination");`,
 	} {
 		if !strings.Contains(string(connectors), want) {
 			t.Errorf("Connectors.cs missing %q:\n%s", want, connectors)
