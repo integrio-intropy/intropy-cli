@@ -1,0 +1,31 @@
+Analyse this request for feasability and added complexity to the solution. Also try to determine if changes should go into the cli or the template library. Only analyze no code changes.
+
+I would like sys create to also create an slnx file with all projects added to it. It would be preferable if the cli did not contain any slnx template but rather send a list of projects to the template library
+
+---
+
+Rework the plan with an extended scope. Can we move Post-render codegen to the template instead? The cli currently knows to much about setting up c# projects
+
+---
+
+Should we move the slnx problem out of the plan for now so that we do not need to tackle "Rendering outside the host dir" yet?
+
+---
+
+ok can you write a plan that I can give to another agent?
+
+---
+
+Can you launch a review agent with pi --print?
+
+---
+
+You are reviewing an implementation plan for handoff to another agent. Read PLAN-template-owns-codegen.md in this repo, then verify it against the actual code it references (internal/system/create.go, internal/system/codegen.go, internal/system/csproj.go, internal/system/assemble.go, internal/template/manifest.go, internal/template/values.go, internal/template/render.go). Report: (1) factual errors or stale claims in the plan, (2) gaps that would block the implementing agent, (3) risks the plan understates, (4) anything over-specified that should be left to the implementer. Be terse; numbered findings only.
+
+---
+
+Say the word READY and nothing else.
+
+---
+
+yes update the plan. We should note that we should not keep anything for backwards compatibility. All this is in preview anyway

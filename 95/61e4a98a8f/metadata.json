@@ -3,7 +3,7 @@
   "checkpoint_id": "9561e4a98a8f",
   "strategy": "manual-commit",
   "branch": "feature/catalog-redesign",
-  "checkpoints_count": 9,
+  "checkpoints_count": 15,
   "files_touched": [
     "internal/dashboard/catalog.go",
     "internal/dashboard/deploy.go",
@@ -28,13 +28,20 @@
       "compact_transcript": "/95/61e4a98a8f/1/transcript.jsonl",
       "content_hash": "/95/61e4a98a8f/1/content_hash.txt",
       "prompt": "/95/61e4a98a8f/1/prompt.txt"
+    },
+    {
+      "metadata": "/95/61e4a98a8f/2/metadata.json",
+      "transcript": "/95/61e4a98a8f/2/full.jsonl",
+      "compact_transcript": "/95/61e4a98a8f/2/transcript.jsonl",
+      "content_hash": "/95/61e4a98a8f/2/content_hash.txt",
+      "prompt": "/95/61e4a98a8f/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 43841,
+    "input_tokens": 87653,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 9247936,
-    "output_tokens": 19838,
-    "api_call_count": 76
+    "cache_read_tokens": 10864192,
+    "output_tokens": 41504,
+    "api_call_count": 119
   }
 }
