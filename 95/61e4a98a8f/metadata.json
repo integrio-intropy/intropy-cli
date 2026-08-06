@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "9561e4a98a8f",
+  "strategy": "manual-commit",
+  "branch": "feature/catalog-redesign",
+  "checkpoints_count": 7,
+  "files_touched": [
+    "internal/dashboard/catalog.go",
+    "web/src/api.ts",
+    "web/src/components/Catalog.tsx",
+    "web/src/components/ContractDetail.tsx",
+    "web/src/components/FlowDetail.tsx",
+    "web/src/index.css"
+  ],
+  "sessions": [
+    {
+      "metadata": "/95/61e4a98a8f/0/metadata.json",
+      "transcript": "/95/61e4a98a8f/0/full.jsonl",
+      "compact_transcript": "/95/61e4a98a8f/0/transcript.jsonl",
+      "content_hash": "/95/61e4a98a8f/0/content_hash.txt",
+      "prompt": "/95/61e4a98a8f/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 10902,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 8360576,
+    "output_tokens": 11644,
+    "api_call_count": 40
+  }
+}

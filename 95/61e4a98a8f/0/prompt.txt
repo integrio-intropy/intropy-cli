@@ -1,0 +1,28 @@
+then I think we can remove "environments disagree"
+
+---
+
+Looks great. Do not change anything yet but I feel that the whole contracts thing has great potential but is very limited now. Do you have any suggestions on how we can improve it?
+
+---
+
+I am not able to change the topology model at the moment. Could you make the graphical changes but use placeholders where you arent getting any data? This is just for getting a feeling of it so dont commit anything
+
+---
+
+can you shutdown the dashboard?
+
+---
+
+where is the connector name read from?
+
+---
+
+where is the graph command reading it from?
+
+---
+
+I am looking at this system
+/Users/robinhultman/dev/intropy/customers/entrovia/integrations/domains/orders/order-flow/order-flow
+
+i have changed the name of the connector from order-extractor-source to "fno" but it does not have an effect on the graph
