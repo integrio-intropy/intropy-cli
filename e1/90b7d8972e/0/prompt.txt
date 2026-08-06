@@ -1,0 +1,1 @@
+after the recent changes the integration flow of the dashboard have stopped working. There is only a blank page

@@ -1,0 +1,52 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "e190b7d8972e",
+  "session_id": "019fd6b9-c54f-7861-b8c0-c5178b4de2b7",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-06T11:02:48.547691Z",
+  "branch": "fix/dashboard-flow-transport",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "web/src/api.ts",
+    "web/src/components/FlowDetail.tsx",
+    "web/src/components/FlowView.tsx"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "56dfb7b4fa3f",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 33109,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 507392,
+    "output_tokens": 3720,
+    "api_call_count": 23
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-06T11:02:48.536041Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 6,
+    "human_removed": 6,
+    "total_committed": 0,
+    "total_lines_changed": 12,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 818,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "PLAN-catalog-redesign.md": 384,
+        "PLAN-template-owns-codegen.md": 374
+      }
+    }
+  ]
+}

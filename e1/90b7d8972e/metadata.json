@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "e190b7d8972e",
+  "strategy": "manual-commit",
+  "branch": "fix/dashboard-flow-transport",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "web/src/api.ts",
+    "web/src/components/FlowDetail.tsx",
+    "web/src/components/FlowView.tsx"
+  ],
+  "sessions": [
+    {
+      "metadata": "/e1/90b7d8972e/0/metadata.json",
+      "transcript": "/e1/90b7d8972e/0/full.jsonl",
+      "compact_transcript": "/e1/90b7d8972e/0/transcript.jsonl",
+      "content_hash": "/e1/90b7d8972e/0/content_hash.txt",
+      "prompt": "/e1/90b7d8972e/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 33109,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 507392,
+    "output_tokens": 3720,
+    "api_call_count": 23
+  }
+}
