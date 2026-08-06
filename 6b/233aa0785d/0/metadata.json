@@ -1,0 +1,55 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "6b233aa0785d",
+  "session_id": "019fd274-10fb-7e44-8eeb-55028213b865",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-06T04:12:04.624036Z",
+  "branch": "feature/catalog-redesign",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "internal/argocd/config.go",
+    "internal/argocd/config_test.go"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "ab4f5d8ca1a9",
+  "checkpoint_transcript_start": 496,
+  "transcript_lines_at_start": 496,
+  "compact_transcript_start": 260,
+  "token_usage": {
+    "input_tokens": 4806,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2801728,
+    "output_tokens": 4931,
+    "api_call_count": 15
+  },
+  "session_metrics": {
+    "turn_count": 17
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-06T04:12:04.557209Z",
+    "agent_lines": 53,
+    "agent_removed": 19,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 53,
+    "total_lines_changed": 72,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 444,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "PLAN-catalog-redesign.md": 384
+      }
+    }
+  ]
+}

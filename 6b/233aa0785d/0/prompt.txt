@@ -1,0 +1,9 @@
+We should go for 1. Can you try again?
+
+---
+
+can you shutdown the running dashboard?
+
+---
+
+i am getting argocd rejected token again, didnt we fix that?
