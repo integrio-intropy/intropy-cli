@@ -243,6 +243,73 @@ func TestResolveRejectsDerivedNameCollision(t *testing.T) {
 	}
 }
 
+// Arrays of objects supplied programmatically (SetValues) must pass schema
+// validation untouched and stay rangeable by the render engine: callers like
+// system.Create build the whole value payload this way.
+func TestResolveArrayOfObjectsSetValue(t *testing.T) {
+	tmpl := buildTemplate(map[string]any{
+		"type":     "object",
+		"required": []any{"topics"},
+		"properties": map[string]any{
+			"topics": map[string]any{
+				"type":     "array",
+				"minItems": 1,
+				"items": map[string]any{
+					"type":                 "object",
+					"required":             []any{"name"},
+					"additionalProperties": true,
+					"properties": map[string]any{
+						"name":  map[string]any{"type": "string"},
+						"field": map[string]any{"type": "string"},
+					},
+				},
+			},
+		},
+	}, []string{"topics"}, nil)
+
+	sets := map[string]any{
+		"topics": []any{
+			map[string]any{"name": "orders", "field": "Orders", "extra": "untouched"},
+		},
+	}
+	values, err := Resolve(tmpl, nil, nil, sets, nil)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	topics, ok := values["topics"].([]any)
+	if !ok || len(topics) != 1 {
+		t.Fatalf("topics = %#v", values["topics"])
+	}
+	topic := topics[0].(map[string]any)
+	if topic["field"] != "Orders" || topic["extra"] != "untouched" {
+		t.Errorf("set value was mangled: %#v", topic)
+	}
+
+	dir := t.TempDir()
+	skel := filepath.Join(dir, "skeleton")
+	if err := os.MkdirAll(skel, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "{{ range .topics }}{{ .name }}={{ .field }};{{ end }}\n"
+	if err := os.WriteFile(filepath.Join(skel, "out.txt.tmpl"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "out")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := Render(skel, out, values); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(out, "out.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "orders=Orders;\n" {
+		t.Errorf("rendered %q, want %q", got, "orders=Orders;\n")
+	}
+}
+
 func TestParseSets(t *testing.T) {
 	out, err := ParseSets([]string{"k=v", "a=b=c"})
 	if err != nil {

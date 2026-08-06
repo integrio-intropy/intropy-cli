@@ -1,9 +1,10 @@
 // Package system assembles scaffolded integrations into a system host. It
 // scans the workspace for the .intropy/scaffold.json records `int create`
-// left behind, renders the system-host template with the template
-// package's machinery, and generates the typed system declaration —
-// Topics.cs and the ISystemDefinition class — from what the scaffolds
-// recorded.
+// left behind, validates them into a system model, and builds the value
+// payload the system-host template renders every declaration file from —
+// Topics.cs, Connectors.cs, the development and system definitions, and
+// the csproj. The template library owns all generated content; this
+// package owns workspace knowledge only.
 package system
 
 import (
@@ -22,7 +23,7 @@ import (
 )
 
 // hostTemplate is the directory in the templates repo holding the system
-// host's shell and placeholders.
+// host: the shell plus every declaration file, rendered from the payload.
 const hostTemplate = "system-host"
 
 type CreateOptions struct {
@@ -82,9 +83,9 @@ func (o *CreateOptions) applyDefaults() {
 }
 
 // Create runs the full assembly: scan the workspace for scaffold records,
-// validate them into a system model, render the system-host template, and
-// generate the declaration files from the model. All local validation
-// happens before any network I/O.
+// validate them into a system model, build the value payload, and render
+// the system-host template with it. All local validation happens before
+// any network I/O.
 func Create(ctx context.Context, opts CreateOptions) error {
 	opts.applyDefaults()
 	if opts.Name == "" {
@@ -111,7 +112,7 @@ func Create(ctx context.Context, opts CreateOptions) error {
 	}
 	model.Name = kebab
 
-	include, err := contractsInclude(opts.OutputDir, model.Shared)
+	payload, err := buildPayload(model, opts.OutputDir, kebab)
 	if err != nil {
 		return err
 	}
@@ -120,9 +121,9 @@ func Create(ctx context.Context, opts CreateOptions) error {
 		Template:      hostTemplate,
 		OutputDir:     opts.OutputDir,
 		Version:       opts.Version,
-		SetValues:     map[string]any{"name": kebab},
+		SetValues:     payload,
 		Force:         opts.Force,
-		NoInput:       true, // the template's contract: only `name`, never prompt
+		NoInput:       true, // the template's values come from the payload, never prompts
 		Stdin:         strings.NewReader(""),
 		Stdout:        opts.Stdout,
 		Stderr:        opts.Stderr,
@@ -136,8 +137,8 @@ func Create(ctx context.Context, opts CreateOptions) error {
 	}
 
 	// The template derives projectName/systemClass from the name; reading
-	// them back from the record it just wrote makes CLI/template
-	// derivation drift impossible.
+	// them back from the record it just wrote keeps the result summary
+	// honest about what was rendered.
 	record, err := template.LoadScaffold(filepath.Join(opts.OutputDir, filepath.FromSlash(template.ScaffoldRelPath)))
 	if err != nil {
 		return err
@@ -148,34 +149,6 @@ func Create(ctx context.Context, opts CreateOptions) error {
 	}
 	if model.SystemClass, err = stringValue(hostEntry, "systemClass"); err != nil {
 		return fmt.Errorf("template %s did not derive the system class name: %w", hostTemplate, err)
-	}
-
-	if err := writeTopicsFile(opts.OutputDir, model); err != nil {
-		return err
-	}
-	withDevelopment, err := writeDevelopmentFile(opts.OutputDir, model, warnf)
-	if err != nil {
-		return err
-	}
-	withConnectors, err := writeConnectorsFile(opts.OutputDir, model, withDevelopment, warnf)
-	if err != nil {
-		return err
-	}
-	if err := writeSystemClassFile(opts.OutputDir, model, withConnectors, withDevelopment); err != nil {
-		return err
-	}
-	if withConnectors {
-		// The drop folders behind the connectors' local resolutions, so an
-		// extractor's first poll doesn't hit a missing directory.
-		for _, c := range model.Connectors {
-			if err := os.MkdirAll(filepath.Join(opts.OutputDir, "test", c.Name), 0o755); err != nil {
-				return fmt.Errorf("create connector test folder: %w", err)
-			}
-		}
-	}
-	csproj := filepath.Join(opts.OutputDir, model.ProjectName+".SystemHost.csproj")
-	if err := insertProjectReference(csproj, include); err != nil {
-		return err
 	}
 
 	fmt.Fprintf(opts.Stderr, "assembled system %q: %d component(s), %d topic(s), %d connector(s), contracts from %s\n",

@@ -17,9 +17,10 @@ import (
 	"github.com/integrio-intropy/intropy-cli/internal/template"
 )
 
-// systemHostTemplateYAML is a trimmed but faithful copy of the real
-// system-host template manifest: same required parameter, same pattern,
-// same spec.values derivations.
+// systemHostTemplateYAML is a trimmed but faithful copy of the
+// payload-contract system-host manifest: the payload lists are required
+// (an old CLI that only sets `name` fails validation), and the
+// projectName/systemClass derivations match the real template.
 const systemHostTemplateYAML = `apiVersion: intropy.dev/v1
 kind: Template
 metadata:
@@ -30,15 +31,97 @@ metadata:
 spec:
   parameters:
     type: object
-    required: [name]
+    required: [name, topics, connectors, components, sharedContracts]
     properties:
       name:
         type: string
         pattern: "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$"
+      topics:
+        type: array
+        items:
+          type: object
+          additionalProperties: true
+      connectors:
+        type: array
+        items:
+          type: object
+          additionalProperties: true
+      components:
+        type: array
+        items:
+          type: object
+          additionalProperties: true
+      sharedContracts:
+        type: object
+        additionalProperties: true
+      extractorSchedule:
+        type: string
+        default: "* * * * *"
   values:
     projectName: '{{ .name | replace "-" " " | title | replace " " "" }}'
     systemClass: '{{ .name | replace "-" " " | title | replace " " "" }}System'
-    pubsub: 'pubsub'
+`
+
+// The fixture declaration templates mirror the shapes the template library
+// renders from the payload. The assertions below check the CLI assembled
+// the payload correctly — the template repo owns the exact C# text.
+
+const topicsCSTmpl = `using Intropy.Topology;
+using {{ .sharedContracts.name }};
+
+public static class Topics
+{
+{{- range .topics }}
+    public static readonly TopicRef<{{ .contract }}> {{ .field }} = TopicRef<{{ .contract }}>.Define("{{ .pubsub }}", "{{ .name }}");
+{{- end }}
+}
+`
+
+const connectorsCSTmpl = `using Intropy.Topology;
+
+public static class Connectors
+{
+{{- range .connectors }}
+    public static readonly ConnectorRef {{ .field }} = ConnectorRef.Define("{{ .name }}", Transport.Default());
+{{- end }}
+}
+`
+
+const developmentCSTmpl = `public sealed class {{ .projectName }}Development : IDevelopmentDefinition
+{
+    public void Define(DevelopmentBuilder development)
+    {
+{{- range .connectors }}
+        development.Files(Connectors.{{ .field }}).RootPath("./test/{{ .name }}");
+{{- end }}
+    }
+}
+`
+
+const systemClassCSTmpl = `public sealed class {{ .systemClass }} : ISystemDefinition
+{
+    public string SystemName => "{{ .name }}";
+
+    public void Define(SystemBuilder builder)
+    {
+{{- range .components }}
+{{- if eq .kind "extractor" }}
+        builder.AddExtractor("{{ .appId }}")
+{{- if .connectorField }}
+            .From(Connectors.{{ .connectorField }})
+{{- end }}
+            .Publishes(Topics.{{ .topicField }})
+            .WithSchedule("{{ $.extractorSchedule }}");
+{{- else }}
+        builder.AddLoader("{{ .appId }}")
+            .Subscribes(Topics.{{ .topicField }})
+{{- if .connectorField }}
+            .To(Connectors.{{ .connectorField }})
+{{- end }};
+{{- end }}
+{{- end }}
+    }
+}
 `
 
 const systemHostCsprojTmpl = `<Project Sdk="Microsoft.NET.Sdk">
@@ -48,6 +131,10 @@ const systemHostCsprojTmpl = `<Project Sdk="Microsoft.NET.Sdk">
         <RootNamespace>{{ .projectName }}.SystemHost</RootNamespace>
     </PropertyGroup>
 
+    <ItemGroup>
+        <ProjectReference Include="{{ .sharedContracts.include }}" IsAspireProjectResource="false" />
+    </ItemGroup>
+
 </Project>
 `
 
@@ -55,10 +142,10 @@ func systemHostFiles() map[string]string {
 	return map[string]string{
 		"system-host/template.yaml":                                      systemHostTemplateYAML,
 		"system-host/skeleton/Program.cs":                                "// dispatch\n",
-		"system-host/skeleton/Topics.cs.tmpl":                            "// placeholder {{ .pubsub }}\n",
-		"system-host/skeleton/Connectors.cs.tmpl":                        "// placeholder\n",
-		"system-host/skeleton/{{ .projectName }}Development.cs.tmpl":     "// placeholder {{ .projectName }}\n",
-		"system-host/skeleton/{{ .systemClass }}.cs.tmpl":                "// placeholder {{ .systemClass }}\n",
+		"system-host/skeleton/Topics.cs.tmpl":                            topicsCSTmpl,
+		"system-host/skeleton/Connectors.cs.tmpl":                        connectorsCSTmpl,
+		"system-host/skeleton/{{ .projectName }}Development.cs.tmpl":     developmentCSTmpl,
+		"system-host/skeleton/{{ .systemClass }}.cs.tmpl":                systemClassCSTmpl,
 		"system-host/skeleton/{{ .projectName }}.SystemHost.csproj.tmpl": systemHostCsprojTmpl,
 	}
 }
@@ -171,125 +258,6 @@ func runCreate(t *testing.T, srv *httptest.Server, opts CreateOptions) (stdout, 
 	return stdout, stderr, err
 }
 
-const wantTopicsCS = `using Intropy.Topology;
-using Contracts;
-
-/// <summary>The system's topics, each defined once and shared by every component that touches it.</summary>
-public static class Topics
-{
-    /// <summary>Order messages on topic 'orders' (pubsub 'pubsub').</summary>
-    public static readonly TopicRef<Order> Orders = TopicRef<Order>.Define("pubsub", "orders");
-}
-`
-
-const wantSystemCS = `using Intropy.Topology;
-
-/// <summary>The order-flow system: what exists, and what connects it.</summary>
-public sealed class OrderFlowSystem : ISystemDefinition
-{
-    public string SystemName => "order-flow";
-
-    public void Define(SystemBuilder builder)
-    {
-        builder.AddExtractor("order-extractor")
-            .From(Connectors.OrderExtractorSource)
-            .Publishes(Topics.Orders)
-            .Uses(Services.Idempotency)
-            .Uses(Services.BusinessIncidents)
-            .WithSchedule("* * * * *");
-        builder.AddLoader("order-loader")
-            .Subscribes(Topics.Orders)
-            .To(Connectors.OrderLoaderDestination)
-            .Uses(Services.Idempotency)
-            .Uses(Services.BusinessIncidents);
-    }
-}
-`
-
-const wantConnectorsCS = `using Intropy.Topology;
-
-/// <summary>The system's connectors: the named ports its edge blocks reach the outside world through. Each declares its deployed transport; the development definition resolves it to a local folder under test/ so the system runs with zero external configuration.</summary>
-public static class Connectors
-{
-    /// <summary>Deployed as SFTP; locally resolved to <c>./test/order-extractor-source</c>.</summary>
-    public static readonly ConnectorRef OrderExtractorSource = ConnectorRef.Define("order-extractor-source", Transport.Sftp());
-
-    /// <summary>Deployed as SFTP; locally resolved to <c>./test/order-loader-destination</c>.</summary>
-    public static readonly ConnectorRef OrderLoaderDestination = ConnectorRef.Define("order-loader-destination", Transport.Sftp());
-}
-`
-
-const wantDevelopmentCS = `using Intropy.Topology.Generation;
-
-/// <summary>Local OpenAPI-backed substitutes and connector file resolutions for order-flow.</summary>
-public sealed class OrderFlowDevelopment : IDevelopmentDefinition
-{
-    /// <inheritdoc />
-    public void Define(DevelopmentBuilder development)
-    {
-        development.Mock(Services.Idempotency).FromOpenApi("mocks/idempotency-service.openapi.yaml");
-        development.Mock(Services.BusinessIncidents).FromOpenApi("mocks/business-incident-service.openapi.yaml");
-        development.Files(Connectors.OrderExtractorSource).RootPath("./test/order-extractor-source");
-        development.Files(Connectors.OrderLoaderDestination).RootPath("./test/order-loader-destination");
-    }
-}
-`
-
-// wantPreDevelopmentConnectorsCS is the pre-development shape: a template
-// release without the Development.cs placeholder keeps connectors on local
-// file transports and its system class carries no Uses calls.
-const wantPreDevelopmentConnectorsCS = `using Intropy.Topology;
-
-/// <summary>The system's connectors: the named ports its edge blocks reach the outside world through. Each defaults to a local file folder under test/ so the system runs with zero external configuration.</summary>
-public static class Connectors
-{
-    /// <summary>Local file connector 'order-extractor-source' (folder ./test/order-extractor-source). Point it at a real external system and transport when known.</summary>
-    public static readonly ConnectorRef OrderExtractorSource = ConnectorRef.Define("order-extractor-source", Transport.File("./test/order-extractor-source"));
-
-    /// <summary>Local file connector 'order-loader-destination' (folder ./test/order-loader-destination). Point it at a real external system and transport when known.</summary>
-    public static readonly ConnectorRef OrderLoaderDestination = ConnectorRef.Define("order-loader-destination", Transport.File("./test/order-loader-destination"));
-}
-`
-
-const wantPreDevelopmentSystemCS = `using Intropy.Topology;
-
-/// <summary>The order-flow system: what exists, and what connects it.</summary>
-public sealed class OrderFlowSystem : ISystemDefinition
-{
-    public string SystemName => "order-flow";
-
-    public void Define(SystemBuilder builder)
-    {
-        builder.AddExtractor("order-extractor")
-            .From(Connectors.OrderExtractorSource)
-            .Publishes(Topics.Orders)
-            .WithSchedule("* * * * *");
-        builder.AddLoader("order-loader")
-            .Subscribes(Topics.Orders)
-            .To(Connectors.OrderLoaderDestination);
-    }
-}
-`
-
-// wantLegacySystemCS is the pre-connector shape: a template release without
-// the Connectors.cs placeholder degrades the system class to no From/To.
-const wantLegacySystemCS = `using Intropy.Topology;
-
-/// <summary>The order-flow system: what exists, and what connects it.</summary>
-public sealed class OrderFlowSystem : ISystemDefinition
-{
-    public string SystemName => "order-flow";
-
-    public void Define(SystemBuilder builder)
-    {
-        builder.AddExtractor("order-extractor")
-            .Publishes(Topics.Orders);
-        builder.AddLoader("order-loader")
-            .Subscribes(Topics.Orders);
-    }
-}
-`
-
 func TestCreateAssemblesSystem(t *testing.T) {
 	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
 	defer srv.Close()
@@ -311,37 +279,58 @@ func TestCreateAssemblesSystem(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(topics) != wantTopicsCS {
-		t.Errorf("Topics.cs:\n%s\nwant:\n%s", topics, wantTopicsCS)
+	for _, want := range []string{
+		"using Contracts;",
+		`TopicRef<Order> Orders = TopicRef<Order>.Define("pubsub", "orders");`,
+	} {
+		if !strings.Contains(string(topics), want) {
+			t.Errorf("Topics.cs missing %q:\n%s", want, topics)
+		}
 	}
 
 	system, err := os.ReadFile(filepath.Join(outDir, "OrderFlowSystem.cs"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(system) != wantSystemCS {
-		t.Errorf("OrderFlowSystem.cs:\n%s\nwant:\n%s", system, wantSystemCS)
+	for _, want := range []string{
+		`SystemName => "order-flow"`,
+		`builder.AddExtractor("order-extractor")`,
+		".From(Connectors.OrderExtractorSource)",
+		".Publishes(Topics.Orders)",
+		`.WithSchedule("* * * * *")`,
+		`builder.AddLoader("order-loader")`,
+		".Subscribes(Topics.Orders)",
+		".To(Connectors.OrderLoaderDestination)",
+	} {
+		if !strings.Contains(string(system), want) {
+			t.Errorf("OrderFlowSystem.cs missing %q:\n%s", want, system)
+		}
 	}
 
 	connectors, err := os.ReadFile(filepath.Join(outDir, "Connectors.cs"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(connectors) != wantConnectorsCS {
-		t.Errorf("Connectors.cs:\n%s\nwant:\n%s", connectors, wantConnectorsCS)
+	for _, want := range []string{
+		`ConnectorRef OrderExtractorSource = ConnectorRef.Define("order-extractor-source", Transport.Default());`,
+		`ConnectorRef OrderLoaderDestination = ConnectorRef.Define("order-loader-destination", Transport.Default());`,
+	} {
+		if !strings.Contains(string(connectors), want) {
+			t.Errorf("Connectors.cs missing %q:\n%s", want, connectors)
+		}
 	}
 
 	development, err := os.ReadFile(filepath.Join(outDir, "OrderFlowDevelopment.cs"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(development) != wantDevelopmentCS {
-		t.Errorf("OrderFlowDevelopment.cs:\n%s\nwant:\n%s", development, wantDevelopmentCS)
-	}
-
-	for _, folder := range []string{"order-extractor-source", "order-loader-destination"} {
-		if fi, err := os.Stat(filepath.Join(outDir, "test", folder)); err != nil || !fi.IsDir() {
-			t.Errorf("expected connector test folder test/%s: %v", folder, err)
+	for _, want := range []string{
+		"class OrderFlowDevelopment",
+		`development.Files(Connectors.OrderExtractorSource).RootPath("./test/order-extractor-source");`,
+		`development.Files(Connectors.OrderLoaderDestination).RootPath("./test/order-loader-destination");`,
+	} {
+		if !strings.Contains(string(development), want) {
+			t.Errorf("OrderFlowDevelopment.cs missing %q:\n%s", want, development)
 		}
 	}
 
@@ -350,10 +339,8 @@ func TestCreateAssemblesSystem(t *testing.T) {
 		t.Fatal(err)
 	}
 	ref := `<ProjectReference Include="../Contracts/Contracts.csproj" IsAspireProjectResource="false" />`
-	refIdx := strings.Index(string(csproj), ref)
-	endIdx := strings.Index(string(csproj), "</Project>")
-	if refIdx < 0 || endIdx < refIdx {
-		t.Errorf("csproj missing shared contracts reference before </Project>:\n%s", csproj)
+	if !strings.Contains(string(csproj), ref) {
+		t.Errorf("csproj missing shared contracts reference:\n%s", csproj)
 	}
 
 	record, err := template.LoadScaffold(filepath.Join(outDir, filepath.FromSlash(template.ScaffoldRelPath)))
@@ -362,6 +349,14 @@ func TestCreateAssemblesSystem(t *testing.T) {
 	}
 	if record.Role != template.RoleSystemHost || record.Values["systemClass"] != "OrderFlowSystem" {
 		t.Errorf("host record = %+v", record)
+	}
+	// The record echoes the full payload: it is the honest record of what
+	// was rendered.
+	if _, ok := record.Values["topics"].([]any); !ok {
+		t.Errorf("record values missing topics payload: %+v", record.Values)
+	}
+	if _, ok := record.Values["sharedContracts"].(map[string]any); !ok {
+		t.Errorf("record values missing sharedContracts payload: %+v", record.Values)
 	}
 
 	var result CreateResult
@@ -376,74 +371,6 @@ func TestCreateAssemblesSystem(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), `assembled system "order-flow": 2 component(s), 1 topic(s), 2 connector(s)`) {
 		t.Errorf("stderr = %s", stderr.String())
-	}
-}
-
-func TestCreateWithoutConnectorsPlaceholderDegradesToLegacyOutput(t *testing.T) {
-	files := systemHostFiles()
-	// A release that predates connectors also predates development definitions.
-	delete(files, "system-host/skeleton/Connectors.cs.tmpl")
-	delete(files, "system-host/skeleton/{{ .projectName }}Development.cs.tmpl")
-	srv, _ := newSystemHostServer(t, "v1", files)
-	defer srv.Close()
-
-	ws := writeWorkspace(t)
-	outDir := filepath.Join(ws, "system-host")
-	_, stderr, err := runCreate(t, srv, CreateOptions{Name: "OrderFlow", StartDir: ws, OutputDir: outDir, Version: "v1"})
-	if err != nil {
-		t.Fatalf("Create: %v\nstderr: %s", err, stderr.String())
-	}
-
-	if _, err := os.Stat(filepath.Join(outDir, "Connectors.cs")); !os.IsNotExist(err) {
-		t.Errorf("Connectors.cs should not be created without the placeholder; stat err = %v", err)
-	}
-	system, err := os.ReadFile(filepath.Join(outDir, "OrderFlowSystem.cs"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(system) != wantLegacySystemCS {
-		t.Errorf("OrderFlowSystem.cs:\n%s\nwant legacy shape:\n%s", system, wantLegacySystemCS)
-	}
-	if _, err := os.Stat(filepath.Join(outDir, "test")); !os.IsNotExist(err) {
-		t.Errorf("test/ folders should not be created without connectors; stat err = %v", err)
-	}
-	if !strings.Contains(stderr.String(), "no Connectors.cs placeholder") {
-		t.Errorf("stderr should warn about the missing placeholder:\n%s", stderr.String())
-	}
-}
-
-func TestCreateWithoutDevelopmentPlaceholderDegradesToFileTransports(t *testing.T) {
-	files := systemHostFiles()
-	delete(files, "system-host/skeleton/{{ .projectName }}Development.cs.tmpl")
-	srv, _ := newSystemHostServer(t, "v1", files)
-	defer srv.Close()
-
-	ws := writeWorkspace(t)
-	outDir := filepath.Join(ws, "system-host")
-	_, stderr, err := runCreate(t, srv, CreateOptions{Name: "OrderFlow", StartDir: ws, OutputDir: outDir, Version: "v1"})
-	if err != nil {
-		t.Fatalf("Create: %v\nstderr: %s", err, stderr.String())
-	}
-
-	if _, err := os.Stat(filepath.Join(outDir, "OrderFlowDevelopment.cs")); !os.IsNotExist(err) {
-		t.Errorf("OrderFlowDevelopment.cs should not be created without the placeholder; stat err = %v", err)
-	}
-	connectors, err := os.ReadFile(filepath.Join(outDir, "Connectors.cs"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(connectors) != wantPreDevelopmentConnectorsCS {
-		t.Errorf("Connectors.cs:\n%s\nwant pre-development shape:\n%s", connectors, wantPreDevelopmentConnectorsCS)
-	}
-	system, err := os.ReadFile(filepath.Join(outDir, "OrderFlowSystem.cs"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(system) != wantPreDevelopmentSystemCS {
-		t.Errorf("OrderFlowSystem.cs:\n%s\nwant pre-development shape:\n%s", system, wantPreDevelopmentSystemCS)
-	}
-	if !strings.Contains(stderr.String(), "no OrderFlowDevelopment.cs placeholder") {
-		t.Errorf("stderr should warn about the missing placeholder:\n%s", stderr.String())
 	}
 }
 
@@ -579,16 +506,3 @@ func TestCreateValidatesBeforeNetwork(t *testing.T) {
 	}
 }
 
-func TestCreateFailsWhenPlaceholderMissing(t *testing.T) {
-	files := systemHostFiles()
-	delete(files, "system-host/skeleton/{{ .systemClass }}.cs.tmpl")
-	files["system-host/skeleton/Other.cs"] = "// not the placeholder\n"
-	srv, _ := newSystemHostServer(t, "v1", files)
-	defer srv.Close()
-
-	ws := writeWorkspace(t)
-	_, _, err := runCreate(t, srv, CreateOptions{Name: "OrderFlow", StartDir: ws, OutputDir: filepath.Join(ws, "system-host"), Version: "v1"})
-	if err == nil || !strings.Contains(err.Error(), "rendered no OrderFlowSystem.cs placeholder") {
-		t.Errorf("err = %v, want placeholder gate", err)
-	}
-}
