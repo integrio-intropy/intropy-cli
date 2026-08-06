@@ -34,6 +34,13 @@ type CreateOptions struct {
 	Owner         string
 	Repo          string
 	GitHubBaseURL string
+
+	// OnManifest, when set, runs after the manifest loads and before
+	// values resolve, render, dependency processing, or the scaffold
+	// record write. A non-nil error aborts the create. Callers use it for
+	// gates that must run before any output is written, such as a
+	// version check against spec.minCLI.
+	OnManifest func(*Template) error
 }
 
 // CreateResult is the machine-readable summary written when --output-json is
@@ -147,6 +154,11 @@ func prepareCreateTemplate(templateRoot string, opts CreateOptions) (*Template, 
 	tmpl, err := LoadTemplate(filepath.Join(templateRoot, templateManifestName))
 	if err != nil {
 		return nil, nil, err
+	}
+	if opts.OnManifest != nil {
+		if err := opts.OnManifest(tmpl); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	prompter := selectPrompter(&opts)

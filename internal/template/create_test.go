@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -99,6 +100,45 @@ func TestCreateWritesOutputJSON(t *testing.T) {
 	}
 	if got.Values["namespace"] != "default" {
 		t.Errorf("values[namespace] = %v (default should layer in)", got.Values["namespace"])
+	}
+}
+
+func TestCreateOnManifestAbortsBeforeOutput(t *testing.T) {
+	srv := newTemplateServer(t, "v9.9.9")
+	defer srv.Close()
+
+	outDir := filepath.Join(t.TempDir(), "out")
+	var stderr bytes.Buffer
+	gate := errors.New("gate says no")
+	called := false
+
+	err := Create(context.Background(), CreateOptions{
+		Template:      "test-template",
+		OutputDir:     outDir,
+		Version:       "v9.9.9",
+		SetValues:     map[string]any{"integrationName": "orders"},
+		NoInput:       true,
+		Stderr:        &stderr,
+		HTTP:          srv.Client(),
+		Owner:         "o",
+		Repo:          "r",
+		GitHubBaseURL: srv.URL,
+		OnManifest: func(tmpl *Template) error {
+			called = true
+			if tmpl.Metadata.Name != "test-template" {
+				t.Errorf("hook saw manifest %q, want test-template", tmpl.Metadata.Name)
+			}
+			return gate
+		},
+	})
+	if !errors.Is(err, gate) {
+		t.Fatalf("err = %v, want the gate error", err)
+	}
+	if !called {
+		t.Fatal("OnManifest was never called")
+	}
+	if _, statErr := os.Stat(outDir); !os.IsNotExist(statErr) {
+		t.Errorf("a failed hook must abort before any output; %s exists", outDir)
 	}
 }
 
