@@ -1,0 +1,60 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "557e3ee32b82",
+  "session_id": "019fd274-10fb-7e44-8eeb-55028213b865",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-06T04:07:31.678885Z",
+  "branch": "feature/catalog-redesign",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "web/src/components/CatalogEnvironments.tsx",
+    "web/src/index.css"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "faf1d17b0a12",
+  "checkpoint_transcript_start": 454,
+  "transcript_lines_at_start": 454,
+  "compact_transcript_start": 236,
+  "token_usage": {
+    "input_tokens": 362339,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 3244800,
+    "output_tokens": 6266,
+    "api_call_count": 20
+  },
+  "session_metrics": {
+    "turn_count": 15
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-06T04:07:31.616431Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 169,
+    "total_committed": 0,
+    "total_lines_changed": 169,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 457,
+      "user_lines_removed": 169,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "PLAN-catalog-redesign.md": 384,
+        "web/src/components/CatalogEnvironments.tsx": 13
+      },
+      "user_removed_per_file": {
+        "web/src/components/CatalogEnvironments.tsx": 153,
+        "web/src/index.css": 16
+      }
+    }
+  ]
+}

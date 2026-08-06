@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "557e3ee32b82",
+  "strategy": "manual-commit",
+  "branch": "feature/catalog-redesign",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "web/src/components/CatalogEnvironments.tsx",
+    "web/src/index.css"
+  ],
+  "sessions": [
+    {
+      "metadata": "/55/7e3ee32b82/0/metadata.json",
+      "transcript": "/55/7e3ee32b82/0/full.jsonl",
+      "compact_transcript": "/55/7e3ee32b82/0/transcript.jsonl",
+      "content_hash": "/55/7e3ee32b82/0/content_hash.txt",
+      "prompt": "/55/7e3ee32b82/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 362339,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 3244800,
+    "output_tokens": 6266,
+    "api_call_count": 20
+  }
+}
