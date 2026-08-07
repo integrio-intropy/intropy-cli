@@ -1,0 +1,19 @@
+You are a senior engineer reviewing an implementation plan. Review the file PLAN-local-deploy.md in this repository.
+
+Your job:
+1. Read PLAN-local-deploy.md.
+2. Read the relevant codebase context to verify the plan's claims: AGENTS.md (writing style and CLI verb taxonomy), internal/topology/topology.go (what the topology record carries), internal/deploy/init.go and internal/deploy/scaffold.go (the render/staging machinery the plan proposes to reuse), cmd/intropy/int.go and cmd/intropy/flagtext.go (command and flag conventions).
+3. Evaluate the plan critically: correctness of its claims about the codebase, gaps, risks, inconsistencies with repo conventions (especially the AGENTS.md verb taxonomy — the plan proposes a new verb 'deploy-local'), and anything underspecified that would block implementation.
+
+Output a structured review: verdict (approve / approve-with-changes / rework), then findings ordered by severity, each with file/section references. Be specific and concise. Do not edit any files.
+
+---
+
+You are a senior engineer reviewing an implementation plan. Review the file PLAN-local-deploy.md in this repository.
+
+Your job:
+1. Read PLAN-local-deploy.md.
+2. Read the relevant codebase context to verify the plan's claims: AGENTS.md (writing style and CLI verb taxonomy), internal/topology/topology.go (what the topology record carries), internal/deploy/init.go and internal/deploy/scaffold.go (the render/staging machinery the plan proposes to reuse), cmd/intropy/int.go and cmd/intropy/flagtext.go (command and flag conventions).
+3. Evaluate the plan critically: correctness of its claims about the codebase, gaps, risks, inconsistencies with repo conventions (especially the AGENTS.md verb taxonomy — the plan proposes a new verb 'deploy-local'), and anything underspecified that would block implementation.
+
+Output a structured review: verdict (approve / approve-with-changes / rework), then findings ordered by severity, each with file/section references. Be specific and concise. Do not edit any files.

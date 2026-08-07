@@ -1,0 +1,52 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "64e896b6b797",
+  "session_id": "019fdb29-fde5-7dc4-9285-0a88a7f1fc9a",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-07T12:34:44.179788Z",
+  "branch": "feature/int-local",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "internal/deploy/local.go"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "b743a6289c22",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 26864,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 118080,
+    "output_tokens": 1246,
+    "api_call_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-07T12:34:44.168176Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 8,
+    "human_modified": 14,
+    "human_removed": 0,
+    "total_committed": 8,
+    "total_lines_changed": 22,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 1421,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "PLAN-catalog-redesign.md": 384,
+        "PLAN-local-deploy.md": 231,
+        "PLAN-template-owns-codegen.md": 374,
+        "docs/plans/deploy-show-command.md": 372
+      }
+    }
+  ]
+}
