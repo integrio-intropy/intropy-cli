@@ -104,3 +104,68 @@ func TestInitRejectsARecordedGitOpsBindingOutsideTheCatalog(t *testing.T) {
 		}
 	}
 }
+
+// A recorded binding travels on the topology model: the host base renders the
+// environment's answer as the Dapr spec.type, and environments with different
+// answers may differ under base/bindings/ without tripping the merge guard.
+func TestInitRendersTheRecordedBindingPerEnvironment(t *testing.T) {
+	entries := withBindingsCatalog(initLibraryEntries(), "sftp, http")
+	entries["deploy-host/skeleton/base/bindings/bindings.yaml.tmpl"] = `{{- range .topology.connectors }}
+---
+kind: Component
+metadata:
+  name: {{ .name }}
+spec:
+  {{- $b := dig "binding" "" . }}
+  type: {{ if $b }}bindings.{{ $b }}{{ else }}REPLACE-ME-BINDING-TYPE{{ end }}
+{{- end }}
+`
+	entries["deploy-host/skeleton/base/kustomization.yaml.tmpl"] = `apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - dapr/pubsub-rabbitmq.yaml
+  - bindings/bindings.yaml
+`
+	f := newInitFixtureWith(t, entries)
+	writeDeployValues(t, f.sourceDir, "connectors:\n  erp:\n    dev: sftp\n    staging: sftp\n    prod: http\n  price-master:\n    dev: sftp\n    staging: sftp\n    prod: sftp\n")
+
+	if _, stderr, err := runInit(t, f.options(nil, nil)); err != nil {
+		t.Fatalf("Init: %v\nstderr: %s", err, stderr)
+	}
+
+	got := readTreeFile(t, f.clone(t, "deploy-init/sales-distribution"),
+		"domains/sales/distribution/host/base/bindings/bindings.yaml")
+	if !strings.Contains(got, "type: bindings.http") {
+		t.Errorf("the last environment's binding did not render:\n%s", got)
+	}
+	if strings.Contains(got, "REPLACE-ME-BINDING-TYPE") {
+		t.Errorf("a bound connector kept the placeholder:\n%s", got)
+	}
+}
+
+// An unbound connector renders the placeholder scaffold exactly as before the
+// question existed.
+func TestInitRendersThePlaceholderForAnUnboundConnector(t *testing.T) {
+	entries := withBindingsCatalog(initLibraryEntries(), "sftp, http")
+	entries["deploy-host/skeleton/base/bindings/bindings.yaml.tmpl"] = `{{- range .topology.connectors }}
+---
+kind: Component
+metadata:
+  name: {{ .name }}
+spec:
+  {{- $b := dig "binding" "" . }}
+  type: {{ if $b }}bindings.{{ $b }}{{ else }}REPLACE-ME-BINDING-TYPE{{ end }}
+{{- end }}
+`
+	f := newInitFixtureWith(t, entries)
+
+	if _, _, err := runInit(t, f.options(nil, nil)); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	got := readTreeFile(t, f.clone(t, "deploy-init/sales-distribution"),
+		"domains/sales/distribution/host/base/bindings/bindings.yaml")
+	if !strings.Contains(got, "type: REPLACE-ME-BINDING-TYPE") {
+		t.Errorf("an unbound connector should keep the placeholder:\n%s", got)
+	}
+}

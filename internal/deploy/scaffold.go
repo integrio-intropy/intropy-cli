@@ -192,6 +192,12 @@ func applyStaged(stagingDir string, dest *destTree, actions []FileAction) ([]str
 // differ between environments.
 const OverlaysSegment = "overlays/"
 
+// bindingsSegment is the other directory whose contents may legitimately
+// differ between environments: the connector binding is an environment-owned
+// fact recorded in .intropy/deploy-values.yaml, and the host base renders it.
+// Everything else under base/ must still come out identical on every pass.
+const bindingsSegment = "base/bindings/"
+
 // mergeRendered folds one environment's render into the unit's staged tree.
 //
 // A skeleton is rendered once per environment, because the renderer has no way to
@@ -226,9 +232,10 @@ func mergeRendered(from, into, env string) error {
 			if string(current) == string(next) {
 				return nil
 			}
-			if !strings.HasPrefix(filepath.ToSlash(rel), OverlaysSegment) {
-				return fmt.Errorf("%s renders differently for environment %q than for an earlier one; a value that varies by environment may only be used under %s",
-					filepath.ToSlash(rel), env, OverlaysSegment)
+			slash := filepath.ToSlash(rel)
+			if !strings.HasPrefix(slash, OverlaysSegment) && !strings.HasPrefix(slash, bindingsSegment) {
+				return fmt.Errorf("%s renders differently for environment %q than for an earlier one; a value that varies by environment may only be used under %s or %s",
+					slash, env, OverlaysSegment, bindingsSegment)
 			}
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {

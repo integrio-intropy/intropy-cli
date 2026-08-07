@@ -46,7 +46,7 @@ const localExclusionReason = "false"
 // localFileRules narrows a template's file rules to manifests only: an
 // exclusion for the repo-metadata paths, prepended so it decides first,
 // ahead of the template's own rules. Those rules are kept — with the local
-// facts seeded (pubsub redis, the block's workload, secretStore kubernetes)
+// facts seeded (pubsub rabbitmq, the block's workload, secretStore kubernetes)
 // they select the same variants a local render needs, and they are what keeps
 // the generic overlays/{{ .env }}/ skeleton from rendering over the local
 // overlay.
@@ -64,8 +64,9 @@ func localFileRules(rules []template.FileRule) []template.FileRule {
 var localRepoMetadataGlobs = []string{"component.yaml.tmpl"}
 
 // localPlatform is the platform the local development cluster runs, standing
-// in for deploy.yaml's platform section.
-var localPlatform = gitops.PlatformConfig{Provider: "kubernetes", Pubsub: "redis", SecretStore: "kubernetes"}
+// in for deploy.yaml's platform section: the broker and secret store the k3s
+// setup scripts install.
+var localPlatform = gitops.PlatformConfig{Provider: "kubernetes", Pubsub: "rabbitmq", SecretStore: "kubernetes"}
 
 // newLocalFacts is newInitFacts with local constants in place of the GitOps
 // facts. Domain and the ArgoCD app namespace stay empty — they have no local

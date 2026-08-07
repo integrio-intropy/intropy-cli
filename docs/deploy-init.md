@@ -134,7 +134,7 @@ install:
 |---|---|
 | environments | always `["local"]` |
 | registry | `"dev"` — a placeholder; every image is overridden at build time |
-| platform | provider `kubernetes`, pubsub `redis`, secretStore `kubernetes` |
+| platform | provider `kubernetes`, pubsub `rabbitmq`, secretStore `kubernetes` |
 | domain / ArgoCD app namespace | empty — no local meaning |
 | model, scaffolds, selection | the same topology walk as a GitOps scaffold |
 

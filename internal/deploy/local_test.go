@@ -326,7 +326,7 @@ func TestLocalRendersTheWholeSystem(t *testing.T) {
 	if strings.Contains(stdout.String(), "schemaVersion") {
 		t.Errorf("component.yaml was rendered into the manifest stream:\n%s", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "pubsub.redis") {
+	if !strings.Contains(stdout.String(), "pubsub.rabbitmq") {
 		t.Errorf("the host pubsub component did not render with the local platform constants:\n%s", stdout.String())
 	}
 }
