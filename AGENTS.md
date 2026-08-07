@@ -135,6 +135,13 @@ project, never push:
   the publisher's job.
 - **`init`** scaffolds the GitOps tree a system needs, as a branch pushed
   for review. One per system; it never touches the default branch.
+- **`local`** renders a system's deployable manifests for the local
+  development cluster to stdout, for piping to kubectl. `create` scaffolds
+  project source on disk; `init` scaffolds a GitOps tree and pushes a
+  branch. Neither emits a render to a stream, and the GitOps `deploy`
+  family is excluded by its own contract ("all through the GitOps
+  repository and ArgoCD, never kubectl"). Its only write is the workspace
+  state file `.intropy/local.yaml`.
 
 **Move or publish** — change what runs somewhere or what others can pull:
 

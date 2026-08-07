@@ -4,6 +4,9 @@ package main
 // uses the constant here rather than a hand-written string, so the help
 // text cannot drift between commands. See AGENTS.md.
 const (
+	// flagUsageNoInput is deliberately one constant for every command: a flag
+	// that means "fail rather than ask" must read identically everywhere.
+
 	// flagUsageOutput is the --output description for commands whose plain
 	// output is human-readable and whose json output goes to stdout.
 	flagUsageOutput = "output format (plain, json)"
@@ -28,5 +31,6 @@ const (
 	flagUsageGitopsRepo   = "GitOps repository URL (default: gitopsRepo from config, or INTROPY_GITOPS_REPO)"
 	flagUsageArgocd       = "ArgoCD server address (default: argocdServer from config, ARGOCD_SERVER, or deploy.yaml)"
 	flagUsageTemplateVer  = "template release tag (default: latest)"
+	flagUsageNoInput      = "never prompt; fail if a required value is missing"
 	flagUsageTemplateRepo = "template library as owner/repo (default: templateRepo from config, or INTROPY_TEMPLATE_REPO)"
 )

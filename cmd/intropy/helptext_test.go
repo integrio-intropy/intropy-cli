@@ -76,6 +76,7 @@ func TestHelpTextCommandVerbsAreDocumented(t *testing.T) {
 	documentedVerbs := map[string]bool{
 		"list": true, "show": true, "status": true, "diff": true,
 		"create": true, "add": true, "update": true, "init": true,
+		"local": true,
 		"publish": true, "pin": true, "promote": true, "sync": true,
 	}
 	// Nouns, command groups, and standalone commands that are not verbs and

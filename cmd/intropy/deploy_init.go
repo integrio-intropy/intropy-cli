@@ -100,7 +100,7 @@ func init() {
 	f.StringVar(&initFlagValues.templateRepo, "template-repo", "", flagUsageTemplateRepo)
 	f.StringArrayVarP(&initFlagValues.values, "values", "f", nil, "values file (repeatable; - reads one document from stdin)")
 	f.StringArrayVarP(&initFlagValues.sets, "set", "s", nil, "set a template value as key=value (repeatable)")
-	f.BoolVar(&initFlagValues.noInput, "no-input", false, "never prompt; fail if a required value is missing")
+	f.BoolVar(&initFlagValues.noInput, "no-input", false, flagUsageNoInput)
 	f.BoolVar(&initFlagValues.plan, "plan", false, "report what would be written without writing it or touching git")
 	f.BoolVar(&initFlagValues.force, "force", false, "overwrite files that already differ (refused for an overlay that pins a digest)")
 	f.StringVar(&initFlagValues.gitopsRepo, "gitops-repo", "", flagUsageGitopsRepo)
