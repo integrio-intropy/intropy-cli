@@ -1,0 +1,61 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "3f32d42ff844",
+  "session_id": "019fda88-7bce-73ee-9093-bfec65c19e9c",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-07T06:04:10.563777Z",
+  "branch": "feature/deploy-show-command",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "internal/deploy/show.go",
+    "internal/deploy/result.go",
+    "internal/deploy/show_test.go",
+    "internal/deploy/show_integration_test.go",
+    "web/src/api.ts",
+    "web/src/components/GitopsView.tsx"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "b9c99ab3b18e",
+  "checkpoint_transcript_start": 163,
+  "transcript_lines_at_start": 163,
+  "compact_transcript_start": 73,
+  "token_usage": {
+    "input_tokens": 8989,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2830016,
+    "output_tokens": 17695,
+    "api_call_count": 24
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-07T06:04:10.510418Z",
+    "agent_lines": 480,
+    "agent_removed": 79,
+    "human_added": 9,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 489,
+    "total_lines_changed": 568,
+    "agent_percentage": 98.41549295774648,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 1190,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "PLAN-catalog-redesign.md": 384,
+        "PLAN-template-owns-codegen.md": 374,
+        "docs/plans/deploy-show-command.md": 372
+      }
+    }
+  ]
+}
