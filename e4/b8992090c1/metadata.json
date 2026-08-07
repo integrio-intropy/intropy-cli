@@ -3,10 +3,23 @@
   "checkpoint_id": "e4b8992090c1",
   "strategy": "manual-commit",
   "branch": "feature/int-local",
-  "checkpoints_count": 12,
+  "checkpoints_count": 13,
   "files_touched": [
+    "AGENTS.md",
+    "cmd/intropy/deploy_init.go",
+    "cmd/intropy/flagtext.go",
+    "cmd/intropy/helptext_test.go",
+    "cmd/intropy/int_create.go",
+    "cmd/intropy/int_local.go",
+    "docs/deploy-local.md",
+    "internal/deploy/local.go",
+    "internal/deploy/local_integration_test.go",
+    "internal/deploy/local_test.go",
+    "internal/deploy/localconfig.go",
     "internal/template/manifest.go",
-    "internal/template/manifest_test.go"
+    "internal/template/manifest_test.go",
+    "internal/template/prompt.go",
+    "internal/template/reserved.go"
   ],
   "sessions": [
     {
@@ -29,13 +42,20 @@
       "compact_transcript": "/e4/b8992090c1/2/transcript.jsonl",
       "content_hash": "/e4/b8992090c1/2/content_hash.txt",
       "prompt": "/e4/b8992090c1/2/prompt.txt"
+    },
+    {
+      "metadata": "/e4/b8992090c1/3/metadata.json",
+      "transcript": "/e4/b8992090c1/3/full.jsonl",
+      "compact_transcript": "/e4/b8992090c1/3/transcript.jsonl",
+      "content_hash": "/e4/b8992090c1/3/content_hash.txt",
+      "prompt": "/e4/b8992090c1/3/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 125903,
+    "input_tokens": 190753,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 1577280,
-    "output_tokens": 30877,
-    "api_call_count": 76
+    "cache_read_tokens": 5786752,
+    "output_tokens": 57383,
+    "api_call_count": 147
   }
 }
