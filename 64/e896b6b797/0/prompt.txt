@@ -1,0 +1,57 @@
+This is purely a plan task so no changes
+We are providing scripts to setup a k3s instance locally with runtime dependencies. I want to keep all k3s stuff out of the cli but i would like to make it simple to deploy the integration. I would like the experience to be something like <command to dump dev manifests> | kubectl apply -f -
+
+Do you think that would be feasable? How would you design it?
+
+---
+
+The testing goes from unit tests - test a specific step of the pipeline, integration tests - testing the pipeline, testing with the host - testing multiple components together - to this where we also tests the deployment. The thing is that at that point we know nothing about what the binding to the real system should be (file, sftp etc) and maybe that part of the testing process should keep that real aswell? Not connecting to the actual system but using an sftp binding (with a local service), or an smb share (with a local smb) etc? In that case that command need to read the topology, and ask the user how we should connect to system x
+
+---
+
+yes agree, sftp servers etc are part of the setup and I think we will take the cost of always installing an sftp server and an smb server regardless if they will be used or not
+
+---
+
+yes I agree. It should be closed
+
+---
+
+when I run kustomize build . | kubectl apply -f - does that work the same way with tmp files?
+
+---
+
+Ok can you write this up in a self-explaining plan?
+
+---
+
+Launch a review agent with pi --print
+
+---
+
+revise the plan
+
+---
+
+yes do a re-review with pi --print
+
+---
+
+You are a senior engineer doing a SECOND review of an implementation plan. The file PLAN-local-deploy.md in this repository is revision 2; your first review returned verdict 'rework' with 5 required items:
+
+1. Decide and justify the verb in AGENTS.md terms (was deferred).
+2. Specify the root kustomization and the no-GitOps-repo facts model — what replaces newInitFacts/resolveInitDomain/gitopsMap for a local render.
+3. Correct the kustomize wrapper claim and add Runner/ctx to LocalOptions.
+4. Decide component.yaml handling and the ApplicationSet guard mechanism.
+5. Pin down workspace-root definition, catalog source of truth, and prompter mechanism for local.yaml.
+
+Your job:
+1. Read PLAN-local-deploy.md in full.
+2. Verify its claims against the codebase: AGENTS.md, internal/topology/topology.go, internal/deploy/init.go (newInitFacts, gitopsMap, renderOne, renderScaffold, FetchLibrary usage, TopologyFile seam), internal/deploy/scaffold.go, internal/kustomize/ (Client.Build), internal/template/reserved.go, internal/template/prompt.go, cmd/intropy/flagtext.go, cmd/intropy/deploy.go.
+3. Judge whether each of the 5 required items is now resolved correctly and completely. Then look for NEW problems introduced by revision 2's additions (the localFacts table, the root kustomization writer, the --image semantics, the spec.local.fixtures catalog mechanism, the SelectPrompter, the narrowed spec.files filter for component.yaml).
+
+Output: verdict (approve / approve-with-changes / rework), a per-item resolution assessment for the 5 required items, then any new findings ordered by severity with file/section references. Be specific and concise. Do not edit any files.
+
+---
+
+yes
