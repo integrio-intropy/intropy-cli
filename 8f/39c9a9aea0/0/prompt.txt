@@ -1,11 +1,3 @@
-just implement it on this branch (no push)
-
----
-
-What was the reason you didnt want to add information on the edget connections? Like receiving from sftp sftp://sftp.intropy.io sending to file sharee \\test?
-
----
-
 the topology provider has been updated to only cover what can be derived from the source code so that it can guarantee that the topology is always correct. Connector information could be changed in the gitops repo and the topology provider would never be aware of it. So the information doesnt belong there. 
 
 implement your proposal and we'll see
