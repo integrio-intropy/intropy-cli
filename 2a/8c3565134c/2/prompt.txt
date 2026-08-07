@@ -1,12 +1,1 @@
-This is a plan task so no changes.
-int local and deploy init does basically the same thing. init also needs to query the user for connector information even if it doesnt now. It feels like the cli has to much knowledge with int local when what it should basically do is scaffold manifests that something else will deploy. I know that they dont do exactly the same thing but I feel it would be better to see if we can extend deploy init to support both cases
-
----
-
-1. binding only
-2. single file with an env dimension
-3. I own it
-
----
-
 do it but commit to the current repo of both repos, but no push or PR
