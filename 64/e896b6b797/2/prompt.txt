@@ -1,9 +1,1 @@
-Can you implement the template repo part of the plan PLAN-local-deploy.md in the template repo at ~/dev/intropy/tooling/intropy-templates/? Do it on a new branch off feature/more-templates, do not push and no PR
-
----
-
-I ran the cli command and selected sftp. Why isnt the bindings.sftp rendered?
-
----
-
 v0.2.1-beta.28 should be on feature/local-overlay branch and I ran with --template-library v0.2.1-beta.28
