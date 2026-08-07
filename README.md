@@ -172,9 +172,12 @@ intropy
 │   └── show <template>        Show a template's manifest and parameter schema
 ├── sys                    Manage integration systems
 │   └── create                 Assemble scaffolded integrations into a system host
+├── manifests              Inspect, render, and create Kubernetes manifests
+│   ├── inspect                Inspect the deployment model derived from a system topology
+│   ├── render                 Render a system's manifests as YAML
+│   └── create                 Create missing manifests on a GitOps review branch
 ├── deploy                 Move components between environments via the GitOps repository
 │   ├── pin <component> [ver]  Pin a component's image digest into an environment
-│   ├── init [component...]    Scaffold a system's manifests into the GitOps repository
 │   ├── promote <component>    Copy the digests one environment runs into another
 │   ├── diff <component>       Show the rendered change a sync would apply
 │   ├── status <component>     Show what every environment runs, side by side
@@ -377,121 +380,65 @@ kind other than extractor/loader are skipped with a warning; records
 without a `connector` value keep their component but get no `From`/`To`.
 Validate the result from the host directory with `dotnet run -- check`.
 
-## Onboarding a system (`intropy deploy init`)
+## Kubernetes manifests (`intropy manifests`)
 
-Every command below assumes the component already exists in the GitOps
-repository. Getting it there used to be manual — hand-writing
-`component.yaml`, `base/` and an overlay per environment, for every block, in
-every customer repository. `deploy init` generates that tree from the topology
-the system host declares:
+Manifest generation is split by intent: inspect the derived model, render a
+complete YAML stream for local development, or create missing GitOps source
+files for one environment.
 
-```sh
-# from a system workspace
-intropy deploy init --plan
-```
-
-Everything the CLI can derive is filled in: each block's workload (an extractor
-is a `CronJob`, everything else a `Deployment`), the app-ids that belong in a
-Dapr component's `scopes:`, the environments `deploy.yaml` defines, the
-registry. What it cannot derive — connection strings, hosts, credentials, cron
-schedules — is emitted as a `REPLACE-ME-<HINT>` placeholder and listed when the
-run finishes. Filling those in is the remaining job.
-
-Image tags are never in that list. Scaffolding leaves them at an `unpinned`
-sentinel, because pinning digests is `intropy deploy`'s job and nothing else's.
-
-The system's shared objects — the Dapr pub/sub and secret store its blocks
-resolve by name, plus the secrets behind them — go in a `host` directory of
-their own, declared `kind: shared` in `component.yaml`:
-
-```
-domains/sales/ordersync/
-  host/                    kind: shared — no image, nothing to pin
-    base/dapr/pubsub.yaml  one owner, scopes: limits who may use it
-    base/secrets/
-  order-extract/           extractor ⇒ CronJob
-  order-load/              loader ⇒ Deployment
-```
-
-A Dapr `Component` is namespace-scoped and every integration in the namespace
-shares it, so exactly one ArgoCD Application may own each one. The `host`
-directory is what gives them that owner; `scopes:` is what limits who may use
-them. `deploy` and `promote` refuse a `kind: shared` component, since it has no
-image to pin.
-
-Which Dapr components get rendered depends on the platform, declared once per
-repository in `deploy.yaml`:
-
-```yaml
-platform:
-  provider: beebyte      # azure, beebyte, …
-  pubsub: rabbitmq       # in-memory, rabbitmq, servicebus, …
-  secretStore: kubernetes
-```
-
-The CLI itself knows nothing about any of those values: the string flows from
-`deploy.yaml` into a template parameter and into a `spec.files` condition in the
-template library, so adding a platform is a templates-repo change. The
-components live in `base/` and are identical in every environment — what varies
-per environment is the credential, which a Dapr component reaches through
-`secretKeyRef`.
-
-Nothing is pushed to the default branch; a tree full of placeholders would be
-picked up by the ApplicationSet immediately. The run pushes
-`deploy-init/<domain>-<system>` for review. Re-running is additive: a file that
-already exists and differs is reported and left alone unless `--force` is given,
-and `--force` still refuses to overwrite an overlay that pins a digest.
-
-### Where the system lands
-
-The GitOps path is `domains/<domain>/<system>/<component>/`, and both segments
-are derived rather than typed:
-
-- **`<system>`** comes from the topology record. Pass `--system` when the
-  workspace holds several — see below.
-- **`<domain>`** comes from where the system already sits in the GitOps tree; on
-  a first run, from the workspace's own `domains/<domain>/<system>/` layout,
-  which every integrations tree mirrors from the deployment tree. `--domain`
-  overrides both, and is only *required* when the workspace has some other
-  shape.
-
-If the two disagree — the repository files a system under one domain and the
-workspace suggests another — the repository wins and the run says so. Moving a
-system between domains should be deliberate, not a side effect of a directory
-name.
-
-### Picking a system
-
-An integrations tree usually holds several systems side by side, so `--system`
-says which one:
+### Inspect the deployment model
 
 ```sh
-intropy deploy init --system order-flow
+intropy manifests inspect
+intropy manifests inspect --system order-flow -o json
 ```
 
-The name is matched against each scaffolded host's recorded system name and its
-system directory — both already on disk — so picking a system never builds the
-others. `OrderFlow` and `order-flow` are the same system, matching how
-`intropy sys create` kebab-cases what you give it. With one system in the
-workspace the flag is unnecessary; with several and no `--system`, the command
-lists them and stops rather than guessing.
+`inspect` reads the system topology, scaffold records, and template release. It
+reports components, workloads, connectors, and the release's available local
+fixtures without rendering or writing anything.
 
-`--system` also names the tree segment. If it differs from what the topology
-declares, your name wins and the run says so.
-
-The topology comes from the host's `graph` verb, which builds the project first.
-
-The manifests come from the template library's latest release. `--template-version`
-pins a tag instead — the same flag `intropy int create` uses, and the one that makes
-a re-run reproducible while the templates are still moving:
+### Render local YAML
 
 ```sh
-intropy deploy init --template-version v0.4.0
+intropy manifests render --env local | kubectl apply -f -
+intropy manifests render --env local --binding fno=http
 ```
 
-The resolved tag is echoed as it fetches and recorded as `template` in
-`--output json`, so a reviewer of the pushed branch can tell which release
-produced the tree.
+Each topology connector needs a local fixture. Repeat
+`--binding <connector>=<fixture>` for reproducible and non-interactive renders.
+When a choice is missing in an interactive terminal, a Huh selector asks for it;
+the selection applies to that render only and is never persisted.
+
+Only YAML is written to stdout. Progress, prompts, warnings, and errors go to
+stderr, and the complete render is buffered and validated before stdout is
+written. A failed render therefore cannot apply an incomplete prefix through
+the pipe. Use `--namespace` to change the target namespace and repeat `--image`
+for local image overrides.
+
+### Create GitOps manifests
+
+```sh
+intropy manifests create --env prod --dry-run
+intropy manifests create --env prod --diff
+intropy manifests create --env prod
+```
+
+`create` renders one environment and publishes missing files on
+`manifests-create/<domain>-<system>-<environment>`, never on the default branch.
+Existing byte-identical files are accepted so an interrupted or repeated run
+is harmless. A differing existing file is a conflict: manifest creation never
+replaces or deletes GitOps source. Once created, the files are ordinary,
+editable repository files owned by the GitOps maintainers; onboarding another
+environment later is an explicit GitOps edit rather than regeneration.
+
+`--dry-run` reports the file plan. `--diff` prints generated file differences.
+Neither mode creates a branch, commit, or push.
+
+The GitOps path remains `domains/<domain>/<system>/<component>/`. The system
+comes from the topology record; `--system` selects a host in a multi-system
+workspace. The domain is inferred from the existing GitOps tree or workspace
+layout, with `--domain` available on the first run when neither is conclusive.
+The latest template release is used by default; `--template-version` pins one.
 
 ## Deployment (`intropy deploy pin`)
 
@@ -838,7 +785,7 @@ templateRepo: acme/intropy-templates
 The value is `owner/repo` on GitHub — the library is fetched over the GitHub
 API, so URLs and SSH remotes are rejected. Override it with `--template-repo`
 or `INTROPY_TEMPLATE_REPO`, on `int create`, `sys create`, `template list`,
-`template show`, and `deploy init`. Unset, the official library at
+`template show`, and the `manifests` commands. Unset, the official library at
 `integrio-intropy/intropy-templates` is used.
 
 ### What the GitOps repository must contain

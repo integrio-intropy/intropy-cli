@@ -50,14 +50,14 @@ func TestLocalTemplatesRenderForLocalCluster(t *testing.T) {
 	}
 
 	f := newLocalFixtureWith(t, entries)
-	writeDeployValues(t, f.sourceDir, bothBound)
 
 	var stdout, stderr bytes.Buffer
-	opts := f.options(&stdout, &stderr)
-	opts.Runner = nil // the real kustomize binary via applyDefaults
-	if err := Init(context.Background(), opts); err != nil {
-		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
+	opts := f.renderOptions(&stderr)
+	built, err := RenderManifests(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("RenderManifests: %v\nstderr: %s", err, stderr.String())
 	}
+	stdout.Write(built)
 	t.Logf("rendered %d bytes", stdout.Len())
 
 	// The output must be multi-document YAML kubectl will accept.
@@ -91,21 +91,20 @@ func TestLocalTemplatesDiscoverTheHost(t *testing.T) {
 	workspace := t.TempDir()
 	writeHostWorkspace(t, workspace, "distribution")
 	called := stubRunGraph(t, localTopologyRecord)
-	writeDeployValues(t, workspace, bothBound)
 
-	var stdout, stderr bytes.Buffer
-	opts := f.options(&stdout, &stderr)
+	var stderr bytes.Buffer
+	opts := f.renderOptions(&stderr)
 	opts.TopologyFile = ""
 	opts.SourceDir = workspace
-	opts.Runner = nil
-	if err := Init(context.Background(), opts); err != nil {
-		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
+	built, err := RenderManifests(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("RenderManifests: %v\nstderr: %s", err, stderr.String())
 	}
 	want := filepath.Join(workspace, "domains", "x", "distribution", "system-host")
 	if *called != want {
 		t.Errorf("graph verb ran on %q, want %q", *called, want)
 	}
-	if stdout.Len() == 0 {
-		t.Error("no manifests on stdout")
+	if len(built) == 0 {
+		t.Error("no rendered manifests")
 	}
 }

@@ -117,9 +117,8 @@ spec:
       namespace: { type: string, default: integrations }
       registry: { type: string }
       imageNamespace: { type: string, default: integrations }
-  # deploy init resolves connector bindings in every mode, so every fixture
-  # library declares the local catalog; spec.bindings is added per test by
-  # withBindingsCatalog.
+  # Local manifest rendering resolves one fixture per connector, so every
+  # fixture library declares the local catalog.
   local:
     fixtures: [sftp, http]
   values:
@@ -287,13 +286,12 @@ func newInitFixtureWith(t *testing.T, entries map[string]string) initFixture {
 	}
 }
 
-func (f initFixture) options(stdout, stderr *bytes.Buffer) InitOptions {
-	return InitOptions{
+func (f initFixture) options(stdout, stderr *bytes.Buffer) manifestRunOptions {
+	return manifestRunOptions{
 		Domain:        "sales",
 		TopologyFile:  f.topologyFile,
 		SourceDir:     f.sourceDir,
 		CacheRoot:     f.cacheRoot,
-		NoInput:       true,
 		Stdin:         strings.NewReader(""),
 		Stdout:        stdout,
 		Stderr:        stderr,
@@ -339,11 +337,11 @@ func (f initFixture) clone(t *testing.T, ref string) string {
 	return dir
 }
 
-func runInit(t *testing.T, opts InitOptions) (string, string, error) {
+func runInit(t *testing.T, opts manifestRunOptions) (string, string, error) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
 	opts.Stdout, opts.Stderr = &stdout, &stderr
-	err := Init(context.Background(), opts)
+	err := runManifestPipeline(context.Background(), opts)
 	return stdout.String(), stderr.String(), err
 }
 
@@ -351,11 +349,11 @@ func TestInitScaffoldsTheWholeSystem(t *testing.T) {
 	f := newInitFixture(t)
 	var stdout, stderr bytes.Buffer
 
-	if err := Init(context.Background(), f.options(&stdout, &stderr)); err != nil {
+	if err := runManifestPipeline(context.Background(), f.options(&stdout, &stderr)); err != nil {
 		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
 	}
 
-	work := f.clone(t, "deploy-init/sales-distribution")
+	work := f.clone(t, "manifests-create/sales-distribution-all")
 	base := "domains/sales/distribution"
 	for _, rel := range []string{
 		base + "/host/component.yaml",
@@ -384,11 +382,11 @@ func TestInitScaffoldsTheWholeSystem(t *testing.T) {
 func TestInitWorkloadFollowsTheBlockKind(t *testing.T) {
 	f := newInitFixture(t)
 	var stdout, stderr bytes.Buffer
-	if err := Init(context.Background(), f.options(&stdout, &stderr)); err != nil {
+	if err := runManifestPipeline(context.Background(), f.options(&stdout, &stderr)); err != nil {
 		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
 	}
 
-	work := f.clone(t, "deploy-init/sales-distribution")
+	work := f.clone(t, "manifests-create/sales-distribution-all")
 	base := "domains/sales/distribution"
 	if got := readTreeFile(t, work, base+"/extractor/base/cronjob.yaml"); !strings.Contains(got, "kind: CronJob") {
 		t.Errorf("extractor did not get a CronJob:\n%s", got)
@@ -406,11 +404,11 @@ func TestInitWorkloadFollowsTheBlockKind(t *testing.T) {
 func TestInitScopesComeFromTheTopology(t *testing.T) {
 	f := newInitFixture(t)
 	var stdout, stderr bytes.Buffer
-	if err := Init(context.Background(), f.options(&stdout, &stderr)); err != nil {
+	if err := runManifestPipeline(context.Background(), f.options(&stdout, &stderr)); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 
-	got := readTreeFile(t, f.clone(t, "deploy-init/sales-distribution"),
+	got := readTreeFile(t, f.clone(t, "manifests-create/sales-distribution-all"),
 		"domains/sales/distribution/host/base/dapr/pubsub-rabbitmq.yaml")
 	for _, want := range []string{"- erp-loader", "- extractor", "- wms-loader"} {
 		if !strings.Contains(got, want) {
@@ -424,11 +422,11 @@ func TestInitScopesComeFromTheTopology(t *testing.T) {
 func TestInitLeavesImagesUnpinned(t *testing.T) {
 	f := newInitFixture(t)
 	var stdout, stderr bytes.Buffer
-	if err := Init(context.Background(), f.options(&stdout, &stderr)); err != nil {
+	if err := runManifestPipeline(context.Background(), f.options(&stdout, &stderr)); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 
-	got := readTreeFile(t, f.clone(t, "deploy-init/sales-distribution"),
+	got := readTreeFile(t, f.clone(t, "manifests-create/sales-distribution-all"),
 		"domains/sales/distribution/extractor/base/cronjob.yaml")
 	if !strings.Contains(got, ":unpinned") {
 		t.Errorf("image is not the unpinned sentinel:\n%s", got)
@@ -444,10 +442,10 @@ func TestInitPlanWritesNothingAndTouchesNoGit(t *testing.T) {
 	opts := f.options(&stdout, &stderr)
 	opts.PlanOnly = true
 
-	if err := Init(context.Background(), opts); err != nil {
+	if err := runManifestPipeline(context.Background(), opts); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "nothing written (--plan)") {
+	if !strings.Contains(stdout.String(), "nothing created (--dry-run)") {
 		t.Errorf("stdout = %s", stdout.String())
 	}
 	if !strings.Contains(stdout.String(), "create") {
@@ -460,7 +458,7 @@ func TestInitPlanWritesNothingAndTouchesNoGit(t *testing.T) {
 	}
 
 	branches := gittest.Run(t, f.gitopsOrigin, "branch", "--list")
-	if strings.Contains(branches, "deploy-init") {
+	if strings.Contains(branches, "manifests-create") {
 		t.Errorf("--plan created a branch: %q", branches)
 	}
 }
@@ -468,47 +466,23 @@ func TestInitPlanWritesNothingAndTouchesNoGit(t *testing.T) {
 func TestInitIsANoOpOnReRun(t *testing.T) {
 	f := newInitFixture(t)
 	var stdout, stderr bytes.Buffer
-	if err := Init(context.Background(), f.options(&stdout, &stderr)); err != nil {
+	if err := runManifestPipeline(context.Background(), f.options(&stdout, &stderr)); err != nil {
 		t.Fatalf("first Init: %v", err)
 	}
 
 	// The second run sees its own branch only if it is merged, so merge it into
 	// the default branch the way a reviewer would.
-	gittest.Run(t, f.gitopsOrigin, "merge", "--ff-only", "deploy-init/sales-distribution")
+	gittest.Run(t, f.gitopsOrigin, "merge", "--ff-only", "manifests-create/sales-distribution-all")
 
 	out, stderr2, err := runInit(t, f.options(&bytes.Buffer{}, &bytes.Buffer{}))
 	if err != nil {
 		t.Fatalf("second Init: %v\nstderr: %s", err, stderr2)
 	}
-	if !strings.Contains(out, "already onboarded") {
+	if !strings.Contains(out, "all manifest files already exist; nothing created") {
 		t.Errorf("re-run was not a no-op:\n%s", out)
 	}
 	if strings.Contains(out, "create ") {
 		t.Errorf("re-run wanted to create something:\n%s", out)
-	}
-}
-
-// The property that makes this safe to re-run for a system's whole life.
-func TestInitIsAdditiveForANewComponent(t *testing.T) {
-	f := newInitFixture(t)
-	var stdout, stderr bytes.Buffer
-	opts := f.options(&stdout, &stderr)
-	opts.Components = []string{"extractor"}
-	if err := Init(context.Background(), opts); err != nil {
-		t.Fatalf("first Init: %v\nstderr: %s", err, stderr.String())
-	}
-	gittest.Run(t, f.gitopsOrigin, "merge", "--ff-only", "deploy-init/sales-distribution")
-	gittest.Run(t, f.gitopsOrigin, "branch", "-D", "deploy-init/sales-distribution")
-
-	out, stderr2, err := runInit(t, f.options(&bytes.Buffer{}, &bytes.Buffer{}))
-	if err != nil {
-		t.Fatalf("second Init: %v\nstderr: %s", err, stderr2)
-	}
-	if !strings.Contains(out, "erp-loader") {
-		t.Errorf("the new component was not created:\n%s", out)
-	}
-	if !strings.Contains(out, "identical") {
-		t.Errorf("the existing component was not recognised as identical:\n%s", out)
 	}
 }
 
@@ -517,7 +491,7 @@ func TestInitIsAdditiveForANewComponent(t *testing.T) {
 func TestInitRestoresTheDefaultBranchInTheCache(t *testing.T) {
 	f := newInitFixture(t)
 	var stdout, stderr bytes.Buffer
-	if err := Init(context.Background(), f.options(&stdout, &stderr)); err != nil {
+	if err := runManifestPipeline(context.Background(), f.options(&stdout, &stderr)); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 
@@ -534,11 +508,11 @@ func TestInitJSONResult(t *testing.T) {
 	opts := f.options(&stdout, &stderr)
 	opts.OutputFormat = OutputJSON
 
-	if err := Init(context.Background(), opts); err != nil {
+	if err := runManifestPipeline(context.Background(), opts); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 
-	var res InitResult
+	var res ManifestCreateResult
 	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
 		t.Fatalf("decode result: %v\n%s", err, stdout.String())
 	}
@@ -551,7 +525,7 @@ func TestInitJSONResult(t *testing.T) {
 	if res.Template != "o/r@v1.0.0" {
 		t.Errorf("Template = %q", res.Template)
 	}
-	if !res.Applied || res.Branch != "deploy-init/sales-distribution" || res.Revision == "" {
+	if !res.Applied || res.Branch != "manifests-create/sales-distribution-all" || res.Revision == "" {
 		t.Errorf("apply not recorded: %+v", res)
 	}
 	if len(res.Files) == 0 || len(res.Placeholders) == 0 {
@@ -569,11 +543,11 @@ func TestInitRendersServiceBusOnAzure(t *testing.T) {
 	setPlatform(t, f, "provider: azure\n  pubsub: servicebus\n")
 
 	var stdout, stderr bytes.Buffer
-	if err := Init(context.Background(), f.options(&stdout, &stderr)); err != nil {
+	if err := runManifestPipeline(context.Background(), f.options(&stdout, &stderr)); err != nil {
 		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
 	}
 
-	work := f.clone(t, "deploy-init/sales-distribution")
+	work := f.clone(t, "manifests-create/sales-distribution-all")
 	base := "domains/sales/distribution/host/base/dapr"
 	if got := readTreeFile(t, work, base+"/pubsub-servicebus.yaml"); !strings.Contains(got, "azure.servicebus") {
 		t.Errorf("servicebus component = %q", got)
@@ -591,14 +565,14 @@ func TestInitUsesTheLatestReleaseByDefault(t *testing.T) {
 	opts := f.options(&stdout, &stderr)
 	opts.OutputFormat = OutputJSON
 
-	if err := Init(context.Background(), opts); err != nil {
+	if err := runManifestPipeline(context.Background(), opts); err != nil {
 		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
 	}
 	if got := f.calls.latest.Load(); got != 1 {
 		t.Errorf("latest-release endpoint hit %d times, want 1", got)
 	}
 
-	var res InitResult
+	var res ManifestCreateResult
 	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
 		t.Fatal(err)
 	}
@@ -616,7 +590,7 @@ func TestInitVersionPinsTheTemplateRelease(t *testing.T) {
 	opts.TemplateVersion = "v0.9.0"
 	opts.OutputFormat = OutputJSON
 
-	if err := Init(context.Background(), opts); err != nil {
+	if err := runManifestPipeline(context.Background(), opts); err != nil {
 		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
 	}
 
@@ -627,7 +601,7 @@ func TestInitVersionPinsTheTemplateRelease(t *testing.T) {
 		t.Errorf("tarball fetched %d times, want 1 for both templates", got)
 	}
 
-	var res InitResult
+	var res ManifestCreateResult
 	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
 		t.Fatal(err)
 	}
@@ -685,7 +659,7 @@ func TestInitIsUnaffectedByAPreCommitHookInTheCache(t *testing.T) {
 		t.Fatalf("Init: %v\nstderr: %s", err, stderr)
 	}
 
-	work := f.clone(t, "deploy-init/sales-distribution")
+	work := f.clone(t, "manifests-create/sales-distribution-all")
 	if _, err := os.Stat(filepath.Join(work, "pwned.txt")); err == nil {
 		t.Error("the hook's file reached the scaffold branch")
 	}
@@ -751,29 +725,15 @@ func TestInitRejectsADomainThatIsNotOneSegment(t *testing.T) {
 func TestInitInfersDomainOnARerun(t *testing.T) {
 	f := newInitFixture(t)
 	var stdout, stderr bytes.Buffer
-	if err := Init(context.Background(), f.options(&stdout, &stderr)); err != nil {
+	if err := runManifestPipeline(context.Background(), f.options(&stdout, &stderr)); err != nil {
 		t.Fatalf("first Init: %v", err)
 	}
-	gittest.Run(t, f.gitopsOrigin, "merge", "--ff-only", "deploy-init/sales-distribution")
+	gittest.Run(t, f.gitopsOrigin, "merge", "--ff-only", "manifests-create/sales-distribution-all")
 
 	opts := f.options(&bytes.Buffer{}, &bytes.Buffer{})
 	opts.Domain = ""
 	if _, stderr2, err := runInit(t, opts); err != nil {
 		t.Fatalf("second Init without --domain: %v\nstderr: %s", err, stderr2)
-	}
-}
-
-func TestInitRejectsAnUnknownComponent(t *testing.T) {
-	f := newInitFixture(t)
-	opts := f.options(&bytes.Buffer{}, &bytes.Buffer{})
-	opts.Components = []string{"no-such-block"}
-
-	_, _, err := runInit(t, opts)
-	if err == nil {
-		t.Fatal("expected an error")
-	}
-	if !strings.Contains(err.Error(), "erp-loader") {
-		t.Errorf("error should list what the topology declares: %v", err)
 	}
 }
 
@@ -807,11 +767,11 @@ func TestInitRejectsAMalformedTopologyFile(t *testing.T) {
 func TestInitProducesLoadableComponentConfigs(t *testing.T) {
 	f := newInitFixture(t)
 	var stdout, stderr bytes.Buffer
-	if err := Init(context.Background(), f.options(&stdout, &stderr)); err != nil {
+	if err := runManifestPipeline(context.Background(), f.options(&stdout, &stderr)); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 
-	work := f.clone(t, "deploy-init/sales-distribution")
+	work := f.clone(t, "manifests-create/sales-distribution-all")
 	base := filepath.Join(work, "domains", "sales", "distribution")
 
 	host, err := loadComponentAt(base, HostDirName)
@@ -831,31 +791,6 @@ func TestInitProducesLoadableComponentConfigs(t *testing.T) {
 	}
 	if !comp.SupportsEnvironment("prod") {
 		t.Errorf("environments = %v, want every environment in deploy.yaml", comp.Environments)
-	}
-}
-
-// Passing a system name where a component is expected is an easy mistake: the
-// positional argument narrows to topology *components* (blocks), and a system
-// host is not one of them — it is what emits the topology.
-func TestInitRejectsASystemNameAsAComponent(t *testing.T) {
-	f := newInitFixture(t)
-	opts := f.options(&bytes.Buffer{}, &bytes.Buffer{})
-	opts.Components = []string{"distribution"} // the system, not a block
-
-	_, _, err := runInit(t, opts)
-	if err == nil {
-		t.Fatal("expected an error when a system name is passed as a component")
-	}
-	t.Logf("error: %v", err)
-	for _, want := range []string{"distribution", "erp-loader", "extractor", "reconciler"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error should quote the argument and list the blocks; missing %q: %v", want, err)
-		}
-	}
-	// The whole-system run is the no-argument default, which a bare "no such
-	// component" would not make obvious.
-	if !strings.Contains(err.Error(), "no arguments") {
-		t.Errorf("error should point at the no-argument form: %v", err)
 	}
 }
 
@@ -890,11 +825,11 @@ func TestInitInfersDomainFromWorkspaceLayout(t *testing.T) {
 	opts.SourceDir = workspace
 	opts.OutputFormat = OutputJSON
 
-	if err := Init(context.Background(), opts); err != nil {
+	if err := runManifestPipeline(context.Background(), opts); err != nil {
 		t.Fatalf("Init without --domain: %v\nstderr: %s", err, stderr.String())
 	}
 
-	var res InitResult
+	var res ManifestCreateResult
 	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
 		t.Fatal(err)
 	}
@@ -921,7 +856,7 @@ func TestInitSelectsTheNamedSystemInAMultiSystemWorkspace(t *testing.T) {
 	opts.SourceDir = workspace
 	opts.System = "distribution"
 
-	if err := Init(context.Background(), opts); err != nil {
+	if err := runManifestPipeline(context.Background(), opts); err != nil {
 		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
 	}
 	want := filepath.Join(workspace, "domains", "x", "distribution", "system-host")
@@ -972,14 +907,14 @@ func TestInitWarnsWhenSystemRenamesTheTreeSegment(t *testing.T) {
 	opts.System = "product-distribution"
 	opts.OutputFormat = OutputJSON
 
-	if err := Init(context.Background(), opts); err != nil {
+	if err := runManifestPipeline(context.Background(), opts); err != nil {
 		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "using \"product-distribution\" as the tree segment") {
 		t.Errorf("stderr does not warn about the rename:\n%s", stderr.String())
 	}
 
-	var res InitResult
+	var res ManifestCreateResult
 	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
 		t.Fatal(err)
 	}

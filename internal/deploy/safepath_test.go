@@ -39,7 +39,7 @@ func TestClassifyRefusesASymlinkedDestinationFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = classifyStaged(staging, destTreeFor(t, dest), rels, false)
+	_, err = classifyStaged(staging, destTreeFor(t, dest), rels)
 	if err == nil {
 		t.Fatal("expected a symlinked destination to be refused")
 	}
@@ -51,8 +51,8 @@ func TestClassifyRefusesASymlinkedDestinationFile(t *testing.T) {
 	}
 }
 
-// The dangerous case: --force is not needed, because a link on a parent directory
-// is followed while creating the file underneath it.
+// The dangerous case is a link on a parent directory, which would be followed
+// while creating the file underneath it without the destination guard.
 func TestApplyRefusesASymlinkedParentDirectoryWithoutForce(t *testing.T) {
 	staging, dest, outside := t.TempDir(), t.TempDir(), t.TempDir()
 	writeTree(t, staging, map[string]string{"host/base/kustomization.yaml": "scaffolded\n"})
@@ -124,25 +124,25 @@ func TestStageRelsRefusesASymlinkInTheRenderedTree(t *testing.T) {
 	}
 }
 
-// A tree with no links at all must behave exactly as before, including replacing
-// a file whose content differs.
-func TestApplyWritesThroughTheGuardUnchanged(t *testing.T) {
+// A tree with no links writes missing files through the guarded destination and
+// leaves an existing identical file alone.
+func TestApplyCreatesThroughTheGuard(t *testing.T) {
 	staging, dest := t.TempDir(), t.TempDir()
 	writeTree(t, staging, map[string]string{
-		"host/component.yaml":                  "new\n",
+		"host/component.yaml":                  "old\n",
 		"host/overlays/dev/kustomization.yaml": "fresh\n",
 	})
 	writeTree(t, dest, map[string]string{"host/component.yaml": "old\n"})
 
-	written, err := applyStaged(staging, destTreeFor(t, dest), classify(t, staging, dest, true))
+	written, err := applyStaged(staging, destTreeFor(t, dest), classify(t, staging, dest))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(written) != 2 {
+	if len(written) != 1 {
 		t.Fatalf("written = %v", written)
 	}
-	if got := readTreeFile(t, dest, "host/component.yaml"); got != "new\n" {
-		t.Errorf("overwrite = %q", got)
+	if got := readTreeFile(t, dest, "host/component.yaml"); got != "old\n" {
+		t.Errorf("existing file = %q", got)
 	}
 	if got := readTreeFile(t, dest, "host/overlays/dev/kustomization.yaml"); got != "fresh\n" {
 		t.Errorf("create = %q", got)

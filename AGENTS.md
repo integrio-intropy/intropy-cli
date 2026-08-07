@@ -120,12 +120,21 @@ to git, never trigger a sync:
 - **`diff`** prints the rendered change a `sync` would apply, as the
   resources themselves. Both sides are committed revisions; it never diffs
   an uncommitted worktree.
+- **`inspect`** prints the deployment model derived from one system topology:
+  components, workloads, connectors, and available local fixtures. It never
+  renders manifests or writes project or Git state.
+- **`render`** emits a complete Kubernetes YAML stream for one environment.
+  It may ask for missing local fixture choices, buffers and validates the whole
+  stream before writing stdout, writes all interaction and diagnostics to
+  stderr, and never changes project, Git, or cluster state.
 
-**Create or change local project state** — may write files under the
-project, never push:
+**Create or change project state** — may write files under the project.
+Manifest creation may push a review branch, never the default branch:
 
 - **`create`** makes something new from a template or from scaffolded
-  parts: an integration, a system host, a release manifest to publish.
+  parts: an integration, a system host, a release manifest to publish, or
+  missing Kubernetes manifests on a GitOps review branch. Manifest creation
+  accepts existing identical files but never replaces or deletes a file.
 - **`add`** attaches something that already exists elsewhere to this
   project: a skill from a registry, a collection registration. Unlike
   `create`, the content is pulled, not generated.
@@ -133,15 +142,6 @@ project, never push:
   now pins: a skill against its collection, the cached collection index
   against the registry. It never changes which ref is pinned — that is
   the publisher's job.
-- **`init`** scaffolds the manifests a system needs. Against the GitOps
-  repository it writes the tree and pushes a branch for review, never the
-  default branch. With `--local` it renders the local development cluster's
-  overlay instead and streams the built manifests to stdout, for piping to
-  kubectl; its only write then is the workspace state file
-  `.intropy/deploy-values.yaml`. One pipeline owns both destinations —
-  topology, the connector question and the render are shared; only where
-  the manifests land differs.
-
 **Move or publish** — change what runs somewhere or what others can pull:
 
 - **`publish`** pushes an immutable artifact to an OCI registry: a skill,

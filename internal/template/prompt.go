@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -193,64 +192,4 @@ func coerce(s, typ string) any {
 
 func isTerminal(fd uintptr) bool {
 	return term.IsTerminal(int(fd))
-}
-
-// MenuPrompter asks one multiple-choice question. Unlike StdinPrompter's enum
-// path it is not bound to a FieldSpec, because the choice it presents — which
-// fixture a connector binds to — comes from the fetched template library, not
-// from the template's parameter schema.
-type MenuPrompter struct {
-	in      io.Reader
-	out     io.Writer
-	scanner *bufio.Scanner
-}
-
-func NewMenuPrompter(in io.Reader, out io.Writer) *MenuPrompter {
-	return &MenuPrompter{in: in, out: out, scanner: bufio.NewScanner(in)}
-}
-
-// Select presents a heading and a numbered menu and reads a number or a name.
-// Invalid input re-prompts; EOF aborts with io.EOF.
-func (p *MenuPrompter) Select(heading string, options []string) (string, error) {
-	fmt.Fprintln(p.out, heading)
-	for i, o := range options {
-		fmt.Fprintf(p.out, "  %d) %s\n", i+1, o)
-	}
-	for {
-		fmt.Fprint(p.out, ": ")
-		if !p.scanner.Scan() {
-			if err := p.scanner.Err(); err != nil {
-				return "", err
-			}
-			return "", io.EOF
-		}
-		raw := strings.TrimSpace(p.scanner.Text())
-		if raw == "" {
-			fmt.Fprintln(p.out, "  ! please choose one")
-			continue
-		}
-		if n, err := strconv.Atoi(raw); err == nil && n >= 1 && n <= len(options) {
-			return options[n-1], nil
-		}
-		for _, o := range options {
-			if o == raw {
-				return o, nil
-			}
-		}
-		fmt.Fprintf(p.out, "  ! %q is not one of the options\n", raw)
-	}
-}
-
-// SelectPrompter returns a MenuPrompter when interactive prompting is viable,
-// nil otherwise — the same contract AutoPrompter gives for missing-value
-// prompting, so a non-interactive caller fails cleanly instead of hanging.
-func SelectPrompter(stdin io.Reader, out io.Writer, noInput bool) *MenuPrompter {
-	if noInput {
-		return nil
-	}
-	f, ok := stdin.(*os.File)
-	if !ok || !isTerminal(f.Fd()) {
-		return nil
-	}
-	return NewMenuPrompter(stdin, out)
 }

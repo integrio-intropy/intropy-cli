@@ -106,21 +106,14 @@ func (t *destTree) read(rel string) ([]byte, error) {
 	return t.root.ReadFile(rel)
 }
 
-// write replaces the file at rel.
-//
-// Remove and create exclusively rather than truncate in place: O_EXCL on a path
-// that does not exist cannot follow a link, so the final open is no-follow
-// without depending on a platform's O_NOFOLLOW. assertWritable has already
-// refused a symlink here, and this makes the write itself not depend on that
-// check still holding.
+// write creates the file at rel and refuses one that appeared after
+// classification. O_EXCL preserves create-only semantics and cannot follow a
+// link, so the write does not depend on the earlier path check still holding.
 func (t *destTree) write(rel string, data []byte) error {
 	if dir := path.Dir(rel); dir != "." {
 		if err := t.root.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("create %s: %w", dir, err)
 		}
-	}
-	if err := t.root.Remove(rel); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("replace %s: %w", rel, err)
 	}
 	f, err := t.root.OpenFile(rel, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {

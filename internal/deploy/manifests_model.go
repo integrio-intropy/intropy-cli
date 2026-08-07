@@ -29,24 +29,24 @@ const (
 // after the frontend normalises), so the comparison folds case.
 const blockKindExtractor = "extractor"
 
-// InitModel is the topology view a manifest skeleton sees under the reserved
+// ManifestModel is the topology view a manifest skeleton sees under the reserved
 // "topology" key: derived, flattened and sorted.
 //
 // Raw topology.Topology is unsuitable for two reasons. Its APIs, Provides and
 // Consumes are json.RawMessage whose element shape is not finalised, so a
 // skeleton ranging over them would break when it is. And neither Go map
-// iteration nor host emission order is stable, while idempotent scaffolding
+// iteration nor host emission order is stable, while repeatable rendering
 // depends on a re-render being byte-identical — so everything here is sorted.
-type InitModel struct {
-	System     string          `json:"system"`
-	Components []InitComponent `json:"components"`
-	PubSubs    []InitPubSub    `json:"pubsubs"`
-	Topics     []InitTopic     `json:"topics"`
-	Connectors []InitConnector `json:"connectors"`
+type ManifestModel struct {
+	System     string              `json:"system"`
+	Components []ManifestComponent `json:"components"`
+	PubSubs    []ManifestPubSub    `json:"pubsubs"`
+	Topics     []ManifestTopic     `json:"topics"`
+	Connectors []ManifestConnector `json:"connectors"`
 }
 
-// InitComponent is one block as the manifests need it.
-type InitComponent struct {
+// ManifestComponent is one block as the manifests need it.
+type ManifestComponent struct {
 	// Name is the topology component name, which is also the GitOps component
 	// directory segment.
 	Name string `json:"name"`
@@ -71,8 +71,8 @@ type InitComponent struct {
 	Connectors []string `json:"connectors,omitempty"`
 }
 
-// InitPubSub is one Dapr pub/sub component the system needs.
-type InitPubSub struct {
+// ManifestPubSub is one Dapr pub/sub component the system needs.
+type ManifestPubSub struct {
 	Name   string   `json:"name"`
 	Topics []string `json:"topics,omitempty"`
 
@@ -81,8 +81,8 @@ type InitPubSub struct {
 	AppIDs []string `json:"appIds,omitempty"`
 }
 
-// InitTopic is a declared topic, with the ends resolved to app-ids.
-type InitTopic struct {
+// ManifestTopic is a declared topic, with the ends resolved to app-ids.
+type ManifestTopic struct {
 	PubSub      string   `json:"pubsub"`
 	Topic       string   `json:"topic"`
 	Contract    string   `json:"contract,omitempty"`
@@ -90,29 +90,27 @@ type InitTopic struct {
 	Subscribers []string `json:"subscribers,omitempty"`
 }
 
-// InitConnector is an external integration point. The topology mints only
+// ManifestConnector is an external integration point. The topology mints only
 // its name: the deployed Dapr binding's address, host and credentials are
 // environment-owned deployment configuration, which is exactly why they are
 // placeholders in the rendered manifests.
-type InitConnector struct {
+type ManifestConnector struct {
 	Name           string   `json:"name"`
 	ExternalSystem string   `json:"externalSystem,omitempty"`
 	Directions     []string `json:"directions,omitempty"`
 	AppIDs         []string `json:"appIds,omitempty"`
 
-	// Binding is the Dapr binding type this connector deploys as in the
-	// environment being rendered — the recorded answer from
-	// .intropy/deploy-values.yaml. Empty when no answer is recorded, which
-	// renders the placeholder scaffold.
+	// Binding is the fixture selected for this local render. GitOps creation
+	// leaves it empty so the generated source keeps its placeholder scaffold.
 	Binding string `json:"binding,omitempty"`
 }
 
-// newInitModel derives the model from a decoded topology record and whatever
+// newManifestModel derives the model from a decoded topology record and whatever
 // scaffold records were found in the workspace.
-func newInitModel(t *topology.Topology, scaffolds []template.ScaffoldEntry) InitModel {
+func newManifestModel(t *topology.Topology, scaffolds []template.ScaffoldEntry) ManifestModel {
 	appIDs, dirs := joinScaffolds(t.Components, matchScaffolds(t.Components, scaffolds))
 
-	m := InitModel{System: t.System}
+	m := ManifestModel{System: t.System}
 	m.Components = buildComponents(t.Components, appIDs, dirs)
 	m.Topics = buildTopics(t.Topics, appIDs)
 	m.PubSubs = buildPubSubs(t, appIDs)
@@ -126,7 +124,7 @@ func newInitModel(t *topology.Topology, scaffolds []template.ScaffoldEntry) Init
 // Injected reserved values go through this so a skeleton's `index`, `range` and
 // sprig calls see uniform map[string]any — a Go struct behaves differently
 // under `index` and would make the template author's life needlessly subtle.
-func (m InitModel) asMap(env string, bindings map[string]map[string]string) (map[string]any, error) {
+func (m ManifestModel) asMap(env string, bindings map[string]map[string]string) (map[string]any, error) {
 	for i, c := range m.Connectors {
 		m.Connectors[i].Binding = bindings[c.Name][env]
 	}
@@ -141,9 +139,9 @@ func (m InitModel) asMap(env string, bindings map[string]map[string]string) (map
 	return out, nil
 }
 
-// bindingsForEnv reduces the recorded answers to the flat connector→binding
-// map one environment renders with.
-func bindingsForEnv(model InitModel, bindings map[string]map[string]string, env string) map[string]string {
+// bindingsForEnv reduces this render's choices to a flat connector-to-binding
+// map for compatibility with older local fixture templates.
+func bindingsForEnv(model ManifestModel, bindings map[string]map[string]string, env string) map[string]string {
 	out := make(map[string]string, len(model.Connectors))
 	for _, c := range model.Connectors {
 		if b := bindings[c.Name][env]; b != "" {
@@ -219,10 +217,10 @@ func appIDOf(appIDs map[string]string, name string) string {
 	return name
 }
 
-func buildComponents(components []topology.Component, appIDs, dirs map[string]string) []InitComponent {
-	out := make([]InitComponent, 0, len(components))
+func buildComponents(components []topology.Component, appIDs, dirs map[string]string) []ManifestComponent {
+	out := make([]ManifestComponent, 0, len(components))
 	for _, c := range components {
-		ic := InitComponent{
+		ic := ManifestComponent{
 			Name:     c.Name,
 			Kind:     c.Kind,
 			AppID:    appIDOf(appIDs, c.Name),
@@ -247,7 +245,7 @@ func buildComponents(components []topology.Component, appIDs, dirs map[string]st
 
 		out = append(out, ic)
 	}
-	slices.SortFunc(out, func(a, b InitComponent) int { return strings.Compare(a.Name, b.Name) })
+	slices.SortFunc(out, func(a, b ManifestComponent) int { return strings.Compare(a.Name, b.Name) })
 	return out
 }
 
@@ -261,10 +259,10 @@ func workloadFor(kind string) string {
 	return WorkloadDeployment
 }
 
-func buildTopics(topics []topology.Topic, appIDs map[string]string) []InitTopic {
-	out := make([]InitTopic, 0, len(topics))
+func buildTopics(topics []topology.Topic, appIDs map[string]string) []ManifestTopic {
+	out := make([]ManifestTopic, 0, len(topics))
 	for _, t := range topics {
-		out = append(out, InitTopic{
+		out = append(out, ManifestTopic{
 			PubSub:      t.PubSub,
 			Topic:       t.Topic,
 			Contract:    t.Contract,
@@ -272,7 +270,7 @@ func buildTopics(topics []topology.Topic, appIDs map[string]string) []InitTopic 
 			Subscribers: sortedAppIDs(appIDs, t.Subscribers),
 		})
 	}
-	slices.SortFunc(out, func(a, b InitTopic) int {
+	slices.SortFunc(out, func(a, b ManifestTopic) int {
 		if c := strings.Compare(a.PubSub, b.PubSub); c != 0 {
 			return c
 		}
@@ -287,7 +285,7 @@ func buildTopics(topics []topology.Topic, appIDs map[string]string) []InitTopic 
 // inline references, because a component may publish to a topic the record's
 // topics[] table does not list — and a pub/sub nobody declared is still one the
 // sidecar will try to resolve.
-func buildPubSubs(t *topology.Topology, appIDs map[string]string) []InitPubSub {
+func buildPubSubs(t *topology.Topology, appIDs map[string]string) []ManifestPubSub {
 	topics := map[string]map[string]bool{}
 	scopes := map[string]map[string]bool{}
 
@@ -321,9 +319,9 @@ func buildPubSubs(t *topology.Topology, appIDs map[string]string) []InitPubSub {
 		}
 	}
 
-	out := make([]InitPubSub, 0, len(topics))
+	out := make([]ManifestPubSub, 0, len(topics))
 	for _, name := range slices.Sorted(maps.Keys(topics)) {
-		out = append(out, InitPubSub{
+		out = append(out, ManifestPubSub{
 			Name:   name,
 			Topics: sortedKeys(topics[name]),
 			AppIDs: sortedKeys(scopes[name]),
@@ -332,17 +330,17 @@ func buildPubSubs(t *topology.Topology, appIDs map[string]string) []InitPubSub {
 	return out
 }
 
-func buildConnectors(connectors []topology.Connector, appIDs map[string]string) []InitConnector {
-	out := make([]InitConnector, 0, len(connectors))
+func buildConnectors(connectors []topology.Connector, appIDs map[string]string) []ManifestConnector {
+	out := make([]ManifestConnector, 0, len(connectors))
 	for _, c := range connectors {
-		out = append(out, InitConnector{
+		out = append(out, ManifestConnector{
 			Name:           c.Name,
 			ExternalSystem: c.ExternalSystem,
 			Directions:     slices.Sorted(slices.Values(c.Directions)),
 			AppIDs:         sortedAppIDs(appIDs, c.UsedBy),
 		})
 	}
-	slices.SortFunc(out, func(a, b InitConnector) int { return strings.Compare(a.Name, b.Name) })
+	slices.SortFunc(out, func(a, b ManifestConnector) int { return strings.Compare(a.Name, b.Name) })
 	return out
 }
 

@@ -128,12 +128,12 @@ type DiffResult struct {
 // StatusResult is the machine-readable outcome of a status. Its own type for
 // the same reason SyncResult is: it plans nothing, applies nothing, and is the
 // only result here that describes more than one environment.
-// InitResult is the machine-readable summary of a deploy init run.
+// ManifestCreateResult is the machine-readable summary of manifest creation.
 //
 // Placeholders is the point of the document: complete manifests are explicitly
 // not the goal, so what a consumer wants to know is exactly which values a human
 // still has to supply and where.
-type InitResult struct {
+type ManifestCreateResult struct {
 	System string `json:"system"`
 	Domain string `json:"domain"`
 

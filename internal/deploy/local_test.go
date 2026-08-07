@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/integrio-intropy/intropy-cli/internal/command"
+	"github.com/integrio-intropy/intropy-cli/internal/interactive"
 	"gopkg.in/yaml.v3"
 )
 
@@ -255,14 +257,14 @@ func newLocalFixture(t *testing.T) localFixture {
 	return localFixture{sourceDir: sourceDir, srv: localLibraryServer(t, localLibraryEntries())}
 }
 
-func (f localFixture) options(stdout, stderr *bytes.Buffer) InitOptions {
-	return InitOptions{
-		Mode:          ModeLocal,
+func (f localFixture) options(stdout, stderr *bytes.Buffer) manifestRunOptions {
+	return manifestRunOptions{
+		Mode:          modeLocal,
 		System:        "distribution",
 		TopologyFile:  filepath.Join(f.sourceDir, "topology.json"),
 		SourceDir:     f.sourceDir,
-		NoInput:       true,
 		Stdin:         strings.NewReader(""),
+		Bindings:      []string{"erp=sftp", "price-master=http"},
 		Stdout:        stdout,
 		Stderr:        stderr,
 		Owner:         "o",
@@ -272,29 +274,37 @@ func (f localFixture) options(stdout, stderr *bytes.Buffer) InitOptions {
 	}
 }
 
-// writeDeployValues records connector bindings the way the resolver writes
-// them: connector first, then environment.
-func writeDeployValues(t *testing.T, dir, body string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Join(dir, ".intropy"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, ".intropy", "deploy-values.yaml"), []byte(body), 0o644); err != nil {
-		t.Fatal(err)
+func (f localFixture) renderOptions(stderr *bytes.Buffer) RenderManifestOptions {
+	return RenderManifestOptions{
+		Environment:   localEnv,
+		System:        "distribution",
+		SourceDir:     f.sourceDir,
+		TopologyFile:  filepath.Join(f.sourceDir, "topology.json"),
+		Bindings:      []string{"erp=sftp", "price-master=http"},
+		Stderr:        stderr,
+		Owner:         "o",
+		Repo:          "r",
+		GitHubBaseURL: f.srv.URL,
+		HTTP:          f.srv.Client(),
 	}
 }
 
-// bothBound is the state file with every connector bound for the local
-// environment.
-const bothBound = "connectors:\n  erp:\n    local: sftp\n  price-master:\n    local: http\n"
+type fakeBindingSelector struct {
+	choices  map[string]string
+	requests []interactive.SelectRequest
+}
+
+func (s *fakeBindingSelector) Select(_ context.Context, req interactive.SelectRequest) (string, error) {
+	s.requests = append(s.requests, req)
+	return s.choices[strings.TrimPrefix(req.Title, "local binding for ")], nil
+}
 
 func TestLocalRendersTheWholeSystem(t *testing.T) {
 	f := newLocalFixture(t)
 	root := stubKustomizeBuild(t)
-	writeDeployValues(t, f.sourceDir, bothBound)
 
 	var stdout, stderr bytes.Buffer
-	if err := Init(context.Background(), f.options(&stdout, &stderr)); err != nil {
+	if err := runManifestPipeline(context.Background(), f.options(&stdout, &stderr)); err != nil {
 		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
 	}
 
@@ -334,12 +344,11 @@ func TestLocalRendersTheWholeSystem(t *testing.T) {
 func TestLocalNamespaceFlagOverridesTheDefault(t *testing.T) {
 	f := newLocalFixture(t)
 	root := stubKustomizeBuild(t)
-	writeDeployValues(t, f.sourceDir, bothBound)
 
 	var stdout, stderr bytes.Buffer
 	opts := f.options(&stdout, &stderr)
 	opts.Namespace = "team-a"
-	if err := Init(context.Background(), opts); err != nil {
+	if err := runManifestPipeline(context.Background(), opts); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 	if root.Namespace != "team-a" {
@@ -350,12 +359,11 @@ func TestLocalNamespaceFlagOverridesTheDefault(t *testing.T) {
 func TestLocalImageOverrides(t *testing.T) {
 	f := newLocalFixture(t)
 	root := stubKustomizeBuild(t)
-	writeDeployValues(t, f.sourceDir, bothBound)
 
 	var stdout, stderr bytes.Buffer
 	opts := f.options(&stdout, &stderr)
 	opts.Images = []string{":1.4.0-rc.3", "erp-loader=registry.local/erp-loader:2.0.0"}
-	if err := Init(context.Background(), opts); err != nil {
+	if err := runManifestPipeline(context.Background(), opts); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 	byName := map[string]localImageEntry{}
@@ -385,69 +393,42 @@ func TestLocalRejectsBadImageGrammar(t *testing.T) {
 func TestLocalImageOverrideNamesAnUnknownComponent(t *testing.T) {
 	f := newLocalFixture(t)
 	stubKustomizeBuild(t)
-	writeDeployValues(t, f.sourceDir, bothBound)
 
 	var stdout, stderr bytes.Buffer
 	opts := f.options(&stdout, &stderr)
 	opts.Images = []string{"ghost=ghost:1.0.0"}
-	err := Init(context.Background(), opts)
+	err := runManifestPipeline(context.Background(), opts)
 	if err == nil || !strings.Contains(err.Error(), "ghost") {
 		t.Fatalf("expected an unknown-component error, got %v", err)
 	}
 }
 
-// A recorded choice is never re-prompted, and an unbound connector under
-// --no-input fails with the two-line error naming the file and the remedy.
-func TestLocalNoInputFailsOnAnUnboundConnector(t *testing.T) {
+func TestLocalNonInteractiveRenderFailsForMissingBindings(t *testing.T) {
 	f := newLocalFixture(t)
 	stubKustomizeBuild(t)
-	writeDeployValues(t, f.sourceDir, "connectors:\n  erp:\n    local: sftp\n")
-
-	var stdout, stderr bytes.Buffer
-	err := Init(context.Background(), f.options(&stdout, &stderr))
-	if err == nil {
-		t.Fatal("expected an unbound-connector error")
-	}
-	if !strings.Contains(err.Error(), "connector price-master has no local binding in") {
-		t.Errorf("error should front-load the unbound connector: %v", err)
-	}
-	if !strings.Contains(err.Error(), "run 'intropy deploy init --local distribution' interactively, or add it to the file") {
-		t.Errorf("error should name the remedy on a second line: %v", err)
-	}
-}
-
-func TestLocalPromptsForAnUnboundConnectorAndRecordsIt(t *testing.T) {
-	f := newLocalFixture(t)
-	stubKustomizeBuild(t)
-	writeDeployValues(t, f.sourceDir, "connectors:\n  erp:\n    local: sftp\n")
 
 	var stdout, stderr bytes.Buffer
 	opts := f.options(&stdout, &stderr)
-	opts.NoInput = false
-	opts.Stdin = strings.NewReader("2\n") // the menu is [sftp, http]: 2 is http
-	if err := Init(context.Background(), opts); err != nil {
-		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
+	opts.Bindings = []string{"erp=sftp"}
+	err := runManifestPipeline(context.Background(), opts)
+	if err == nil {
+		t.Fatal("expected a missing-binding error")
 	}
-	if !strings.Contains(stderr.String(), "connector price-master (external system price-master) — which binding for local?") {
-		t.Errorf("the prompt did not name the connector, its external system and the environment:\n%s", stderr.String())
-	}
-
-	vals, err := loadDeployValues(deployValuesPath(f.sourceDir))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if vals.Connectors["price-master"]["local"] != "http" || vals.Connectors["erp"]["local"] != "sftp" {
-		t.Errorf("deploy-values.yaml = %v, want erp kept and price-master recorded", vals.Connectors)
+	for _, want := range []string{"local bindings are required for connectors: price-master", "--binding <connector>=<fixture>", "sftp, http"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should name %q: %v", want, err)
+		}
 	}
 }
 
-func TestLocalRejectsARecordedValueOutsideTheCatalog(t *testing.T) {
+func TestLocalRejectsAFixtureOutsideTheCatalog(t *testing.T) {
 	f := newLocalFixture(t)
 	stubKustomizeBuild(t)
-	writeDeployValues(t, f.sourceDir, "connectors:\n  erp:\n    local: pigeon\n  price-master:\n    local: http\n")
 
 	var stdout, stderr bytes.Buffer
-	err := Init(context.Background(), f.options(&stdout, &stderr))
+	opts := f.options(&stdout, &stderr)
+	opts.Bindings = []string{"erp=pigeon", "price-master=http"}
+	err := runManifestPipeline(context.Background(), opts)
 	if err == nil {
 		t.Fatal("expected a catalog validation error")
 	}
@@ -458,17 +439,47 @@ func TestLocalRejectsARecordedValueOutsideTheCatalog(t *testing.T) {
 	}
 }
 
-func TestLocalNotesAStaleBinding(t *testing.T) {
+func TestLocalRejectsABindingForAnUnknownConnector(t *testing.T) {
 	f := newLocalFixture(t)
 	stubKustomizeBuild(t)
-	writeDeployValues(t, f.sourceDir, "connectors:\n  erp:\n    local: sftp\n  price-master:\n    local: http\n  crm:\n    local: http\n")
 
 	var stdout, stderr bytes.Buffer
-	if err := Init(context.Background(), f.options(&stdout, &stderr)); err != nil {
-		t.Fatalf("Init: %v", err)
+	opts := f.options(&stdout, &stderr)
+	opts.Bindings = append(opts.Bindings, "crm=http")
+	err := runManifestPipeline(context.Background(), opts)
+	if err == nil || !strings.Contains(err.Error(), `connector "crm"`) {
+		t.Fatalf("expected an unknown-connector error, got %v", err)
 	}
-	if !strings.Contains(stderr.String(), "binds crm, which the topology no longer declares") {
-		t.Errorf("stderr should note the stale entry:\n%s", stderr.String())
+}
+
+func TestLocalPromptsOnlyForMissingBindings(t *testing.T) {
+	f := newLocalFixture(t)
+	stubKustomizeBuild(t)
+	selector := &fakeBindingSelector{choices: map[string]string{"price-master": "http"}}
+
+	var stdout, stderr bytes.Buffer
+	opts := f.options(&stdout, &stderr)
+	opts.Bindings = []string{"erp=sftp"}
+	opts.Selector = selector
+	if err := runManifestPipeline(context.Background(), opts); err != nil {
+		t.Fatalf("render with selector: %v", err)
+	}
+	if len(selector.requests) != 1 || selector.requests[0].Title != "local binding for price-master" {
+		t.Fatalf("selector requests = %+v, want price-master only", selector.requests)
+	}
+	if got := selector.requests[0].Options; len(got) != 2 || got[0].Value != "sftp" || got[1].Value != "http" {
+		t.Errorf("selector options = %+v", got)
+	}
+	if _, err := os.Stat(filepath.Join(f.sourceDir, ".intropy", "deploy-values.yaml")); !os.IsNotExist(err) {
+		t.Errorf("local selection was persisted: %v", err)
+	}
+}
+
+func TestParseConnectorBindingArgsRejectsInvalidAndDuplicateValues(t *testing.T) {
+	for _, args := range [][]string{{"erp"}, {"=http"}, {"erp="}, {"erp=http", "erp=sftp"}} {
+		if _, err := parseConnectorBindingArgs(args); err == nil {
+			t.Errorf("parseConnectorBindingArgs(%q) succeeded", args)
+		}
 	}
 }
 
@@ -480,47 +491,14 @@ func TestLocalErrorsWhenTheLibraryHasNoCatalog(t *testing.T) {
 	f.srv.Close()
 	f.srv = localLibraryServer(t, entries)
 	stubKustomizeBuild(t)
-	writeDeployValues(t, f.sourceDir, bothBound)
 
 	var stdout, stderr bytes.Buffer
-	err := Init(context.Background(), f.options(&stdout, &stderr))
+	err := runManifestPipeline(context.Background(), f.options(&stdout, &stderr))
 	if err == nil {
 		t.Fatal("expected a missing-catalog error")
 	}
 	if !strings.Contains(err.Error(), "declares no fixture catalog") || !strings.Contains(err.Error(), "--template-version") {
 		t.Errorf("error should name the library and the escape hatch: %v", err)
-	}
-}
-
-// A legacy local.yaml is folded into deploy-values.yaml under the local
-// environment and removed, so a team's recorded bindings survive the move.
-func TestLocalMigratesALegacyStateFile(t *testing.T) {
-	f := newLocalFixture(t)
-	stubKustomizeBuild(t)
-	if err := os.MkdirAll(filepath.Join(f.sourceDir, ".intropy"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	legacy := filepath.Join(f.sourceDir, ".intropy", "local.yaml")
-	if err := os.WriteFile(legacy, []byte("connectors:\n  erp: sftp\n  price-master: http\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	var stdout, stderr bytes.Buffer
-	if err := Init(context.Background(), f.options(&stdout, &stderr)); err != nil {
-		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
-	}
-	if !strings.Contains(stderr.String(), "migrated .intropy/local.yaml into .intropy/deploy-values.yaml") {
-		t.Errorf("stderr should note the migration:\n%s", stderr.String())
-	}
-	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
-		t.Errorf("the legacy file should be gone: %v", err)
-	}
-	vals, err := loadDeployValues(deployValuesPath(f.sourceDir))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if vals.Connectors["erp"]["local"] != "sftp" || vals.Connectors["price-master"]["local"] != "http" {
-		t.Errorf("migrated values = %v", vals.Connectors)
 	}
 }
 
@@ -561,13 +539,12 @@ func TestLocalDiscoversTheHostAndRunsTheGraphVerb(t *testing.T) {
 	workspace := t.TempDir()
 	writeHostWorkspace(t, workspace, "distribution")
 	called := stubRunGraph(t, localTopologyRecord)
-	writeDeployValues(t, workspace, bothBound)
 
 	var stdout, stderr bytes.Buffer
 	opts := f.options(&stdout, &stderr)
 	opts.TopologyFile = ""
 	opts.SourceDir = workspace
-	if err := Init(context.Background(), opts); err != nil {
+	if err := runManifestPipeline(context.Background(), opts); err != nil {
 		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
 	}
 	want := filepath.Join(workspace, "domains", "x", "distribution", "system-host")
@@ -592,43 +569,81 @@ func TestParseImageOverridesBothForms(t *testing.T) {
 	}
 }
 
-func TestDeployValuesRoundTrip(t *testing.T) {
-	dir := t.TempDir()
-	path := deployValuesPath(dir)
+func TestInspectManifestsReportsTheModelAndFixtureCatalog(t *testing.T) {
+	f := newLocalFixture(t)
 
-	// A missing file is an empty config, not an error.
-	vals, err := loadDeployValues(path)
+	var stdout, stderr bytes.Buffer
+	err := InspectManifests(context.Background(), InspectManifestOptions{
+		System:        "distribution",
+		SourceDir:     f.sourceDir,
+		TopologyFile:  filepath.Join(f.sourceDir, "topology.json"),
+		OutputFormat:  OutputJSON,
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		Owner:         "o",
+		Repo:          "r",
+		GitHubBaseURL: f.srv.URL,
+		HTTP:          f.srv.Client(),
+	})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("InspectManifests: %v\nstderr: %s", err, stderr.String())
 	}
-	if len(vals.Connectors) != 0 {
-		t.Errorf("missing file gave connectors %v", vals.Connectors)
+	for _, want := range []string{`"system": "distribution"`, `"name": "extractor"`, `"localFixtures": [`, `"sftp"`, `"http"`} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("inspection does not contain %s:\n%s", want, stdout.String())
+		}
 	}
+}
 
-	in := deployValues{Connectors: map[string]map[string]string{
-		"erp": {"local": "sftp", "staging": "sftp"},
-		"crm": {"local": "http"},
-	}}
-	if err := saveDeployValues(path, in); err != nil {
-		t.Fatal(err)
-	}
-	got, err := loadDeployValues(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Connectors["erp"]["staging"] != "sftp" || got.Connectors["crm"]["local"] != "http" {
-		t.Errorf("round trip gave %v", got.Connectors)
-	}
+func TestRenderManifestsReturnsOnlyACompleteBuild(t *testing.T) {
+	f := newLocalFixture(t)
+	stubKustomizeBuild(t)
 
-	data, err := os.ReadFile(path)
+	var stderr bytes.Buffer
+	built, err := RenderManifests(context.Background(), RenderManifestOptions{
+		Environment:   localEnv,
+		System:        "distribution",
+		SourceDir:     f.sourceDir,
+		TopologyFile:  filepath.Join(f.sourceDir, "topology.json"),
+		Bindings:      []string{"erp=sftp", "price-master=http"},
+		Stderr:        &stderr,
+		Owner:         "o",
+		Repo:          "r",
+		GitHubBaseURL: f.srv.URL,
+		HTTP:          f.srv.Client(),
+	})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("RenderManifests: %v\nstderr: %s", err, stderr.String())
 	}
-	// Sorted keys at both levels keep the checked-in file's diffs minimal.
-	if strings.Index(string(data), "crm") > strings.Index(string(data), "erp") {
-		t.Errorf("connector keys are not sorted:\n%s", data)
+	if len(built) == 0 || !strings.Contains(string(built), "kind: Deployment") {
+		t.Errorf("rendered YAML = %q", built)
 	}
-	if strings.Index(string(data), "local:") > strings.Index(string(data), "staging:") {
-		t.Errorf("environment keys are not sorted:\n%s", data)
+}
+
+func TestRenderManifestsReturnsNoBytesWhenBuildFails(t *testing.T) {
+	f := newLocalFixture(t)
+	original := kustomizeBuild
+	kustomizeBuild = func(context.Context, command.Runner, string) ([]byte, error) {
+		return []byte("partial YAML that must not escape\n"), errors.New("document 7 failed")
+	}
+	t.Cleanup(func() { kustomizeBuild = original })
+
+	built, err := RenderManifests(context.Background(), RenderManifestOptions{
+		Environment:   localEnv,
+		System:        "distribution",
+		SourceDir:     f.sourceDir,
+		TopologyFile:  filepath.Join(f.sourceDir, "topology.json"),
+		Bindings:      []string{"erp=sftp", "price-master=http"},
+		Stderr:        &bytes.Buffer{},
+		Owner:         "o",
+		Repo:          "r",
+		GitHubBaseURL: f.srv.URL,
+		HTTP:          f.srv.Client(),
+	})
+	if err == nil {
+		t.Fatal("expected the build error")
+	}
+	if built != nil {
+		t.Errorf("built = %q, want nil on failure", built)
 	}
 }

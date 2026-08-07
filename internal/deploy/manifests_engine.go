@@ -3,8 +3,10 @@ package deploy
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,11 +17,13 @@ import (
 	"github.com/integrio-intropy/intropy-cli/internal/command"
 	"github.com/integrio-intropy/intropy-cli/internal/git"
 	"github.com/integrio-intropy/intropy-cli/internal/gitops"
+	"github.com/integrio-intropy/intropy-cli/internal/interactive"
+	"github.com/integrio-intropy/intropy-cli/internal/kustomize"
 	"github.com/integrio-intropy/intropy-cli/internal/template"
 	"github.com/integrio-intropy/intropy-cli/internal/topology"
 )
 
-// The templates deploy init renders. They are separate packages because they
+// The templates manifest generation renders. They are separate packages because they
 // render a different number of times — once per system, once per component —
 // into different directories, from different value sets.
 const (
@@ -35,35 +39,37 @@ const (
 // no image, which is precisely what gitops.KindShared describes.
 const HostDirName = "host"
 
-// initBranchPrefix namespaces the branches this command pushes.
-const initBranchPrefix = "deploy-init/"
+// Review branches keep incomplete manifests away from the default branch,
+// where the ApplicationSet could pick them up before review.
+const manifestsCreateBranchPrefix = "manifests-create/"
 
 // runGraph is the seam tests replace to avoid a dotnet build.
 var runGraph = topology.RunGraph
 
-// InitMode selects where a scaffold lands.
-type InitMode int
+// manifestMode selects where a scaffold lands.
+type manifestMode int
 
 const (
-	// ModeGitOps scaffolds into the GitOps repository and pushes a review
+	// modeGitOps scaffolds into the GitOps repository and pushes a review
 	// branch. The default.
-	ModeGitOps InitMode = iota
+	modeGitOps manifestMode = iota
 
-	// ModeLocal renders for the local development cluster and streams the
-	// built manifests to stdout. Nothing touches git.
-	ModeLocal
+	// modeLocal renders for the local development cluster and returns the
+	// complete built manifest stream. Nothing touches Git.
+	modeLocal
 )
 
-// InitOptions configures Init.
+// manifestRunOptions carries the shared inputs after a manifests command has
+// applied its own flag and side-effect policy.
 //
 // There is no Environment: overlays are created for every environment the
 // repository defines unless Environments narrows it. There is no AllowDirty, no
 // NoWait and no Timeout either — no source working tree is read for correctness,
 // and nothing is synced.
-type InitOptions struct {
-	// Mode selects the destination. ModeLocal renders for the local
+type manifestRunOptions struct {
+	// Mode selects the destination. modeLocal renders for the local
 	// development cluster instead of scaffolding the GitOps tree.
-	Mode InitMode
+	Mode manifestMode
 
 	// Namespace is the target namespace a local render emits. Empty defaults
 	// to the system name. GitOps mode rejects it: the namespace there is the
@@ -76,10 +82,11 @@ type InitOptions struct {
 	// GitOps mode rejects them: `intropy deploy` pins digests, and scaffolding
 	// never pins one.
 	Images []string
-	// Components narrows the run to named topology components. Empty means the
-	// whole system, host included.
-	Components []string
 
+	// Bindings supplies local connector-to-fixture choices. Selector asks for
+	// choices omitted from Bindings when terminal interaction is available.
+	Bindings []string
+	Selector interactive.Selector
 	// Domain places the system in the GitOps tree. Unlike every other deploy
 	// subcommand's --domain this is a destination rather than a filter. Empty is
 	// inferred when exactly one domain already holds the system.
@@ -109,20 +116,13 @@ type InitOptions struct {
 	// TemplateVersion pins the template library release.
 	TemplateVersion string
 
-	// Files, SetValues, NoInput and Stdin are the value layering, identical to
-	// int create.
-	Files     []string
-	SetValues map[string]any
-	NoInput   bool
-	Stdin     io.Reader
+	// Stdin is used only by the topology-file test seam. Manifest commands do
+	// not prompt or accept ad-hoc value layers.
+	Stdin io.Reader
 
-	// PlanOnly resolves, renders and classifies, then reports without writing
-	// anything or touching git.
+	// PlanOnly resolves, renders and classifies, then reports without creating
+	// manifest files, commits, or pushes.
 	PlanOnly bool
-
-	// Force overwrites files that already differ, subject to the pinned-digest
-	// guard in assertForceIsSafe.
-	Force bool
 
 	GitopsRepo   string
 	OutputFormat string
@@ -141,13 +141,19 @@ type InitOptions struct {
 	Repo          string
 	GitHubBaseURL string
 	HTTP          *http.Client
+
+	// The manifests create command sets these internal policy fields. Keeping
+	// them private prevents another deploy operation from enabling create-only
+	// behavior accidentally.
+	diffOnly  bool
+	reviewEnv string
 }
 
-func (o InitOptions) output() output {
+func (o manifestRunOptions) output() output {
 	return output{Format: o.OutputFormat, Color: o.Color, Stdout: o.Stdout, Stderr: o.Stderr}
 }
 
-func (o InitOptions) session() sessionOptions {
+func (o manifestRunOptions) session() sessionOptions {
 	return sessionOptions{
 		GitopsRepo: o.GitopsRepo,
 		CacheRoot:  o.CacheRoot,
@@ -156,7 +162,7 @@ func (o InitOptions) session() sessionOptions {
 	}
 }
 
-func (o *InitOptions) applyDefaults() {
+func (o *manifestRunOptions) applyDefaults() {
 	if o.Runner == nil {
 		o.Runner = git.DefaultRunner()
 	}
@@ -180,108 +186,62 @@ func (o *InitOptions) applyDefaults() {
 	}
 }
 
-// Init scaffolds a system's manifests. ModeGitOps writes the GitOps tree and
-// pushes a review branch; ModeLocal renders the local development cluster's
-// overlay and streams the built manifests to stdout.
-//
-// The sequencing matters more than it looks. The topology is resolved *before*
-// the session is opened, because openSession takes a non-blocking exclusive lock
-// on the shared cached checkout and the graph verb can take minutes on a cold
-// project — holding the lock across that would fail every colleague's deploy
-// outright. Nothing is written until every file has been classified, and nothing
-// is pushed to the default branch: a tree full of placeholders would be picked up
-// by the ApplicationSet immediately.
-func Init(ctx context.Context, opts InitOptions) error {
-	opts.applyDefaults()
-
-	found, err := resolveInitTopology(ctx, opts)
-	if err != nil {
-		return err
-	}
-
-	lib, err := template.FetchLibrary(ctx, template.LibraryOptions{
-		Version:       opts.TemplateVersion,
-		HTTP:          opts.HTTP,
-		UserAgent:     opts.UserAgent,
-		Stderr:        opts.Stderr,
-		Owner:         opts.Owner,
-		Repo:          opts.Repo,
-		GitHubBaseURL: opts.GitHubBaseURL,
-	})
-	if err != nil {
-		return err
-	}
-	defer lib.Close()
-
-	if opts.Mode == ModeLocal {
-		return initLocal(ctx, opts, found, lib)
-	}
-	return initGitOps(ctx, opts, found, lib)
-}
-
-// initLocal is the ModeLocal publish path: resolve the connector bindings,
-// render the flat staging tree, write the root kustomization that applies
-// namespace and the conventional image tags, and stream the kustomize build
-// to stdout. The render is unconditional — fixture servers are always
-// installed on the local cluster by the k3s scripts — and the command never
-// inspects the cluster: it renders, kubectl applies, and a missing cluster
-// fails at apply time with kubectl's own error.
-func initLocal(ctx context.Context, opts InitOptions, found discoveredTopology, lib *template.Library) error {
+// renderLocalManifests resolves connector bindings, stages the local tree,
+// applies namespace and image overrides through a root kustomization, and
+// returns the complete build. It never inspects or changes a cluster.
+func renderLocalManifests(ctx context.Context, opts manifestRunOptions, found discoveredTopology, lib *template.Library) ([]byte, error) {
 	overrides, err := parseImageOverrides(opts.Images)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	facts, err := newLocalInitFacts(opts, found)
+	facts, err := resolveLocalFacts(opts, found)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	namespace := opts.Namespace
 	if namespace == "" {
 		namespace = facts.System
 	}
 
-	bindings, err := resolveConnectorBindings(opts, facts, lib)
+	bindings, err := resolveLocalConnectorBindings(ctx, opts, facts, lib)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	staging, err := os.MkdirTemp("", "intropy-deploy-init-local-*")
+	staging, err := os.MkdirTemp("", "intropy-manifests-render-*")
 	if err != nil {
-		return fmt.Errorf("create staging directory: %w", err)
+		return nil, fmt.Errorf("create staging directory: %w", err)
 	}
 	defer os.RemoveAll(staging)
 
 	fmt.Fprintf(opts.Stderr, "rendering %s for local\n", facts.System)
 	if err := renderScaffold(ctx, opts, facts, bindings, lib, staging); err != nil {
-		return err
+		return nil, err
 	}
 
 	images, err := localImageEntries(facts, overrides)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := writeLocalRootKustomization(staging, namespace, facts, images); err != nil {
-		return err
+		return nil, err
 	}
 
 	built, err := kustomizeBuild(ctx, opts.Runner, staging)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := assertAllImagesTagged(built); err != nil {
-		return err
+		return nil, err
 	}
-	if _, err := opts.Stdout.Write(built); err != nil {
-		return fmt.Errorf("write manifests: %w", err)
-	}
-	return nil
+	return built, nil
 }
 
-// initGitOps is the ModeGitOps publish path: render the repo-relative staging
+// initGitOps is the modeGitOps publish path: render the repo-relative staging
 // tree, classify every file against the checkout, and push the result on a
 // review branch.
-func initGitOps(ctx context.Context, opts InitOptions, found discoveredTopology, lib *template.Library) error {
+func initGitOps(ctx context.Context, opts manifestRunOptions, found discoveredTopology, lib *template.Library) error {
 	out := opts.output()
 
 	s, err := openSession(ctx, opts.session(), "git")
@@ -290,17 +250,14 @@ func initGitOps(ctx context.Context, opts InitOptions, found discoveredTopology,
 	}
 	defer s.Close()
 
-	facts, err := newInitFacts(opts, s, found)
+	facts, err := resolveGitOpsFacts(opts, s, found)
 	if err != nil {
 		return err
 	}
 
-	bindings, err := resolveConnectorBindings(opts, facts, lib)
-	if err != nil {
-		return err
-	}
+	bindings := emptyGitOpsBindings(opts, facts)
 
-	staging, err := os.MkdirTemp("", "intropy-deploy-init-*")
+	staging, err := os.MkdirTemp("", "intropy-manifests-create-*")
 	if err != nil {
 		return fmt.Errorf("create staging directory: %w", err)
 	}
@@ -318,23 +275,24 @@ func initGitOps(ctx context.Context, opts InitOptions, found discoveredTopology,
 	if err := renderScaffold(ctx, opts, facts, bindings, lib, staging); err != nil {
 		return err
 	}
-	branch := initBranchPrefix + facts.Domain + "-" + facts.System
+	branch := manifestsCreateBranchPrefix + facts.Domain + "-" + facts.System + "-" + opts.reviewEnv
 
 	rels, err := stageRels(staging)
 	if err != nil {
 		return err
 	}
-	actions, err := classifyStaged(staging, dest, rels, opts.Force)
+	actions, err := classifyStaged(staging, dest, rels)
 	if err != nil {
 		return err
 	}
-	if opts.Force {
-		if err := assertForceIsSafe(s.repo.Root, actions); err != nil {
-			return err
-		}
+	if opts.diffOnly {
+		return reportManifestCreateDiff(out.Stdout, staging, dest, actions)
+	}
+	if err := refuseManifestReplacements(actions); err != nil {
+		return err
 	}
 
-	result := InitResult{
+	result := ManifestCreateResult{
 		System:       facts.System,
 		Domain:       facts.Domain,
 		Host:         HostDirName,
@@ -352,7 +310,7 @@ func initGitOps(ctx context.Context, opts InitOptions, found discoveredTopology,
 		if err != nil {
 			return err
 		}
-		return reportInit(out, result, actions, true)
+		return reportManifestCreate(out, result, actions, true)
 	}
 
 	if writes(actions) == 0 {
@@ -362,7 +320,7 @@ func initGitOps(ctx context.Context, opts InitOptions, found discoveredTopology,
 		if err != nil {
 			return err
 		}
-		return reportInit(out, result, actions, false)
+		return reportManifestCreate(out, result, actions, false)
 	}
 
 	published, err := publishScaffold(ctx, opts, s.repo, publishScaffoldOptions{
@@ -381,13 +339,13 @@ func initGitOps(ctx context.Context, opts InitOptions, found discoveredTopology,
 	result.Revision = published.Revision
 	result.Placeholders = published.Placeholders
 
-	return reportInit(out, result, actions, false)
+	return reportManifestCreate(out, result, actions, false)
 }
 
-// newLocalInitFacts is newInitFacts with local constants in place of the
+// resolveLocalFacts is resolveGitOpsFacts with local constants in place of the
 // GitOps checkout's facts — newLocalFacts plus the selection and validation
 // the GitOps path does on the way.
-func newLocalInitFacts(opts InitOptions, found discoveredTopology) (initFacts, error) {
+func resolveLocalFacts(opts manifestRunOptions, found discoveredTopology) (manifestFacts, error) {
 	topo := found.Topology
 
 	system := opts.System
@@ -395,23 +353,20 @@ func newLocalInitFacts(opts InitOptions, found discoveredTopology) (initFacts, e
 		system = topo.System
 	}
 	if system == "" {
-		return initFacts{}, fmt.Errorf("the topology record names no system; pass --system")
+		return manifestFacts{}, fmt.Errorf("the topology record names no system; pass --system")
 	}
 	if err := assertPathSegment("--system", system); err != nil {
-		return initFacts{}, err
+		return manifestFacts{}, err
 	}
 
-	model := newInitModel(topo, found.Scaffolds)
-	selected, err := selectComponents(model, opts.Components, system)
-	if err != nil {
-		return initFacts{}, err
-	}
+	model := newManifestModel(topo, found.Scaffolds)
+	selected := slices.Clone(model.Components)
 	for _, c := range selected {
 		// From the topology record, which is generated by a build this CLI does
 		// not own: a name with a separator in it would render into a directory of
 		// its own choosing.
 		if err := assertPathSegment("component name", c.Name); err != nil {
-			return initFacts{}, err
+			return manifestFacts{}, err
 		}
 		if c.Dir == "" {
 			fmt.Fprintf(opts.Stderr, "warning: %s has no scaffold record under the workspace root; its manifests will be generated without an appId or sourcePaths\n", c.Name)
@@ -431,7 +386,7 @@ func writes(actions []FileAction) int {
 	return n
 }
 
-// discoveredTopology is what resolveInitTopology found in the workspace.
+// discoveredTopology is what discoverManifestTopology found in the workspace.
 type discoveredTopology struct {
 	Topology  *topology.Topology
 	Scaffolds []template.ScaffoldEntry
@@ -441,8 +396,8 @@ type discoveredTopology struct {
 	HostDir string
 }
 
-// resolveInitTopology obtains the record and the workspace's scaffold records.
-func resolveInitTopology(ctx context.Context, opts InitOptions) (discoveredTopology, error) {
+// discoverManifestTopology obtains the record and the workspace's scaffold records.
+func discoverManifestTopology(ctx context.Context, opts manifestRunOptions) (discoveredTopology, error) {
 	scaffolds, warnings := template.ListScaffolds(opts.SourceDir)
 	for _, w := range warnings {
 		fmt.Fprintf(opts.Stderr, "warning: %v\n", w)
@@ -577,9 +532,9 @@ func describeHosts(hosts []template.ScaffoldEntry) string {
 	return strings.Join(lines, "\n")
 }
 
-// initFacts is everything derived before rendering: where the manifests go, what
+// manifestFacts is everything derived before rendering: where the manifests go, what
 // the platform is, and the model the skeletons range over.
-type initFacts struct {
+type manifestFacts struct {
 	Domain string
 	System string
 
@@ -588,12 +543,12 @@ type initFacts struct {
 	AppNamespace string
 	Platform     gitops.PlatformConfig
 
-	Model     InitModel
+	Model     ManifestModel
 	Scaffolds map[string]template.ScaffoldEntry
-	Selected  []InitComponent
+	Selected  []ManifestComponent
 }
 
-func (f initFacts) ComponentNames() []string {
+func (f manifestFacts) ComponentNames() []string {
 	names := make([]string, 0, len(f.Selected))
 	for _, c := range f.Selected {
 		names = append(names, c.Name)
@@ -601,7 +556,7 @@ func (f initFacts) ComponentNames() []string {
 	return names
 }
 
-func newInitFacts(opts InitOptions, s *session, found discoveredTopology) (initFacts, error) {
+func resolveGitOpsFacts(opts manifestRunOptions, s *session, found discoveredTopology) (manifestFacts, error) {
 	topo, scaffolds := found.Topology, found.Scaffolds
 
 	system := opts.System
@@ -609,47 +564,44 @@ func newInitFacts(opts InitOptions, s *session, found discoveredTopology) (initF
 		system = topo.System
 	}
 	if system == "" {
-		return initFacts{}, fmt.Errorf("the topology record names no system; pass --system")
+		return manifestFacts{}, fmt.Errorf("the topology record names no system; pass --system")
 	}
 
-	domain, err := resolveInitDomain(s.repo.Root, opts.Domain, system, found.HostDir, scaffolds, opts.Stderr)
+	domain, err := resolveManifestDomain(s.repo.Root, opts.Domain, system, found.HostDir, scaffolds, opts.Stderr)
 	if err != nil {
-		return initFacts{}, err
+		return manifestFacts{}, err
 	}
 
 	// Both become tree segments and both end up in the branch name, so neither
 	// may be anything but a single name. destTree refuses a traversal at the
 	// write; failing here instead names the input that was wrong.
 	if err := assertPathSegment("--domain", domain); err != nil {
-		return initFacts{}, err
+		return manifestFacts{}, err
 	}
 	if err := assertPathSegment("--system", system); err != nil {
-		return initFacts{}, err
+		return manifestFacts{}, err
 	}
 
 	environments, err := selectEnvironments(s.deployCfg, opts.Environments)
 	if err != nil {
-		return initFacts{}, err
+		return manifestFacts{}, err
 	}
 
-	model := newInitModel(topo, scaffolds)
-	selected, err := selectComponents(model, opts.Components, system)
-	if err != nil {
-		return initFacts{}, err
-	}
+	model := newManifestModel(topo, scaffolds)
+	selected := slices.Clone(model.Components)
 	for _, c := range selected {
 		// From the topology record, which is generated by a build this CLI does
 		// not own: a name with a separator in it would render into a directory of
 		// its own choosing.
 		if err := assertPathSegment("component name", c.Name); err != nil {
-			return initFacts{}, err
+			return manifestFacts{}, err
 		}
 		if c.Dir == "" {
 			fmt.Fprintf(opts.Stderr, "warning: %s has no scaffold record under the workspace root; its manifests will be generated without an appId or sourcePaths\n", c.Name)
 		}
 	}
 
-	return initFacts{
+	return manifestFacts{
 		Domain:       domain,
 		System:       system,
 		Environments: environments,
@@ -662,7 +614,7 @@ func newInitFacts(opts InitOptions, s *session, found discoveredTopology) (initF
 	}, nil
 }
 
-// resolveInitDomain places the system in the tree.
+// resolveManifestDomain places the system in the tree.
 //
 // The topology itself says nothing about which business domain a system belongs
 // to, but two other things do, and between them --domain is rarely needed:
@@ -673,7 +625,7 @@ func newInitFacts(opts InitOptions, s *session, found discoveredTopology) (initF
 //     mirrors from the deployment tree: domains/<domain>/<system>/<project>.
 //
 // An explicit --domain always wins, and is still required when neither holds.
-func resolveInitDomain(root, flag, system, hostDir string, scaffolds []template.ScaffoldEntry, stderr io.Writer) (string, error) {
+func resolveManifestDomain(root, flag, system, hostDir string, scaffolds []template.ScaffoldEntry, stderr io.Writer) (string, error) {
 	if flag != "" {
 		return flag, nil
 	}
@@ -759,52 +711,27 @@ func domainFromProjectPath(projectDir string) string {
 }
 
 func selectEnvironments(cfg *gitops.DeployConfig, requested []string) ([]string, error) {
-	if len(requested) == 0 {
+	all := len(requested) == 0
+	if all {
 		// Every environment, in promotion order. The ApplicationSet takes the
 		// environment from its cluster generator rather than the path, so an
 		// environment without an overlay is an Application pointing at nothing.
-		return cfg.PromotionOrder(), nil
+		requested = cfg.PromotionOrder()
 	}
 	for _, env := range requested {
 		if _, err := cfg.Environment(env); err != nil {
 			return nil, err
 		}
+		if err := assertPathSegment("environment name", env); err != nil {
+			return nil, err
+		}
 	}
 	out := slices.Clone(requested)
+	if all {
+		return out, nil
+	}
 	slices.Sort(out)
 	return slices.Compact(out), nil
-}
-
-// selectComponents narrows the run to the named blocks, or to all of them.
-//
-// The argument names a topology *component*. A system host is not one — it is
-// what emits the topology — so naming the system is a predictable mistake and
-// gets its own message: the whole-system run is the no-argument default, and a
-// bare "no such component" would not make that obvious.
-func selectComponents(m InitModel, requested []string, system string) ([]InitComponent, error) {
-	if len(requested) == 0 {
-		return m.Components, nil
-	}
-	byName := make(map[string]InitComponent, len(m.Components))
-	names := make([]string, 0, len(m.Components))
-	for _, c := range m.Components {
-		byName[c.Name] = c
-		names = append(names, c.Name)
-	}
-	var out []InitComponent
-	for _, want := range requested {
-		c, ok := byName[want]
-		if !ok {
-			if want == system {
-				return nil, fmt.Errorf("%q is this system, not one of its components — run deploy init with no arguments to scaffold the whole system, host included.\nIts components are: %s",
-					want, strings.Join(names, ", "))
-			}
-			return nil, fmt.Errorf("no component %q in the topology; it declares: %s\nRun deploy init with no arguments to scaffold all of them.", want, strings.Join(names, ", "))
-		}
-		out = append(out, c)
-	}
-	slices.SortFunc(out, func(a, b InitComponent) int { return strings.Compare(a.Name, b.Name) })
-	return out, nil
 }
 
 // renderScaffold renders the host template once and the component template once
@@ -815,7 +742,7 @@ func selectComponents(m InitModel, requested []string, system string) ([]InitCom
 // render stages flat — host/ and one directory per component — because the
 // temp root already holds exactly one system and no commit needs a
 // repo-relative path.
-func renderScaffold(ctx context.Context, opts InitOptions, facts initFacts, bindings map[string]map[string]string, lib *template.Library, staging string) error {
+func renderScaffold(ctx context.Context, opts manifestRunOptions, facts manifestFacts, bindings map[string]map[string]string, lib *template.Library, staging string) error {
 	if err := renderOne(opts, facts, bindings, lib, TemplateDeployHost, HostDirName, nil, staging); err != nil {
 		return err
 	}
@@ -834,10 +761,8 @@ func renderScaffold(ctx context.Context, opts InitOptions, facts initFacts, bind
 // The skeleton is rendered once per environment, because the renderer templates
 // paths but does not iterate them, so `overlays/{{ .env }}/kustomization.yaml` is
 // the only way to get one directory per environment. mergeRendered then enforces
-// that everything outside overlays/ came out identical on every pass — with one
-// sanctioned exception: base/bindings/ may vary, because the connector binding
-// is a per-environment fact the host base renders.
-func renderOne(opts InitOptions, facts initFacts, bindings map[string]map[string]string, lib *template.Library, templateName, dirName string, comp *InitComponent, staging string) error {
+// that everything outside overlays/ came out identical on every pass.
+func renderOne(opts manifestRunOptions, facts manifestFacts, bindings map[string]map[string]string, lib *template.Library, templateName, dirName string, comp *ManifestComponent, staging string) error {
 	tmpl, skeleton, err := lib.Open(templateName)
 	if err != nil {
 		return err
@@ -845,7 +770,7 @@ func renderOne(opts InitOptions, facts initFacts, bindings map[string]map[string
 
 	// GitOps mode stages the repository-relative path; a local render is flat.
 	dest := filepath.Join(staging, dirName)
-	if opts.Mode != ModeLocal {
+	if opts.Mode != modeLocal {
 		dest = filepath.Join(staging, filepath.FromSlash(componentRelPath(facts.Domain, facts.System, dirName)))
 	}
 	if err := os.MkdirAll(dest, 0o755); err != nil {
@@ -853,11 +778,11 @@ func renderOne(opts InitOptions, facts initFacts, bindings map[string]map[string
 	}
 
 	rules := tmpl.Spec.Files
-	if opts.Mode == ModeLocal {
+	if opts.Mode == modeLocal {
 		rules = localFileRules(rules)
 	}
 	for _, env := range facts.Environments {
-		values, err := resolveInitValues(opts, facts, bindings, tmpl, dirName, comp, env)
+		values, err := resolveManifestValues(opts, facts, bindings, tmpl, dirName, comp, env)
 		if err != nil {
 			return fmt.Errorf("%s for %s: %w", templateName, dirName, err)
 		}
@@ -878,16 +803,16 @@ func renderOne(opts InitOptions, facts initFacts, bindings map[string]map[string
 	return nil
 }
 
-// resolveInitValues layers the derived facts under the user's input, then injects
+// resolveManifestValues layers the derived facts under the user's input, then injects
 // the structures spec.parameters cannot describe.
 //
 // Facts beat schema defaults; the user beats facts. That order is the whole point
 // of ResolveLayered, and this is its first production caller.
-func resolveInitValues(opts InitOptions, facts initFacts, bindings map[string]map[string]string, tmpl *template.Template, dirName string, comp *InitComponent, env string) (map[string]any, error) {
-	base := seedDeclaredParams(tmpl, initSeeds(facts, dirName, comp))
+func resolveManifestValues(opts manifestRunOptions, facts manifestFacts, bindings map[string]map[string]string, tmpl *template.Template, dirName string, comp *ManifestComponent, env string) (map[string]any, error) {
+	base := seedDeclaredParams(tmpl, manifestSeeds(facts, dirName, comp))
 
-	prompter := template.AutoPrompter(opts.Stdin, opts.Stderr, opts.NoInput)
-	values, err := template.ResolveLayered(tmpl, base, opts.Files, opts.Stdin, opts.SetValues, prompter)
+	prompter := template.AutoPrompter(opts.Stdin, opts.Stderr, true)
+	values, err := template.ResolveLayered(tmpl, base, nil, opts.Stdin, nil, prompter)
 	if err != nil {
 		return nil, err
 	}
@@ -925,9 +850,9 @@ func resolveInitValues(opts InitOptions, facts initFacts, bindings map[string]ma
 	return values, nil
 }
 
-// initSeeds is every fact the CLI can derive, keyed by the parameter name a
+// manifestSeeds is every fact the CLI can derive, keyed by the parameter name a
 // template would declare for it.
-func initSeeds(facts initFacts, dirName string, comp *InitComponent) map[string]any {
+func manifestSeeds(facts manifestFacts, dirName string, comp *ManifestComponent) map[string]any {
 	seeds := map[string]any{
 		"domain":             facts.Domain,
 		"system":             facts.System,
@@ -980,7 +905,7 @@ func isBlank(v any) bool {
 	return ok && s == ""
 }
 
-func (f initFacts) gitopsMap(component, env string) map[string]any {
+func (f manifestFacts) gitopsMap(component, env string) map[string]any {
 	return map[string]any{
 		"domain":             f.Domain,
 		"system":             f.System,
@@ -1000,7 +925,7 @@ func (f initFacts) gitopsMap(component, env string) map[string]any {
 
 // scaffoldValues is the component's recorded template values, or an empty map so
 // a skeleton reading .scaffold.x never fails on a missing record.
-func (f initFacts) scaffoldValues(component string) map[string]any {
+func (f manifestFacts) scaffoldValues(component string) map[string]any {
 	if s, ok := f.Scaffolds[component]; ok && s.Values != nil {
 		return s.Values
 	}
@@ -1025,7 +950,7 @@ type publishScaffoldOptions struct {
 	Actions    []FileAction
 	Rels       []string
 	Branch     string
-	Facts      initFacts
+	Facts      manifestFacts
 }
 
 // publishedScaffold is what a successful push produced.
@@ -1047,7 +972,7 @@ type publishedScaffold struct {
 // Publish is not reused: it is wired to a Plan and its rebase-retry loop is for a
 // one-line contended edit. A fresh branch that is rejected already exists on the
 // remote, which is a clear error rather than something to retry.
-func publishScaffold(ctx context.Context, opts InitOptions, repo *gitops.Repository, p publishScaffoldOptions) (publishedScaffold, error) {
+func publishScaffold(ctx context.Context, opts manifestRunOptions, repo *gitops.Repository, p publishScaffoldOptions) (publishedScaffold, error) {
 	start := gitops.RemoteName + "/" + repo.Branch
 	if err := repo.Git.CreateBranch(ctx, p.Branch, start); err != nil {
 		return publishedScaffold{}, err
@@ -1075,7 +1000,8 @@ func publishScaffold(ctx context.Context, opts InitOptions, repo *gitops.Reposit
 	if err := assertStagedIsExactly(ctx, repo.Git, written); err != nil {
 		return publishedScaffold{}, err
 	}
-	if err := repo.Git.Commit(ctx, scaffoldSubject(p.Facts, len(written)), scaffoldTrailers(p.Facts, opts.CliVersion)); err != nil {
+	subject := manifestCreateSubject(p.Facts, opts.reviewEnv, len(written))
+	if err := repo.Git.Commit(ctx, subject, scaffoldTrailers(p.Facts, opts.reviewEnv, opts.CliVersion)); err != nil {
 		return publishedScaffold{}, err
 	}
 	if err := assertCommittedIsExactly(ctx, repo.Git, written); err != nil {
@@ -1098,14 +1024,17 @@ func publishScaffold(ctx context.Context, opts InitOptions, repo *gitops.Reposit
 	return publishedScaffold{Revision: revision, Placeholders: placeholders}, nil
 }
 
-func scaffoldSubject(facts initFacts, files int) string {
-	return fmt.Sprintf("deploy-init(%s): scaffold %d file%s under %s", facts.System, files, plural(files), facts.Domain)
+func manifestCreateSubject(facts manifestFacts, env string, files int) string {
+	return fmt.Sprintf("manifests(%s): create %d %s file%s under %s", facts.System, files, env, plural(files), facts.Domain)
 }
 
-func scaffoldTrailers(facts initFacts, cliVersion string) string {
+func scaffoldTrailers(facts manifestFacts, env, cliVersion string) string {
 	trailers := []git.Trailer{
 		{Key: TrailerDomain, Value: facts.Domain},
 		{Key: TrailerSystem, Value: facts.System},
+	}
+	if env != "" {
+		trailers = append(trailers, git.Trailer{Key: TrailerEnvironment, Value: env})
 	}
 	for _, c := range facts.Selected {
 		trailers = append(trailers, git.Trailer{Key: TrailerComponent, Value: c.Name})
@@ -1124,8 +1053,8 @@ func scaffoldTrailers(facts initFacts, cliVersion string) string {
 	return strings.Join(lines, "\n")
 }
 
-// reportInit writes the action table, then what remains to be done.
-func reportInit(out output, result InitResult, actions []FileAction, planOnly bool) error {
+// reportManifestCreate writes the action table, then what remains to be done.
+func reportManifestCreate(out output, result ManifestCreateResult, actions []FileAction, planOnly bool) error {
 	if out.Format == OutputJSON {
 		enc := json.NewEncoder(out.Stdout)
 		enc.SetIndent("", "  ")
@@ -1142,31 +1071,57 @@ func reportInit(out output, result InitResult, actions []FileAction, planOnly bo
 
 	switch {
 	case planOnly:
-		fmt.Fprintln(out.Stdout, "nothing written (--plan)")
+		fmt.Fprintln(out.Stdout, "nothing created (--dry-run)")
 	case result.Applied:
 		fmt.Fprintf(out.Stdout, "pushed branch %s at %s\n", result.Branch, git.ShortSHA(result.Revision))
 	default:
-		fmt.Fprintln(out.Stdout, "already onboarded; nothing to write")
-	}
-
-	if skipped := skippedPaths(actions); len(skipped) > 0 {
-		fmt.Fprintf(out.Stdout, "\n%d file%s already differ and were left alone; --force overwrites them:\n",
-			len(skipped), plural(len(skipped)))
-		for _, rel := range skipped {
-			fmt.Fprintf(out.Stdout, "  %s\n", rel)
-		}
+		fmt.Fprintln(out.Stdout, "all manifest files already exist; nothing created")
 	}
 
 	reportPlaceholders(out, result.Placeholders)
 	return nil
 }
 
-func skippedPaths(actions []FileAction) []string {
+func conflictingPaths(actions []FileAction) []string {
 	var out []string
 	for _, a := range actions {
-		if a.Action == ActionSkipExists {
+		if a.Action == ActionConflict {
 			out = append(out, a.Rel)
 		}
 	}
 	return out
+}
+
+func refuseManifestReplacements(actions []FileAction) error {
+	conflicts := conflictingPaths(actions)
+	if len(conflicts) == 0 {
+		return nil
+	}
+	var lines []string
+	for _, rel := range conflicts {
+		lines = append(lines, "  "+rel)
+	}
+	return fmt.Errorf("%d manifest file%s already exist and differ:\n%s\nmanifests create never replaces files; edit the existing GitOps files or remove them before creating again",
+		len(conflicts), plural(len(conflicts)), strings.Join(lines, "\n"))
+}
+
+func reportManifestCreateDiff(w io.Writer, staging string, dest *destTree, actions []FileAction) error {
+	for _, action := range actions {
+		if action.Action == ActionIdentical {
+			continue
+		}
+		after, err := os.ReadFile(filepath.Join(staging, filepath.FromSlash(action.Rel)))
+		if err != nil {
+			return fmt.Errorf("read staged %s: %w", action.Rel, err)
+		}
+		before, err := dest.read(action.Rel)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("read %s: %w", action.Rel, err)
+		}
+		diff := kustomize.Diff(before, after, action.Rel+" (current)", action.Rel+" (generated)", kustomize.PlainPalette)
+		if diff != "" {
+			fmt.Fprint(w, diff)
+		}
+	}
+	return nil
 }

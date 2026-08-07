@@ -49,7 +49,7 @@ const initTopologyRecord = `{
   ]
 }`
 
-func decodeInitTopology(t *testing.T) *topology.Topology {
+func decodeManifestTopology(t *testing.T) *topology.Topology {
 	t.Helper()
 	topo, err := topology.Decode(strings.NewReader(initTopologyRecord))
 	if err != nil {
@@ -58,7 +58,7 @@ func decodeInitTopology(t *testing.T) *topology.Topology {
 	return topo
 }
 
-func findComponent(t *testing.T, m InitModel, name string) InitComponent {
+func findComponent(t *testing.T, m ManifestModel, name string) ManifestComponent {
 	t.Helper()
 	for _, c := range m.Components {
 		if c.Name == name {
@@ -66,13 +66,13 @@ func findComponent(t *testing.T, m InitModel, name string) InitComponent {
 		}
 	}
 	t.Fatalf("component %q not in %+v", name, m.Components)
-	return InitComponent{}
+	return ManifestComponent{}
 }
 
 // The workload is the single most valuable thing the topology contributes: it is
 // what the customer repos already do by hand.
-func TestInitModelWorkloadFromBlockKind(t *testing.T) {
-	m := newInitModel(decodeInitTopology(t), nil)
+func TestManifestModelWorkloadFromBlockKind(t *testing.T) {
+	m := newManifestModel(decodeManifestTopology(t), nil)
 
 	if got := findComponent(t, m, "extractor").Workload; got != WorkloadCronJob {
 		t.Errorf("extractor workload = %q, want %q", got, WorkloadCronJob)
@@ -86,21 +86,21 @@ func TestInitModelWorkloadFromBlockKind(t *testing.T) {
 
 // The block kind is camelCase in some records and kebab-case in others, so the
 // match must not be spelling-sensitive.
-func TestInitModelWorkloadIgnoresKindSpelling(t *testing.T) {
+func TestManifestModelWorkloadIgnoresKindSpelling(t *testing.T) {
 	for _, kind := range []string{"extractor", "Extractor", "EXTRACTOR"} {
 		topo := &topology.Topology{
 			APIVersion: topology.APIVersion,
 			System:     "s",
 			Components: []topology.Component{{Name: "x", Kind: kind}},
 		}
-		if got := newInitModel(topo, nil).Components[0].Workload; got != WorkloadCronJob {
+		if got := newManifestModel(topo, nil).Components[0].Workload; got != WorkloadCronJob {
 			t.Errorf("kind %q gave workload %q", kind, got)
 		}
 	}
 }
 
-func TestInitModelPubSubsAreDistinctWithSortedScopes(t *testing.T) {
-	m := newInitModel(decodeInitTopology(t), nil)
+func TestManifestModelPubSubsAreDistinctWithSortedScopes(t *testing.T) {
+	m := newManifestModel(decodeManifestTopology(t), nil)
 
 	if len(m.PubSubs) != 1 {
 		t.Fatalf("PubSubs = %+v, want one", m.PubSubs)
@@ -120,8 +120,8 @@ func TestInitModelPubSubsAreDistinctWithSortedScopes(t *testing.T) {
 	}
 }
 
-func TestInitModelConnectors(t *testing.T) {
-	m := newInitModel(decodeInitTopology(t), nil)
+func TestManifestModelConnectors(t *testing.T) {
+	m := newManifestModel(decodeManifestTopology(t), nil)
 
 	if len(m.Connectors) != 2 {
 		t.Fatalf("Connectors = %+v", m.Connectors)
@@ -144,8 +144,8 @@ func TestInitModelConnectors(t *testing.T) {
 
 // Without a scaffold record there is no appId to read, and the component's own
 // name is the only honest answer.
-func TestInitModelAppIDFallsBackToName(t *testing.T) {
-	m := newInitModel(decodeInitTopology(t), nil)
+func TestManifestModelAppIDFallsBackToName(t *testing.T) {
+	m := newManifestModel(decodeManifestTopology(t), nil)
 	c := findComponent(t, m, "erp-loader")
 	if c.AppID != "erp-loader" {
 		t.Errorf("AppID = %q, want the component name", c.AppID)
@@ -155,14 +155,14 @@ func TestInitModelAppIDFallsBackToName(t *testing.T) {
 	}
 }
 
-func TestInitModelAppIDFromScaffold(t *testing.T) {
+func TestManifestModelAppIDFromScaffold(t *testing.T) {
 	root := t.TempDir()
 	scaffolds := []template.ScaffoldEntry{{
 		Path:     filepath.Join(root, "erp-loader"),
 		Scaffold: template.Scaffold{Values: map[string]any{"appId": "int201"}},
 	}}
 
-	m := newInitModel(decodeInitTopology(t), scaffolds)
+	m := newManifestModel(decodeManifestTopology(t), scaffolds)
 	c := findComponent(t, m, "erp-loader")
 	if c.AppID != "int201" {
 		t.Errorf("AppID = %q, want int201 from the scaffold record", c.AppID)
@@ -174,30 +174,30 @@ func TestInitModelAppIDFromScaffold(t *testing.T) {
 
 // The directory and the appId are both used as the join key in different parts
 // of the toolchain, so a record found only by appId must still match.
-func TestInitModelScaffoldMatchedByAppID(t *testing.T) {
+func TestManifestModelScaffoldMatchedByAppID(t *testing.T) {
 	root := t.TempDir()
 	scaffolds := []template.ScaffoldEntry{{
 		Path:     filepath.Join(root, "SomeOtherFolderName"),
 		Scaffold: template.Scaffold{Values: map[string]any{"appId": "erp-loader"}},
 	}}
 
-	m := newInitModel(decodeInitTopology(t), scaffolds)
+	m := newManifestModel(decodeManifestTopology(t), scaffolds)
 	if got := findComponent(t, m, "erp-loader").Dir; got != "SomeOtherFolderName" {
 		t.Errorf("Dir = %q, want the record matched by appId", got)
 	}
 }
 
 // A component wired to nothing is valid topology and must still be deployable.
-func TestInitModelKeepsUnwiredComponent(t *testing.T) {
-	m := newInitModel(decodeInitTopology(t), nil)
+func TestManifestModelKeepsUnwiredComponent(t *testing.T) {
+	m := newManifestModel(decodeManifestTopology(t), nil)
 	c := findComponent(t, m, "reconciler")
 	if len(c.Topics) != 0 || len(c.Connectors) != 0 {
 		t.Errorf("reconciler = %+v, want no wiring", c)
 	}
 }
 
-func TestInitModelComponentWiringIsSorted(t *testing.T) {
-	m := newInitModel(decodeInitTopology(t), nil)
+func TestManifestModelComponentWiringIsSorted(t *testing.T) {
+	m := newManifestModel(decodeManifestTopology(t), nil)
 	c := findComponent(t, m, "extractor")
 	if got := strings.Join(c.Topics, ","); got != "price-b2b,price-b2c" {
 		t.Errorf("extractor topics = %q", got)
@@ -209,13 +209,13 @@ func TestInitModelComponentWiringIsSorted(t *testing.T) {
 
 // Idempotent re-renders depend on byte-identical values, and neither Go map
 // order nor host emission order is guaranteed.
-func TestInitModelIsDeterministic(t *testing.T) {
-	first, err := json.Marshal(newInitModel(decodeInitTopology(t), nil))
+func TestManifestModelIsDeterministic(t *testing.T) {
+	first, err := json.Marshal(newManifestModel(decodeManifestTopology(t), nil))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for range 20 {
-		next, err := json.Marshal(newInitModel(decodeInitTopology(t), nil))
+		next, err := json.Marshal(newManifestModel(decodeManifestTopology(t), nil))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -227,8 +227,8 @@ func TestInitModelIsDeterministic(t *testing.T) {
 
 // The reserved-key injection goes through a JSON round-trip so index and sprig
 // see uniform map[string]any rather than Go structs.
-func TestInitModelRoundTripsToMap(t *testing.T) {
-	m := newInitModel(decodeInitTopology(t), nil)
+func TestManifestModelRoundTripsToMap(t *testing.T) {
+	m := newManifestModel(decodeManifestTopology(t), nil)
 	got, err := m.asMap("staging", nil)
 	if err != nil {
 		t.Fatalf("asMap: %v", err)

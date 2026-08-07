@@ -68,13 +68,13 @@ var localRepoMetadataGlobs = []string{"component.yaml.tmpl"}
 // setup scripts install.
 var localPlatform = gitops.PlatformConfig{Provider: "kubernetes", Pubsub: "rabbitmq", SecretStore: "kubernetes"}
 
-// newLocalFacts is newInitFacts with local constants in place of the GitOps
+// newLocalFacts is resolveGitOpsFacts with local constants in place of the GitOps
 // facts. Domain and the ArgoCD app namespace stay empty — they have no local
 // meaning, and the fixture contract forbids the local overlay's skeletons
 // from referencing them. registry is the placeholder the root kustomization's
 // images[] entries make irrelevant.
-func newLocalFacts(system string, model InitModel, scaffolds map[string]template.ScaffoldEntry, selected []InitComponent) initFacts {
-	return initFacts{
+func newLocalFacts(system string, model ManifestModel, scaffolds map[string]template.ScaffoldEntry, selected []ManifestComponent) manifestFacts {
+	return manifestFacts{
 		System:       system,
 		Environments: []string{localEnv},
 		Registry:     localRegistry,
@@ -138,7 +138,7 @@ type localImageEntry struct {
 // excluded — the same fact requirePinnable encodes (the host is shared and
 // declares no image). Each rendered reference is exactly the component name,
 // the shape the fixture contract pins, so name matching cannot silently miss.
-func localImageEntries(facts initFacts, overrides []imageOverride) ([]localImageEntry, error) {
+func localImageEntries(facts manifestFacts, overrides []imageOverride) ([]localImageEntry, error) {
 	perComponent := map[string]imageOverride{}
 	var global *imageOverride
 	for _, o := range overrides {
@@ -190,7 +190,7 @@ type localRootKustomization struct {
 	Images     []localImageEntry `yaml:"images,omitempty"`
 }
 
-func writeLocalRootKustomization(staging, namespace string, facts initFacts, images []localImageEntry) error {
+func writeLocalRootKustomization(staging, namespace string, facts manifestFacts, images []localImageEntry) error {
 	k := localRootKustomization{
 		APIVersion: "kustomize.config.k8s.io/v1beta1",
 		Kind:       "Kustomization",

@@ -1,135 +1,152 @@
 package deploy
 
 import (
+	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
+	"github.com/integrio-intropy/intropy-cli/internal/interactive"
 	"github.com/integrio-intropy/intropy-cli/internal/template"
 )
 
-// resolveConnectorBindings decides which Dapr binding each topology connector
-// deploys as, for every environment being scaffolded.
-//
-// The catalog the answers are chosen from and validated against comes from the
-// fetched library: spec.local.fixtures for the local environment, spec.bindings
-// for every other — so the menu, the validation and the rendered skeletons can
-// never drift apart. Recorded answers live in .intropy/deploy-values.yaml and
-// are the previous environment's default when a new one is asked: a binding
-// type rarely differs between GitOps environments, so a re-ask is usually
-// enter-enter-enter.
-//
-// An unbound connector is never silently skipped. Local mode fails — a fixture
-// must bind. GitOps mode binds nothing and reports the connector as pending:
-// the skeleton renders its REPLACE-ME scaffold, exactly as before the question
-// existed.
-func resolveConnectorBindings(opts InitOptions, facts initFacts, lib *template.Library) (map[string]map[string]string, error) {
-	if err := migrateLegacyLocalConfig(opts.SourceDir, opts.Stderr); err != nil {
-		return nil, err
-	}
-	path := deployValuesPath(opts.SourceDir)
-	vals, err := loadDeployValues(path)
+// resolveLocalConnectorBindings validates explicit choices and asks for any
+// missing ones when terminal interaction is available. Choices are render
+// inputs only: local rendering never persists them.
+func resolveLocalConnectorBindings(ctx context.Context, opts manifestRunOptions, facts manifestFacts, lib *template.Library) (map[string]map[string]string, error) {
+	fixtures, err := fixtureCatalog(lib)
 	if err != nil {
 		return nil, err
 	}
-	if vals.Connectors == nil {
-		vals.Connectors = map[string]map[string]string{}
+	if len(fixtures) == 0 {
+		return nil, fmt.Errorf("%s declares no fixture catalog (spec.local.fixtures on %s)\nuse --template-version to pin a library release that ships one", lib.Ref(), TemplateDeployComponent)
 	}
 
-	fixtures, bindings, err := bindingCatalogs(lib)
+	explicit, err := parseConnectorBindingArgs(opts.Bindings)
 	if err != nil {
 		return nil, err
 	}
-
-	// NewMenuPrompter rather than SelectPrompter: the connector question is
-	// answered from piped stdin in tests and scripts too, and --no-input is
-	// still what turns prompting off. The answer is persisted to a checked-in
-	// file, so a piped answer is as reviewable as a typed one.
-	var prompter *template.MenuPrompter
-	if !opts.NoInput {
-		prompter = template.NewMenuPrompter(opts.Stdin, opts.Stderr)
+	connectors := make(map[string]ManifestConnector, len(facts.Model.Connectors))
+	for _, connector := range facts.Model.Connectors {
+		connectors[connector.Name] = connector
 	}
-
-	// facts.Environments is promotion order; local mode has exactly one. An
-	// answer settled in one environment is the default for the next.
-	settled := map[string]string{}
-	changed := false
-	for _, env := range facts.Environments {
-		catalog := bindings
-		if env == localEnv {
-			catalog = fixtures
+	for _, name := range slices.Sorted(maps.Keys(explicit)) {
+		fixture := explicit[name]
+		if _, ok := connectors[name]; !ok {
+			return nil, fmt.Errorf("--binding names connector %q, which the topology does not declare", name)
 		}
-		for _, conn := range facts.Model.Connectors {
-			if recorded := vals.Connectors[conn.Name][env]; recorded != "" {
-				if !slices.Contains(catalog, recorded) {
-					return nil, fmt.Errorf("connector %s is bound to %q for %s in %s, which %s does not offer; the catalog is: %s\nedit the file, or delete the entry to be asked again",
-						conn.Name, recorded, env, path, TemplateDeployComponent, strings.Join(catalog, ", "))
-				}
-				settled[conn.Name] = recorded
-				continue
-			}
-			if prompter == nil || len(catalog) == 0 {
-				// No menu to offer — an older library — or no prompting at all.
-				// Local mode must bind: a fixture is the only binding a local
-				// render can deploy. GitOps mode falls back to the placeholder
-				// scaffold, exactly as before the question existed.
-				if opts.Mode == ModeLocal {
-					return nil, fmt.Errorf("connector %s has no local binding in %s\nrun 'intropy deploy init --local %s' interactively, or add it to the file",
-						conn.Name, path, facts.System)
-				}
-				fmt.Fprintf(opts.Stderr, "note: connector %s has no binding for %s; its manifests keep the REPLACE-ME scaffold\n", conn.Name, env)
-				continue
-			}
-			options := catalog
-			if prev := settled[conn.Name]; prev != "" && slices.Contains(catalog, prev) {
-				options = append([]string{prev}, slices.DeleteFunc(slices.Clone(catalog), func(c string) bool { return c == prev })...)
-			}
-			heading := fmt.Sprintf("connector %s (external system %s) — which binding for %s?", conn.Name, conn.ExternalSystem, env)
-			choice, err := prompter.Select(heading, options)
+		if !slices.Contains(fixtures, fixture) {
+			return nil, fmt.Errorf("connector %s uses unsupported local fixture %q; available fixtures: %s", name, fixture, strings.Join(fixtures, ", "))
+		}
+	}
+
+	resolved := make(map[string]map[string]string, len(facts.Model.Connectors))
+	var missing []string
+	for _, connector := range facts.Model.Connectors {
+		fixture := explicit[connector.Name]
+		if fixture == "" && opts.Selector != nil {
+			fixture, err = selectConnectorBinding(ctx, opts.Selector, connector, fixtures)
 			if err != nil {
-				return nil, fmt.Errorf("read binding for connector %s: %w", conn.Name, err)
+				return nil, fmt.Errorf("select local binding for connector %s: %w", connector.Name, err)
 			}
-			if vals.Connectors[conn.Name] == nil {
-				vals.Connectors[conn.Name] = map[string]string{}
-			}
-			vals.Connectors[conn.Name][env] = choice
-			settled[conn.Name] = choice
-			changed = true
 		}
-	}
-
-	// A binding the topology no longer declares is harmless — the state file
-	// may be shared with a branch that still has it — but worth a note.
-	for name := range vals.Connectors {
-		if !slices.ContainsFunc(facts.Model.Connectors, func(c InitConnector) bool { return c.Name == name }) {
-			fmt.Fprintf(opts.Stderr, "note: %s binds %s, which the topology no longer declares\n", deployValuesFileName, name)
+		if fixture == "" {
+			missing = append(missing, connector.Name)
+			continue
 		}
+		if !slices.Contains(fixtures, fixture) {
+			return nil, fmt.Errorf("connector %s uses unsupported local fixture %q; available fixtures: %s",
+				connector.Name, fixture, strings.Join(fixtures, ", "))
+		}
+		resolved[connector.Name] = map[string]string{localEnv: fixture}
 	}
-
-	if !changed {
-		return vals.Connectors, nil
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("local bindings are required for connectors: %s\npass one '--binding <connector>=<fixture>' for each; available fixtures: %s",
+			strings.Join(missing, ", "), strings.Join(fixtures, ", "))
 	}
-	if err := saveDeployValues(path, vals); err != nil {
-		return nil, err
-	}
-	fmt.Fprintf(opts.Stderr, "recorded connector bindings in %s\n", path)
-	return vals.Connectors, nil
+	return resolved, nil
 }
 
-// bindingCatalogs reads the two closed catalogs from the fetched library. The
-// local environment binds to fixtures — the stub servers the k3s scripts
-// install — from spec.local.fixtures; every other environment binds to a Dapr
-// binding type from spec.bindings. A release without a fixture catalog cannot
-// render local bindings, so that is a hard error naming the release. A release
-// without spec.bindings is simply older than the GitOps question: those
-// environments fall back to placeholders, with no menu to offer.
-func bindingCatalogs(lib *template.Library) (fixtures, bindings []string, err error) {
+func parseConnectorBindingArgs(args []string) (map[string]string, error) {
+	bindings := make(map[string]string, len(args))
+	for _, arg := range args {
+		name, fixture, ok := strings.Cut(arg, "=")
+		name, fixture = strings.TrimSpace(name), strings.TrimSpace(fixture)
+		if !ok || name == "" || fixture == "" {
+			return nil, fmt.Errorf("invalid --binding %q; use --binding <connector>=<fixture>", arg)
+		}
+		if _, duplicate := bindings[name]; duplicate {
+			return nil, fmt.Errorf("--binding specifies connector %s more than once", name)
+		}
+		bindings[name] = fixture
+	}
+	return bindings, nil
+}
+
+func selectConnectorBinding(ctx context.Context, selector interactive.Selector, connector ManifestConnector, fixtures []string) (string, error) {
+	options := make([]interactive.SelectOption, 0, len(fixtures))
+	for _, fixture := range fixtures {
+		options = append(options, interactive.SelectOption{
+			Label: fixtureLabel(fixture),
+			Value: fixture,
+		})
+	}
+	return selector.Select(ctx, interactive.SelectRequest{
+		Title:       "local binding for " + connector.Name,
+		Description: connectorDescription(connector),
+		Options:     options,
+	})
+}
+
+func connectorDescription(connector ManifestConnector) string {
+	var details []string
+	if connector.ExternalSystem != "" {
+		details = append(details, "external system "+connector.ExternalSystem)
+	}
+	if len(connector.AppIDs) > 0 {
+		details = append(details, "used by "+strings.Join(connector.AppIDs, ", "))
+	}
+	if len(details) == 0 {
+		return "choose the fixture this connector uses locally"
+	}
+	return strings.Join(details, "; ")
+}
+
+func fixtureLabel(fixture string) string {
+	description := map[string]string{
+		"file": "local directory",
+		"http": "HTTP stub",
+		"sftp": "SFTP server",
+		"smb":  "SMB share",
+	}[fixture]
+	if description == "" {
+		return fixture
+	}
+	return fixture + " — " + description
+}
+
+// emptyGitOpsBindings keeps connector types unset during create-only
+// onboarding. The generated placeholder becomes ordinary GitOps source for the
+// reviewer to complete.
+func emptyGitOpsBindings(opts manifestRunOptions, facts manifestFacts) map[string]map[string]string {
+	for _, env := range facts.Environments {
+		for _, connector := range facts.Model.Connectors {
+			fmt.Fprintf(opts.Stderr, "note: connector %s has no binding for %s; its manifests keep the REPLACE-ME scaffold\n", connector.Name, env)
+		}
+	}
+	return map[string]map[string]string{}
+}
+
+// fixtureCatalog reads the closed local fixture catalog from the fetched
+// deploy-component template.
+func fixtureCatalog(lib *template.Library) ([]string, error) {
 	tmpl, _, err := lib.Open(TemplateDeployComponent)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	if tmpl.Spec.Local == nil || len(tmpl.Spec.Local.Fixtures) == 0 {
-		return nil, nil, fmt.Errorf("%s declares no fixture catalog (spec.local.fixtures on %s)\nuse --template-version to pin a library release that ships one", lib.Ref(), TemplateDeployComponent)
+	if tmpl.Spec.Local == nil {
+		return nil, nil
 	}
-	return tmpl.Spec.Local.Fixtures, tmpl.Spec.Bindings, nil
+	return tmpl.Spec.Local.Fixtures, nil
 }
