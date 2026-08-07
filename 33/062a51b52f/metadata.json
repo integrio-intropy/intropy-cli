@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "33062a51b52f",
+  "strategy": "manual-commit",
+  "branch": "feature/deploy-show-command",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "cmd/intropy/deploy.go",
+    "cmd/intropy/deploy_show.go",
+    "internal/dashboard/dashboard_test.go",
+    "internal/dashboard/gitops.go",
+    "internal/dashboard/gitops_test.go",
+    "internal/dashboard/handlers.go",
+    "internal/dashboard/server.go",
+    "internal/deploy/result.go",
+    "internal/deploy/show.go",
+    "internal/deploy/show_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/33/062a51b52f/0/metadata.json",
+      "transcript": "/33/062a51b52f/0/full.jsonl",
+      "compact_transcript": "/33/062a51b52f/0/transcript.jsonl",
+      "content_hash": "/33/062a51b52f/0/content_hash.txt",
+      "prompt": "/33/062a51b52f/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 79752,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 5230400,
+    "output_tokens": 36167,
+    "api_call_count": 70
+  }
+}

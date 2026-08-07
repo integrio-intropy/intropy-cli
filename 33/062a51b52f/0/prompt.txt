@@ -1,0 +1,1 @@
+Can you implement the plan at docs/plans/deploy-show-command.md on a new branch off feature/v-next. Do not push the code and no PR
