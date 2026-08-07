@@ -37,13 +37,12 @@ const localRegistry = "dev"
 // component images under.
 const localImageTag = "dev"
 
-// localExclusionReason is the when-condition appended to every spec.files rule
-// for a local render. It is always false, which excludes exactly the files the
-// template declared conditional — repo metadata like component.yaml — while
-// leaving unconditional skeleton files (the manifests) untouched. The
-// exclusion list itself is the templates' spec.files, kept in sync with the
-// fixture-contract doc over there.
-const localExclusionReason = "repo metadata; a local render emits manifests only"
+// localExclusionReason is the when-condition on the repo-metadata exclusion
+// rules a local render prepends. It is the literal "false": the filter's
+// truthy() treats any other non-empty string as true, so a prose reason here
+// would *include* the matched files — the bug that let component.yaml and
+// every conditional variant into local renders.
+const localExclusionReason = "false"
 
 // LocalOptions configures Local.
 //
@@ -524,16 +523,25 @@ func localSeeds(facts localFacts, dirName string, comp *InitComponent) map[strin
 	return seeds
 }
 
-// localFileRules narrows a template's file rules to manifests only: every
-// declared rule is forced false, which excludes repo metadata such as
-// component.yaml while leaving unconditional skeleton files alone.
+// localFileRules narrows a template's file rules to manifests only: an
+// exclusion for the repo-metadata paths, prepended so it decides first,
+// ahead of the template's own rules. Those rules are kept — with the local
+// facts seeded (pubsub redis, the block's workload, secretStore kubernetes)
+// they select the same variants a local render needs, and they are what keeps
+// the generic overlays/{{ .env }}/ skeleton from rendering over the local
+// overlay.
 func localFileRules(rules []template.FileRule) []template.FileRule {
-	out := make([]template.FileRule, 0, len(rules))
-	for _, r := range rules {
-		out = append(out, template.FileRule{Path: r.Path, When: localExclusionReason})
+	out := make([]template.FileRule, 0, len(localRepoMetadataGlobs)+len(rules))
+	for _, glob := range localRepoMetadataGlobs {
+		out = append(out, template.FileRule{Path: glob, When: localExclusionReason})
 	}
-	return out
+	return append(out, rules...)
 }
+
+// localRepoMetadataGlobs are the skeleton paths a local render never emits:
+// repo metadata the rest of deploy reads, not Kubernetes manifests. The
+// fixture-contract doc in the templates repo enumerates the same list.
+var localRepoMetadataGlobs = []string{"component.yaml.tmpl"}
 
 // localImageEntry is one images[] entry in the root kustomization.
 type localImageEntry struct {
