@@ -1,0 +1,1 @@
+I wonder if we should remove the min cli version check? It feels like a way to make old cli versions fails gracefully but we have not released the cli yet so no one will run a cli version that doesnt have this. Make the change on this branch, do not push and no pr
