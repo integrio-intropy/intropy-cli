@@ -3,6 +3,7 @@ package template
 import (
 	"fmt"
 	"os"
+	"regexp"
 
 	"gopkg.in/yaml.v3"
 )
@@ -35,6 +36,12 @@ type Spec struct {
 	Values       map[string]string `yaml:"values,omitempty"`
 	Files        []FileRule        `yaml:"files,omitempty"`
 	Dependencies []DependencySpec  `yaml:"dependencies,omitempty"`
+
+	// Local declares what a local-cluster render of this template offers.
+	// Absent on templates that are never rendered locally; on deploy-component
+	// it is how the fixture catalog travels with the release rather than being
+	// hardcoded in the CLI.
+	Local *LocalSpec `yaml:"local,omitempty"`
 
 	// parameterOrder captures the declaration order of properties in
 	// spec.parameters.properties, since Go maps don't preserve YAML order.
@@ -81,6 +88,20 @@ type DependencySpec struct {
 	Values map[string]string `yaml:"values,omitempty" json:"values,omitempty"`
 }
 
+// LocalSpec is the local-render section of a template manifest.
+//
+// Fixtures is the closed catalog of fixture bindings a connector can be bound
+// to in a local render. The CLI reads it from the fetched library, so the menu
+// it presents, the values it accepts and the skeletons it renders all come from
+// one release of one repository.
+type LocalSpec struct {
+	Fixtures []string `yaml:"fixtures"`
+}
+
+// fixtureNamePattern keeps a fixture name usable as a path segment, a Dapr
+// component name fragment and a map key without escaping anywhere.
+var fixtureNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+
 // UnmarshalYAML decodes the spec and captures property declaration order
 // so Fields() can return FieldSpecs in author-intended sequence.
 func (s *Spec) UnmarshalYAML(node *yaml.Node) error {
@@ -91,6 +112,7 @@ func (s *Spec) UnmarshalYAML(node *yaml.Node) error {
 		Values       map[string]string `yaml:"values,omitempty"`
 		Files        []FileRule        `yaml:"files,omitempty"`
 		Dependencies []DependencySpec  `yaml:"dependencies,omitempty"`
+		Local        *LocalSpec        `yaml:"local,omitempty"`
 	}
 	var r rawSpec
 	if err := node.Decode(&r); err != nil {
@@ -100,6 +122,7 @@ func (s *Spec) UnmarshalYAML(node *yaml.Node) error {
 	s.Values = r.Values
 	s.Files = r.Files
 	s.Dependencies = r.Dependencies
+	s.Local = r.Local
 	s.parameterOrder = extractPropertyOrder(node)
 	return nil
 }
@@ -241,6 +264,18 @@ func (t *Template) validate() error {
 		}
 		if dep.Output == "" {
 			return fmt.Errorf("spec.dependencies[%d] (%s): output is required", i, dep.Template)
+		}
+	}
+	if t.Spec.Local != nil {
+		seen := make(map[string]bool, len(t.Spec.Local.Fixtures))
+		for i, fx := range t.Spec.Local.Fixtures {
+			if !fixtureNamePattern.MatchString(fx) {
+				return fmt.Errorf("spec.local.fixtures[%d]: %q is not a valid fixture name (lowercase letters, digits and dashes, starting with a letter or digit)", i, fx)
+			}
+			if seen[fx] {
+				return fmt.Errorf("spec.local.fixtures[%d]: %q is declared twice", i, fx)
+			}
+			seen[fx] = true
 		}
 	}
 	return nil

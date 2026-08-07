@@ -5,16 +5,14 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/integrio-intropy/intropy-cli/internal/gitops"
-	"github.com/integrio-intropy/intropy-cli/internal/kustomize"
 )
 
-// What scaffolding does to one file.
+// What manifest creation decides for one staged file.
 const (
 	// ActionCreate: the file is not in the repository yet.
 	ActionCreate = "create"
@@ -23,13 +21,9 @@ const (
 	// counted as a change — this is what makes a re-run a genuine no-op.
 	ActionIdentical = "identical"
 
-	// ActionSkipExists: already there and different. Left alone, because a
-	// human or a previous deploy owns it now. Reported so the difference is
-	// visible rather than silently ignored.
-	ActionSkipExists = "skip-exists"
-
-	// ActionOverwrite: already there and different, and --force was given.
-	ActionOverwrite = "overwrite"
+	// ActionConflict: already there and different. Manifest creation cannot
+	// decide which version should win, so the complete operation is refused.
+	ActionConflict = "conflict"
 )
 
 // FileAction is one staged file's fate.
@@ -41,7 +35,7 @@ type FileAction struct {
 
 // Writes reports whether the action puts bytes on disk.
 func (a FileAction) Writes() bool {
-	return a.Action == ActionCreate || a.Action == ActionOverwrite
+	return a.Action == ActionCreate
 }
 
 // stageRels lists every file a render produced, relative to the staging root and
@@ -79,16 +73,13 @@ func stageRels(stagingDir string) ([]string, error) {
 // classifyStaged decides what to do with each staged file, given what is already
 // in the repository.
 //
-// Rendering straight into the tree is never an option: the renderer overwrites,
-// and an overlay holds digests intropy deploy pinned. Staging first and
-// classifying second is what makes this command additive — a system gains a
-// component and only that subtree is new, while everything a human has since
-// edited is left exactly as it is.
+// Rendering straight into the tree is never an option: existing files become
+// ordinary GitOps source and may hold image digests or human edits. Staging first
+// makes equality and conflicts explicit before the first create.
 //
-// Every destination is checked before anything is read: a symlink or a path that
-// leaves the checkout fails the whole run here, which is early enough that --plan
-// refuses it too.
-func classifyStaged(stagingDir string, dest *destTree, rels []string, force bool) ([]FileAction, error) {
+// Every destination is checked before anything is read. A symlink or a path that
+// leaves the checkout therefore fails dry-run and diff as well as creation.
+func classifyStaged(stagingDir string, dest *destTree, rels []string) ([]FileAction, error) {
 	actions := make([]FileAction, 0, len(rels))
 	for _, rel := range rels {
 		staged := filepath.Join(stagingDir, filepath.FromSlash(rel))
@@ -109,53 +100,13 @@ func classifyStaged(stagingDir string, dest *destTree, rels []string, force bool
 			return nil, fmt.Errorf("read staged %s: %w", rel, err)
 		}
 
-		switch {
-		case string(current) == string(next):
+		if string(current) == string(next) {
 			actions = append(actions, FileAction{Rel: rel, Action: ActionIdentical})
-		case force:
-			actions = append(actions, FileAction{Rel: rel, Action: ActionOverwrite})
-		default:
-			actions = append(actions, FileAction{Rel: rel, Action: ActionSkipExists})
+		} else {
+			actions = append(actions, FileAction{Rel: rel, Action: ActionConflict})
 		}
 	}
 	return actions, nil
-}
-
-// assertForceIsSafe refuses a --force that would overwrite a pinned overlay.
-//
-// kustomize records a digest in the overlay's kustomization file, so replacing
-// one with a freshly rendered skeleton un-deploys whatever that environment is
-// running. There is no version of that a user meant to ask for, so this is a
-// hard refusal rather than a warning, and it names every file so the fix is
-// obvious.
-func assertForceIsSafe(destRoot string, actions []FileAction) error {
-	var pinned []string
-	for _, a := range actions {
-		if a.Action != ActionOverwrite || !isKustomizationFile(a.Rel) {
-			continue
-		}
-		k, _, err := kustomize.ReadKustomization(filepath.Join(destRoot, filepath.FromSlash(path.Dir(a.Rel))))
-		if err != nil {
-			// Unreadable or absent: nothing to protect, and the render will
-			// report a real problem if there is one.
-			continue
-		}
-		for _, img := range k.Images {
-			if img.Digest != "" {
-				pinned = append(pinned, fmt.Sprintf("  %s pins %s at %s", a.Rel, img.Name, img.Digest))
-				break
-			}
-		}
-	}
-	if len(pinned) == 0 {
-		return nil
-	}
-	return fmt.Errorf("--force would overwrite %d overlay%s that pin a digest:\n%s\n\nremove those paths from the scaffold, or delete the overlay first",
-		len(pinned), plural(len(pinned)), strings.Join(pinned, "\n"))
-}
-
-func isKustomizationFile(rel string) bool {
-	return slices.Contains(kustomize.KustomizationFileNames, path.Base(rel))
 }
 
 // applyStaged copies the staged files the actions say to write.
@@ -226,9 +177,10 @@ func mergeRendered(from, into, env string) error {
 			if string(current) == string(next) {
 				return nil
 			}
-			if !strings.HasPrefix(filepath.ToSlash(rel), OverlaysSegment) {
+			slash := filepath.ToSlash(rel)
+			if !strings.HasPrefix(slash, OverlaysSegment) {
 				return fmt.Errorf("%s renders differently for environment %q than for an earlier one; a value that varies by environment may only be used under %s",
-					filepath.ToSlash(rel), env, OverlaysSegment)
+					slash, env, OverlaysSegment)
 			}
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
@@ -251,7 +203,7 @@ func summariseActions(actions []FileAction) string {
 		counts[a.Action]++
 	}
 	var parts []string
-	for _, kind := range []string{ActionCreate, ActionOverwrite, ActionSkipExists, ActionIdentical} {
+	for _, kind := range []string{ActionCreate, ActionConflict, ActionIdentical} {
 		if n := counts[kind]; n > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s", n, kind))
 		}

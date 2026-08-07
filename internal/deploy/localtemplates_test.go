@@ -76,12 +76,12 @@ func TestLocalTemplatesRenderAndBuild(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	opts := f.options(&stdout, &stderr)
-	if err := Init(context.Background(), opts); err != nil {
+	if err := runManifestPipeline(context.Background(), opts); err != nil {
 		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
 	}
 	t.Logf("stdout:\n%s", stdout.String())
 
-	work := f.clone(t, "deploy-init/sales-distribution")
+	work := f.clone(t, "manifests-create/sales-distribution-all")
 	base := filepath.Join(work, "domains", "sales", "distribution")
 
 	for _, unit := range []string{"host", "extractor", "erp-loader", "reconciler"} {
@@ -140,11 +140,11 @@ func TestLocalTemplatesRenderConnectorBindingScaffold(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if err := Init(context.Background(), f.options(&stdout, &stderr)); err != nil {
+	if err := runManifestPipeline(context.Background(), f.options(&stdout, &stderr)); err != nil {
 		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
 	}
 
-	work := f.clone(t, "deploy-init/sales-distribution")
+	work := f.clone(t, "manifests-create/sales-distribution-all")
 	bindings := readTreeFile(t, work, "domains/sales/distribution/host/base/bindings/bindings.yaml")
 
 	for _, want := range []string{
@@ -170,11 +170,11 @@ func TestLocalTemplatesAzureRendersServiceBusAndNoSecrets(t *testing.T) {
 	setPlatform(t, f, "provider: azure\n  pubsub: servicebus\n  secretStore: azure-keyvault\n")
 
 	var stdout, stderr bytes.Buffer
-	if err := Init(context.Background(), f.options(&stdout, &stderr)); err != nil {
+	if err := runManifestPipeline(context.Background(), f.options(&stdout, &stderr)); err != nil {
 		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
 	}
 
-	work := f.clone(t, "deploy-init/sales-distribution")
+	work := f.clone(t, "manifests-create/sales-distribution-all")
 	hostBase := filepath.Join(work, "domains", "sales", "distribution", "host", "base")
 
 	if _, err := os.Stat(filepath.Join(hostBase, "dapr", "pubsub-servicebus.yaml")); err != nil {

@@ -20,8 +20,8 @@ type topologyProvider func(ctx context.Context) (entries []topology.Entry, errs 
 // Hosts scaffolded before the graph verb existed simply fail, which surfaces as
 // an error the UI renders.
 //
-// The mechanics live in topology.RunGraph, which deploy init shares. What stays
-// here is the dashboard's policy: never fail, report per host.
+// The mechanics live in topology.RunGraph, which manifest generation shares.
+// What stays here is the dashboard's policy: never fail, report per host.
 func hostGraphProvider(root string) topologyProvider {
 	return func(ctx context.Context) ([]topology.Entry, []string) {
 		hosts, _ := template.ListSystemHosts(root)

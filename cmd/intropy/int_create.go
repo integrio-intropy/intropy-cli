@@ -106,7 +106,7 @@ func init() {
 	f.StringArrayVarP(&intCreateFlags.values, "values", "f", nil, "values file in YAML/JSON (repeatable; use - to read one doc from stdin)")
 	f.StringArrayVarP(&intCreateFlags.sets, "set", "s", nil, "set a value as key=value (repeatable)")
 	f.BoolVar(&intCreateFlags.force, "force", false, "allow rendering into a non-empty output directory")
-	f.BoolVar(&intCreateFlags.noInput, "no-input", false, "disable interactive prompts for missing values")
+	f.BoolVar(&intCreateFlags.noInput, "no-input", false, flagUsageNoInput)
 	f.BoolVar(&intCreateFlags.installSkills, "install-skills", false, "install the Intropy agent skills collection without prompting")
 	f.BoolVar(&intCreateFlags.skipInstallSkills, "skip-install-skills", false, "skip the agent skills install without prompting")
 	intCreateCmd.MarkFlagsMutuallyExclusive("install-skills", "skip-install-skills")

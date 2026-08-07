@@ -24,6 +24,10 @@ const (
 	// is the value most often needed in a *path* (`overlays/{{ .env }}/`), where
 	// a nested lookup would read badly.
 	ReservedEnvKey = "env"
+
+	// ReservedLocalKey carries the local-render decisions — the per-connector
+	// fixture bindings — into a render for the local development cluster.
+	ReservedLocalKey = "local"
 )
 
 // InjectReserved adds structured, non-parameter data to a resolved value map.

@@ -41,13 +41,13 @@ func destTreeFor(t *testing.T, dir string) *destTree {
 	return tree
 }
 
-func classify(t *testing.T, staging, dest string, force bool) []FileAction {
+func classify(t *testing.T, staging, dest string) []FileAction {
 	t.Helper()
 	rels, err := stageRels(staging)
 	if err != nil {
 		t.Fatal(err)
 	}
-	actions, err := classifyStaged(staging, destTreeFor(t, dest), rels, force)
+	actions, err := classifyStaged(staging, destTreeFor(t, dest), rels)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestClassifyFreshOnboardingIsAllCreate(t *testing.T) {
 		"host/base/kustomization.yaml": "resources: []\n",
 	})
 
-	for _, a := range classify(t, staging, dest, false) {
+	for _, a := range classify(t, staging, dest) {
 		if a.Action != ActionCreate {
 			t.Errorf("%s = %q, want create", a.Rel, a.Action)
 		}
@@ -97,7 +97,7 @@ func TestClassifyIdenticalFileIsNotAChange(t *testing.T) {
 	writeTree(t, staging, map[string]string{"host/component.yaml": "kind: shared\n"})
 	writeTree(t, dest, map[string]string{"host/component.yaml": "kind: shared\n"})
 
-	actions := classify(t, staging, dest, false)
+	actions := classify(t, staging, dest)
 	if got := actionFor(t, actions, "host/component.yaml"); got != ActionIdentical {
 		t.Errorf("action = %q, want identical", got)
 	}
@@ -108,23 +108,13 @@ func TestClassifyIdenticalFileIsNotAChange(t *testing.T) {
 	}
 }
 
-func TestClassifyDifferingFileIsSkipped(t *testing.T) {
+func TestClassifyDifferingFileIsAConflict(t *testing.T) {
 	staging, dest := t.TempDir(), t.TempDir()
 	writeTree(t, staging, map[string]string{"host/component.yaml": "kind: shared\n"})
 	writeTree(t, dest, map[string]string{"host/component.yaml": "kind: shared\n# hand-edited\n"})
 
-	if got := actionFor(t, classify(t, staging, dest, false), "host/component.yaml"); got != ActionSkipExists {
-		t.Errorf("action = %q, want skip-exists", got)
-	}
-}
-
-func TestClassifyDifferingFileWithForceIsOverwrite(t *testing.T) {
-	staging, dest := t.TempDir(), t.TempDir()
-	writeTree(t, staging, map[string]string{"host/component.yaml": "new\n"})
-	writeTree(t, dest, map[string]string{"host/component.yaml": "old\n"})
-
-	if got := actionFor(t, classify(t, staging, dest, true), "host/component.yaml"); got != ActionOverwrite {
-		t.Errorf("action = %q, want overwrite", got)
+	if got := actionFor(t, classify(t, staging, dest), "host/component.yaml"); got != ActionConflict {
+		t.Errorf("action = %q, want conflict", got)
 	}
 }
 
@@ -140,12 +130,26 @@ func TestClassifyIsAdditiveWhenTheTopologyGrows(t *testing.T) {
 		"order-extract/component.yaml": "existing\n",
 	})
 
-	actions := classify(t, staging, dest, false)
+	actions := classify(t, staging, dest)
 	if got := actionFor(t, actions, "order-extract/component.yaml"); got != ActionIdentical {
 		t.Errorf("existing component = %q, want identical", got)
 	}
 	if got := actionFor(t, actions, "order-load/component.yaml"); got != ActionCreate {
 		t.Errorf("new component = %q, want create", got)
+	}
+}
+
+func TestApplyStagedRefusesAFileCreatedAfterClassification(t *testing.T) {
+	staging, dest := t.TempDir(), t.TempDir()
+	writeTree(t, staging, map[string]string{"host/component.yaml": "generated\n"})
+	actions := classify(t, staging, dest)
+	writeTree(t, dest, map[string]string{"host/component.yaml": "appeared later\n"})
+
+	if _, err := applyStaged(staging, destTreeFor(t, dest), actions); err == nil {
+		t.Fatal("expected the late file to be refused")
+	}
+	if got := readTreeFile(t, dest, "host/component.yaml"); got != "appeared later\n" {
+		t.Errorf("late file was replaced: %q", got)
 	}
 }
 
@@ -157,7 +161,7 @@ func TestApplyStagedWritesOnlyWhatTheActionsSay(t *testing.T) {
 	})
 	writeTree(t, dest, map[string]string{"b/component.yaml": "left alone\n"})
 
-	actions := classify(t, staging, dest, false)
+	actions := classify(t, staging, dest)
 	written, err := applyStaged(staging, destTreeFor(t, dest), actions)
 	if err != nil {
 		t.Fatal(err)
@@ -173,71 +177,14 @@ func TestApplyStagedWritesOnlyWhatTheActionsSay(t *testing.T) {
 	}
 }
 
-// Overwriting an overlay that pins a digest un-deploys what it runs, and no user
-// means to ask for that.
-func TestForceIsRefusedOnAPinnedOverlay(t *testing.T) {
-	staging, dest := t.TempDir(), t.TempDir()
-	writeTree(t, staging, map[string]string{
-		"order-extract/overlays/dev/kustomization.yaml": "resources:\n  - ../../base\n",
-	})
-	writeTree(t, dest, map[string]string{
-		"order-extract/overlays/dev/kustomization.yaml": `resources:
-  - ../../base
-images:
-  - name: harbor.intropy.io/fluxia/order-extract
-    digest: sha256:c0ffee
-`,
-	})
-
-	actions := classify(t, staging, dest, true)
-	err := assertForceIsSafe(dest, actions)
-	if err == nil {
-		t.Fatal("expected --force to be refused")
-	}
-	for _, want := range []string{"order-extract/overlays/dev/kustomization.yaml", "sha256:c0ffee"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error does not name %q: %v", want, err)
-		}
-	}
-}
-
-func TestForceIsAllowedOnAnUnpinnedOverlay(t *testing.T) {
-	staging, dest := t.TempDir(), t.TempDir()
-	writeTree(t, staging, map[string]string{
-		"order-extract/overlays/dev/kustomization.yaml": "resources:\n  - ../../base\n",
-	})
-	writeTree(t, dest, map[string]string{
-		"order-extract/overlays/dev/kustomization.yaml": "resources:\n  - ../../base\nnamespace: integrations\n",
-	})
-
-	if err := assertForceIsSafe(dest, classify(t, staging, dest, true)); err != nil {
-		t.Errorf("an unpinned overlay should be overwritable: %v", err)
-	}
-}
-
-// Without --force nothing is overwritten, so a pinned overlay needs no guard.
-func TestForceGuardIgnoresSkippedFiles(t *testing.T) {
-	staging, dest := t.TempDir(), t.TempDir()
-	writeTree(t, staging, map[string]string{
-		"order-extract/overlays/dev/kustomization.yaml": "resources: []\n",
-	})
-	writeTree(t, dest, map[string]string{
-		"order-extract/overlays/dev/kustomization.yaml": "images:\n  - name: x\n    digest: sha256:c0ffee\n",
-	})
-
-	if err := assertForceIsSafe(dest, classify(t, staging, dest, false)); err != nil {
-		t.Errorf("no overwrite means no guard: %v", err)
-	}
-}
-
 func TestSummariseActions(t *testing.T) {
 	got := summariseActions([]FileAction{
 		{Rel: "a", Action: ActionCreate},
 		{Rel: "b", Action: ActionCreate},
 		{Rel: "c", Action: ActionIdentical},
-		{Rel: "d", Action: ActionSkipExists},
+		{Rel: "d", Action: ActionConflict},
 	})
-	if got != "2 create, 1 skip-exists, 1 identical" {
+	if got != "2 create, 1 conflict, 1 identical" {
 		t.Errorf("summary = %q", got)
 	}
 	if got := summariseActions(nil); got != "nothing to do" {

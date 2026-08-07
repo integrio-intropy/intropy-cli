@@ -74,7 +74,7 @@ func TestHelpTextCommandVerbsAreDocumented(t *testing.T) {
 	// introducing a verb outside this set fails here; the fix is either to
 	// use an existing verb or to document the new one in AGENTS.md first.
 	documentedVerbs := map[string]bool{
-		"list": true, "show": true, "status": true, "diff": true,
+		"list": true, "show": true, "status": true, "diff": true, "inspect": true, "render": true,
 		"create": true, "add": true, "update": true, "init": true,
 		"publish": true, "pin": true, "promote": true, "sync": true,
 	}
@@ -82,11 +82,11 @@ func TestHelpTextCommandVerbsAreDocumented(t *testing.T) {
 	// so are not governed by the AGENTS.md verb table.
 	notVerbs := map[string]bool{
 		"intropy": true, "int": true, "template": true, "skills": true,
-		"collection": true, "deploy": true, "release": true, "sys": true,
+		"collection": true, "deploy": true, "manifests": true, "release": true, "sys": true,
 		"version": true, "dashboard": true,
-		// Hidden stub kept so old muscle memory gets a pointer, not an
-		// unknown-command error; see int_describe.go.
-		"describe": true,
+		// Hidden stubs kept so old muscle memory gets a pointer, not an
+		// unknown-command error; see int_describe.go and int_local.go.
+		"describe": true, "local": true,
 		// Cobra's built-ins and the shell names it registers under
 		// 'completion'; none are authored verbs.
 		"help": true, "completion": true,
@@ -116,8 +116,8 @@ func TestHelpTextSharedFlagsUseConstants(t *testing.T) {
 	// constant in flagtext.go; allow those here.
 	allowed := map[string]map[string]bool{
 		"output": {flagUsageOutput: true, flagUsageOutputJSONOnly: true},
-		"domain": {flagUsageDomain: true, flagUsageInitDomain: true},
-		"system": {flagUsageSystem: true, flagUsageInitSystem: true},
+		"domain": {flagUsageDomain: true, flagUsageManifestDomain: true},
+		"system": {flagUsageSystem: true, flagUsageManifestSystem: true},
 	}
 	for _, cmd := range walkCommands(rootCmd, nil) {
 		for name, desc := range want {

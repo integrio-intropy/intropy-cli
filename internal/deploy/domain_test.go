@@ -53,9 +53,9 @@ func TestDomainFromWorkspaceLayoutPrefersTheHost(t *testing.T) {
 	}
 }
 
-func TestResolveInitDomainFlagWins(t *testing.T) {
+func TestResolveManifestDomainFlagWins(t *testing.T) {
 	var stderr bytes.Buffer
-	got, err := resolveInitDomain(t.TempDir(), "explicit", "ordersync",
+	got, err := resolveManifestDomain(t.TempDir(), "explicit", "ordersync",
 		filepath.Join("domains", "inferred", "ordersync", "system-host"), nil, &stderr)
 	if err != nil {
 		t.Fatal(err)
@@ -65,11 +65,11 @@ func TestResolveInitDomainFlagWins(t *testing.T) {
 	}
 }
 
-func TestResolveInitDomainFromWorkspace(t *testing.T) {
+func TestResolveManifestDomainFromWorkspace(t *testing.T) {
 	var stderr bytes.Buffer
 	hostDir := filepath.Join("integrations", "domains", "orders", "order-flow", "system-host")
 
-	got, err := resolveInitDomain(t.TempDir(), "", "order-flow", hostDir, nil, &stderr)
+	got, err := resolveManifestDomain(t.TempDir(), "", "order-flow", hostDir, nil, &stderr)
 	if err != nil {
 		t.Fatalf("the workspace layout should supply the domain: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestResolveInitDomainFromWorkspace(t *testing.T) {
 
 // Moving a system between domains is a deliberate act, not something a directory
 // name should trigger.
-func TestResolveInitDomainTreeWinsOverWorkspace(t *testing.T) {
+func TestResolveManifestDomainTreeWinsOverWorkspace(t *testing.T) {
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
 		"domains/orders/order-flow/order-extractor/component.yaml": "schemaVersion: 1\n",
@@ -92,7 +92,7 @@ func TestResolveInitDomainTreeWinsOverWorkspace(t *testing.T) {
 
 	var stderr bytes.Buffer
 	hostDir := filepath.Join("integrations", "domains", "logistics", "order-flow", "system-host")
-	got, err := resolveInitDomain(root, "", "order-flow", hostDir, nil, &stderr)
+	got, err := resolveManifestDomain(root, "", "order-flow", hostDir, nil, &stderr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,9 +106,9 @@ func TestResolveInitDomainTreeWinsOverWorkspace(t *testing.T) {
 	}
 }
 
-func TestResolveInitDomainNeitherSourceIsAnError(t *testing.T) {
+func TestResolveManifestDomainNeitherSourceIsAnError(t *testing.T) {
 	var stderr bytes.Buffer
-	_, err := resolveInitDomain(t.TempDir(), "", "ordersync",
+	_, err := resolveManifestDomain(t.TempDir(), "", "ordersync",
 		filepath.Join("some", "other", "layout", "system-host"), nil, &stderr)
 	if err == nil {
 		t.Fatal("expected an error with nothing to infer from")
@@ -120,7 +120,7 @@ func TestResolveInitDomainNeitherSourceIsAnError(t *testing.T) {
 	}
 }
 
-func TestResolveInitDomainAmbiguousInTree(t *testing.T) {
+func TestResolveManifestDomainAmbiguousInTree(t *testing.T) {
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
 		"domains/orders/order-flow/a/component.yaml":    "schemaVersion: 1\n",
@@ -128,7 +128,7 @@ func TestResolveInitDomainAmbiguousInTree(t *testing.T) {
 	})
 
 	var stderr bytes.Buffer
-	_, err := resolveInitDomain(root, "", "order-flow", "", nil, &stderr)
+	_, err := resolveManifestDomain(root, "", "order-flow", "", nil, &stderr)
 	if err == nil {
 		t.Fatal("expected an error when two domains hold the system")
 	}

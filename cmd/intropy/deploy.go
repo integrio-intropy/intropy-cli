@@ -10,7 +10,7 @@ import (
 // deployCmd is a pure parent: the digest-pinning command lives at
 // 'deploy pin', symmetric with 'release create'. Keeping deploy non-runnable
 // means no component name is ever shadowed by a subcommand — a component
-// called diff, init, pin, promote, status or sync deploys like any other.
+// called diff, pin, promote, status or sync deploys like any other.
 var deployCmd = &cobra.Command{
 	Use:   "deploy",
 	Short: "Move components between environments via the GitOps repository",
@@ -20,8 +20,7 @@ var deployCmd = &cobra.Command{
 		"  promote  Copy the digests one environment runs into another\n" +
 		"  diff     Show the rendered change a sync would apply\n" +
 		"  status   Show what every environment runs, side by side\n" +
-		"  sync     Apply an environment's pending change through ArgoCD\n" +
-		"  init     Scaffold a system's manifests into the GitOps repository",
+		"  sync     Apply an environment's pending change through ArgoCD",
 }
 
 // useColor decides whether to emit ANSI colour: only for a real terminal, and
