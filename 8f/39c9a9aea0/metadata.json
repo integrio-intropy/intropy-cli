@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "8f39c9a9aea0",
+  "strategy": "manual-commit",
+  "branch": "feature/deploy-show-command",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "internal/deploy/result.go",
+    "internal/deploy/show.go",
+    "internal/deploy/show_integration_test.go",
+    "internal/deploy/show_test.go",
+    "web/src/api.ts",
+    "web/src/components/GitopsView.tsx"
+  ],
+  "sessions": [
+    {
+      "metadata": "/8f/39c9a9aea0/0/metadata.json",
+      "transcript": "/8f/39c9a9aea0/0/full.jsonl",
+      "compact_transcript": "/8f/39c9a9aea0/0/transcript.jsonl",
+      "content_hash": "/8f/39c9a9aea0/0/content_hash.txt",
+      "prompt": "/8f/39c9a9aea0/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 5714,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 3959552,
+    "output_tokens": 28591,
+    "api_call_count": 29
+  }
+}
