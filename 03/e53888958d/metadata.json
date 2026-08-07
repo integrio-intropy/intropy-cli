@@ -3,7 +3,7 @@
   "checkpoint_id": "03e53888958d",
   "strategy": "manual-commit",
   "branch": "feature/int-local",
-  "checkpoints_count": 11,
+  "checkpoints_count": 15,
   "files_touched": [
     "docs/deploy-init.md",
     "internal/deploy/init_connectors_test.go",
@@ -25,13 +25,20 @@
       "compact_transcript": "/03/e53888958d/1/transcript.jsonl",
       "content_hash": "/03/e53888958d/1/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/03/e53888958d/2/metadata.json",
+      "transcript": "/03/e53888958d/2/full.jsonl",
+      "compact_transcript": "/03/e53888958d/2/transcript.jsonl",
+      "content_hash": "/03/e53888958d/2/content_hash.txt",
+      "prompt": "/03/e53888958d/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 90084,
+    "input_tokens": 99479,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 4399552,
-    "output_tokens": 30032,
-    "api_call_count": 65
+    "cache_read_tokens": 4761024,
+    "output_tokens": 35814,
+    "api_call_count": 69
   }
 }

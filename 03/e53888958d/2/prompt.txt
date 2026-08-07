@@ -1,0 +1,14 @@
+This is a fair assumption: "A connector has one protocol/binding kind across all environments. Only its address, credentials,
+ │ and other metadata vary by environment."
+
+But I am not sure about extending the system topology graph with binding information. The developer might go into the gitops repo directly and swap the binding and then we would have a drift between the topology and what is actually deployed
+
+---
+
+The purpose of the init command was two things, we should be able to run deploy init --local | kubectl apply -f - to deploy it locally to k3s and we should be able to scaffold the gitops manifests with overlays in the gitops repo. THe cli does not manage the manifests in the gitops repo after that. 
+
+Was your suggestion to move away from this?
+
+---
+
+or should we have something like i deploy init .. | i deploy scaffold so that init becomes a pure manifest generation command?
