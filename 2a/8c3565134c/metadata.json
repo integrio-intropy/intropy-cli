@@ -3,7 +3,7 @@
   "checkpoint_id": "2a8c3565134c",
   "strategy": "manual-commit",
   "branch": "feature/int-local",
-  "checkpoints_count": 12,
+  "checkpoints_count": 13,
   "files_touched": [
     "AGENTS.md",
     "cmd/intropy/deploy_init.go",
@@ -46,13 +46,20 @@
       "compact_transcript": "/2a/8c3565134c/2/transcript.jsonl",
       "content_hash": "/2a/8c3565134c/2/content_hash.txt",
       "prompt": "/2a/8c3565134c/2/prompt.txt"
+    },
+    {
+      "metadata": "/2a/8c3565134c/3/metadata.json",
+      "transcript": "/2a/8c3565134c/3/full.jsonl",
+      "compact_transcript": "/2a/8c3565134c/3/transcript.jsonl",
+      "content_hash": "/2a/8c3565134c/3/content_hash.txt",
+      "prompt": "/2a/8c3565134c/3/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 160243,
+    "input_tokens": 234817,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 8770752,
-    "output_tokens": 68512,
-    "api_call_count": 146
+    "cache_read_tokens": 8945856,
+    "output_tokens": 74244,
+    "api_call_count": 154
   }
 }

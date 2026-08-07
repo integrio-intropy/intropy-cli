@@ -1,0 +1,1 @@
+The feature implemented on this branch got very complex. Can you see what in it is causing the complexity and see if we can take some assumption that would make it simpler?
