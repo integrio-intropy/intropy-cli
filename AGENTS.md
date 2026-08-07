@@ -133,15 +133,14 @@ project, never push:
   now pins: a skill against its collection, the cached collection index
   against the registry. It never changes which ref is pinned — that is
   the publisher's job.
-- **`init`** scaffolds the GitOps tree a system needs, as a branch pushed
-  for review. One per system; it never touches the default branch.
-- **`local`** renders a system's deployable manifests for the local
-  development cluster to stdout, for piping to kubectl. `create` scaffolds
-  project source on disk; `init` scaffolds a GitOps tree and pushes a
-  branch. Neither emits a render to a stream, and the GitOps `deploy`
-  family is excluded by its own contract ("all through the GitOps
-  repository and ArgoCD, never kubectl"). Its only write is the workspace
-  state file `.intropy/local.yaml`.
+- **`init`** scaffolds the manifests a system needs. Against the GitOps
+  repository it writes the tree and pushes a branch for review, never the
+  default branch. With `--local` it renders the local development cluster's
+  overlay instead and streams the built manifests to stdout, for piping to
+  kubectl; its only write then is the workspace state file
+  `.intropy/deploy-values.yaml`. One pipeline owns both destinations —
+  topology, the connector question and the render are shared; only where
+  the manifests land differs.
 
 **Move or publish** — change what runs somewhere or what others can pull:
 

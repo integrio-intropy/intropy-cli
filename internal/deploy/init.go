@@ -41,6 +41,19 @@ const initBranchPrefix = "deploy-init/"
 // runGraph is the seam tests replace to avoid a dotnet build.
 var runGraph = topology.RunGraph
 
+// InitMode selects where a scaffold lands.
+type InitMode int
+
+const (
+	// ModeGitOps scaffolds into the GitOps repository and pushes a review
+	// branch. The default.
+	ModeGitOps InitMode = iota
+
+	// ModeLocal renders for the local development cluster and streams the
+	// built manifests to stdout. Nothing touches git.
+	ModeLocal
+)
+
 // InitOptions configures Init.
 //
 // There is no Environment: overlays are created for every environment the
@@ -48,6 +61,21 @@ var runGraph = topology.RunGraph
 // NoWait and no Timeout either — no source working tree is read for correctness,
 // and nothing is synced.
 type InitOptions struct {
+	// Mode selects the destination. ModeLocal renders for the local
+	// development cluster instead of scaffolding the GitOps tree.
+	Mode InitMode
+
+	// Namespace is the target namespace a local render emits. Empty defaults
+	// to the system name. GitOps mode rejects it: the namespace there is the
+	// templates' namespace/namespacePerEnv parameters.
+	Namespace string
+
+	// Images overrides image references in a local render, repeatable.
+	// "<component>=<name:tag>" overrides one component's entry; ":<tag>"
+	// (leading colon) retags every component — the release-candidate flow.
+	// GitOps mode rejects them: `intropy deploy` pins digests, and scaffolding
+	// never pins one.
+	Images []string
 	// Components narrows the run to named topology components. Empty means the
 	// whole system, host included.
 	Components []string
@@ -66,7 +94,8 @@ type InitOptions struct {
 	System string
 
 	// Environments selects which overlays to create. Empty means every
-	// environment in deploy.yaml.
+	// environment in deploy.yaml — and in local mode exactly the local
+	// environment, whatever deploy.yaml says.
 	Environments []string
 
 	// TopologyFile reads the record from a file instead of running the host's
@@ -151,7 +180,9 @@ func (o *InitOptions) applyDefaults() {
 	}
 }
 
-// Init scaffolds a system's manifests into the GitOps repository.
+// Init scaffolds a system's manifests. ModeGitOps writes the GitOps tree and
+// pushes a review branch; ModeLocal renders the local development cluster's
+// overlay and streams the built manifests to stdout.
 //
 // The sequencing matters more than it looks. The topology is resolved *before*
 // the session is opened, because openSession takes a non-blocking exclusive lock
@@ -162,12 +193,96 @@ func (o *InitOptions) applyDefaults() {
 // by the ApplicationSet immediately.
 func Init(ctx context.Context, opts InitOptions) error {
 	opts.applyDefaults()
-	out := opts.output()
 
 	found, err := resolveInitTopology(ctx, opts)
 	if err != nil {
 		return err
 	}
+
+	lib, err := template.FetchLibrary(ctx, template.LibraryOptions{
+		Version:       opts.TemplateVersion,
+		HTTP:          opts.HTTP,
+		UserAgent:     opts.UserAgent,
+		Stderr:        opts.Stderr,
+		Owner:         opts.Owner,
+		Repo:          opts.Repo,
+		GitHubBaseURL: opts.GitHubBaseURL,
+	})
+	if err != nil {
+		return err
+	}
+	defer lib.Close()
+
+	if opts.Mode == ModeLocal {
+		return initLocal(ctx, opts, found, lib)
+	}
+	return initGitOps(ctx, opts, found, lib)
+}
+
+// initLocal is the ModeLocal publish path: resolve the connector bindings,
+// render the flat staging tree, write the root kustomization that applies
+// namespace and the conventional image tags, and stream the kustomize build
+// to stdout. The render is unconditional — fixture servers are always
+// installed on the local cluster by the k3s scripts — and the command never
+// inspects the cluster: it renders, kubectl applies, and a missing cluster
+// fails at apply time with kubectl's own error.
+func initLocal(ctx context.Context, opts InitOptions, found discoveredTopology, lib *template.Library) error {
+	overrides, err := parseImageOverrides(opts.Images)
+	if err != nil {
+		return err
+	}
+
+	facts, err := newLocalInitFacts(opts, found)
+	if err != nil {
+		return err
+	}
+	namespace := opts.Namespace
+	if namespace == "" {
+		namespace = facts.System
+	}
+
+	bindings, err := resolveConnectorBindings(opts, facts, lib)
+	if err != nil {
+		return err
+	}
+
+	staging, err := os.MkdirTemp("", "intropy-deploy-init-local-*")
+	if err != nil {
+		return fmt.Errorf("create staging directory: %w", err)
+	}
+	defer os.RemoveAll(staging)
+
+	fmt.Fprintf(opts.Stderr, "rendering %s for local\n", facts.System)
+	if err := renderScaffold(ctx, opts, facts, bindings, lib, staging); err != nil {
+		return err
+	}
+
+	images, err := localImageEntries(facts, overrides)
+	if err != nil {
+		return err
+	}
+	if err := writeLocalRootKustomization(staging, namespace, facts, images); err != nil {
+		return err
+	}
+
+	built, err := kustomizeBuild(ctx, opts.Runner, staging)
+	if err != nil {
+		return err
+	}
+	if err := assertAllImagesTagged(built); err != nil {
+		return err
+	}
+	if _, err := opts.Stdout.Write(built); err != nil {
+		return fmt.Errorf("write manifests: %w", err)
+	}
+	return nil
+}
+
+// initGitOps is the ModeGitOps publish path: render the repo-relative staging
+// tree, classify every file against the checkout, and push the result on a
+// review branch.
+func initGitOps(ctx context.Context, opts InitOptions, found discoveredTopology, lib *template.Library) error {
+	out := opts.output()
 
 	s, err := openSession(ctx, opts.session(), "git")
 	if err != nil {
@@ -176,6 +291,11 @@ func Init(ctx context.Context, opts InitOptions) error {
 	defer s.Close()
 
 	facts, err := newInitFacts(opts, s, found)
+	if err != nil {
+		return err
+	}
+
+	bindings, err := resolveConnectorBindings(opts, facts, lib)
 	if err != nil {
 		return err
 	}
@@ -195,8 +315,7 @@ func Init(ctx context.Context, opts InitOptions) error {
 	}
 	defer dest.Close()
 
-	libraryRef, err := renderScaffold(ctx, opts, facts, staging)
-	if err != nil {
+	if err := renderScaffold(ctx, opts, facts, bindings, lib, staging); err != nil {
 		return err
 	}
 	branch := initBranchPrefix + facts.Domain + "-" + facts.System
@@ -219,7 +338,7 @@ func Init(ctx context.Context, opts InitOptions) error {
 		System:       facts.System,
 		Domain:       facts.Domain,
 		Host:         HostDirName,
-		Template:     libraryRef,
+		Template:     lib.Ref(),
 		Components:   facts.ComponentNames(),
 		Files:        actions,
 		Applied:      false,
@@ -263,6 +382,43 @@ func Init(ctx context.Context, opts InitOptions) error {
 	result.Placeholders = published.Placeholders
 
 	return reportInit(out, result, actions, false)
+}
+
+// newLocalInitFacts is newInitFacts with local constants in place of the
+// GitOps checkout's facts — newLocalFacts plus the selection and validation
+// the GitOps path does on the way.
+func newLocalInitFacts(opts InitOptions, found discoveredTopology) (initFacts, error) {
+	topo := found.Topology
+
+	system := opts.System
+	if system == "" {
+		system = topo.System
+	}
+	if system == "" {
+		return initFacts{}, fmt.Errorf("the topology record names no system; pass --system")
+	}
+	if err := assertPathSegment("--system", system); err != nil {
+		return initFacts{}, err
+	}
+
+	model := newInitModel(topo, found.Scaffolds)
+	selected, err := selectComponents(model, opts.Components, system)
+	if err != nil {
+		return initFacts{}, err
+	}
+	for _, c := range selected {
+		// From the topology record, which is generated by a build this CLI does
+		// not own: a name with a separator in it would render into a directory of
+		// its own choosing.
+		if err := assertPathSegment("component name", c.Name); err != nil {
+			return initFacts{}, err
+		}
+		if c.Dir == "" {
+			fmt.Fprintf(opts.Stderr, "warning: %s has no scaffold record under the workspace root; its manifests will be generated without an appId or sourcePaths\n", c.Name)
+		}
+	}
+
+	return newLocalFacts(system, model, matchScaffolds(topo.Components, found.Scaffolds), selected), nil
 }
 
 func writes(actions []FileAction) int {
@@ -652,37 +808,24 @@ func selectComponents(m InitModel, requested []string, system string) ([]InitCom
 }
 
 // renderScaffold renders the host template once and the component template once
-// per selected component, into a staging tree that mirrors the repository root.
+// per selected component.
 //
-// Staging mirrors the repository so a staged path is already the repo-relative
-// path the classifier and the commit both need.
-// It returns the resolved library reference so the result can record which
-// release produced the tree a reviewer is looking at.
-func renderScaffold(ctx context.Context, opts InitOptions, facts initFacts, staging string) (string, error) {
-	lib, err := template.FetchLibrary(ctx, template.LibraryOptions{
-		Version:       opts.TemplateVersion,
-		HTTP:          opts.HTTP,
-		UserAgent:     opts.UserAgent,
-		Stderr:        opts.Stderr,
-		Owner:         opts.Owner,
-		Repo:          opts.Repo,
-		GitHubBaseURL: opts.GitHubBaseURL,
-	})
-	if err != nil {
-		return "", err
-	}
-	defer lib.Close()
-
-	if err := renderOne(opts, facts, lib, TemplateDeployHost, HostDirName, nil, staging); err != nil {
-		return "", err
+// In GitOps mode staging mirrors the repository, so a staged path is already
+// the repo-relative path the classifier and the commit both need. A local
+// render stages flat — host/ and one directory per component — because the
+// temp root already holds exactly one system and no commit needs a
+// repo-relative path.
+func renderScaffold(ctx context.Context, opts InitOptions, facts initFacts, bindings map[string]map[string]string, lib *template.Library, staging string) error {
+	if err := renderOne(opts, facts, bindings, lib, TemplateDeployHost, HostDirName, nil, staging); err != nil {
+		return err
 	}
 	for _, c := range facts.Selected {
 		comp := c
-		if err := renderOne(opts, facts, lib, TemplateDeployComponent, c.Name, &comp, staging); err != nil {
-			return "", err
+		if err := renderOne(opts, facts, bindings, lib, TemplateDeployComponent, c.Name, &comp, staging); err != nil {
+			return err
 		}
 	}
-	return lib.Ref(), nil
+	return nil
 }
 
 // renderOne renders one unit — the host, or one component — into the staging
@@ -691,20 +834,30 @@ func renderScaffold(ctx context.Context, opts InitOptions, facts initFacts, stag
 // The skeleton is rendered once per environment, because the renderer templates
 // paths but does not iterate them, so `overlays/{{ .env }}/kustomization.yaml` is
 // the only way to get one directory per environment. mergeRendered then enforces
-// that everything outside overlays/ came out identical on every pass.
-func renderOne(opts InitOptions, facts initFacts, lib *template.Library, templateName, dirName string, comp *InitComponent, staging string) error {
+// that everything outside overlays/ came out identical on every pass — with one
+// sanctioned exception: base/bindings/ may vary, because the connector binding
+// is a per-environment fact the host base renders.
+func renderOne(opts InitOptions, facts initFacts, bindings map[string]map[string]string, lib *template.Library, templateName, dirName string, comp *InitComponent, staging string) error {
 	tmpl, skeleton, err := lib.Open(templateName)
 	if err != nil {
 		return err
 	}
 
-	dest := filepath.Join(staging, filepath.FromSlash(componentRelPath(facts.Domain, facts.System, dirName)))
+	// GitOps mode stages the repository-relative path; a local render is flat.
+	dest := filepath.Join(staging, dirName)
+	if opts.Mode != ModeLocal {
+		dest = filepath.Join(staging, filepath.FromSlash(componentRelPath(facts.Domain, facts.System, dirName)))
+	}
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		return err
 	}
 
+	rules := tmpl.Spec.Files
+	if opts.Mode == ModeLocal {
+		rules = localFileRules(rules)
+	}
 	for _, env := range facts.Environments {
-		values, err := resolveInitValues(opts, facts, tmpl, dirName, comp, env)
+		values, err := resolveInitValues(opts, facts, bindings, tmpl, dirName, comp, env)
 		if err != nil {
 			return fmt.Errorf("%s for %s: %w", templateName, dirName, err)
 		}
@@ -713,7 +866,7 @@ func renderOne(opts InitOptions, facts initFacts, lib *template.Library, templat
 		if err != nil {
 			return err
 		}
-		err = template.RenderFiltered(skeleton, pass, values, tmpl.Spec.Files)
+		err = template.RenderFiltered(skeleton, pass, values, rules)
 		if err == nil {
 			err = mergeRendered(pass, dest, env)
 		}
@@ -730,7 +883,7 @@ func renderOne(opts InitOptions, facts initFacts, lib *template.Library, templat
 //
 // Facts beat schema defaults; the user beats facts. That order is the whole point
 // of ResolveLayered, and this is its first production caller.
-func resolveInitValues(opts InitOptions, facts initFacts, tmpl *template.Template, dirName string, comp *InitComponent, env string) (map[string]any, error) {
+func resolveInitValues(opts InitOptions, facts initFacts, bindings map[string]map[string]string, tmpl *template.Template, dirName string, comp *InitComponent, env string) (map[string]any, error) {
 	base := seedDeclaredParams(tmpl, initSeeds(facts, dirName, comp))
 
 	prompter := template.AutoPrompter(opts.Stdin, opts.Stderr, opts.NoInput)
@@ -739,7 +892,7 @@ func resolveInitValues(opts InitOptions, facts initFacts, tmpl *template.Templat
 		return nil, err
 	}
 
-	model, err := facts.Model.asMap()
+	model, err := facts.Model.asMap(env, bindings)
 	if err != nil {
 		return nil, err
 	}
@@ -747,6 +900,16 @@ func resolveInitValues(opts InitOptions, facts initFacts, tmpl *template.Templat
 		template.ReservedEnvKey:      env,
 		template.ReservedTopologyKey: model,
 		template.ReservedGitopsKey:   facts.gitopsMap(dirName, env),
+	}
+	if env == localEnv {
+		// Deprecated: the connectors' binding field carries the same fact. Kept
+		// so a library older than that field still renders its fixture overlay;
+		// remove when the floor template version has moved past it.
+		local, err := toMap(localModel{Bindings: bindingsForEnv(facts.Model, bindings, env)})
+		if err != nil {
+			return nil, err
+		}
+		reserved[template.ReservedLocalKey] = local
 	}
 	if comp != nil {
 		componentMap, err := toMap(comp)

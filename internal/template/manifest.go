@@ -43,6 +43,13 @@ type Spec struct {
 	// hardcoded in the CLI.
 	Local *LocalSpec `yaml:"local,omitempty"`
 
+	// Bindings is the closed catalog of Dapr binding types a connector can
+	// deploy as in a GitOps environment — the menu deploy init asks its
+	// connector question from, and what recorded answers are validated
+	// against. Absent on templates without connectors, and on releases older
+	// than the question: the CLI then falls back to placeholders.
+	Bindings []string `yaml:"bindings,omitempty"`
+
 	// parameterOrder captures the declaration order of properties in
 	// spec.parameters.properties, since Go maps don't preserve YAML order.
 	// Populated by UnmarshalYAML.
@@ -113,6 +120,7 @@ func (s *Spec) UnmarshalYAML(node *yaml.Node) error {
 		Files        []FileRule        `yaml:"files,omitempty"`
 		Dependencies []DependencySpec  `yaml:"dependencies,omitempty"`
 		Local        *LocalSpec        `yaml:"local,omitempty"`
+		Bindings     []string          `yaml:"bindings,omitempty"`
 	}
 	var r rawSpec
 	if err := node.Decode(&r); err != nil {
@@ -123,6 +131,7 @@ func (s *Spec) UnmarshalYAML(node *yaml.Node) error {
 	s.Files = r.Files
 	s.Dependencies = r.Dependencies
 	s.Local = r.Local
+	s.Bindings = r.Bindings
 	s.parameterOrder = extractPropertyOrder(node)
 	return nil
 }
@@ -277,6 +286,26 @@ func (t *Template) validate() error {
 			}
 			seen[fx] = true
 		}
+	}
+	if err := validateCatalog("spec.bindings", t.Spec.Bindings); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateCatalog applies the fixture-name rules to any closed catalog the
+// manifest declares: a name must work as a Dapr binding type suffix and a
+// map key without escaping anywhere, and be declared once.
+func validateCatalog(field string, entries []string) error {
+	seen := make(map[string]bool, len(entries))
+	for i, e := range entries {
+		if !fixtureNamePattern.MatchString(e) {
+			return fmt.Errorf("%s[%d]: %q is not a valid binding name (lowercase letters, digits and dashes, starting with a letter or digit)", field, i, e)
+		}
+		if seen[e] {
+			return fmt.Errorf("%s[%d]: %q is declared twice", field, i, e)
+		}
+		seen[e] = true
 	}
 	return nil
 }

@@ -229,7 +229,7 @@ func TestInitModelIsDeterministic(t *testing.T) {
 // see uniform map[string]any rather than Go structs.
 func TestInitModelRoundTripsToMap(t *testing.T) {
 	m := newInitModel(decodeInitTopology(t), nil)
-	got, err := m.asMap()
+	got, err := m.asMap("staging", nil)
 	if err != nil {
 		t.Fatalf("asMap: %v", err)
 	}

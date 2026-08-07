@@ -117,6 +117,11 @@ spec:
       namespace: { type: string, default: integrations }
       registry: { type: string }
       imageNamespace: { type: string, default: integrations }
+  # deploy init resolves connector bindings in every mode, so every fixture
+  # library declares the local catalog; spec.bindings is added per test by
+  # withBindingsCatalog.
+  local:
+    fixtures: [sftp, http]
   values:
     imageRepo: "{{ .registry }}/{{ .imageNamespace }}/{{ .name }}"
     imageTag: "unpinned"

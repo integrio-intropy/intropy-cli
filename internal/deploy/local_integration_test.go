@@ -22,8 +22,8 @@ func requireKubectl(t *testing.T) {
 
 // newLocalFixtureWith serves the given template entries over the GitHubBaseURL
 // seam and lays out a workspace with a topology file. It mirrors
-// newInitFixtureWith without its GitOps machinery: Local never opens a
-// repository.
+// newInitFixtureWith without its GitOps machinery: a local render never
+// opens a repository.
 func newLocalFixtureWith(t *testing.T, entries map[string]string) localFixture {
 	t.Helper()
 	f := newLocalFixture(t)
@@ -50,13 +50,13 @@ func TestLocalTemplatesRenderForLocalCluster(t *testing.T) {
 	}
 
 	f := newLocalFixtureWith(t, entries)
-	writeLocalYAML(t, f.sourceDir, "connectors:\n  erp: sftp\n  price-master: http\n")
+	writeDeployValues(t, f.sourceDir, bothBound)
 
 	var stdout, stderr bytes.Buffer
 	opts := f.options(&stdout, &stderr)
 	opts.Runner = nil // the real kustomize binary via applyDefaults
-	if err := Local(context.Background(), opts); err != nil {
-		t.Fatalf("Local: %v\nstderr: %s", err, stderr.String())
+	if err := Init(context.Background(), opts); err != nil {
+		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
 	}
 	t.Logf("rendered %d bytes", stdout.Len())
 
@@ -91,15 +91,15 @@ func TestLocalTemplatesDiscoverTheHost(t *testing.T) {
 	workspace := t.TempDir()
 	writeHostWorkspace(t, workspace, "distribution")
 	called := stubRunGraph(t, localTopologyRecord)
-	writeLocalYAML(t, workspace, "connectors:\n  erp: sftp\n  price-master: http\n")
+	writeDeployValues(t, workspace, bothBound)
 
 	var stdout, stderr bytes.Buffer
 	opts := f.options(&stdout, &stderr)
 	opts.TopologyFile = ""
 	opts.SourceDir = workspace
 	opts.Runner = nil
-	if err := Local(context.Background(), opts); err != nil {
-		t.Fatalf("Local: %v\nstderr: %s", err, stderr.String())
+	if err := Init(context.Background(), opts); err != nil {
+		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
 	}
 	want := filepath.Join(workspace, "domains", "x", "distribution", "system-host")
 	if *called != want {

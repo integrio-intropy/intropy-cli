@@ -91,7 +91,7 @@ type InitTopic struct {
 }
 
 // InitConnector is an external integration point. The topology mints only
-// its name: the deployed Dapr binding type, address, host and credential are
+// its name: the deployed Dapr binding's address, host and credentials are
 // environment-owned deployment configuration, which is exactly why they are
 // placeholders in the rendered manifests.
 type InitConnector struct {
@@ -99,6 +99,12 @@ type InitConnector struct {
 	ExternalSystem string   `json:"externalSystem,omitempty"`
 	Directions     []string `json:"directions,omitempty"`
 	AppIDs         []string `json:"appIds,omitempty"`
+
+	// Binding is the Dapr binding type this connector deploys as in the
+	// environment being rendered — the recorded answer from
+	// .intropy/deploy-values.yaml. Empty when no answer is recorded, which
+	// renders the placeholder scaffold.
+	Binding string `json:"binding,omitempty"`
 }
 
 // newInitModel derives the model from a decoded topology record and whatever
@@ -114,12 +120,16 @@ func newInitModel(t *topology.Topology, scaffolds []template.ScaffoldEntry) Init
 	return m
 }
 
-// asMap renders the model as plain maps and slices.
+// asMap renders the model as plain maps and slices, with each connector's
+// binding set for the environment being rendered.
 //
 // Injected reserved values go through this so a skeleton's `index`, `range` and
 // sprig calls see uniform map[string]any — a Go struct behaves differently
 // under `index` and would make the template author's life needlessly subtle.
-func (m InitModel) asMap() (map[string]any, error) {
+func (m InitModel) asMap(env string, bindings map[string]map[string]string) (map[string]any, error) {
+	for i, c := range m.Connectors {
+		m.Connectors[i].Binding = bindings[c.Name][env]
+	}
 	raw, err := json.Marshal(m)
 	if err != nil {
 		return nil, fmt.Errorf("encode topology model: %w", err)
@@ -129,6 +139,18 @@ func (m InitModel) asMap() (map[string]any, error) {
 		return nil, fmt.Errorf("decode topology model: %w", err)
 	}
 	return out, nil
+}
+
+// bindingsForEnv reduces the recorded answers to the flat connector→binding
+// map one environment renders with.
+func bindingsForEnv(model InitModel, bindings map[string]map[string]string, env string) map[string]string {
+	out := make(map[string]string, len(model.Connectors))
+	for _, c := range model.Connectors {
+		if b := bindings[c.Name][env]; b != "" {
+			out[c.Name] = b
+		}
+	}
+	return out
 }
 
 // matchScaffolds pairs each topology component with its scaffold record.
