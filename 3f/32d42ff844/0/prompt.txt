@@ -1,14 +1,1 @@
-We got interrupted. Can you continue?
-
----
-
-why is this so slow and it eating a lot of memory and cpu?
-
----
-
-If we look at this component it has multiple manifest that could be valuable to display. /Users/robinhultman/dev/intropy/customers/entrovia/gitops/domains/orders/order-flow/order-extractor
-What are your thoughts on that?
-
----
-
 just implement it on this branch (no push)
