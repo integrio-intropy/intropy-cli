@@ -475,6 +475,25 @@ func TestLocalPromptsOnlyForMissingBindings(t *testing.T) {
 	}
 }
 
+// The label map describes the fixtures the selector knows how to gloss. A
+// catalog entry with no description must still render as the bare name — the
+// catalog is data from the template and may grow fixtures ahead of this map.
+func TestFixtureLabelDescribesKnownFixturesAndFallsBack(t *testing.T) {
+	cases := map[string]string{
+		"blob": "blob — S3 object store",
+		"file": "file — local directory",
+		"http": "http — HTTP stub",
+		"sftp": "sftp — SFTP server",
+		"smb":  "smb — SMB share",
+		"nfs":  "nfs",
+	}
+	for fixture, want := range cases {
+		if got := fixtureLabel(fixture); got != want {
+			t.Errorf("fixtureLabel(%q) = %q, want %q", fixture, got, want)
+		}
+	}
+}
+
 func TestParseConnectorBindingArgsRejectsInvalidAndDuplicateValues(t *testing.T) {
 	for _, args := range [][]string{{"erp"}, {"=http"}, {"erp="}, {"erp=http", "erp=sftp"}} {
 		if _, err := parseConnectorBindingArgs(args); err == nil {

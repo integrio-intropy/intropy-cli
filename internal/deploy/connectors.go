@@ -115,6 +115,7 @@ func connectorDescription(connector ManifestConnector) string {
 
 func fixtureLabel(fixture string) string {
 	description := map[string]string{
+		"blob": "S3 object store",
 		"file": "local directory",
 		"http": "HTTP stub",
 		"sftp": "SFTP server",
