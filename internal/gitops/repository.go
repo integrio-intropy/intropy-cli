@@ -17,7 +17,6 @@ import (
 	"syscall"
 
 	"github.com/integrio-intropy/intropy-cli/internal/command"
-	"github.com/integrio-intropy/intropy-cli/internal/config"
 	"github.com/integrio-intropy/intropy-cli/internal/git"
 )
 
@@ -261,32 +260,6 @@ func defaultCacheRoot() (string, error) {
 		return "", fmt.Errorf("locate cache directory: %w", err)
 	}
 	return filepath.Join(base, "intropy", "gitops"), nil
-}
-
-// CachedRoot returns the existing cached checkout for the configured GitOps
-// repository.
-//
-// It never clones or fetches. This backs shell completion, which has to be
-// instant and must not touch the network — an unconfigured or not-yet-cloned
-// repository simply yields no suggestions.
-func CachedRoot(gitopsRepoOverride string) (string, error) {
-	cfg, err := config.Load()
-	if err != nil {
-		return "", err
-	}
-	url, err := cfg.Resolve(config.Flags{GitopsRepo: gitopsRepoOverride}).RequireGitopsRepo()
-	if err != nil {
-		return "", err
-	}
-	cacheRoot, err := defaultCacheRoot()
-	if err != nil {
-		return "", err
-	}
-	dir := CheckoutDir(cacheRoot, url)
-	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
-		return "", fmt.Errorf("no cached checkout of %s yet", url)
-	}
-	return dir, nil
 }
 
 // CheckoutDir derives a stable cache path from the remote URL. The URL is

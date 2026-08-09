@@ -8,39 +8,6 @@ import (
 	"testing"
 )
 
-// fakeRunner records calls and replays scripted results, keyed by the command
-// line joined with spaces.
-type fakeRunner struct {
-	calls   []string
-	results map[string]fakeResult
-	def     fakeResult
-}
-
-type fakeResult struct {
-	stdout string
-	stderr string
-	err    error
-}
-
-func (f *fakeRunner) Run(_ context.Context, dir, name string, args ...string) ([]byte, []byte, error) {
-	key := strings.Join(append([]string{name}, args...), " ")
-	f.calls = append(f.calls, key)
-	res, ok := f.results[key]
-	if !ok {
-		res = f.def
-	}
-	return []byte(res.stdout), []byte(res.stderr), res.err
-}
-
-func (f *fakeRunner) called(substr string) bool {
-	for _, c := range f.calls {
-		if strings.Contains(c, substr) {
-			return true
-		}
-	}
-	return false
-}
-
 func TestExecRunnerCapturesOutput(t *testing.T) {
 	stdout, stderr, err := ExecRunner{}.Run(context.Background(), "", "sh", "-c", "printf out; printf err >&2")
 	if err != nil {

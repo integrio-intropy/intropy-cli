@@ -65,13 +65,9 @@ func (g *GitHub) ResolveTag(ctx context.Context, owner, repo, requestedTag strin
 	return g.LatestTag(ctx, owner, repo)
 }
 
-// DownloadTemplate fetches the repo tarball at tag, extracts it to a temp
+// downloadTemplate fetches the repo tarball at tag, extracts it to a temp
 // dir (created with tempPattern), and returns the path of the named template
 // subdirectory plus a cleanup func that removes the temp dir.
-func DownloadTemplate(ctx context.Context, gh *GitHub, owner, repo, tag, templateName, tempPattern string) (string, func(), error) {
-	return downloadTemplate(ctx, gh, owner, repo, tag, templateName, tempPattern)
-}
-
 func downloadTemplate(ctx context.Context, gh *GitHub, owner, repo, tag, templateName, tempPattern string) (string, func(), error) {
 	rc, err := gh.Tarball(ctx, owner, repo, tag)
 	if err != nil {
