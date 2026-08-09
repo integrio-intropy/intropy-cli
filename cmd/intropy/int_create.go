@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,17 +10,15 @@ import (
 )
 
 type createFlags struct {
-	outDir            string
-	output            string
-	name              string
-	templateVersion   string
-	templateRepo      string
-	values            []string
-	sets              []string
-	force             bool
-	noInput           bool
-	installSkills     bool
-	skipInstallSkills bool
+	outDir          string
+	output          string
+	name            string
+	templateVersion string
+	templateRepo    string
+	values          []string
+	sets            []string
+	force           bool
+	noInput         bool
 }
 
 var intCreateFlags createFlags
@@ -29,7 +26,7 @@ var intCreateFlags createFlags
 var intCreateCmd = &cobra.Command{
 	Use:   "create <template>",
 	Short: "Create a new integration",
-	Long:  "Scaffold a new integration from the official Intropy template library. The positional argument selects which template subdirectory to render (e.g. 'hello-world'). After scaffolding, offers to install the Intropy agent skills collection into the new integration; --install-skills installs and --skip-install-skills skips without prompting, otherwise the prompt is skipped with --no-input or when stdin is not a terminal.",
+	Long:  "Scaffold a new integration from the official Intropy template library. The positional argument selects which template subdirectory to render (e.g. 'hello-world').",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sets, err := template.ParseSets(intCreateFlags.sets)
@@ -71,9 +68,6 @@ var intCreateCmd = &cobra.Command{
 		}); err != nil {
 			return err
 		}
-		if err := maybeInstallSkills(ctx, cmd.InOrStdin(), cmd.ErrOrStderr(), intCreateFlags.installSkills, intCreateFlags.skipInstallSkills, intCreateFlags.noInput, outputDir); err != nil {
-			return fmt.Errorf("integration created, but skills install failed: %w", err)
-		}
 		return nil
 	},
 }
@@ -107,9 +101,6 @@ func init() {
 	f.StringArrayVarP(&intCreateFlags.sets, "set", "s", nil, "set a value as key=value (repeatable)")
 	f.BoolVar(&intCreateFlags.force, "force", false, "allow rendering into a non-empty output directory")
 	f.BoolVar(&intCreateFlags.noInput, "no-input", false, flagUsageNoInput)
-	f.BoolVar(&intCreateFlags.installSkills, "install-skills", false, "install the Intropy agent skills collection without prompting")
-	f.BoolVar(&intCreateFlags.skipInstallSkills, "skip-install-skills", false, "skip the agent skills install without prompting")
-	intCreateCmd.MarkFlagsMutuallyExclusive("install-skills", "skip-install-skills")
 	intCreateCmd.MarkFlagsOneRequired("out-dir", "name")
 	intCmd.AddCommand(intCreateCmd)
 }

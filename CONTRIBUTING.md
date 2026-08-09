@@ -130,7 +130,7 @@ automated changelog generation.
 
 **Types:** `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
 
-**Scopes (common):** `int`, `skills`, `oci`, `template`, `deploy`, `release`, `cli`, `deps`
+**Scopes (common):** `int`, `template`, `deploy`, `release`, `cli`, `deps`
 
 **Examples:**
 
@@ -203,7 +203,7 @@ Precedence is **flag > environment > file > zero**, resolved with `cmp.Or`.
   honouring `XDG_CONFIG_HOME`). A missing file is not an error; a malformed one
   is, and unknown keys are rejected so a typo cannot look like an unset value.
 - Project-scoped state is found by walking up from the working directory
-  (`skills.json`, `.intropy/scaffold.json`).
+  (`.intropy/scaffold.json`).
 - Environment variables this CLI owns are prefixed `INTROPY_`. The only
   exceptions are variables borrowed from another tool, where honouring its name
   means an existing setup works unchanged (e.g. `ARGOCD_SERVER`) — document
@@ -265,8 +265,6 @@ internal/system/      `sys create` — assemble scaffolds into a system host
 internal/dashboard/   Local `intropy dashboard`: HTTP server + JSON API
                       (deploy.go runs `deploy status` for the catalog's ladder)
 internal/topology/    topology.intropy.io/v1 schema + decoder (host graph verb output)
-internal/skill/       skills.json/lockfile, install/update/add, collection cache
-internal/skill/oci/   OCI client wrappers, pack/push/pull, references
 internal/registry/    Generic OCI registry client — pull/push/index, ListTags
 internal/config/      Per-user settings (~/.config/intropy/config.yaml)
 internal/command/     Runner for external binaries (git, kustomize, dotnet, argocd)
@@ -295,14 +293,6 @@ go build -ldflags "\
   -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   -o bin/intropy ./cmd/intropy
 ```
-
-### OCI and skills compliance
-
-The `skills` subsystem implements the
-[Agent Skills OCI Artifacts Spec](https://github.com/ThomasVitale/agents-skills-oci-artifacts-spec).
-When modifying OCI packaging, pulling, or metadata, ensure conformance with the
-spec. Changes that affect wire format or artifact structure should be discussed
-in an issue first.
 
 ## Reporting Issues
 

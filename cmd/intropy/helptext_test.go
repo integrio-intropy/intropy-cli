@@ -81,8 +81,8 @@ func TestHelpTextCommandVerbsAreDocumented(t *testing.T) {
 	// Nouns, command groups, and standalone commands that are not verbs and
 	// so are not governed by the AGENTS.md verb table.
 	notVerbs := map[string]bool{
-		"intropy": true, "int": true, "template": true, "skills": true,
-		"collection": true, "deploy": true, "manifests": true, "release": true, "sys": true,
+		"intropy": true, "int": true, "template": true,
+		"deploy": true, "manifests": true, "release": true, "sys": true,
 		"version": true, "dashboard": true,
 		// Hidden stubs kept so old muscle memory gets a pointer, not an
 		// unknown-command error; see int_describe.go and int_local.go.

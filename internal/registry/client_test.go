@@ -37,7 +37,7 @@ func TestClientDefaultsToLocalPlainHTTP(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	local, err := c.repository(Reference{Registry: "localhost:5000", Repository: "skills/foo"})
+	local, err := c.repository(Reference{Registry: "localhost:5000", Repository: "library/foo"})
 	if err != nil {
 		t.Fatalf("repository: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestClientDefaultsToLocalPlainHTTP(t *testing.T) {
 		t.Error("expected PlainHTTP for localhost registry")
 	}
 
-	remote, err := c.repository(Reference{Registry: "harbor.intropy.io", Repository: "skills/foo"})
+	remote, err := c.repository(Reference{Registry: "harbor.intropy.io", Repository: "library/foo"})
 	if err != nil {
 		t.Fatalf("repository: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestWithPlainHTTPOverride(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	repo, err := c.repository(Reference{Registry: "harbor.intropy.io", Repository: "skills/foo"})
+	repo, err := c.repository(Reference{Registry: "harbor.intropy.io", Repository: "library/foo"})
 	if err != nil {
 		t.Fatalf("repository: %v", err)
 	}

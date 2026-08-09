@@ -18,7 +18,7 @@ import (
 
 // Client speaks to OCI registries. It carries no opinion about what an
 // artifact should look like — that policy lives in the packages that use
-// it (internal/skill/oci, internal/release).
+// it (internal/release, internal/source, internal/deploy).
 type Client struct {
 	auth      *auth.Client
 	plainHTTP func(registry string) bool

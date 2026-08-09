@@ -49,8 +49,8 @@ type Resolver interface {
 	Resolve(ctx context.Context, ref string) (registry.Descriptor, error)
 }
 
-// NewResolver builds the production resolver. Replaced in tests, following the
-// newSkillRegistry pattern in cmd/intropy.
+// NewResolver builds the production resolver. Replaced in tests via this
+// package-level variable.
 var NewResolver = func(userAgent string) (Resolver, error) {
 	return registry.NewClient(registry.WithUserAgent(userAgent))
 }

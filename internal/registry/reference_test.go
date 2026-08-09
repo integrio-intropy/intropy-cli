@@ -8,24 +8,24 @@ func TestParseReference(t *testing.T) {
 		want Reference
 	}{
 		{
-			in:   "ghcr.io/example/skills/pr-review:1.2.0",
-			want: Reference{Registry: "ghcr.io", Repository: "example/skills/pr-review", Tag: "1.2.0"},
+			in:   "ghcr.io/example/library/pr-review:1.2.0",
+			want: Reference{Registry: "ghcr.io", Repository: "example/library/pr-review", Tag: "1.2.0"},
 		},
 		{
-			in:   "registry.local:5000/skills/foo:0.1.0",
-			want: Reference{Registry: "registry.local:5000", Repository: "skills/foo", Tag: "0.1.0"},
+			in:   "registry.local:5000/library/foo:0.1.0",
+			want: Reference{Registry: "registry.local:5000", Repository: "library/foo", Tag: "0.1.0"},
 		},
 		{
-			in:   "ghcr.io/example/skills/pr-review@sha256:abc123",
-			want: Reference{Registry: "ghcr.io", Repository: "example/skills/pr-review", Digest: "sha256:abc123"},
+			in:   "ghcr.io/example/library/pr-review@sha256:abc123",
+			want: Reference{Registry: "ghcr.io", Repository: "example/library/pr-review", Digest: "sha256:abc123"},
 		},
 		{
-			in:   "ghcr.io/example/skills/pr-review:1.2.0@sha256:abc123",
-			want: Reference{Registry: "ghcr.io", Repository: "example/skills/pr-review", Tag: "1.2.0", Digest: "sha256:abc123"},
+			in:   "ghcr.io/example/library/pr-review:1.2.0@sha256:abc123",
+			want: Reference{Registry: "ghcr.io", Repository: "example/library/pr-review", Tag: "1.2.0", Digest: "sha256:abc123"},
 		},
 		{
-			in:   "ghcr.io/example/skills/pr-review",
-			want: Reference{Registry: "ghcr.io", Repository: "example/skills/pr-review"},
+			in:   "ghcr.io/example/library/pr-review",
+			want: Reference{Registry: "ghcr.io", Repository: "example/library/pr-review"},
 		},
 	}
 
