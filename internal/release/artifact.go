@@ -69,8 +69,8 @@ type Registry interface {
 	ListTags(ctx context.Context, ref string) ([]string, error)
 }
 
-// NewRegistry builds the production registry client. Replaced in tests,
-// following the newSkillRegistry pattern in cmd/intropy.
+// NewRegistry builds the production registry client. Replaced in tests via
+// this package-level variable.
 var NewRegistry = func(userAgent string) (Registry, error) {
 	return registry.NewClient(registry.WithUserAgent(userAgent))
 }

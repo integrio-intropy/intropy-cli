@@ -76,12 +76,12 @@ parsing. The two never share a stream.
 
 - Progress and completion: **lowercase, present tense, no trailing period**.
   Good: `syncing api on argocd.example.com at a1b2c3d`
-  Good: `published ghcr.io/example/skills/pr-review:1.2.0`
+  Good: `published ghcr.io/example/releases/api:1.2.0`
   Bad:  `Published ghcr.io/…`  `Sync complete.`
-- Empty states follow the same rule: `no skills installed`, not
-  `No skills installed.`
+- Empty states follow the same rule: `no releases found`, not
+  `No releases found.`
 - A follow-up hint naming a command goes on its own line, in backticks:
-  `use 'intropy skills add <ref>' to add one`
+  `use 'intropy release create <component>' to publish one`
 
 ### Errors
 
@@ -103,14 +103,14 @@ parsing. The two never share a stream.
 
 ### Command verbs
 
-One verb per meaning, used on every noun (`int`, `template`, `skills`, ...).
+One verb per meaning, used on every noun (`int`, `template`, `deploy`, ...).
 The full set, grouped by what the verb does to the world:
 
 **Read-only** — exit 0 even when the answer is "they disagree", never write
 to git, never trigger a sync:
 
 - **`list`** enumerates a collection: integrations on disk, templates in the
-  library, installed skills, published releases. It never prints one item's
+  library, published releases. It never prints one item's
   details.
 - **`show`** prints the details of exactly one thing: a template's manifest,
   an integration's scaffold record. It never enumerates.
@@ -136,16 +136,15 @@ Manifest creation may push a review branch, never the default branch:
   missing Kubernetes manifests on a GitOps review branch. Manifest creation
   accepts existing identical files but never replaces or deletes a file.
 - **`add`** attaches something that already exists elsewhere to this
-  project: a skill from a registry, a collection registration. Unlike
+  project: a library registration. Unlike
   `create`, the content is pulled, not generated.
 - **`update`** reconciles something installed against the ref its source
-  now pins: a skill against its collection, the cached collection index
-  against the registry. It never changes which ref is pinned — that is
-  the publisher's job.
+  now pins: a cached index against the registry. It never changes which
+  ref is pinned — that is the publisher's job.
 **Move or publish** — change what runs somewhere or what others can pull:
 
-- **`publish`** pushes an immutable artifact to an OCI registry: a skill,
-  a collection, a release manifest. What is published cannot be edited in
+- **`publish`** pushes an immutable artifact to an OCI registry: a release
+  manifest. What is published cannot be edited in
   place; a new version is a new publish.
 - **`pin`** writes one component's image digest into one environment's
   overlay.

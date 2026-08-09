@@ -95,7 +95,7 @@ func TestPushArtifactMapsUnauthorized(t *testing.T) {
 func TestPullIndexMapsNotFound(t *testing.T) {
 	c, host := statusClient(t, http.StatusNotFound)
 
-	_, _, err := c.PullIndex(context.Background(), host+"/skills/index:latest")
+	_, _, err := c.PullIndex(context.Background(), host+"/collections/index:latest")
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("PullIndex error = %v; want ErrNotFound", err)
 	}

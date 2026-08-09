@@ -1,16 +1,9 @@
 # intropy CLI
 
-`intropy` is the command-line interface for working with Intropy integrations
-and agent skills. It does two things:
-
-- **Scaffolds integrations** from the official Intropy template library hosted at
-  [`integrio-intropy/intropy-templates`](https://github.com/integrio-intropy/intropy-templates).
-- **Manages agent skills** as OCI artifacts — adding, listing, updating, and
-  publishing skills (individually or as curated collections) against any OCI
-  registry. The skills subsystem implements the
-  [Agent Skills OCI Artifacts Spec](https://github.com/ThomasVitale/agents-skills-oci-artifacts-spec),
-  so artifacts published with `intropy skills publish` interoperate with any
-  other spec-compliant tooling.
+`intropy` is the command-line interface for working with Intropy integrations.
+It scaffolds integrations from the official Intropy template library hosted at
+[`integrio-intropy/intropy-templates`](https://github.com/integrio-intropy/intropy-templates), then
+tracks, deploys, and releases them.
 
 ## Install
 
@@ -146,19 +139,6 @@ intropy template show hello-world
 intropy int create hello-world -o ./my-integration   # -o is --out-dir here
 ```
 
-### Install a skill from a collection
-
-```sh
-# Register a collection (one-time)
-intropy skills collection add --name intropy --ref harbor.intropy.io/skills/index:latest
-
-# Install a skill by name
-intropy skills add --name intropy-getting-started
-
-# List what you have installed
-intropy skills list
-```
-
 ## Command overview
 
 ```
@@ -187,15 +167,6 @@ intropy
 │   ├── list <component>       List the releases published for a component
 │   └── view <component> <ver> Read a published release manifest
 ├── dashboard [dir]        Browse the integrations scaffolded under dir
-├── skills                 Manage Intropy skills
-│   ├── add [ref]              Add and install a skill from an OCI registry
-│   ├── list                   List installed skills
-│   ├── update [name]          Reconcile an installed skill against its collection
-│   ├── publish                Publish a skill directory to an OCI registry
-│   └── collection             Manage registered skill collections
-│       ├── add                    Register a collection in skills.json
-│       ├── update <alias>         Refresh or bump a registered collection
-│       └── publish <spec> <ref>   Publish a collection as an OCI Image Index
 └── version                Print version information
 ```
 
@@ -266,21 +237,6 @@ intropy int create hello-world -o ./out --output json
 ```
 
 Use `--force` to render into a non-empty directory.
-
-After scaffolding, `int create` offers to install the Intropy agent skills
-collection (`harbor.intropy.io/skills/index:latest`) into the new
-integration's `.agents/skills/` — a `[Y/n]` prompt in interactive sessions,
-skipped under `--no-input` or when stdin is not a terminal. For CI and other
-non-interactive runs, `--install-skills` installs without prompting;
-`--skip-install-skills` suppresses the prompt and the install entirely:
-
-```sh
-intropy int create hello-world -n orders --no-input --install-skills -f values.yaml
-intropy int create hello-world -n orders --skip-install-skills
-```
-
-Set `INTROPY_SKILLS_COLLECTION` to point the install at a different
-collection ref (e.g. a local registry when testing).
 
 `int create` also writes a scaffold record to `.intropy/scaffold.json` inside
 the new integration — the template name, the exact release version, and the
@@ -1063,126 +1019,6 @@ version agree.
 Ship the inspected release with
 `intropy deploy pin <component> <version> --env <env>`.
 
-## Skills (`intropy skills`)
-
-Skills are stored as OCI artifacts following the
-[Agent Skills OCI Artifacts Spec](https://github.com/ThomasVitale/agents-skills-oci-artifacts-spec)
-— config schema, layer layout, and annotations all conform to it, so anything
-the CLI publishes can be consumed by other spec-compliant clients (and
-vice-versa). The CLI maintains two files at the project root:
-
-- `skills.json` — declares registered collections and installed skills (committed).
-- `skills.lock.json` — pins resolved digests and install paths (committed).
-
-Skills install into `.agents/skills/<name>/` (the canonical layout from §9 of
-the spec).
-
-### Add a skill
-
-By full OCI reference:
-
-```sh
-intropy skills add harbor.intropy.io/skills/intropy-pipeline:0.1.0
-```
-
-By name, resolved through a registered collection:
-
-```sh
-intropy skills add --name intropy-pipeline
-intropy skills add --name intropy-pipeline --collection intropy  # disambiguate
-```
-
-If no `skills.json` exists in the working directory or any parent, an empty one
-is created in the current directory.
-
-### List installed skills
-
-```sh
-intropy skills list
-intropy skills list -o json   # machine-readable output
-```
-
-### Update a skill
-
-`update` reconciles an installed skill against the ref currently pinned by its
-collection's cached index. If the collection upstream has been republished, run
-`intropy skills collection update <alias>` first to refresh the cache.
-
-```sh
-intropy skills update intropy-pipeline
-intropy skills update --all
-intropy skills update --all -o json   # machine-readable results
-```
-
-### Publish a skill
-
-Package a skill directory as an OCI artifact and push it:
-
-```sh
-intropy skills publish \
-  --path ./skills/intropy-pipeline \
-  --ref harbor.intropy.io/skills/intropy-pipeline \
-  --version 0.1.0
-```
-
-Use `--force` to overwrite an existing tag, and `--sign` to sign the artifact
-with `cosign` after publishing (requires `cosign` on `PATH`).
-
-## Collections
-
-A collection is an OCI Image Index that pins a curated set of skills by digest.
-Registering a collection lets you install its skills by name.
-
-### Register a collection
-
-```sh
-intropy skills collection add \
-  --name intropy \
-  --ref harbor.intropy.io/skills/index:latest
-
-intropy skills collection add \
-  --name intropy \
-  --ref harbor.intropy.io/skills/index:latest \
-  -o json   # machine-readable confirmation
-```
-
-The collection's index is fetched and cached under
-`.intropy/collections/<alias>.json` for offline name lookups.
-
-### Refresh or bump a collection
-
-Re-pull in place (useful when the upstream tag is moving, e.g. `:latest`):
-
-```sh
-intropy skills collection update intropy
-```
-
-Replace the registered ref with a new value (e.g. bump to a new release tag):
-
-```sh
-intropy skills collection update intropy --ref harbor.intropy.io/skills/index:2026.07
-```
-
-### Publish a collection
-
-Write a YAML spec listing the skills to include, then publish:
-
-```yaml
-# intropy-skills.yaml
-name: intropy-skills
-description: Curated Intropy skills
-skills:
-  - ref: harbor.intropy.io/skills/intropy-pipeline:0.1.0
-  - ref: harbor.intropy.io/skills/intropy-blocks:0.1.0
-```
-
-```sh
-intropy skills collection publish intropy-skills.yaml harbor.intropy.io/skills/index:latest
-```
-
-Each referenced skill is resolved to its current digest at publish time, so the
-collection pins exact content even if upstream tags later move.
-
 ## Authentication
 
 OCI operations use the standard Docker credential chain — log in once with
@@ -1195,8 +1031,6 @@ tooling, and the CLI will pick up the credentials transparently.
 cmd/intropy/          Cobra command wiring (one file per command)
 
 internal/template/    Template download, validation, describe, render
-internal/skill/       skills.json/lockfile, install/update/add, collection cache
-internal/skill/oci/    OCI policy wrapper over internal/registry
 internal/system/      System-host assembly and C# code generation
 
 internal/config/      Per-user configuration (~/.config/intropy/config.yaml)
@@ -1229,9 +1063,6 @@ own; `deploy` holds the policy that combines them. Test fixtures live in
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `intropy int create` fails with "template not found" | The template name is misspelled or does not exist in the library. | Run `intropy template show <name>` to verify the template exists. Check spelling and case. |
-| `intropy skills add` fails with "unauthorized" | Missing or expired registry credentials. | Run `docker login <registry>` or `gh auth login` (for `ghcr.io`) and retry. |
-| `intropy skills add --name <skill>` fails with "not found" | The skill name is not in any registered collection, or the collection cache is stale. | Run `intropy skills collection update <alias>` to refresh the cache, or install by full OCI ref. |
-| `skills.json` merge conflicts | Multiple contributors edited `skills.json` or `skills.lock.json` simultaneously. | Resolve the conflict manually (both files are plain JSON), then run `intropy skills list` to verify. |
 | `intropy deploy diff` fails to render a revision | The ArgoCD Application points at a different repository than the one being read, or the history it synced was rewritten. | Check the Application's `spec.source.repoURL` against `gitopsRepo`, and whether the revision it reports still exists. |
 | Windows native errors | Running the Linux binary directly on Windows without WSL. | Use WSL 2 — native Windows is not supported. |
 
@@ -1244,9 +1075,6 @@ and the pull request workflow.
 
 ## References
 
-- [Agent Skills OCI Artifacts Spec](https://github.com/ThomasVitale/agents-skills-oci-artifacts-spec)
-  — the packaging, distribution, signing, and tracking spec the `skills`
-  subsystem implements.
 - [`integrio-intropy/intropy-templates`](https://github.com/integrio-intropy/intropy-templates)
   — the template library `intropy int create` and `intropy template`
   download from by default.

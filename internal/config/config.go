@@ -3,7 +3,7 @@
 // which GitOps repository to deploy through.
 //
 // Project-scoped state lives elsewhere and is found by walking up from the
-// working directory (skills.json, .intropy/scaffold.json); this package is
+// working directory (.intropy/scaffold.json); this package is
 // only for the single per-user file.
 //
 // Precedence is flag > environment > file > zero. The file is optional: a
