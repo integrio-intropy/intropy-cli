@@ -1,5 +1,1 @@
-Can you scan my go cli for dead code?
-
----
-
 yes, do not make a PR
