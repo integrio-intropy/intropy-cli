@@ -1,0 +1,9 @@
+This is only a plan task. Do not make any changes. we have a skills command that I feel isnt ready for launch yet. I want to remove that from this branch but keep it in another branch.
+
+---
+
+1. yes
+2. yes
+3. more neutral names.
+
+Also skip step 4, I´ll do that myself
