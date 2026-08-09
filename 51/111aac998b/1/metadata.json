@@ -1,0 +1,58 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "51111aac998b",
+  "session_id": "019fe541-b449-7cac-afd7-45e775c3b42d",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-09T06:43:53.77038Z",
+  "branch": "chore/remove-dead-code",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "internal/template/create.go",
+    "internal/template/github.go",
+    "internal/gitops/repository.go",
+    "internal/command/runner_test.go",
+    "internal/source/watch_test.go"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "63031ab2e8d5",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 30003,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 362048,
+    "output_tokens": 4647,
+    "api_call_count": 23
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-09T06:43:53.761602Z",
+    "agent_lines": 1,
+    "agent_removed": 72,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1,
+    "total_lines_changed": 73,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 1357,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "PLAN-catalog-redesign.md": 384,
+        "PLAN-local-deploy.md": 539,
+        "PLAN-template-owns-codegen.md": 374
+      }
+    }
+  ]
+}
