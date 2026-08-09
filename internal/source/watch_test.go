@@ -17,7 +17,6 @@ import (
 // tag — the shape CI's eventual consistency takes in the watch tests.
 type flakyResolver struct {
 	registry *registry.Client
-	image    string
 	calls    atomic.Int32
 }
 

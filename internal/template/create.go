@@ -216,12 +216,6 @@ func writeOutputJSON(path string, stdout io.Writer, r CreateResult) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
-// EnsureOutputDir creates dir if missing and refuses to render into a
-// non-empty directory unless force is set.
-func EnsureOutputDir(dir string, force bool) error {
-	return ensureOutputDir(dir, force)
-}
-
 func ensureOutputDir(dir string, force bool) error {
 	info, err := os.Stat(dir)
 	switch {
