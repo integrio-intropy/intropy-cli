@@ -400,7 +400,11 @@ editable repository files owned by the GitOps maintainers; onboarding another
 environment later is an explicit GitOps edit rather than regeneration.
 
 `--dry-run` reports the file plan. `--diff` prints generated file differences.
-Neither mode creates a branch, commit, or push.
+Neither mode creates a branch, commit, or push. Repeat
+`--binding <port>=<kind>` to select each generated `bindings.<kind>`
+type; addresses, credentials and metadata remain `REPLACE-ME` GitOps
+configuration for review. These choices are independent of local rendering,
+and create never writes local overlays or fixtures to GitOps.
 
 The GitOps path remains `domains/<domain>/<system>/<component>/`. The system
 comes from the topology record; `--system` selects a host in a multi-system

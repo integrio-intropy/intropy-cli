@@ -199,6 +199,33 @@ spec:
 	}
 }
 
+func TestLoadTemplateGitOpsBindingKindsRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, templateManifestName)
+	body := `
+apiVersion: intropy.dev/v1
+kind: Template
+metadata:
+  name: deploy-host
+spec:
+  parameters:
+    type: object
+    properties: {}
+  gitops:
+    bindingKinds: [sftp, http]
+`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tmpl, err := LoadTemplate(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tmpl.Spec.GitOps == nil || len(tmpl.Spec.GitOps.BindingKinds) != 2 {
+		t.Fatalf("GitOps = %+v", tmpl.Spec.GitOps)
+	}
+}
+
 func TestLoadTemplateRejectsBadFixtureNames(t *testing.T) {
 	for _, fixtures := range []string{
 		"[SFTP]",       // not lowercase path-safe
