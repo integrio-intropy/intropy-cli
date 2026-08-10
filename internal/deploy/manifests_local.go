@@ -36,6 +36,12 @@ const localRegistry = "dev"
 // component images under.
 const localImageTag = "dev"
 
+// localImagePrefix is the repository prefix the k3s scripts tag every
+// side-loaded image under, and the prefix the templates pin in the local
+// overlay's image reference (local/<component>). It keeps a locally built
+// image out of any registry default a bare name would resolve to.
+const localImagePrefix = "local/"
+
 // localExclusionReason is the when-condition on the repo-metadata exclusion
 // rules a local render prepends. It is the literal "false": the filter's
 // truthy() treats any other non-empty string as true, so a prose reason here
@@ -136,7 +142,7 @@ type localImageEntry struct {
 
 // localImageEntries resolves the images[] list: one entry per component, host
 // excluded — the same fact requirePinnable encodes (the host is shared and
-// declares no image). Each rendered reference is exactly the component name,
+// declares no image). Each rendered reference is exactly local/<component>,
 // the shape the fixture contract pins, so name matching cannot silently miss.
 func localImageEntries(facts manifestFacts, overrides []imageOverride) ([]localImageEntry, error) {
 	perComponent := map[string]imageOverride{}
@@ -167,7 +173,7 @@ func localImageEntries(facts manifestFacts, overrides []imageOverride) ([]localI
 
 	entries := make([]localImageEntry, 0, len(facts.Selected))
 	for _, c := range facts.Selected {
-		e := localImageEntry{Name: c.Name, NewTag: localImageTag}
+		e := localImageEntry{Name: localImagePrefix + c.Name, NewTag: localImageTag}
 		if o, ok := perComponent[c.Name]; ok {
 			e.NewName = o.NewName
 			e.NewTag = o.NewTag
@@ -244,7 +250,7 @@ func assertAllImagesTagged(manifest []byte) error {
 				continue
 			}
 			if !strings.Contains(c.Image, ":") && !strings.Contains(c.Image, "@") {
-				return fmt.Errorf("a Deployment renders image %q without a tag\nkustomize overrides match on the exact rendered name; the local overlay's image reference convention (<component>:dev) may have drifted", c.Image)
+				return fmt.Errorf("a Deployment renders image %q without a tag\nkustomize overrides match on the exact rendered name; the local overlay's image reference convention (local/<component>:dev) may have drifted", c.Image)
 			}
 		}
 	}

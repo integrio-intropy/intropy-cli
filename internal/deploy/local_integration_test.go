@@ -60,18 +60,24 @@ func TestLocalTemplatesRenderForLocalCluster(t *testing.T) {
 	stdout.Write(built)
 	t.Logf("rendered %d bytes", stdout.Len())
 
-	// The output must be multi-document YAML kubectl will accept.
+	// The output must be multi-document YAML kubectl will accept. Read the
+	// buffer before wiring it to exec.Stdin — the copy drains it.
+	text := stdout.String()
 	apply := exec.Command("kubectl", "apply", "--dry-run=client", "-f", "-")
 	apply.Stdin = &stdout
 	if out, err := apply.CombinedOutput(); err != nil {
 		t.Fatalf("kubectl apply --dry-run=client: %v\n%s", err, out)
 	}
 
-	// The pinned image convention: every Deployment image carries a tag, and
-	// component.yaml never reaches the stream.
-	text := stdout.String()
+	// The pinned image convention: every Deployment image resolves to
+	// local/<component>:dev — the tag the k3s setup scripts import — and
+	// component.yaml never reaches the stream. The CLI's tag check already
+	// ran; this pins the shape itself against template drift.
 	if strings.Contains(text, "schemaVersion") {
 		t.Errorf("component.yaml was rendered into the manifest stream")
+	}
+	if !strings.Contains(text, "image: local/erp-loader:dev") {
+		t.Errorf("no Deployment image carries the pinned local/<component>:dev shape; rendered %d bytes", len(text))
 	}
 }
 

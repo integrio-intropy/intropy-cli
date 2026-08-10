@@ -20,8 +20,8 @@ import (
 )
 
 // The fixture templates deliberately mirror the real templates' local-render
-// contract: a spec.local.fixtures catalog on deploy-component, image: <name>
-// with no registry prefix or tag, an overlay directory per environment, and
+// contract: a spec.local.fixtures catalog on deploy-component, image:
+// local/<name> with no tag, an overlay directory per environment, and
 // component.yaml behind a spec.files rule so the local filter can exclude it.
 const localHostTemplateYAML = `
 apiVersion: intropy.dev/v1
@@ -95,7 +95,7 @@ spec:
     spec:
       containers:
         - name: {{ .appId }}
-          image: {{ .name }}
+          image: local/{{ .name }}
 `
 
 func localLibraryEntries() map[string]string {
@@ -209,7 +209,7 @@ func stubKustomizeBuild(t *testing.T) *localRootKustomization {
 
 // applyLocalImageOverrides mimics what kustomize's images[] does to a rendered
 // document: rewrites image: lines whose reference matches an entry's name.
-// Without it the stub would leave the pinned `image: <name>` shape untagged
+// Without it the stub would leave the pinned `image: local/<name>` shape untagged
 // and trip the guard that the real build satisfies.
 func applyLocalImageOverrides(doc []byte, images []localImageEntry) []byte {
 	text := string(doc)
@@ -324,6 +324,9 @@ func TestLocalRendersTheWholeSystem(t *testing.T) {
 		if img.Name == "host" {
 			t.Errorf("the host got an images entry: %+v", img)
 		}
+		if !strings.HasPrefix(img.Name, "local/") {
+			t.Errorf("image entry %q misses the local/ prefix the rendered reference carries", img.Name)
+		}
 		if img.Name != img.NewName && img.NewName != "" {
 			t.Errorf("unexpected newName: %+v", img)
 		}
@@ -370,10 +373,10 @@ func TestLocalImageOverrides(t *testing.T) {
 	for _, img := range root.Images {
 		byName[img.Name] = img
 	}
-	if got := byName["extractor"]; got.NewTag != "1.4.0-rc.3" || got.NewName != "" {
+	if got := byName["local/extractor"]; got.NewTag != "1.4.0-rc.3" || got.NewName != "" {
 		t.Errorf("extractor = %+v, want a bare retag to the rc", got)
 	}
-	if got := byName["erp-loader"]; got.NewName != "registry.local/erp-loader" || got.NewTag != "2.0.0" {
+	if got := byName["local/erp-loader"]; got.NewName != "registry.local/erp-loader" || got.NewTag != "2.0.0" {
 		t.Errorf("erp-loader = %+v, want the explicit name:tag", got)
 	}
 }
