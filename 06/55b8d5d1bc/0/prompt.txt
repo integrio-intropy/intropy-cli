@@ -1,0 +1,18 @@
+Something doesnt hold together in the manifest create flow
+
+Robins-MacBook-Pro domains/orders/fulfillment-flow on  main [$✘!?] ➜  i manifests create --env test --dry-run                                                                                                 10:21
+reading topology from order-host (building first; this can take a minute)
+fetching integrio-intropy/intropy-templates@v0.2.4
+refreshing git@gitlab.com:integrio/intropy/customers/entrovia/gitops.git
+placing order-host under domains/orders, from the workspace layout
+note: connector order-extractor-source has no binding for test; its manifests keep the REPLACE-ME scaffold
+note: connector order-loader-destination has no binding for test; its manifests keep the REPLACE-ME scaffold
+error: render deploy-host for host (local): base/dapr/pubsub-rabbitmq.yaml renders differently for environment "local" than for an earlier one; a value that varies by environment may only be used under overlays/
+
+---
+
+But local should only be used with render, not create. Local isnt part of the gitops flow
+
+---
+
+I want to support --binding for create aswell but it should be completely separated from render. Local should never exist in the devops repo and in theory the developer can select different connectors for local and test even though there is no point in doing that
