@@ -16,3 +16,7 @@ But local should only be used with render, not create. Local isnt part of the gi
 ---
 
 I want to support --binding for create aswell but it should be completely separated from render. Local should never exist in the devops repo and in theory the developer can select different connectors for local and test even though there is no point in doing that
+
+---
+
+yes
