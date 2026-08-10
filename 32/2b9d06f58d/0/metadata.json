@@ -1,0 +1,104 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "322b9d06f58d",
+  "session_id": "019fea96-0e69-79d4-a762-b20e65a8b4a5",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-10T08:02:31.112655Z",
+  "branch": "feat/manifest-create-bindings",
+  "checkpoints_count": 7,
+  "save_step_count": 4,
+  "files_touched": [
+    "cmd/intropy/flagtext.go",
+    "cmd/intropy/manifests_create.go",
+    "cmd/intropy/manifests_render.go",
+    "cmd/intropy/manifests_test.go",
+    "internal/deploy/connectors.go",
+    "internal/deploy/manifests.go",
+    "internal/deploy/manifests_connectors_integration_test.go",
+    "internal/deploy/manifests_engine.go",
+    "internal/deploy/manifests_engine_integration_test.go",
+    "internal/deploy/manifests_integration_test.go"
+  ],
+  "agent": "Pi",
+  "model": "gpt-5.6-terra",
+  "turn_id": "77cdaded647c",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 350771,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 7935744,
+    "output_tokens": 37868,
+    "api_call_count": 103
+  },
+  "session_metrics": {
+    "turn_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-10T08:02:31.0688Z",
+    "agent_lines": 123,
+    "agent_removed": 26,
+    "human_added": 54,
+    "human_modified": 6,
+    "human_removed": 0,
+    "total_committed": 183,
+    "total_lines_changed": 209,
+    "agent_percentage": 71.29186602870813,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 1357,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "PLAN-catalog-redesign.md": 384,
+        "PLAN-local-deploy.md": 539,
+        "PLAN-template-owns-codegen.md": 374
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1620,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1749,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1878,
+      "agent_lines_removed": 26,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    }
+  ]
+}

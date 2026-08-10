@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "322b9d06f58d",
+  "strategy": "manual-commit",
+  "branch": "feat/manifest-create-bindings",
+  "checkpoints_count": 7,
+  "files_touched": [
+    "cmd/intropy/flagtext.go",
+    "cmd/intropy/manifests_create.go",
+    "cmd/intropy/manifests_render.go",
+    "cmd/intropy/manifests_test.go",
+    "internal/deploy/connectors.go",
+    "internal/deploy/manifests.go",
+    "internal/deploy/manifests_connectors_integration_test.go",
+    "internal/deploy/manifests_engine.go",
+    "internal/deploy/manifests_engine_integration_test.go",
+    "internal/deploy/manifests_integration_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/32/2b9d06f58d/0/metadata.json",
+      "transcript": "/32/2b9d06f58d/0/full.jsonl",
+      "compact_transcript": "/32/2b9d06f58d/0/transcript.jsonl",
+      "content_hash": "/32/2b9d06f58d/0/content_hash.txt",
+      "prompt": "/32/2b9d06f58d/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 350771,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 7935744,
+    "output_tokens": 37868,
+    "api_call_count": 103
+  }
+}
