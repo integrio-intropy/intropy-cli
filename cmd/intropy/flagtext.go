@@ -25,11 +25,14 @@ const (
 
 	// Manifest generation places a whole system rather than disambiguating one
 	// component, so these flags cannot use deploy's search descriptions.
-	flagUsageManifestDomain = "domain to place the system under (default: where it already is in the GitOps tree, else the workspace layout)"
-	flagUsageManifestSystem = "system to inspect or generate; selects the host when the workspace holds several"
-	flagUsageGitopsRepo     = "GitOps repository URL (default: gitopsRepo from config, or INTROPY_GITOPS_REPO)"
-	flagUsageArgocd         = "ArgoCD server address (default: argocdServer from config, ARGOCD_SERVER, or deploy.yaml)"
-	flagUsageTemplateVer    = "template release tag (default: latest)"
-	flagUsageNoInput        = "never prompt; fail if a required value is missing"
-	flagUsageTemplateRepo   = "template library as owner/repo (default: templateRepo from config, or INTROPY_TEMPLATE_REPO)"
+	flagUsageManifestCreateEnv = "target environment (default: every environment in deploy.yaml)"
+	flagUsageManifestDomain    = "domain to place the system under (default: where it already is in the GitOps tree, else the workspace layout)"
+	flagUsageManifestSystem    = "system to inspect or generate; selects the host when the workspace holds several"
+	flagUsageGitopsRepo        = "GitOps repository URL (default: gitopsRepo from config, or INTROPY_GITOPS_REPO)"
+	flagUsageArgocd            = "ArgoCD server address (default: argocdServer from config, ARGOCD_SERVER, or deploy.yaml)"
+	flagUsageTemplateVer       = "template release tag (default: latest)"
+	flagUsageNoInput           = "never prompt; fail if a required value is missing"
+	flagUsageTemplateRepo      = "template library as owner/repo (default: templateRepo from config, or INTROPY_TEMPLATE_REPO)"
+	flagUsageBinding           = "local port fixture as <port>=<fixture> (repeatable)"
+	flagUsageGitOpsBinding     = "GitOps port binding kind as <port>=<kind> (repeatable)"
 )

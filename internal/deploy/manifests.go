@@ -76,6 +76,8 @@ type RenderManifestOptions struct {
 // CreateManifestOptions configures CreateManifests.
 type CreateManifestOptions struct {
 	Environment     string
+	Bindings        []string
+	Selector        interactive.Selector
 	Domain          string
 	System          string
 	SourceDir       string
@@ -199,8 +201,11 @@ func RenderManifests(ctx context.Context, opts RenderManifestOptions) ([]byte, e
 // CreateManifests creates missing GitOps manifest files on a review branch.
 // Existing identical files are accepted; existing differing files are never replaced.
 func CreateManifests(ctx context.Context, opts CreateManifestOptions) error {
-	if opts.Environment == "" {
-		return fmt.Errorf("environment is required")
+	environments := []string(nil)
+	reviewEnv := "all"
+	if opts.Environment != "" {
+		environments = []string{opts.Environment}
+		reviewEnv = opts.Environment
 	}
 	initOpts := manifestRunOptions{
 		Mode:            modeGitOps,
@@ -208,7 +213,9 @@ func CreateManifests(ctx context.Context, opts CreateManifestOptions) error {
 		System:          opts.System,
 		SourceDir:       opts.SourceDir,
 		TopologyFile:    opts.TopologyFile,
-		Environments:    []string{opts.Environment},
+		Environments:    environments,
+		Bindings:        opts.Bindings,
+		Selector:        opts.Selector,
 		TemplateVersion: opts.TemplateVersion,
 		GitopsRepo:      opts.GitopsRepo,
 		PlanOnly:        opts.DryRun || opts.Diff,
@@ -224,7 +231,7 @@ func CreateManifests(ctx context.Context, opts CreateManifestOptions) error {
 		GitHubBaseURL:   opts.GitHubBaseURL,
 		HTTP:            opts.HTTP,
 		diffOnly:        opts.Diff,
-		reviewEnv:       opts.Environment,
+		reviewEnv:       reviewEnv,
 	}
 	initOpts.applyDefaults()
 

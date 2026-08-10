@@ -16,6 +16,7 @@ import (
 
 	"github.com/integrio-intropy/intropy-cli/internal/command"
 	"github.com/integrio-intropy/intropy-cli/internal/interactive"
+	"github.com/integrio-intropy/intropy-cli/internal/template"
 	"gopkg.in/yaml.v3"
 )
 
@@ -296,7 +297,11 @@ type fakeBindingSelector struct {
 
 func (s *fakeBindingSelector) Select(_ context.Context, req interactive.SelectRequest) (string, error) {
 	s.requests = append(s.requests, req)
-	return s.choices[strings.TrimPrefix(req.Title, "local binding for ")], nil
+	_, port, found := strings.Cut(req.Title, " binding for ")
+	if !found {
+		return "", nil
+	}
+	return s.choices[port], nil
 }
 
 func TestLocalRendersTheWholeSystem(t *testing.T) {
@@ -667,5 +672,15 @@ func TestRenderManifestsReturnsNoBytesWhenBuildFails(t *testing.T) {
 	}
 	if built != nil {
 		t.Errorf("built = %q, want nil on failure", built)
+	}
+}
+
+func TestGitOpsFileRulesExcludeLocalOverlay(t *testing.T) {
+	rules := gitOpsFileRules([]template.FileRule{{Path: "base/**", When: "true"}})
+	if len(rules) != 2 {
+		t.Fatalf("rules = %d, want 2", len(rules))
+	}
+	if rules[0].Path != "overlays/local/**" || rules[0].When != localExclusionReason {
+		t.Errorf("local exclusion = %+v", rules[0])
 	}
 }

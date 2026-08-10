@@ -91,6 +91,13 @@ func newLocalFacts(system string, model ManifestModel, scaffolds map[string]temp
 	}
 }
 
+// gitOpsFileRules excludes the local-only overlay from GitOps scaffolds. A
+// static overlays/local skeleton would otherwise render alongside every
+// deployable environment despite local not being a GitOps environment.
+func gitOpsFileRules(rules []template.FileRule) []template.FileRule {
+	return append([]template.FileRule{{Path: "overlays/local/**", When: localExclusionReason}}, rules...)
+}
+
 // localModel is the reserved .local structure: the per-port fixture
 // bindings decided by this command.
 type localModel struct {
