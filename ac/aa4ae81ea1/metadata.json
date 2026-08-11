@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "acaa4ae81ea1",
+  "strategy": "manual-commit",
+  "branch": "refactor/manifests-engine",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "internal/deploy/manifests_engine.go",
+    "internal/deploy/manifests_files.go",
+    "internal/deploy/manifests_files_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ac/aa4ae81ea1/0/metadata.json",
+      "transcript": "/ac/aa4ae81ea1/0/full.jsonl",
+      "compact_transcript": "/ac/aa4ae81ea1/0/transcript.jsonl",
+      "content_hash": "/ac/aa4ae81ea1/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 10636,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2815360,
+    "output_tokens": 9080,
+    "api_call_count": 27
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "acaa4ae81ea1",
+  "session_id": "019fef14-be67-7f99-96c6-9815ad2e2da1",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-11T05:01:32.10093Z",
+  "branch": "refactor/manifests-engine",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "internal/deploy/manifests_engine.go",
+    "internal/deploy/manifests_files_test.go",
+    "internal/deploy/manifests_files.go"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "19fb8f350931",
+  "checkpoint_transcript_start": 163,
+  "transcript_lines_at_start": 163,
+  "compact_transcript_start": 79,
+  "token_usage": {
+    "input_tokens": 10636,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2815360,
+    "output_tokens": 9080,
+    "api_call_count": 27
+  },
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-11T05:01:32.054919Z",
+    "agent_lines": 195,
+    "agent_removed": 69,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 195,
+    "total_lines_changed": 264,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
