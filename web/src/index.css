@@ -1531,3 +1531,245 @@ body {
 .flow-canvas .rf-edge-ext .react-flow__arrowhead {
   fill: var(--text-muted);
 }
+
+/* Templates view: the `template` + `int create` surface. A list of the
+ * library's templates on the left, the selected one's manifest as a form on
+ * the right. All colors are theme tokens, so dark mode needs no overrides. */
+.templates-view {
+  display: flex;
+  gap: 20px;
+  height: calc(100dvh - var(--topbar-h) - 76px);
+  min-height: 460px;
+}
+
+.templates-list {
+  flex: 0 0 260px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+
+.templates-list ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.templates-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.templates-lib {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.template-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.template-item:hover {
+  background: var(--surface-2);
+}
+
+.template-item.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.templates-detail {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+
+.template-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.template-title {
+  margin: 0;
+  font-size: 18px;
+}
+
+.template-name,
+.template-ref {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.template-desc {
+  color: var(--text-muted);
+  max-width: 72ch;
+}
+
+.template-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.template-tag {
+  font-size: 12px;
+  padding: 2px 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+}
+
+.template-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 560px;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.form-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.form-label .req {
+  color: var(--danger);
+  margin-right: 3px;
+}
+
+.form-label-title {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.form-type {
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-left: 6px;
+  font-size: 12px;
+}
+
+.form-field input[type='text'],
+.form-field input[type='number'],
+.form-field select {
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 10px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.form-field input:focus,
+.form-field select:focus {
+  outline: 2px solid var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.form-field input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  align-self: flex-start;
+}
+
+.form-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.form-hint {
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.force-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.run-btn {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 18px;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+:root[data-theme='dark'] .run-btn {
+  color: #06281f;
+}
+
+.run-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.create-result {
+  margin-top: 16px;
+  padding: 14px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.create-result code {
+  background: var(--surface-2);
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+
+.create-deps {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.create-result .flow-refresh {
+  margin-left: 0;
+}

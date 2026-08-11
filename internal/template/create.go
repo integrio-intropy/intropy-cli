@@ -100,7 +100,7 @@ func Create(ctx context.Context, opts CreateOptions) error {
 		return err
 	}
 
-	if err := renderCreateOutput(templateRoot, opts.Template, opts.OutputDir, opts.Force, values); err != nil {
+	if err := renderCreateOutput(filepath.Join(templateRoot, templateSkeletonDir), opts.Template, opts.OutputDir, opts.Force, values); err != nil {
 		return err
 	}
 	fmt.Fprintf(opts.Stderr, "created %s from %s/%s@%s (template %s)\n", opts.OutputDir, opts.Owner, opts.Repo, tag, opts.Template)
@@ -168,8 +168,10 @@ func prepareCreateTemplate(templateRoot string, opts CreateOptions) (*Template, 
 	return tmpl, values, nil
 }
 
-func renderCreateOutput(templateRoot, templateName, outputDir string, force bool, values map[string]any) error {
-	skelRoot := filepath.Join(templateRoot, templateSkeletonDir)
+// renderCreateOutput renders an extracted skeleton into outputDir. The caller
+// passes the skeleton root itself (PrepareCreate has already verified it), so
+// the missing-skeleton check lives next to the fetch that could produce it.
+func renderCreateOutput(skelRoot, templateName, outputDir string, force bool, values map[string]any) error {
 	if info, err := os.Stat(skelRoot); err != nil || !info.IsDir() {
 		return fmt.Errorf("template %q is missing %s/ directory", templateName, templateSkeletonDir)
 	}
@@ -234,6 +236,14 @@ func ensureOutputDir(dir string, force bool) error {
 		return fmt.Errorf("--output %s is not empty (use --force to overwrite)", dir)
 	}
 	return nil
+}
+
+// ValidateTemplateName reports whether name is safe to use as a template
+// directory — the exported half of validateTemplateName for callers that
+// resolve a library themselves (the dashboard's template endpoints) and need
+// the same refusal before joining user input into a path.
+func ValidateTemplateName(name string) error {
+	return validateTemplateName(name)
 }
 
 // validateTemplateName rejects empty names and anything that could escape the

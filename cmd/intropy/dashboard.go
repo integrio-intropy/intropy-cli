@@ -13,8 +13,9 @@ import (
 // dashboard serves the local integration dashboard. The HTTP server and
 // JSON API live in internal/dashboard; this file is flag plumbing.
 type dashboardFlags struct {
-	port      int
-	noBrowser bool
+	port            int
+	noBrowser       bool
+	templateVersion string
 }
 
 var dashboardOpts dashboardFlags
@@ -42,13 +43,14 @@ var dashboardCmd = &cobra.Command{
 		defer cancel()
 
 		return dashboard.Serve(ctx, dashboard.Options{
-			Root:        root,
-			Addr:        "127.0.0.1",
-			Port:        dashboardOpts.port,
-			OpenBrowser: !dashboardOpts.noBrowser,
-			Version:     version,
-			Stdout:      cmd.OutOrStdout(),
-			Stderr:      cmd.ErrOrStderr(),
+			Root:            root,
+			Addr:            "127.0.0.1",
+			Port:            dashboardOpts.port,
+			OpenBrowser:     !dashboardOpts.noBrowser,
+			Version:         version,
+			TemplateVersion: dashboardOpts.templateVersion,
+			Stdout:          cmd.OutOrStdout(),
+			Stderr:          cmd.ErrOrStderr(),
 		})
 	},
 }
@@ -57,5 +59,6 @@ func init() {
 	f := dashboardCmd.Flags()
 	f.IntVarP(&dashboardOpts.port, "port", "p", 8730, "port to bind (0 picks a free port)")
 	f.BoolVar(&dashboardOpts.noBrowser, "no-browser", false, "do not open the dashboard in a browser")
+	f.StringVar(&dashboardOpts.templateVersion, "template-version", "", flagUsageTemplateVer)
 	rootCmd.AddCommand(dashboardCmd)
 }

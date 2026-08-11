@@ -254,6 +254,131 @@ func runCreate(t *testing.T, srv *httptest.Server, opts CreateOptions) (stdout, 
 	return stdout, stderr, err
 }
 
+const wantTopicsCS = `using Intropy.Topology;
+using Contracts;
+
+/// <summary>The system's topics, each defined once and shared by every component that touches it.</summary>
+public static class Topics
+{
+    /// <summary>Order messages on topic 'orders' (pubsub 'pubsub').</summary>
+    public static readonly TopicRef<Order> Orders = TopicRef<Order>.Define("pubsub", "orders");
+}
+`
+
+const wantSystemCS = `using Intropy.Topology;
+
+/// <summary>The order-flow system: what exists, and what connects it.</summary>
+public sealed class OrderFlowSystem : ISystemDefinition
+{
+    /// <inheritdoc />
+    public string SystemName => "order-flow";
+
+    /// <inheritdoc />
+    public void Define(SystemBuilder builder)
+    {
+        builder.AddExtractor("order-extractor")
+            .From(Connectors.OrderExtractorSource)
+            .Publishes(Topics.Orders)
+            .Uses(Services.Idempotency)
+            .Uses(Services.BusinessIncidents)
+            .WithSchedule("* * * * *");
+        builder.AddLoader("order-loader")
+            .Subscribes(Topics.Orders)
+            .To(Connectors.OrderLoaderDestination)
+            .Uses(Services.Idempotency)
+            .Uses(Services.BusinessIncidents);
+    }
+}
+`
+
+const wantConnectorsCS = `using Intropy.Topology;
+
+/// <summary>The system's connectors: the named ports its edge blocks reach the outside world through. Each declares its deployed transport; the development definition resolves it to a local folder under test/ so the system runs with zero external configuration.</summary>
+public static class Connectors
+{
+    /// <summary>Deployed as SFTP; locally resolved to <c>./test/order-extractor-source</c>.</summary>
+    public static readonly ConnectorRef OrderExtractorSource = ConnectorRef.Define("order-extractor-source", Transport.Sftp());
+
+    /// <summary>Deployed as SFTP; locally resolved to <c>./test/order-loader-destination</c>.</summary>
+    public static readonly ConnectorRef OrderLoaderDestination = ConnectorRef.Define("order-loader-destination", Transport.Sftp());
+}
+`
+
+const wantDevelopmentCS = `using Intropy.Topology.Generation;
+
+/// <summary>Local OpenAPI-backed substitutes and connector file resolutions for order-flow.</summary>
+public sealed class OrderFlowDevelopment : IDevelopmentDefinition
+{
+    /// <inheritdoc />
+    public void Define(DevelopmentBuilder development)
+    {
+        development.Mock(Services.Idempotency).FromOpenApi("mocks/idempotency-service.openapi.yaml");
+        development.Mock(Services.BusinessIncidents).FromOpenApi("mocks/business-incident-service.openapi.yaml");
+        development.Files(Connectors.OrderExtractorSource).RootPath("./test/order-extractor-source");
+        development.Files(Connectors.OrderLoaderDestination).RootPath("./test/order-loader-destination");
+    }
+}
+`
+
+// wantPreDevelopmentConnectorsCS is the pre-development shape: a template
+// release without the Development.cs placeholder keeps connectors on local
+// file transports and its system class carries no Uses calls.
+const wantPreDevelopmentConnectorsCS = `using Intropy.Topology;
+
+/// <summary>The system's connectors: the named ports its edge blocks reach the outside world through. Each defaults to a local file folder under test/ so the system runs with zero external configuration.</summary>
+public static class Connectors
+{
+    /// <summary>Uses <c>./test/order-extractor-source</c> as the local file endpoint.</summary>
+    public static readonly ConnectorRef OrderExtractorSource = ConnectorRef.Define("order-extractor-source", Transport.File("./test/order-extractor-source"));
+
+    /// <summary>Uses <c>./test/order-loader-destination</c> as the local file endpoint.</summary>
+    public static readonly ConnectorRef OrderLoaderDestination = ConnectorRef.Define("order-loader-destination", Transport.File("./test/order-loader-destination"));
+}
+`
+
+const wantPreDevelopmentSystemCS = `using Intropy.Topology;
+
+/// <summary>The order-flow system: what exists, and what connects it.</summary>
+public sealed class OrderFlowSystem : ISystemDefinition
+{
+    /// <inheritdoc />
+    public string SystemName => "order-flow";
+
+    /// <inheritdoc />
+    public void Define(SystemBuilder builder)
+    {
+        builder.AddExtractor("order-extractor")
+            .From(Connectors.OrderExtractorSource)
+            .Publishes(Topics.Orders)
+            .WithSchedule("* * * * *");
+        builder.AddLoader("order-loader")
+            .Subscribes(Topics.Orders)
+            .To(Connectors.OrderLoaderDestination);
+    }
+}
+`
+
+// wantLegacySystemCS is the pre-connector shape: a template release without
+// the Connectors.cs placeholder degrades the system class to no From/To.
+const wantLegacySystemCS = `using Intropy.Topology;
+
+/// <summary>The order-flow system: what exists, and what connects it.</summary>
+public sealed class OrderFlowSystem : ISystemDefinition
+{
+    /// <inheritdoc />
+    public string SystemName => "order-flow";
+
+    /// <inheritdoc />
+    public void Define(SystemBuilder builder)
+    {
+        builder.AddExtractor("order-extractor")
+            .Publishes(Topics.Orders);
+        builder.AddLoader("order-loader")
+            .Subscribes(Topics.Orders);
+    }
+}
+`
+
 func TestCreateAssemblesSystem(t *testing.T) {
 	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
 	defer srv.Close()

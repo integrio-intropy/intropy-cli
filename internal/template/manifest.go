@@ -160,16 +160,18 @@ func childByKey(mapping *yaml.Node, key string) *yaml.Node {
 
 // FieldSpec is the prompter/CLI view of a single property in spec.parameters.
 // Prompters and form code only consume FieldSpecs — they never touch the raw
-// JSON Schema map.
+// JSON Schema map. The JSON tags make a FieldSpec safe to serve over the wire
+// (the dashboard's template form renders from them); they are additive to a
+// struct nothing previously marshaled.
 type FieldSpec struct {
-	Name        string
-	Title       string
-	Description string
-	Type        string // "string" | "boolean" | "integer" | "number"
-	Enum        []any
-	Default     any
-	Pattern     string
-	Required    bool
+	Name        string `json:"name"`
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+	Type        string `json:"type"` // "string" | "boolean" | "integer" | "number"
+	Enum        []any  `json:"enum,omitempty"`
+	Default     any    `json:"default,omitempty"`
+	Pattern     string `json:"pattern,omitempty"`
+	Required    bool   `json:"required"`
 }
 
 // Fields returns the JSON Schema properties as FieldSpecs in YAML declaration

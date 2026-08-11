@@ -120,7 +120,7 @@ func renderDependency(dep DependencySpec, name, depDir string, sets map[string]a
 	// --force never propagates to dependencies: overwriting a shared
 	// project that other components already reference is destructive at a
 	// distance. Regenerating one is an explicit `int create <template> --force`.
-	if err := renderCreateOutput(depRoot, dep.Template, depDir, false, values); err != nil {
+	if err := renderCreateOutput(filepath.Join(depRoot, templateSkeletonDir), dep.Template, depDir, false, values); err != nil {
 		return nil, fmt.Errorf("dependency %s: %w", dep.Template, err)
 	}
 

@@ -23,10 +23,13 @@ const maxDocBytes = 128 * 1024
 // providers are the request-independent sources the API reads beyond the
 // workspace's own files: what a system host declares about its topology, and
 // what the GitOps repository says is deployed. Both run a command, so both are
-// injected as function values that tests replace.
+// injected as function values that tests replace. templates is a value, not a
+// function: it carries configuration (release pin, test overrides), not a
+// stubbed behavior — tests override its fields instead.
 type providers struct {
-	topology topologyProvider
-	deploy   deployProvider
+	topology  topologyProvider
+	deploy    deployProvider
+	templates templatesProvider
 }
 
 // deployStateTimeout bounds one deploy status run.
@@ -41,10 +44,16 @@ const deployStateTimeout = time.Minute
 
 // apiServer holds the request-independent state for the JSON API.
 type apiServer struct {
-	root    string
-	version string
-	topo    topologyProvider
-	dep     deployProvider
+	root      string
+	version   string
+	topo      topologyProvider
+	dep       deployProvider
+	templates templatesProvider
+
+	// createMu serializes template create runs: two concurrent renders of the
+	// same name would race on the output directory, and each run downloads a
+	// library tarball. The same bargain depMu makes for the shared checkout.
+	createMu sync.Mutex
 
 	// topoMu guards the cached provider result. Fetching runs the hosts'
 	// graph verbs (a dotnet build on first run), so the result is computed
@@ -120,7 +129,7 @@ type integrationDetail struct {
 
 // newHandler wires the API routes and the SPA static handler onto a mux.
 func newHandler(root, version string, p providers) (http.Handler, error) {
-	api := &apiServer{root: root, version: version, topo: p.topology, dep: p.deploy}
+	api := &apiServer{root: root, version: version, topo: p.topology, dep: p.deploy, templates: p.templates}
 	static, err := staticHandler()
 	if err != nil {
 		return nil, err
@@ -139,6 +148,11 @@ func newHandler(root, version string, p providers) (http.Handler, error) {
 	// already been read, POST runs the command again.
 	mux.HandleFunc("GET /api/deploy/{path...}", api.getDeployState)
 	mux.HandleFunc("POST /api/deploy/{path...}", api.refreshDeployState)
+	// Template endpoints follow the same GET-read / POST-act split: list and
+	// show fetch the library release, create renders into the workspace.
+	mux.HandleFunc("GET /api/templates", api.listTemplates)
+	mux.HandleFunc("GET /api/templates/{name}", api.getTemplate)
+	mux.HandleFunc("POST /api/templates/{name}/create", api.createTemplate)
 	mux.Handle("/", static)
 	return mux, nil
 }
