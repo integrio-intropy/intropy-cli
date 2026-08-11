@@ -1,5 +1,1 @@
-feature/dashboard-templates is an old branch that hasnt kept up with feature/v-next. Could you check if it can be merged to feature/v-next?
-
----
-
 I rebuilt the cli and did make bundle but the new tab from dashboard-templates isnt visible?
