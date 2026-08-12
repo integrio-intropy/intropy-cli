@@ -1,0 +1,61 @@
+i want to support adding transactional integrations to a system host. These are some missmatches I got for the cli. Can you analyze what needs to be done? Also consider if we should refactor anything to make it easier to add more kinds. Do not make any changes
+
+### 2. The payload contract (CLI-side, documented in README.md)
+
+ payload.go in the CLI currently emits {appId, kind, topicField, connectorField} with kind ∈
+ {extractor, loader} and exactly one topic and one connector per component. A transactional
+ integration needs two connectors and no topic, so the payload shape has to grow a new kind
+ with its own fields, e.g. kind: transactional-integration with fromField / toField (or a
+ generalization to per-direction connector lists). The component table in system-host/README.md
+  and examples/minimal.yaml must be updated in the same commit.
+
+ There is a naming wrinkle on the CLI side worth flagging: the transactional template today
+ declares intropy.dev/block-kind: loader, so the CLI would classify it as a loader. The
+ scaffold record (and CLAUDE.md's documented transactional-integration enum value) need to
+ agree with whatever kind string the payload and the {{ .systemClass }}.cs.tmpl branch use.
+
+---
+
+yes, and launch a review agent with pi --print
+
+---
+
+You are a staff-level Go reviewer. Review the implementation plan at /tmp/transactional-integration-plan.md against the actual codebase in the current working directory (/Users/robinhultman/dev/intropy/tooling/intropy-cli).
+
+Verify each claim in the plan against the real code:
+1. Does internal/system/assemble.go really hard-require topic+contract for every component, and gate on the two-kind check the plan describes?
+2. Is internal/system/payload.go's per-component shape exactly {appId, kind, topicField, connectorField} with the loader-default if/else?
+3. Is the BlockKind constant pair in internal/template/scaffold.go the right place for the new constant?
+4. Does the plan's "Component shape" refactor (Option A vs B) hold up against how Component is consumed in model.go, create.go (Summary JSON), payload.go, and the tests? Flag any consumer the plan missed.
+5. Does anything else in the repo switch on block kind that the plan's "Phase 3 cross-checks" list missed? Grep for extractor/loader/blockKind across internal/ and cmd/ to be sure.
+6. Is the open question about fromConnector/toConnector vs connector-as-list decidable from the scaffold-record schema (internal/template/scaffold.go Values map[string]any) and how stringValue is used? Which is less disruptive?
+
+Also stress-test the refactor itself:
+- Is the blockAssembly interface (parse + payloadFields) the right seam, or does it split what should be one method? Consider that Assemble also does cross-component checks (byTopic conflict, byConnector uniqueness) — does the strategy pattern make those harder?
+- Anything in the plan that violates the repo's writing/comment conventions in AGENTS.md?
+
+Read the actual files. Be concrete: cite file:line. End with a verdict: ship the plan as-is, ship with the listed fixes, or rework — and the single most important thing to change.
+
+---
+
+yes
+
+---
+
+was the refactoring part of the plan?
+
+---
+
+Would you say that these changes bring a lot of complexity to the tool?
+
+---
+
+do you mean that the change is net neutral or net positive when it comes to complexity?
+
+---
+
+and we are in a good shape to add more kinds in the future?
+
+---
+
+ok implement the plan on a new branch. Do not push anything

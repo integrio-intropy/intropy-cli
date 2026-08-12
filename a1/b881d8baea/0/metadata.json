@@ -1,0 +1,61 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "a1b881d8baea",
+  "session_id": "019ff577-88d8-7899-af00-49485a915634",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-12T10:30:49.984512Z",
+  "branch": "feat/transactional-integration-kind",
+  "checkpoints_count": 7,
+  "files_touched": [
+    "README.md",
+    "internal/system/assemble.go",
+    "internal/system/assemble_test.go",
+    "internal/system/blocks.go",
+    "internal/system/create_test.go",
+    "internal/system/model.go",
+    "internal/system/payload.go",
+    "internal/system/payload_test.go",
+    "internal/template/scaffold.go",
+    "internal/topology/topology.go",
+    "web/src/api.ts"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "5b22e4955881",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 61199,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2433600,
+    "output_tokens": 23709,
+    "api_call_count": 58
+  },
+  "session_metrics": {
+    "turn_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-12T10:30:49.964347Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 319,
+    "human_modified": 69,
+    "human_removed": 0,
+    "total_committed": 319,
+    "total_lines_changed": 388,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    }
+  ]
+}

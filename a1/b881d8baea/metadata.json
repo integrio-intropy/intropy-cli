@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "a1b881d8baea",
+  "strategy": "manual-commit",
+  "branch": "feat/transactional-integration-kind",
+  "checkpoints_count": 7,
+  "files_touched": [
+    "README.md",
+    "internal/system/assemble.go",
+    "internal/system/assemble_test.go",
+    "internal/system/blocks.go",
+    "internal/system/create_test.go",
+    "internal/system/model.go",
+    "internal/system/payload.go",
+    "internal/system/payload_test.go",
+    "internal/template/scaffold.go",
+    "internal/topology/topology.go",
+    "web/src/api.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/a1/b881d8baea/0/metadata.json",
+      "transcript": "/a1/b881d8baea/0/full.jsonl",
+      "compact_transcript": "/a1/b881d8baea/0/transcript.jsonl",
+      "content_hash": "/a1/b881d8baea/0/content_hash.txt",
+      "prompt": "/a1/b881d8baea/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 61199,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2433600,
+    "output_tokens": 23709,
+    "api_call_count": 58
+  }
+}
