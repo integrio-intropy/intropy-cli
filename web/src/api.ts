@@ -252,7 +252,7 @@ export interface ConnectorUse {
 
 export interface TopologyComponent {
   name: string
-  /** Block type: extractor, loader, transactionalIntegration, … */
+  /** Block type: extractor, loader, transactional-integration, … */
   kind: string
   subscribes?: TopicRef[]
   publishes?: Publication[]

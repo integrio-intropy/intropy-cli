@@ -125,6 +125,85 @@ func TestAssembleConnectors(t *testing.T) {
 	}
 }
 
+func transactionalEntry(path, appID, from, to string) template.ScaffoldEntry {
+	return blockEntry(path, template.BlockKindTransactional, map[string]any{
+		"appId": appID, "fromConnector": from, "toConnector": to,
+	})
+}
+
+func TestAssembleTransactional(t *testing.T) {
+	model, err := Assemble([]template.ScaffoldEntry{
+		sharedEntry("Contracts", "Contracts"),
+		extractorEntry("order-extractor", "order-extractor", "orders", "Order"),
+		transactionalEntry("erp-sync", "erp-sync", "erp-source", "erp-destination"),
+	}, discardWarnf)
+	if err != nil {
+		t.Fatalf("Assemble: %v", err)
+	}
+
+	if len(model.Components) != 2 {
+		t.Fatalf("components = %+v", model.Components)
+	}
+	tx := model.Components[1]
+	if tx.Kind != template.BlockKindTransactional {
+		t.Errorf("kind = %q", tx.Kind)
+	}
+	if tx.Topic != nil {
+		t.Errorf("transactional component should carry no topic: %+v", tx.Topic)
+	}
+	if tx.Connector != "" {
+		t.Errorf("transactional component should not populate the scalar connector: %q", tx.Connector)
+	}
+	if len(tx.Connectors) != 2 || tx.Connectors[0] != "erp-source" || tx.Connectors[1] != "erp-destination" {
+		t.Errorf("connectors = %+v, want [erp-source erp-destination]", tx.Connectors)
+	}
+	// Both connectors join the system's connector list; the topic count
+	// stays at the extractor's one.
+	if len(model.Connectors) != 2 || len(model.Topics) != 1 {
+		t.Errorf("connectors = %+v, topics = %+v", model.Connectors, model.Topics)
+	}
+}
+
+func TestAssembleTransactionalErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		entry   template.ScaffoldEntry
+		wantErr string
+	}{
+		{
+			name: "missing fromConnector",
+			entry: blockEntry("erp-sync", template.BlockKindTransactional, map[string]any{
+				"appId": "erp-sync", "toConnector": "erp-destination",
+			}),
+			wantErr: "values.fromConnector is missing",
+		},
+		{
+			name: "empty toConnector",
+			entry: blockEntry("erp-sync", template.BlockKindTransactional, map[string]any{
+				"appId": "erp-sync", "fromConnector": "erp-source", "toConnector": "",
+			}),
+			wantErr: "values.toConnector is empty",
+		},
+		{
+			name:    "connector collides with a topic block's",
+			entry:   transactionalEntry("erp-sync", "erp-sync", "erp-source", "orders-source"),
+			wantErr: `duplicate connector "orders-source"`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Assemble([]template.ScaffoldEntry{
+				sharedEntry("Contracts", "Contracts"),
+				connectedEntry("order-extractor", template.BlockKindExtractor, "order-extractor", "orders-source"),
+				tt.entry,
+			}, discardWarnf)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("err = %v, want substring %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestAssembleMissingConnectorWarnsAndOmits(t *testing.T) {
 	var warned bytes.Buffer
 	warnf := func(format string, args ...any) {

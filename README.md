@@ -331,9 +331,18 @@ intropy sys create -n OrderFlow -o system-host --output json
 
 > **Note:** as with `int create`, `--output json` prints the result document to stdout.
 
-Records without a `blockKind` (scaffolded by an older CLI) or with a block
-kind other than extractor/loader are skipped with a warning; records
-without a `connector` value keep their component but get no `From`/`To`.
+Records without a `blockKind` (scaffolded by an older CLI) or with an
+unsupported block kind are skipped with a warning listing the supported
+kinds. The assembled kinds:
+
+- **extractor / loader** — topic blocks. Their records carry `topic`,
+  `contract`, and one optional `connector`; a record without a `connector`
+  value keeps its component but gets no `From`/`To`.
+- **transactional-integration** — a connector-to-connector block with no
+  topic. Its record carries `fromConnector` and `toConnector`; both are
+  required, and a missing one fails the assembly. The generated system
+  class wires it as `.From(Connectors.X).To(Connectors.Y)`.
+
 Validate the result from the host directory with `dotnet run -- check`.
 
 ## Kubernetes manifests (`intropy manifests`)

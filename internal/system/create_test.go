@@ -108,6 +108,10 @@ const systemClassCSTmpl = `public sealed class {{ .systemClass }} : ISystemDefin
             .From(Connectors.{{ .connectorField }})
 {{- end }}
             .Publishes(Topics.{{ .topicField }});
+{{- else if eq .kind "transactional-integration" }}
+        builder.AddTransactionalIntegration("{{ .appId }}")
+            .From(Connectors.{{ .fromField }})
+            .To(Connectors.{{ .toField }});
 {{- else }}
         builder.AddLoader("{{ .appId }}")
             .Subscribes(Topics.{{ .topicField }})
@@ -545,6 +549,112 @@ func TestCreateWithRecordMissingConnectorOmitsItsFromTo(t *testing.T) {
 	}
 	if strings.Contains(string(development), "order-loader") {
 		t.Errorf("development definition should have no resolution for the connector-less loader:\n%s", development)
+	}
+}
+
+// writeTransactional lays down a transactional integration's scaffold
+// record: two connectors, no topic.
+func writeTransactional(t *testing.T, dir, appID, from, to string) {
+	t.Helper()
+	err := template.WriteScaffold(dir, template.Scaffold{
+		SchemaVersion: template.ScaffoldSchemaVersion,
+		Template:      "transactional",
+		Owner:         "o",
+		Repo:          "r",
+		Version:       "v1",
+		BlockKind:     template.BlockKindTransactional,
+		DataFlow:      "both",
+		Values: map[string]any{
+			"appId": appID, "fromConnector": from, "toConnector": to,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCreateAssemblesTransactionalIntegration(t *testing.T) {
+	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
+	defer srv.Close()
+
+	ws := writeWorkspace(t)
+	writeTransactional(t, filepath.Join(ws, "erp-sync"), "erp-sync", "erp-source", "erp-destination")
+
+	outDir := filepath.Join(ws, "system-host")
+	stdout, stderr, err := runCreate(t, srv, CreateOptions{
+		Name:       "OrderFlow",
+		StartDir:   ws,
+		OutputDir:  outDir,
+		Version:    "v1",
+		OutputJSON: "-",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v\nstderr: %s", err, stderr.String())
+	}
+
+	system, err := os.ReadFile(filepath.Join(outDir, "OrderFlowSystem.cs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`builder.AddTransactionalIntegration("erp-sync")`,
+		".From(Connectors.ErpSource)",
+		".To(Connectors.ErpDestination)",
+	} {
+		if !strings.Contains(string(system), want) {
+			t.Errorf("OrderFlowSystem.cs missing %q:\n%s", want, system)
+		}
+	}
+
+	connectors, err := os.ReadFile(filepath.Join(outDir, "Connectors.cs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`ConnectorRef ErpSource = ConnectorRef.Define("erp-source");`,
+		`ConnectorRef ErpDestination = ConnectorRef.Define("erp-destination");`,
+	} {
+		if !strings.Contains(string(connectors), want) {
+			t.Errorf("Connectors.cs missing %q:\n%s", want, connectors)
+		}
+	}
+
+	development, err := os.ReadFile(filepath.Join(outDir, "OrderFlowDevelopment.cs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`development.Files(Connectors.ErpSource).RootPath("./test/erp-source");`,
+		`development.Files(Connectors.ErpDestination).RootPath("./test/erp-destination");`,
+	} {
+		if !strings.Contains(string(development), want) {
+			t.Errorf("OrderFlowDevelopment.cs missing %q:\n%s", want, development)
+		}
+	}
+
+	// The JSON summary: transactional components add `connectors` while the
+	// topic blocks keep their scalar `connector`.
+	var result CreateResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("output JSON: %v\n%s", err, stdout.String())
+	}
+	if len(result.System.Components) != 3 || len(result.System.Connectors) != 4 || len(result.System.Topics) != 1 {
+		t.Errorf("result.System = %+v", result.System)
+	}
+	var tx *Component
+	for i := range result.System.Components {
+		if result.System.Components[i].Kind == template.BlockKindTransactional {
+			tx = &result.System.Components[i]
+		}
+	}
+	if tx == nil {
+		t.Fatalf("no transactional component in %+v", result.System.Components)
+	}
+	if tx.Connector != "" || len(tx.Connectors) != 2 || tx.Connectors[0] != "erp-source" || tx.Connectors[1] != "erp-destination" {
+		t.Errorf("transactional summary = %+v", *tx)
+	}
+	if !strings.Contains(stderr.String(), `assembled system "order-flow": 3 component(s), 1 topic(s), 4 connector(s)`) {
+		t.Errorf("stderr = %s", stderr.String())
 	}
 }
 

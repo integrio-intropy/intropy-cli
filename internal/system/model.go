@@ -16,13 +16,27 @@ type Topic struct {
 	Field    string `json:"-"`
 }
 
-// Component is one assembled system block.
+// Component is one assembled system block. Its wiring is shape-driven:
+// Topic is nil for kinds without one, and Connectors carries the named
+// ports in the kind's order (From before To for transactional blocks).
 type Component struct {
-	AppID     string   `json:"name"` // the AddExtractor/AddLoader argument
-	Kind      string   `json:"kind"` // template.BlockKindExtractor or BlockKindLoader
-	Topic     TopicKey `json:"-"`
-	Connector string   `json:"connector,omitempty"` // the From/To port; empty for records that predate it
-	Path      string   `json:"path"`                // scaffold directory, for error messages
+	AppID string `json:"name"` // the Add<Kind> argument in the generated system class
+	Kind  string `json:"kind"` // a key of the blockParsers registry
+	Topic *TopicKey `json:"-"` // nil for kinds without a topic
+	// Connector is the single port of a topic block; empty for records
+	// that predate it. Kept alongside Connectors so the --output-json
+	// summary stays additive-only.
+	Connector  string   `json:"connector,omitempty"`
+	Connectors []string `json:"connectors,omitempty"` // transactional blocks: exactly [from, to]
+	Path       string   `json:"path"`                 // scaffold directory, for error messages
+
+	// topicContract is the contract type of Topic, carried on the
+	// component because topics dedupe across components: the model's
+	// Topics list needs one contract per key, first seen wins.
+	topicContract string
+	// missingConnector marks a topic-block record that predates the
+	// connector value, so Assemble can warn without failing the record.
+	missingConnector bool
 }
 
 // Connector is one assembled connector: the named port an edge block reaches

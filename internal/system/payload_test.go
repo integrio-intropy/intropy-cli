@@ -12,13 +12,16 @@ func testModel() *Model {
 			{TopicKey: TopicKey{Pubsub: "pubsub", Name: "orders"}, Contract: "Order", Field: "Orders"},
 		},
 		Connectors: []Connector{
+			{Name: "erp-destination", Field: "ErpDestination"},
+			{Name: "erp-source", Field: "ErpSource"},
 			{Name: "order-extractor-source", Field: "OrderExtractorSource"},
 			{Name: "order-loader-destination", Field: "OrderLoaderDestination"},
 		},
 		Components: []Component{
-			{AppID: "order-extractor", Kind: "extractor", Topic: TopicKey{Pubsub: "pubsub", Name: "orders"}, Connector: "order-extractor-source"},
-			{AppID: "order-loader", Kind: "loader", Topic: TopicKey{Pubsub: "pubsub", Name: "orders"}, Connector: "order-loader-destination"},
-			{AppID: "audit-loader", Kind: "loader", Topic: TopicKey{Pubsub: "pubsub", Name: "orders"}},
+			{AppID: "order-extractor", Kind: "extractor", Topic: &TopicKey{Pubsub: "pubsub", Name: "orders"}, Connector: "order-extractor-source", Connectors: []string{"order-extractor-source"}},
+			{AppID: "order-loader", Kind: "loader", Topic: &TopicKey{Pubsub: "pubsub", Name: "orders"}, Connector: "order-loader-destination", Connectors: []string{"order-loader-destination"}},
+			{AppID: "audit-loader", Kind: "loader", Topic: &TopicKey{Pubsub: "pubsub", Name: "orders"}},
+			{AppID: "erp-sync", Kind: "transactional-integration", Connectors: []string{"erp-source", "erp-destination"}},
 		},
 		Shared: SharedLibrary{Path: "Contracts", Name: "Contracts"},
 	}
@@ -48,16 +51,16 @@ func TestBuildPayloadShape(t *testing.T) {
 	}
 
 	connectors, ok := payload["connectors"].([]any)
-	if !ok || len(connectors) != 2 {
+	if !ok || len(connectors) != 4 {
 		t.Fatalf("connectors = %#v", payload["connectors"])
 	}
 	first := connectors[0].(map[string]any)
-	if first["name"] != "order-extractor-source" || first["field"] != "OrderExtractorSource" {
+	if first["name"] != "erp-destination" || first["field"] != "ErpDestination" {
 		t.Errorf("connector[0] = %#v", first)
 	}
 
 	components, ok := payload["components"].([]any)
-	if !ok || len(components) != 3 {
+	if !ok || len(components) != 4 {
 		t.Fatalf("components = %#v", payload["components"])
 	}
 	extractor := components[0].(map[string]any)
@@ -78,6 +81,19 @@ func TestBuildPayloadShape(t *testing.T) {
 	}
 	if audit["topicField"] != "Orders" {
 		t.Errorf("connector-less component topicField = %v", audit["topicField"])
+	}
+	// A transactional component emits from/to joins and no topic join.
+	tx := components[3].(map[string]any)
+	if tx["kind"] != "transactional-integration" {
+		t.Errorf("transactional kind = %v", tx["kind"])
+	}
+	if tx["fromField"] != "ErpSource" || tx["toField"] != "ErpDestination" {
+		t.Errorf("transactional joins = %#v", tx)
+	}
+	for _, absent := range []string{"topicField", "connectorField"} {
+		if _, ok := tx[absent]; ok {
+			t.Errorf("transactional component should not carry %s: %#v", absent, tx)
+		}
 	}
 
 	shared, ok := payload["sharedContracts"].(map[string]any)
@@ -106,6 +122,7 @@ func TestBuildPayloadWithoutConnectors(t *testing.T) {
 	m.Connectors = nil
 	m.Components = m.Components[:1]
 	m.Components[0].Connector = ""
+	m.Components[0].Connectors = nil
 
 	payload, err := buildPayload(m, filepath.Join(t.TempDir(), "order-flow"), "order-flow")
 	if err != nil {

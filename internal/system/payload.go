@@ -3,8 +3,6 @@ package system
 import (
 	"fmt"
 	"path/filepath"
-
-	"github.com/integrio-intropy/intropy-cli/internal/template"
 )
 
 // buildPayload assembles the value map passed as SetValues to the
@@ -37,16 +35,29 @@ func buildPayload(m *Model, outputDir, kebab string) (map[string]any, error) {
 
 	components := make([]any, len(m.Components))
 	for i, c := range m.Components {
-		kind := "loader"
-		if c.Kind == template.BlockKindExtractor {
-			kind = "extractor"
+		// Kind is verbatim: Assemble already validated it against the
+		// parse registry. The wiring fields follow the component's
+		// shape, not its kind — a topic emits topicField, one connector
+		// connectorField, two connectors fromField/toField.
+		entry := map[string]any{
+			"appId": c.AppID,
+			"kind":  c.Kind,
 		}
-		components[i] = map[string]any{
-			"appId":          c.AppID,
-			"kind":           kind,
-			"topicField":     fieldByKey[c.Topic],
-			"connectorField": connectorField[c.Connector], // "" without a connector
+		if c.Topic != nil {
+			entry["topicField"] = fieldByKey[*c.Topic]
 		}
+		switch len(c.Connectors) {
+		case 0:
+			if c.Topic != nil {
+				entry["connectorField"] = "" // a topic block without a connector
+			}
+		case 1:
+			entry["connectorField"] = connectorField[c.Connectors[0]]
+		default:
+			entry["fromField"] = connectorField[c.Connectors[0]]
+			entry["toField"] = connectorField[c.Connectors[1]]
+		}
+		components[i] = entry
 	}
 
 	include, err := contractsInclude(outputDir, m.Shared)
