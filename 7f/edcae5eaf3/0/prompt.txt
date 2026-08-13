@@ -1,0 +1,1 @@
+Only planning task. I would like to see if we can build a vscode extension that can run templates. Similar to the template tab of the dashboard. It should use the cli
