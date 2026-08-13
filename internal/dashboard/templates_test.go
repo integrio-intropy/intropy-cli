@@ -139,6 +139,8 @@ func TestGetTemplateServesOrderedFields(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
 	}
+	// The response is the bare `template show -o json` document — fields ride
+	// on DescribeResult itself, so the endpoint has no payload of its own.
 	var got struct {
 		Template string `json:"template"`
 		Fields   []struct {
