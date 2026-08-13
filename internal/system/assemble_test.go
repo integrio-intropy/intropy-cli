@@ -68,11 +68,11 @@ func TestAssembleHappyPath(t *testing.T) {
 	if len(model.Topics) != 1 {
 		t.Fatalf("shared topic should dedupe, got %+v", model.Topics)
 	}
-	want := Topic{TopicKey: TopicKey{Pubsub: "pubsub", Name: "orders"}, Contract: "Order", Field: "Orders"}
+	want := Topic{TopicKey: TopicKey{Pubsub: "pubsub", Name: "orders"}, Contract: "Order"}
 	if model.Topics[0] != want {
 		t.Errorf("topic = %+v, want %+v", model.Topics[0], want)
 	}
-	if model.Shared != (SharedLibrary{Path: "Contracts", Name: "Contracts"}) {
+	if model.Shared == nil || *model.Shared != (SharedLibrary{Path: "Contracts", Name: "Contracts"}) {
 		t.Errorf("shared = %+v", model.Shared)
 	}
 }
@@ -117,8 +117,8 @@ func TestAssembleConnectors(t *testing.T) {
 		t.Errorf("components = %+v", model.Components)
 	}
 	want := []Connector{
-		{Name: "order-extractor-source", Field: "OrderExtractorSource"},
-		{Name: "order-loader-destination", Field: "OrderLoaderDestination"},
+		{Name: "order-extractor-source"},
+		{Name: "order-loader-destination"},
 	}
 	if len(model.Connectors) != 2 || model.Connectors[0] != want[0] || model.Connectors[1] != want[1] {
 		t.Errorf("connectors = %+v, want %+v (sorted by name)", model.Connectors, want)
@@ -288,18 +288,20 @@ func TestAssembleErrors(t *testing.T) {
 			wantErr: "conflicting contracts",
 		},
 		{
-			name: "no shared library",
-			entries: []template.ScaffoldEntry{
-				extractorEntry("a", "a", "orders", "Order"),
-			},
-			wantErr: "no shared contracts project found",
-		},
-		{
-			name: "two shared libraries",
+			name: "two shared libraries with topics",
 			entries: []template.ScaffoldEntry{
 				sharedEntry("Contracts", "Contracts"),
 				sharedEntry("LegacyModels", "LegacyModels"),
 				extractorEntry("a", "a", "orders", "Order"),
+			},
+			wantErr: "found 2 shared contract projects",
+		},
+		{
+			name: "two shared libraries without topics",
+			entries: []template.ScaffoldEntry{
+				sharedEntry("Contracts", "Contracts"),
+				sharedEntry("LegacyModels", "LegacyModels"),
+				transactionalEntry("erp-sync", "erp-sync", "erp-source", "erp-destination"),
 			},
 			wantErr: "found 2 shared contract projects",
 		},
@@ -319,35 +321,6 @@ func TestAssembleErrors(t *testing.T) {
 				connectedEntry("a", template.BlockKindExtractor, "a", ""),
 			},
 			wantErr: "values.connector is empty",
-		},
-		{
-			name: "connector field collision",
-			entries: []template.ScaffoldEntry{
-				sharedEntry("Contracts", "Contracts"),
-				connectedEntry("a", template.BlockKindExtractor, "a", "erp-source"),
-				connectedEntry("b", template.BlockKindLoader, "b", "erp.source"),
-			},
-			wantErr: "both map to field ErpSource in Connectors.cs",
-		},
-		{
-			name: "topic field collision",
-			entries: []template.ScaffoldEntry{
-				sharedEntry("Contracts", "Contracts"),
-				extractorEntry("a", "a", "order-events", "Order"),
-				loaderEntry("b", "b", "order.events", "Order"),
-			},
-			wantErr: "both map to field OrderEvents",
-		},
-		{
-			name: "same topic name across pubsubs collides",
-			entries: []template.ScaffoldEntry{
-				sharedEntry("Contracts", "Contracts"),
-				extractorEntry("a", "a", "orders", "Order"),
-				blockEntry("b", template.BlockKindLoader, map[string]any{
-					"appId": "b", "topic": "orders", "contract": "Order", "pubsub": "audit",
-				}),
-			},
-			wantErr: "both map to field Orders",
 		},
 	}
 	for _, tt := range tests {
@@ -403,18 +376,36 @@ func TestAssembleSkipsWithWarnings(t *testing.T) {
 	}
 }
 
-func TestPascalIdent(t *testing.T) {
-	tests := map[string]string{
-		"orders":       "Orders",
-		"order-events": "OrderEvents",
-		"order.events": "OrderEvents",
-		"stock":        "Stock",
-	}
-	for in, want := range tests {
-		if got := pascalIdent(in); got != want {
-			t.Errorf("pascalIdent(%q) = %q, want %q", in, got, want)
+func TestAssembleWithoutSharedLibrary(t *testing.T) {
+	t.Run("transactional-only system assembles contracts-free", func(t *testing.T) {
+		model, err := Assemble([]template.ScaffoldEntry{
+			transactionalEntry("erp-sync", "erp-sync", "erp-source", "erp-destination"),
+		}, discardWarnf)
+		if err != nil {
+			t.Fatalf("Assemble: %v", err)
 		}
-	}
+		if model.Shared != nil {
+			t.Errorf("shared = %+v, want nil", model.Shared)
+		}
+		if len(model.Topics) != 0 || len(model.Connectors) != 2 {
+			t.Errorf("topics = %+v, connectors = %+v", model.Topics, model.Connectors)
+		}
+	})
+
+	t.Run("topic-bearing system assembles; the host template supplies contracts", func(t *testing.T) {
+		model, err := Assemble([]template.ScaffoldEntry{
+			extractorEntry("order-extractor", "order-extractor", "orders", "Order"),
+		}, discardWarnf)
+		if err != nil {
+			t.Fatalf("Assemble: %v", err)
+		}
+		if model.Shared != nil {
+			t.Errorf("shared = %+v, want nil", model.Shared)
+		}
+		if len(model.Topics) != 1 {
+			t.Errorf("topics = %+v", model.Topics)
+		}
+	})
 }
 
 // The templates derive their kebab-case values with sprig's kebabcase; the

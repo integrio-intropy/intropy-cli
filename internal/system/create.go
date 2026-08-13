@@ -45,6 +45,11 @@ type CreateOptions struct {
 	GitHubBaseURL string
 }
 
+// minFactsPayloadVersion is the lowest template-library release whose
+// system-host consumes the facts-only payload. Named in the version gate's
+// error so a user on an older release knows the floor.
+const minFactsPayloadVersion = "v0.4.0"
+
 // CreateResult is the machine-readable summary written when --output-json
 // is set. Field names are stable and additive-only.
 type CreateResult struct {
@@ -124,6 +129,7 @@ func Create(ctx context.Context, opts CreateOptions) error {
 		SetValues:     payload,
 		Force:         opts.Force,
 		NoInput:       true, // the template's values come from the payload, never prompts
+		OnManifest:    requireFactsPayload,
 		Stdin:         strings.NewReader(""),
 		Stdout:        opts.Stdout,
 		Stderr:        opts.Stderr,
@@ -151,10 +157,39 @@ func Create(ctx context.Context, opts CreateOptions) error {
 		return fmt.Errorf("template %s did not derive the system class name: %w", hostTemplate, err)
 	}
 
-	fmt.Fprintf(opts.Stderr, "assembled system %q: %d component(s), %d topic(s), %d connector(s), contracts from %s\n",
-		model.Name, len(model.Components), len(model.Topics), len(model.Connectors), model.Shared.Path)
+	contracts := "no contracts project"
+	if model.Shared != nil {
+		contracts = "contracts from " + model.Shared.Path
+	}
+	fmt.Fprintf(opts.Stderr, "assembled system %q: %d component(s), %d topic(s), %d connector(s), %s\n",
+		model.Name, len(model.Components), len(model.Topics), len(model.Connectors), contracts)
 
 	return maybeWriteCreateResult(opts, record, model)
+}
+
+// requireFactsPayload rejects a system-host template release that predates
+// the facts-only payload: one that still requires sharedContracts consumes
+// the pre-join payload shape (CLI-derived field identifiers and a csproj
+// include path), which this CLI no longer produces. The gate runs before any
+// output is written so an old release fails loudly instead of rendering a
+// host that cannot compile.
+func requireFactsPayload(t *template.Template) error {
+	required, _ := t.Spec.Parameters["required"].([]any)
+	for _, r := range required {
+		if name, _ := r.(string); name == "sharedContracts" {
+			return fmt.Errorf("system-host template %s requires the sharedContracts payload: it predates facts-only payloads (field identifiers and the csproj reference moved into the template) — use template release %s or newer", t.Metadata.Name, minFactsPayloadVersion)
+		}
+	}
+	return nil
+}
+
+// sharedPath reports the detected contracts sibling for the JSON summary;
+// empty when the workspace has none.
+func sharedPath(m *Model) string {
+	if m.Shared == nil {
+		return ""
+	}
+	return m.Shared.Path
 }
 
 func maybeWriteCreateResult(opts CreateOptions, record *template.Scaffold, model *Model) error {
@@ -177,7 +212,7 @@ func maybeWriteCreateResult(opts CreateOptions, record *template.Scaffold, model
 			Components:    model.Components,
 			Topics:        model.Topics,
 			Connectors:    model.Connectors,
-			SharedLibrary: model.Shared.Path,
+			SharedLibrary: sharedPath(model),
 		},
 	}
 	data, err := json.MarshalIndent(result, "", "  ")

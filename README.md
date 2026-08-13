@@ -301,7 +301,11 @@ extractor and loader to its topic plus its connector (`.From(...)` on
 extractors, `.To(...)` on loaders) and the platform services
 (`.Uses(...)`). The workspace's shared contracts project (template role
 `shared-library`, typically `Contracts/`) is referenced from the host's
-project file, never declared as a component.
+project file, never declared as a component. A contracts project is only
+needed when the system has topics: a host of transactional integrations
+alone renders with no `Topics.cs` and no contracts reference, and a
+topic-bearing system whose workspace lacks one gets it scaffolded by the
+host template itself.
 
 The generated development definition (`<Project>Development.cs`) owns the
 local-run picture: it mocks the platform services from the skeleton's

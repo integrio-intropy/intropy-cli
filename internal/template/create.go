@@ -100,7 +100,7 @@ func Create(ctx context.Context, opts CreateOptions) error {
 		return err
 	}
 
-	if err := renderCreateOutput(filepath.Join(templateRoot, templateSkeletonDir), opts.Template, opts.OutputDir, opts.Force, values); err != nil {
+	if err := renderCreateOutput(filepath.Join(templateRoot, templateSkeletonDir), tmpl, opts.Template, opts.OutputDir, opts.Force, values); err != nil {
 		return err
 	}
 	fmt.Fprintf(opts.Stderr, "created %s from %s/%s@%s (template %s)\n", opts.OutputDir, opts.Owner, opts.Repo, tag, opts.Template)
@@ -168,17 +168,18 @@ func prepareCreateTemplate(templateRoot string, opts CreateOptions) (*Template, 
 	return tmpl, values, nil
 }
 
-// renderCreateOutput renders an extracted skeleton into outputDir. The caller
-// passes the skeleton root itself (PrepareCreate has already verified it), so
-// the missing-skeleton check lives next to the fetch that could produce it.
-func renderCreateOutput(skelRoot, templateName, outputDir string, force bool, values map[string]any) error {
+// renderCreateOutput renders an extracted skeleton into outputDir, honoring
+// the manifest's spec.files rules. The caller passes the skeleton root
+// itself (PrepareCreate has already verified it), so the missing-skeleton
+// check lives next to the fetch that could produce it.
+func renderCreateOutput(skelRoot string, tmpl *Template, templateName, outputDir string, force bool, values map[string]any) error {
 	if info, err := os.Stat(skelRoot); err != nil || !info.IsDir() {
 		return fmt.Errorf("template %q is missing %s/ directory", templateName, templateSkeletonDir)
 	}
 	if err := ensureOutputDir(outputDir, force); err != nil {
 		return err
 	}
-	return Render(skelRoot, outputDir, values)
+	return RenderFiltered(skelRoot, outputDir, values, tmpl.Spec.Files)
 }
 
 func maybeWriteCreateResult(opts CreateOptions, tmpl *Template, values map[string]any, tag string, deps []DependencyResult) error {

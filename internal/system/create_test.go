@@ -18,9 +18,12 @@ import (
 )
 
 // systemHostTemplateYAML is a trimmed but faithful copy of the
-// payload-contract system-host manifest: the payload lists are required
-// (an old CLI that only sets `name` fails validation), and the
-// projectName/systemClass derivations match the real template.
+// facts-payload system-host manifest: the payload lists are required (an old
+// CLI that only sets `name` fails validation), sharedContracts is optional
+// (a topic-free system has none), Topics.cs renders only when topics exist,
+// and the host scaffolds the contracts project itself for a topic-bearing
+// system whose workspace lacks one. The projectName/systemClass derivations
+// match the real template.
 const systemHostTemplateYAML = `apiVersion: intropy.dev/v1
 kind: Template
 metadata:
@@ -31,7 +34,7 @@ metadata:
 spec:
   parameters:
     type: object
-    required: [name, topics, connectors, components, sharedContracts]
+    required: [name, topics, connectors, components]
     properties:
       name:
         type: string
@@ -54,22 +57,85 @@ spec:
       sharedContracts:
         type: object
         additionalProperties: true
+  files:
+    - path: Topics.cs.tmpl
+      when: '{{ gt (len .topics) 0 }}'
+  dependencies:
+    - template: shared-contracts
+      when: '{{ and (gt (len .topics) 0) (not (hasKey . "sharedContracts")) }}'
+      output: Contracts
+      values:
+        name: Contracts
+  values:
+    projectName: '{{ .name | replace "-" " " | title | replace " " "" }}'
+    systemClass: '{{ .name | replace "-" " " | title | replace " " "" }}System'
+`
+
+// sharedContractsTemplateYAML is the dependency the host scaffolds for a
+// topic-bearing system without a contracts sibling. Trimmed like the host
+// fixture: one file, one required parameter.
+const sharedContractsTemplateYAML = `apiVersion: intropy.dev/v1
+kind: Template
+metadata:
+  name: shared-contracts
+  title: Shared Contracts
+  labels:
+    intropy.dev/template-role: shared-library
+spec:
+  parameters:
+    type: object
+    required: [name]
+    properties:
+      name:
+        type: string
+`
+
+// systemHostTemplateLegacyYAML is the pre-facts manifest shape: requiring
+// sharedContracts marks a release that consumes the CLI-joined payload this
+// CLI no longer produces.
+const systemHostTemplateLegacyYAML = `apiVersion: intropy.dev/v1
+kind: Template
+metadata:
+  name: system-host
+  title: System Host
+  labels:
+    intropy.dev/template-role: system-host
+spec:
+  parameters:
+    type: object
+    required: [name, topics, connectors, components, sharedContracts]
+    properties:
+      name:
+        type: string
+      topics:
+        type: array
+      connectors:
+        type: array
+      components:
+        type: array
+      sharedContracts:
+        type: object
   values:
     projectName: '{{ .name | replace "-" " " | title | replace " " "" }}'
     systemClass: '{{ .name | replace "-" " " | title | replace " " "" }}System'
 `
 
 // The fixture declaration templates mirror the shapes the template library
-// renders from the payload. The assertions below check the CLI assembled
-// the payload correctly — the template repo owns the exact C# text.
+// renders from the facts-only payload: field identifiers, the joins from
+// components to those fields, and the csproj reference path are all derived
+// here — the CLI supplies names and wiring only. The assertions below check
+// the CLI assembled the payload correctly — the template repo owns the exact
+// C# text.
 
 const topicsCSTmpl = `using Intropy.Topology;
+{{- if hasKey . "sharedContracts" }}
 using {{ .sharedContracts.name }};
+{{- end }}
 
 public static class Topics
 {
-{{- range .topics }}
-    public static readonly TopicRef<{{ .contract }}> {{ .field }} = TopicRef<{{ .contract }}>.Define("{{ .pubsub }}", "{{ .name }}");
+{{- range $t := .topics }}
+    public static readonly TopicRef<{{ $t.contract }}> {{ regexReplaceAll "[-._]" $t.name " " | title | replace " " "" }} = TopicRef<{{ $t.contract }}>.Define("{{ $t.pubsub }}", "{{ $t.name }}");
 {{- end }}
 }
 `
@@ -78,8 +144,8 @@ const connectorsCSTmpl = `using Intropy.Topology;
 
 public static class Connectors
 {
-{{- range .connectors }}
-    public static readonly ConnectorRef {{ .field }} = ConnectorRef.Define("{{ .name }}");
+{{- range $c := .connectors }}
+    public static readonly ConnectorRef {{ regexReplaceAll "[-._]" $c.name " " | title | replace " " "" }} = ConnectorRef.Define("{{ $c.name }}");
 {{- end }}
 }
 `
@@ -88,14 +154,26 @@ const developmentCSTmpl = `public sealed class {{ .projectName }}Development : I
 {
     public void Define(DevelopmentBuilder development)
     {
-{{- range .connectors }}
-        development.Files(Connectors.{{ .field }}).RootPath("./test/{{ .name }}");
+{{- range $c := .connectors }}
+        development.Files(Connectors.{{ regexReplaceAll "[-._]" $c.name " " | title | replace " " "" }}).RootPath("./test/{{ $c.name }}");
 {{- end }}
     }
 }
 `
 
-const systemClassCSTmpl = `public sealed class {{ .systemClass }} : ISystemDefinition
+// The system class joins each component's wiring names to the fields Topics
+// and Connectors declare, keyed by the raw names so the derivation matches
+// the declaration templates exactly.
+const systemClassCSTmpl = `{{- $topicField := dict -}}
+{{- range $t := .topics -}}
+  {{- $key := printf "%s/%s" $t.pubsub $t.name -}}
+  {{- $_ := set $topicField $key (regexReplaceAll "[-._]" $t.name " " | title | replace " " "") -}}
+{{- end -}}
+{{- $connField := dict -}}
+{{- range $c := .connectors -}}
+  {{- $_ := set $connField $c.name (regexReplaceAll "[-._]" $c.name " " | title | replace " " "") -}}
+{{- end -}}
+public sealed class {{ .systemClass }} : ISystemDefinition
 {
     public string SystemName => "{{ .name }}";
 
@@ -104,19 +182,19 @@ const systemClassCSTmpl = `public sealed class {{ .systemClass }} : ISystemDefin
 {{- range .components }}
 {{- if eq .kind "extractor" }}
         builder.AddExtractor("{{ .appId }}")
-{{- if .connectorField }}
-            .From(Connectors.{{ .connectorField }})
+{{- if hasKey . "connector" }}
+            .From(Connectors.{{ index $connField .connector }})
 {{- end }}
-            .Publishes(Topics.{{ .topicField }});
+            .Publishes(Topics.{{ index $topicField (printf "%s/%s" .topic.pubsub .topic.name) }});
 {{- else if eq .kind "transactional-integration" }}
         builder.AddTransactionalIntegration("{{ .appId }}")
-            .From(Connectors.{{ .fromField }})
-            .To(Connectors.{{ .toField }});
+            .From(Connectors.{{ index $connField .from }})
+            .To(Connectors.{{ index $connField .to }});
 {{- else }}
         builder.AddLoader("{{ .appId }}")
-            .Subscribes(Topics.{{ .topicField }})
-{{- if .connectorField }}
-            .To(Connectors.{{ .connectorField }})
+            .Subscribes(Topics.{{ index $topicField (printf "%s/%s" .topic.pubsub .topic.name) }})
+{{- if hasKey . "connector" }}
+            .To(Connectors.{{ index $connField .connector }})
 {{- end }};
 {{- end }}
 {{- end }}
@@ -131,9 +209,11 @@ const systemHostCsprojTmpl = `<Project Sdk="Microsoft.NET.Sdk">
         <RootNamespace>{{ .projectName }}.SystemHost</RootNamespace>
     </PropertyGroup>
 
+{{- if hasKey . "sharedContracts" }}
     <ItemGroup>
         <ProjectReference Include="{{ .sharedContracts.include }}" IsAspireProjectResource="false" />
     </ItemGroup>
+{{- end }}
 
 </Project>
 `
@@ -147,6 +227,8 @@ func systemHostFiles() map[string]string {
 		"system-host/skeleton/{{ .projectName }}Development.cs.tmpl":     developmentCSTmpl,
 		"system-host/skeleton/{{ .systemClass }}.cs.tmpl":                systemClassCSTmpl,
 		"system-host/skeleton/{{ .projectName }}.SystemHost.csproj.tmpl": systemHostCsprojTmpl,
+		"shared-contracts/template.yaml":                                 sharedContractsTemplateYAML,
+		"shared-contracts/skeleton/{{ .name }}.csproj":                   "<Project Sdk=\"Microsoft.NET.Sdk\" />\n",
 	}
 }
 
@@ -257,131 +339,6 @@ func runCreate(t *testing.T, srv *httptest.Server, opts CreateOptions) (stdout, 
 	err = Create(context.Background(), opts)
 	return stdout, stderr, err
 }
-
-const wantTopicsCS = `using Intropy.Topology;
-using Contracts;
-
-/// <summary>The system's topics, each defined once and shared by every component that touches it.</summary>
-public static class Topics
-{
-    /// <summary>Order messages on topic 'orders' (pubsub 'pubsub').</summary>
-    public static readonly TopicRef<Order> Orders = TopicRef<Order>.Define("pubsub", "orders");
-}
-`
-
-const wantSystemCS = `using Intropy.Topology;
-
-/// <summary>The order-flow system: what exists, and what connects it.</summary>
-public sealed class OrderFlowSystem : ISystemDefinition
-{
-    /// <inheritdoc />
-    public string SystemName => "order-flow";
-
-    /// <inheritdoc />
-    public void Define(SystemBuilder builder)
-    {
-        builder.AddExtractor("order-extractor")
-            .From(Connectors.OrderExtractorSource)
-            .Publishes(Topics.Orders)
-            .Uses(Services.Idempotency)
-            .Uses(Services.BusinessIncidents)
-            .WithSchedule("* * * * *");
-        builder.AddLoader("order-loader")
-            .Subscribes(Topics.Orders)
-            .To(Connectors.OrderLoaderDestination)
-            .Uses(Services.Idempotency)
-            .Uses(Services.BusinessIncidents);
-    }
-}
-`
-
-const wantConnectorsCS = `using Intropy.Topology;
-
-/// <summary>The system's connectors: the named ports its edge blocks reach the outside world through. Each declares its deployed transport; the development definition resolves it to a local folder under test/ so the system runs with zero external configuration.</summary>
-public static class Connectors
-{
-    /// <summary>Deployed as SFTP; locally resolved to <c>./test/order-extractor-source</c>.</summary>
-    public static readonly ConnectorRef OrderExtractorSource = ConnectorRef.Define("order-extractor-source", Transport.Sftp());
-
-    /// <summary>Deployed as SFTP; locally resolved to <c>./test/order-loader-destination</c>.</summary>
-    public static readonly ConnectorRef OrderLoaderDestination = ConnectorRef.Define("order-loader-destination", Transport.Sftp());
-}
-`
-
-const wantDevelopmentCS = `using Intropy.Topology.Generation;
-
-/// <summary>Local OpenAPI-backed substitutes and connector file resolutions for order-flow.</summary>
-public sealed class OrderFlowDevelopment : IDevelopmentDefinition
-{
-    /// <inheritdoc />
-    public void Define(DevelopmentBuilder development)
-    {
-        development.Mock(Services.Idempotency).FromOpenApi("mocks/idempotency-service.openapi.yaml");
-        development.Mock(Services.BusinessIncidents).FromOpenApi("mocks/business-incident-service.openapi.yaml");
-        development.Files(Connectors.OrderExtractorSource).RootPath("./test/order-extractor-source");
-        development.Files(Connectors.OrderLoaderDestination).RootPath("./test/order-loader-destination");
-    }
-}
-`
-
-// wantPreDevelopmentConnectorsCS is the pre-development shape: a template
-// release without the Development.cs placeholder keeps connectors on local
-// file transports and its system class carries no Uses calls.
-const wantPreDevelopmentConnectorsCS = `using Intropy.Topology;
-
-/// <summary>The system's connectors: the named ports its edge blocks reach the outside world through. Each defaults to a local file folder under test/ so the system runs with zero external configuration.</summary>
-public static class Connectors
-{
-    /// <summary>Uses <c>./test/order-extractor-source</c> as the local file endpoint.</summary>
-    public static readonly ConnectorRef OrderExtractorSource = ConnectorRef.Define("order-extractor-source", Transport.File("./test/order-extractor-source"));
-
-    /// <summary>Uses <c>./test/order-loader-destination</c> as the local file endpoint.</summary>
-    public static readonly ConnectorRef OrderLoaderDestination = ConnectorRef.Define("order-loader-destination", Transport.File("./test/order-loader-destination"));
-}
-`
-
-const wantPreDevelopmentSystemCS = `using Intropy.Topology;
-
-/// <summary>The order-flow system: what exists, and what connects it.</summary>
-public sealed class OrderFlowSystem : ISystemDefinition
-{
-    /// <inheritdoc />
-    public string SystemName => "order-flow";
-
-    /// <inheritdoc />
-    public void Define(SystemBuilder builder)
-    {
-        builder.AddExtractor("order-extractor")
-            .From(Connectors.OrderExtractorSource)
-            .Publishes(Topics.Orders)
-            .WithSchedule("* * * * *");
-        builder.AddLoader("order-loader")
-            .Subscribes(Topics.Orders)
-            .To(Connectors.OrderLoaderDestination);
-    }
-}
-`
-
-// wantLegacySystemCS is the pre-connector shape: a template release without
-// the Connectors.cs placeholder degrades the system class to no From/To.
-const wantLegacySystemCS = `using Intropy.Topology;
-
-/// <summary>The order-flow system: what exists, and what connects it.</summary>
-public sealed class OrderFlowSystem : ISystemDefinition
-{
-    /// <inheritdoc />
-    public string SystemName => "order-flow";
-
-    /// <inheritdoc />
-    public void Define(SystemBuilder builder)
-    {
-        builder.AddExtractor("order-extractor")
-            .Publishes(Topics.Orders);
-        builder.AddLoader("order-loader")
-            .Subscribes(Topics.Orders);
-    }
-}
-`
 
 func TestCreateAssemblesSystem(t *testing.T) {
 	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
@@ -658,6 +615,126 @@ func TestCreateAssemblesTransactionalIntegration(t *testing.T) {
 	}
 }
 
+func TestCreateAssemblesTransactionalOnlySystem(t *testing.T) {
+	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
+	defer srv.Close()
+
+	// A transactional-only workspace: no topics, no shared-library
+	// scaffold — the host renders contracts-free.
+	ws := t.TempDir()
+	writeTransactional(t, filepath.Join(ws, "erp-sync"), "erp-sync", "erp-source", "erp-destination")
+
+	outDir := filepath.Join(ws, "system-host")
+	stdout, stderr, err := runCreate(t, srv, CreateOptions{
+		Name:       "Trans",
+		StartDir:   ws,
+		OutputDir:  outDir,
+		Version:    "v1",
+		OutputJSON: "-",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v\nstderr: %s", err, stderr.String())
+	}
+
+	if _, err := os.Stat(filepath.Join(outDir, "Topics.cs")); !os.IsNotExist(err) {
+		t.Errorf("a topic-free system should have no Topics.cs, stat err = %v", err)
+	}
+	csproj, err := os.ReadFile(filepath.Join(outDir, "Trans.SystemHost.csproj"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(csproj), "ProjectReference") {
+		t.Errorf("a contracts-free system should reference no project:\n%s", csproj)
+	}
+
+	system, err := os.ReadFile(filepath.Join(outDir, "TransSystem.cs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`builder.AddTransactionalIntegration("erp-sync")`,
+		".From(Connectors.ErpSource)",
+		".To(Connectors.ErpDestination)",
+	} {
+		if !strings.Contains(string(system), want) {
+			t.Errorf("TransSystem.cs missing %q:\n%s", want, system)
+		}
+	}
+
+	// The dependency's condition is false without topics: nothing is
+	// scaffolded beside the host.
+	if _, err := os.Stat(filepath.Join(ws, "Contracts")); !os.IsNotExist(err) {
+		t.Errorf("no contracts project should be scaffolded, stat err = %v", err)
+	}
+
+	if !strings.Contains(stderr.String(), `assembled system "trans": 1 component(s), 0 topic(s), 2 connector(s), no contracts project`) {
+		t.Errorf("stderr = %s", stderr.String())
+	}
+
+	var result CreateResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("output JSON: %v\n%s", err, stdout.String())
+	}
+	if result.System.SharedLibrary != "" {
+		t.Errorf("SharedLibrary = %q, want empty", result.System.SharedLibrary)
+	}
+	if len(result.System.Topics) != 0 || len(result.System.Connectors) != 2 {
+		t.Errorf("result.System = %+v", result.System)
+	}
+}
+
+func TestCreateScaffoldsContractsForTopicSystemWithoutOne(t *testing.T) {
+	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
+	defer srv.Close()
+
+	// A topic-bearing workspace whose extractor lost (or never had) its
+	// contracts sibling: the host template's dependency supplies it.
+	ws := t.TempDir()
+	writeBlock(t, filepath.Join(ws, "order-extractor"), template.BlockKindExtractor, "order-extractor")
+
+	outDir := filepath.Join(ws, "system-host")
+	_, stderr, err := runCreate(t, srv, CreateOptions{Name: "OrderFlow", StartDir: ws, OutputDir: outDir, Version: "v1"})
+	if err != nil {
+		t.Fatalf("Create: %v\nstderr: %s", err, stderr.String())
+	}
+
+	record, err := template.LoadScaffold(filepath.Join(ws, "Contracts", filepath.FromSlash(template.ScaffoldRelPath)))
+	if err != nil {
+		t.Fatalf("dependency scaffold record: %v", err)
+	}
+	if record.Role != template.RoleSharedLibrary || record.Template != "shared-contracts" {
+		t.Errorf("dependency record = %+v", record)
+	}
+
+	topics, err := os.ReadFile(filepath.Join(outDir, "Topics.cs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(topics), "TopicRef<Order>") {
+		t.Errorf("Topics.cs should declare the topic:\n%s", topics)
+	}
+	if !strings.Contains(stderr.String(), "no contracts project") {
+		t.Errorf("stderr should report the workspace had no contracts project:\n%s", stderr.String())
+	}
+}
+
+func TestCreateRejectsPreFactsTemplateRelease(t *testing.T) {
+	files := systemHostFiles()
+	files["system-host/template.yaml"] = systemHostTemplateLegacyYAML
+	srv, _ := newSystemHostServer(t, "v1", files)
+	defer srv.Close()
+
+	ws := writeWorkspace(t)
+	outDir := filepath.Join(ws, "system-host")
+	_, _, err := runCreate(t, srv, CreateOptions{Name: "OrderFlow", StartDir: ws, OutputDir: outDir, Version: "v1"})
+	if err == nil || !strings.Contains(err.Error(), "predates facts-only payloads") {
+		t.Fatalf("err = %v, want the version gate's guidance", err)
+	}
+	if _, statErr := os.Stat(outDir); !os.IsNotExist(statErr) {
+		t.Errorf("the gate must run before any output is written, stat err = %v", statErr)
+	}
+}
+
 func TestCreateDefaultsOutputDirToKebabName(t *testing.T) {
 	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
 	defer srv.Close()
@@ -735,4 +812,3 @@ func TestCreateValidatesBeforeNetwork(t *testing.T) {
 		t.Errorf("validation errors must surface before any GitHub request; got %d requests", hits.Load())
 	}
 }
-

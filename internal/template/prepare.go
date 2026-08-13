@@ -104,7 +104,7 @@ func RunCreate(p *PreparedCreate, outputDir string, force bool, stderr io.Writer
 		stderr = io.Discard
 	}
 
-	if err := renderCreateOutput(p.SkeletonRoot, p.Template, outputDir, force, p.Values); err != nil {
+	if err := renderCreateOutput(p.SkeletonRoot, p.Manifest, p.Template, outputDir, force, p.Values); err != nil {
 		return nil, err
 	}
 	fmt.Fprintf(stderr, "created %s from %s/%s@%s (template %s)\n", outputDir, p.Owner, p.Repo, p.Version, p.Template)

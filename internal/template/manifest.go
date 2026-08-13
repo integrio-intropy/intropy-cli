@@ -86,6 +86,11 @@ type DependencySpec struct {
 	// prompting, so together with the dependency's own defaults these must
 	// cover every required parameter.
 	Values map[string]string `yaml:"values,omitempty" json:"values,omitempty"`
+	// When is an optional Go template (sprig available) rendered against
+	// the parent's resolved values, with the same truthiness rules as a
+	// spec.files condition. An empty When renders the dependency
+	// unconditionally, as before the field existed.
+	When string `yaml:"when,omitempty" json:"when,omitempty"`
 }
 
 // LocalSpec is the local-render section of a template manifest.
@@ -266,6 +271,13 @@ func (t *Template) validate() error {
 		}
 		if dep.Output == "" {
 			return fmt.Errorf("spec.dependencies[%d] (%s): output is required", i, dep.Template)
+		}
+		// Parsed here so a syntax error surfaces at load time rather than
+		// partway through a create, mirroring the spec.files check above.
+		if dep.When != "" {
+			if _, err := compileExpr(dep.When); err != nil {
+				return fmt.Errorf("spec.dependencies[%d] (%s): invalid when: %w", i, dep.Template, err)
+			}
 		}
 	}
 	if t.Spec.Local != nil {

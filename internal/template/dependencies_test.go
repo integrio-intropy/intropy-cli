@@ -302,6 +302,88 @@ func TestCreateWarnsOnDependencyValueDrift(t *testing.T) {
 	}
 }
 
+func TestCreateSkipsDependencyWhoseWhenIsFalse(t *testing.T) {
+	conditional := strings.Replace(depComponentYAML,
+		"    - template: shared\n",
+		"    - template: shared\n      when: '{{ .wantModels }}'\n", 1)
+	withParam := strings.Replace(conditional, "      org:\n", "      wantModels:\n        type: boolean\n        default: false\n      org:\n", 1)
+	srv := newDependencyServer(t, "v1", map[string]string{"component/template.yaml": withParam})
+	defer srv.Close()
+
+	parent := t.TempDir()
+	jsonPath := filepath.Join(t.TempDir(), "result.json")
+	if err := createComponent(t, srv, filepath.Join(parent, "orders"), &bytes.Buffer{}, jsonPath, false); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(parent, "Acme.Models")); !os.IsNotExist(err) {
+		t.Errorf("conditioned-out dependency should not render, stat err = %v", err)
+	}
+
+	compScaffold, err := LoadScaffold(filepath.Join(parent, "orders", filepath.FromSlash(ScaffoldRelPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compScaffold.DependsOn) != 0 {
+		t.Errorf("skipped dependency should leave no DependsOn edge: %+v", compScaffold.DependsOn)
+	}
+
+	var result CreateResult
+	data, _ := os.ReadFile(jsonPath)
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Dependencies) != 0 {
+		t.Errorf("skipped dependency should produce no result entry: %+v", result.Dependencies)
+	}
+}
+
+func TestCreateRendersDependencyWhoseWhenIsTrue(t *testing.T) {
+	conditional := strings.Replace(depComponentYAML,
+		"    - template: shared\n",
+		"    - template: shared\n      when: '{{ .wantModels }}'\n", 1)
+	withParam := strings.Replace(conditional, "      org:\n", "      wantModels:\n        type: boolean\n        default: false\n      org:\n", 1)
+	srv := newDependencyServer(t, "v1", map[string]string{"component/template.yaml": withParam})
+	defer srv.Close()
+
+	parent := t.TempDir()
+	err := Create(context.Background(), CreateOptions{
+		Template:      "component",
+		OutputDir:     filepath.Join(parent, "orders"),
+		Version:       "v1",
+		SetValues:     map[string]any{"name": "orders", "wantModels": true},
+		NoInput:       true,
+		Stderr:        &bytes.Buffer{},
+		HTTP:          srv.Client(),
+		Owner:         "o",
+		Repo:          "r",
+		GitHubBaseURL: srv.URL,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(parent, "Acme.Models", "lib.txt")); err != nil {
+		t.Errorf("true-conditioned dependency should render: %v", err)
+	}
+}
+
+func TestLoadTemplateRejectsInvalidDependencyWhen(t *testing.T) {
+	bad := strings.Replace(depComponentYAML,
+		"    - template: shared\n",
+		"    - template: shared\n      when: '{{ .wantModels'\n", 1)
+	dir := t.TempDir()
+	path := filepath.Join(dir, templateManifestName)
+	if err := os.WriteFile(path, []byte(bad), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadTemplate(path)
+	if err == nil || !strings.Contains(err.Error(), "spec.dependencies[0] (shared): invalid when") {
+		t.Fatalf("err = %v, want an invalid-when load error naming the dependency", err)
+	}
+}
+
 func TestCreateRejectsDependencyOutputEscapingParent(t *testing.T) {
 	bad := strings.Replace(depComponentYAML, "output: '{{ .org }}.Models'", "output: '../{{ .org }}.Models'", 1)
 	srv := newDependencyServer(t, "v1", map[string]string{"component/template.yaml": bad})
