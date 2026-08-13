@@ -1,1 +1,9 @@
 Only planning task. I would like to see if we can build a vscode extension that can run templates. Similar to the template tab of the dashboard. It should use the cli
+
+---
+
+does it make sense to keep it together with the cli or should we have a separate repo?
+
+---
+
+ok should we start with the cli fix on a new branch off feature/v-next then? We do not need to think of backward compatability so if the new change enable us to remove code we should do that
