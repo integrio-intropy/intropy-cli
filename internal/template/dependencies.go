@@ -37,8 +37,9 @@ type depContext struct {
 }
 
 // processDependencies renders every spec.dependencies entry of tmpl as a
-// sibling of outputDir, recursively, skipping targets that already carry a
-// matching scaffold record. It returns the records to embed in the parent's
+// sibling of outputDir, recursively. An entry whose when condition evaluates
+// false is skipped entirely; one whose target already carries a matching
+// scaffold record is reused. It returns the records to embed in the parent's
 // scaffold.json and the results for CreateResult.
 func processDependencies(tmpl *Template, values map[string]any, outputDir string, dc *depContext, depth int) ([]DependencyRecord, []DependencyResult, error) {
 	if len(tmpl.Spec.Dependencies) == 0 {
@@ -57,6 +58,16 @@ func processDependencies(tmpl *Template, values map[string]any, outputDir string
 	var records []DependencyRecord
 	var results []DependencyResult
 	for _, dep := range tmpl.Spec.Dependencies {
+		if dep.When != "" {
+			rendered, err := renderExpr(dep.When, values)
+			if err != nil {
+				return nil, nil, fmt.Errorf("dependency %s: evaluate when: %w", dep.Template, err)
+			}
+			if !truthy(rendered) {
+				continue
+			}
+		}
+
 		name, err := renderExpr(dep.Output, values)
 		if err != nil {
 			return nil, nil, fmt.Errorf("dependency %s: render output: %w", dep.Template, err)
@@ -120,7 +131,7 @@ func renderDependency(dep DependencySpec, name, depDir string, sets map[string]a
 	// --force never propagates to dependencies: overwriting a shared
 	// project that other components already reference is destructive at a
 	// distance. Regenerating one is an explicit `int create <template> --force`.
-	if err := renderCreateOutput(filepath.Join(depRoot, templateSkeletonDir), dep.Template, depDir, false, values); err != nil {
+	if err := renderCreateOutput(filepath.Join(depRoot, templateSkeletonDir), depTmpl, dep.Template, depDir, false, values); err != nil {
 		return nil, fmt.Errorf("dependency %s: %w", dep.Template, err)
 	}
 

@@ -3,67 +3,83 @@ package system
 import (
 	"fmt"
 	"path/filepath"
-
-	"github.com/integrio-intropy/intropy-cli/internal/template"
 )
 
 // buildPayload assembles the value map passed as SetValues to the
-// system-host template. The template renders every declaration file from
-// it, so the payload is join-free: each component carries the Topics and
-// Connectors field identifiers it touches, resolved here from the model so
-// the template stays a flat range over the lists.
+// system-host template. The payload carries workspace facts only — topic and
+// connector names, component wiring, the detected contracts sibling — and
+// the template derives everything that exists only inside the generated
+// files: the Topics/Connectors field identifiers, the joins between
+// components and those fields, and the csproj ProjectReference path.
+//
+// The contracts sibling travels as a relative include: the template renders
+// it verbatim into the host csproj's ProjectReference, and the host is
+// always created as a sibling of the contracts project, so the CLI's
+// workspace-relative path and the include differ only by the leading "../".
+// Computing the include here keeps the templates (and the test fixtures that
+// mirror them) free of host-side path arithmetic.
 func buildPayload(m *Model, outputDir, kebab string) (map[string]any, error) {
 	topics := make([]any, len(m.Topics))
-	fieldByKey := map[TopicKey]string{}
 	for i, t := range m.Topics {
-		fieldByKey[t.TopicKey] = t.Field
 		topics[i] = map[string]any{
 			"pubsub":   t.Pubsub,
 			"name":     t.Name,
 			"contract": t.Contract,
-			"field":    t.Field,
 		}
 	}
 
 	connectors := make([]any, len(m.Connectors))
-	connectorField := map[string]string{}
 	for i, c := range m.Connectors {
-		connectorField[c.Name] = c.Field
 		connectors[i] = map[string]any{
-			"name":  c.Name,
-			"field": c.Field,
+			"name": c.Name,
 		}
 	}
 
 	components := make([]any, len(m.Components))
 	for i, c := range m.Components {
-		kind := "loader"
-		if c.Kind == template.BlockKindExtractor {
-			kind = "extractor"
+		// Kind is verbatim: Assemble already validated it against the
+		// parse registry. The wiring fields follow the component's shape,
+		// not its kind — a topic carries topic, one connector connector,
+		// two connectors from/to — and the template resolves each name to
+		// the field identifier it derived for the topic or connector.
+		entry := map[string]any{
+			"appId": c.AppID,
+			"kind":  c.Kind,
 		}
-		components[i] = map[string]any{
-			"appId":          c.AppID,
-			"kind":           kind,
-			"topicField":     fieldByKey[c.Topic],
-			"connectorField": connectorField[c.Connector], // "" without a connector
+		if c.Topic != nil {
+			entry["topic"] = map[string]any{
+				"pubsub": c.Topic.Pubsub,
+				"name":   c.Topic.Name,
+			}
 		}
+		switch len(c.Connectors) {
+		case 0:
+		case 1:
+			entry["connector"] = c.Connectors[0]
+		default:
+			entry["from"] = c.Connectors[0]
+			entry["to"] = c.Connectors[1]
+		}
+		components[i] = entry
 	}
 
-	include, err := contractsInclude(outputDir, m.Shared)
-	if err != nil {
-		return nil, err
-	}
-
-	return map[string]any{
+	payload := map[string]any{
 		"name":       kebab,
 		"topics":     topics,
 		"connectors": connectors,
 		"components": components,
-		"sharedContracts": map[string]any{
+	}
+	if m.Shared != nil {
+		include, err := contractsInclude(outputDir, *m.Shared)
+		if err != nil {
+			return nil, err
+		}
+		payload["sharedContracts"] = map[string]any{
 			"name":    m.Shared.Name,
 			"include": include,
-		},
-	}, nil
+		}
+	}
+	return payload, nil
 }
 
 // contractsInclude computes the ProjectReference Include path from the

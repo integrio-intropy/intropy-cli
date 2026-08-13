@@ -301,7 +301,11 @@ extractor and loader to its topic plus its connector (`.From(...)` on
 extractors, `.To(...)` on loaders) and the platform services
 (`.Uses(...)`). The workspace's shared contracts project (template role
 `shared-library`, typically `Contracts/`) is referenced from the host's
-project file, never declared as a component.
+project file, never declared as a component. A contracts project is only
+needed when the system has topics: a host of transactional integrations
+alone renders with no `Topics.cs` and no contracts reference, and a
+topic-bearing system whose workspace lacks one gets it scaffolded by the
+host template itself.
 
 The generated development definition (`<Project>Development.cs`) owns the
 local-run picture: it mocks the platform services from the skeleton's
@@ -331,9 +335,18 @@ intropy sys create -n OrderFlow -o system-host --output json
 
 > **Note:** as with `int create`, `--output json` prints the result document to stdout.
 
-Records without a `blockKind` (scaffolded by an older CLI) or with a block
-kind other than extractor/loader are skipped with a warning; records
-without a `connector` value keep their component but get no `From`/`To`.
+Records without a `blockKind` (scaffolded by an older CLI) or with an
+unsupported block kind are skipped with a warning listing the supported
+kinds. The assembled kinds:
+
+- **extractor / loader** — topic blocks. Their records carry `topic`,
+  `contract`, and one optional `connector`; a record without a `connector`
+  value keeps its component but gets no `From`/`To`.
+- **transactional-integration** — a connector-to-connector block with no
+  topic. Its record carries `fromConnector` and `toConnector`; both are
+  required, and a missing one fails the assembly. The generated system
+  class wires it as `.From(Connectors.X).To(Connectors.Y)`.
+
 Validate the result from the host directory with `dotnet run -- check`.
 
 ## Kubernetes manifests (`intropy manifests`)

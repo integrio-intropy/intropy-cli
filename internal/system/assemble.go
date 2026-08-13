@@ -15,10 +15,11 @@ import (
 var ErrNoComponents = errors.New("no assemblable integration scaffolds found")
 
 // Assemble classifies workspace scaffold records into a system model:
-// shared-library records become the referenced contract project,
-// extractor/loader records become components, and everything else is
-// skipped through warnf. The returned model's Name/ProjectName/SystemClass
-// are left empty — the caller fills them around the template render.
+// shared-library records become the referenced contract project, records
+// with a kind in the blockParsers registry become components, and
+// everything else is skipped through warnf. The returned model's
+// Name/ProjectName/SystemClass are left empty — the caller fills them
+// around the template render.
 func Assemble(entries []template.ScaffoldEntry, warnf func(format string, args ...any)) (*Model, error) {
 	var (
 		components  []Component
@@ -44,8 +45,11 @@ func Assemble(entries []template.ScaffoldEntry, warnf func(format string, args .
 		case e.BlockKind == "":
 			warnf("skipping %s: scaffold record has no block kind — re-scaffold with a newer template release to include it", e.Path)
 			continue
-		case e.BlockKind != template.BlockKindExtractor && e.BlockKind != template.BlockKindLoader:
-			warnf("skipping %s: unsupported block kind %q (sys create assembles extractors and loaders only)", e.Path, e.BlockKind)
+		}
+
+		parse, ok := blockParsers[e.BlockKind]
+		if !ok {
+			warnf("skipping %s: unsupported block kind %q (sys create assembles %s)", e.Path, e.BlockKind, strings.Join(supportedKinds(), ", "))
 			continue
 		}
 
@@ -53,27 +57,11 @@ func Assemble(entries []template.ScaffoldEntry, warnf func(format string, args .
 		if err != nil {
 			return nil, err
 		}
-		topic, err := stringValue(e, "topic")
-		if err != nil {
+		c := Component{AppID: appID, Kind: e.BlockKind, Path: e.Path}
+		if err := parse(e, &c); err != nil {
 			return nil, err
 		}
-		contract, err := stringValue(e, "contract")
-		if err != nil {
-			return nil, fmt.Errorf("%w\nRe-scaffold this integration with a template release that records the contract type, or add \"contract\": \"<TypeName>\" to the record's values.", err)
-		}
-		pubsub, err := stringValueDefault(e, "pubsub", "pubsub")
-		if err != nil {
-			return nil, err
-		}
-		// No CLI-side fallback for the connector: a default would describe a
-		// binding the rendered code doesn't use. A component without one is
-		// valid topology — it just gets no From/To.
-		connector := ""
-		if _, ok := e.Values["connector"]; ok {
-			if connector, err = stringValue(e, "connector"); err != nil {
-				return nil, err
-			}
-		} else {
+		if c.missingConnector {
 			warnf("%s: scaffold record has no connector — re-scaffold with a newer template release to wire From/To", e.Path)
 		}
 
@@ -82,33 +70,36 @@ func Assemble(entries []template.ScaffoldEntry, warnf func(format string, args .
 		}
 		byAppID[appID] = e.Path
 
-		if connector != "" {
+		for _, connector := range c.Connectors {
 			if prev, ok := byConnector[connector]; ok {
-				return nil, fmt.Errorf("duplicate connector %q: declared by both %s and %s (each edge block gets its own port; rename one in the record's values)", connector, prev, e.Path)
+				return nil, fmt.Errorf("duplicate connector %q: declared by both %s and %s (each block gets its own port; rename one in the record's values)", connector, prev, e.Path)
 			}
 			byConnector[connector] = e.Path
 		}
 
-		key := TopicKey{Pubsub: pubsub, Name: topic}
-		if seen, ok := byTopic[key]; ok {
-			if seen.Contract != contract {
-				return nil, fmt.Errorf("topic %q on pubsub %q has conflicting contracts: %q (%s) vs %q (%s)", topic, pubsub, seen.Contract, firstDir[key], contract, e.Path)
+		if c.Topic != nil {
+			key := *c.Topic
+			if seen, ok := byTopic[key]; ok {
+				if seen.Contract != c.topicContract {
+					return nil, fmt.Errorf("topic %q on pubsub %q has conflicting contracts: %q (%s) vs %q (%s)", key.Name, key.Pubsub, seen.Contract, firstDir[key], c.topicContract, e.Path)
+				}
+			} else {
+				byTopic[key] = Topic{TopicKey: key, Contract: c.topicContract}
+				firstDir[key] = e.Path
 			}
-		} else {
-			byTopic[key] = Topic{TopicKey: key, Contract: contract, Field: pascalIdent(topic)}
-			firstDir[key] = e.Path
 		}
 
-		components = append(components, Component{AppID: appID, Kind: e.BlockKind, Topic: key, Connector: connector, Path: e.Path})
+		components = append(components, c)
 	}
 
 	if len(components) == 0 {
-		return nil, fmt.Errorf("%w in this directory\nScaffold extractors and loaders first ('intropy int create extractor -n <Name> -s topic=<topic> ...'), then run 'intropy sys create' from the workspace root.", ErrNoComponents)
+		return nil, fmt.Errorf("%w in this directory\nScaffold integrations first ('intropy int create <kind> -n <Name> ...'), then run 'intropy sys create' from the workspace root.", ErrNoComponents)
 	}
-	switch {
-	case len(shared) == 0:
-		return nil, fmt.Errorf("no shared contracts project found (template role %q): Topics.cs needs the contract types\nComponents scaffolded from the official extractor/loader templates create a sibling Contracts/ project automatically.", template.RoleSharedLibrary)
-	case len(shared) > 1:
+	// Zero shared libraries is a valid workspace: a topic-free system never
+	// references contracts, and a topic-bearing one gets them from the host
+	// template's dependency. More than one is ambiguity the template cannot
+	// resolve, so it stays an error regardless of the system's shape.
+	if len(shared) > 1 {
 		dirs := make([]string, len(shared))
 		for i, s := range shared {
 			dirs[i] = s.Path
@@ -127,28 +118,17 @@ func Assemble(entries []template.ScaffoldEntry, warnf func(format string, args .
 		return topics[i].Name < topics[j].Name
 	})
 
-	fields := map[string]TopicKey{}
-	for _, t := range topics {
-		if prev, ok := fields[t.Field]; ok {
-			return nil, fmt.Errorf("topics %q (pubsub %q) and %q (pubsub %q) both map to field %s in Topics.cs; rename one topic", prev.Name, prev.Pubsub, t.Name, t.Pubsub, t.Field)
-		}
-		fields[t.Field] = t.TopicKey
-	}
-
 	connectors := make([]Connector, 0, len(byConnector))
 	for name := range byConnector {
-		connectors = append(connectors, Connector{Name: name, Field: pascalIdent(name)})
+		connectors = append(connectors, Connector{Name: name})
 	}
 	sort.Slice(connectors, func(i, j int) bool { return connectors[i].Name < connectors[j].Name })
-	connectorFields := map[string]string{}
-	for _, c := range connectors {
-		if prev, ok := connectorFields[c.Field]; ok {
-			return nil, fmt.Errorf("connectors %q and %q both map to field %s in Connectors.cs; rename one in the record's values", prev, c.Name, c.Field)
-		}
-		connectorFields[c.Field] = c.Name
-	}
 
-	return &Model{Components: components, Topics: topics, Connectors: connectors, Shared: shared[0]}, nil
+	model := &Model{Components: components, Topics: topics, Connectors: connectors}
+	if len(shared) == 1 {
+		model.Shared = &shared[0]
+	}
+	return model, nil
 }
 
 // stringValue returns values[key] as a non-empty string, with errors that
@@ -176,19 +156,4 @@ func stringValueDefault(e template.ScaffoldEntry, key, fallback string) (string,
 		return fallback, nil
 	}
 	return stringValue(e, key)
-}
-
-// pascalIdent converts a DNS-ish name to a C# identifier: segments split
-// on '-', '.' and '_' are title-cased and joined ("order-events" →
-// "OrderEvents").
-func pascalIdent(s string) string {
-	segments := strings.FieldsFunc(s, func(r rune) bool {
-		return r == '-' || r == '.' || r == '_'
-	})
-	var b strings.Builder
-	for _, seg := range segments {
-		b.WriteString(strings.ToUpper(seg[:1]))
-		b.WriteString(seg[1:])
-	}
-	return b.String()
 }

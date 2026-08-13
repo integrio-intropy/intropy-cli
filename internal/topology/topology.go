@@ -51,7 +51,7 @@ type Topology struct {
 }
 
 // Component is a deployable block of the system. Kind is the block type
-// (extractor, loader, transactionalIntegration, …). A component's directory,
+// (extractor, loader, transactional-integration, …). A component's directory,
 // which joins it to its .intropy/scaffold.json project, is its Name relative
 // to the system root.
 type Component struct {
