@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "6d82f8bf35cd",
+  "strategy": "manual-commit",
+  "branch": "feat/connector-to-port",
+  "checkpoints_count": 7,
+  "files_touched": [
+    "README.md",
+    "internal/system/assemble.go",
+    "internal/system/assemble_test.go",
+    "internal/system/create.go",
+    "internal/system/create_test.go",
+    "internal/system/model.go",
+    "internal/system/payload.go",
+    "internal/system/payload_test.go",
+    "internal/system/real_template_e2e_test.go",
+    "internal/template/manifest.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/6d/82f8bf35cd/0/metadata.json",
+      "transcript": "/6d/82f8bf35cd/0/full.jsonl",
+      "compact_transcript": "/6d/82f8bf35cd/0/transcript.jsonl",
+      "content_hash": "/6d/82f8bf35cd/0/content_hash.txt",
+      "prompt": "/6d/82f8bf35cd/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 103469,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 9992576,
+    "output_tokens": 44299,
+    "api_call_count": 117
+  }
+}
