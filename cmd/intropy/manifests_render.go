@@ -82,7 +82,7 @@ func init() {
 	f.StringVar(&manifestsRenderFlagValues.templateRepo, "template-repo", "", flagUsageTemplateRepo)
 	f.StringVar(&manifestsRenderFlagValues.namespace, "namespace", "", "target namespace (default: the system name)")
 	f.StringArrayVar(&manifestsRenderFlagValues.images, "image", nil, "image override: <component>=<name:tag> for one component, :<tag> for all (repeatable)")
-	f.StringArrayVar(&manifestsRenderFlagValues.bindings, "binding", nil, "local port fixture as <port>=<fixture> (repeatable)")
+	f.StringArrayVar(&manifestsRenderFlagValues.bindings, "binding", nil, flagUsageBinding)
 	_ = manifestsRenderCmd.MarkFlagRequired("env")
 	manifestsCmd.AddCommand(manifestsRenderCmd)
 }

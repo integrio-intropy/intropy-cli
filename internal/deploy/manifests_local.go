@@ -49,6 +49,13 @@ const localImagePrefix = "local/"
 // every conditional variant into local renders.
 const localExclusionReason = "false"
 
+// gitOpsFileRules excludes the local-only overlay from GitOps scaffolds. A
+// static overlays/local skeleton would otherwise render alongside every
+// deployable environment despite local not being a GitOps environment.
+func gitOpsFileRules(rules []template.FileRule) []template.FileRule {
+	return append([]template.FileRule{{Path: "overlays/local/**", When: localExclusionReason}}, rules...)
+}
+
 // localFileRules narrows a template's file rules to manifests only: an
 // exclusion for the repo-metadata paths, prepended so it decides first,
 // ahead of the template's own rules. Those rules are kept — with the local

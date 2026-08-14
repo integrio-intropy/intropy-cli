@@ -100,8 +100,8 @@ type ManifestPort struct {
 	Directions     []string `json:"directions,omitempty"`
 	AppIDs         []string `json:"appIds,omitempty"`
 
-	// Binding is the fixture selected for this local render. GitOps creation
-	// leaves it empty so the generated source keeps its placeholder scaffold.
+	// Binding is the selected local fixture or GitOps binding kind for the
+	// environment being rendered. Metadata remains GitOps-owned configuration.
 	Binding string `json:"binding,omitempty"`
 }
 

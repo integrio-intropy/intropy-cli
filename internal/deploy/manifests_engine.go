@@ -255,7 +255,13 @@ func initGitOps(ctx context.Context, opts manifestRunOptions, found discoveredTo
 		return err
 	}
 
-	bindings := emptyGitOpsBindings(opts, facts)
+	bindings := map[string]map[string]string{}
+	if len(facts.Model.Ports) > 0 {
+		bindings, err = resolveGitOpsPortBindings(ctx, opts, facts, lib)
+		if err != nil {
+			return err
+		}
+	}
 
 	staging, err := os.MkdirTemp("", "intropy-manifests-create-*")
 	if err != nil {
@@ -780,6 +786,8 @@ func renderOne(opts manifestRunOptions, facts manifestFacts, bindings map[string
 	rules := tmpl.Spec.Files
 	if opts.Mode == modeLocal {
 		rules = localFileRules(rules)
+	} else {
+		rules = gitOpsFileRules(rules)
 	}
 	for _, env := range facts.Environments {
 		values, err := resolveManifestValues(opts, facts, bindings, tmpl, dirName, comp, env)

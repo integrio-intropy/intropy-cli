@@ -42,6 +42,8 @@ spec:
       namespace: { type: string, default: integrations }
       pubsub: { type: string, default: rabbitmq }
       pubsubName: { type: string, default: pubsub }
+  gitops:
+    bindingKinds: [sftp, http]
   files:
     - path: base/dapr/pubsub-servicebus.yaml.tmpl
       when: '{{ eq .pubsub "servicebus" }}'
@@ -291,6 +293,7 @@ func (f initFixture) options(stdout, stderr *bytes.Buffer) manifestRunOptions {
 		Domain:        "sales",
 		TopologyFile:  f.topologyFile,
 		SourceDir:     f.sourceDir,
+		Bindings:      []string{"erp=sftp", "price-master=http"},
 		CacheRoot:     f.cacheRoot,
 		Stdin:         strings.NewReader(""),
 		Stdout:        stdout,

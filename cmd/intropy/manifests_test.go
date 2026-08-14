@@ -30,7 +30,7 @@ func TestDeployInitIsRemoved(t *testing.T) {
 }
 
 func TestManifestsCreateHasCreateOnlyFlags(t *testing.T) {
-	for _, name := range []string{"env", "domain", "system", "gitops-repo", "template-version", "dry-run", "diff"} {
+	for _, name := range []string{"env", "domain", "system", "gitops-repo", "template-version", "dry-run", "diff", "binding"} {
 		if manifestsCreateCmd.Flags().Lookup(name) == nil {
 			t.Errorf("manifests create must define --%s", name)
 		}

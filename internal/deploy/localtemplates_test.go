@@ -112,12 +112,31 @@ func TestLocalTemplatesRenderAndBuild(t *testing.T) {
 	if len(comp.Images) != 1 {
 		t.Errorf("images = %+v", comp.Images)
 	}
+
+	// The fixture selects erp=sftp and price-master=http (see initFixture's
+	// options), so the host renders exactly those two adapter files.
+	for _, want := range []struct{ path, bindingType, port string }{
+		{"domains/sales/distribution/host/base/bindings/sftp.yaml", "bindings.sftp", "erp"},
+		{"domains/sales/distribution/host/base/bindings/http.yaml", "bindings.http", "price-master"},
+	} {
+		got := readTreeFile(t, work, want.path)
+		if !strings.Contains(got, "type: "+want.bindingType) {
+			t.Errorf("%s missing type %q:\n%s", want.path, want.bindingType, got)
+		}
+		if !strings.Contains(got, "name: "+want.port) {
+			t.Errorf("%s missing port %q:\n%s", want.path, want.port, got)
+		}
+	}
+	for _, absent := range []string{"file.yaml", "blob.yaml"} {
+		if _, err := os.Stat(filepath.Join(work, "domains/sales/distribution/host/base/bindings", absent)); !os.IsNotExist(err) {
+			t.Errorf("unselected adapter %s was rendered, stat err = %v", absent, err)
+		}
+	}
 }
 
-// The topology mints only a port's name and scopes; the binding's spec.type
-// and metadata are owned by the rendered manifests, so every port renders as
-// a REPLACE-ME scaffold.
-func TestLocalTemplatesRenderPortBindingScaffold(t *testing.T) {
+// A GitOps binding kind selects the adapter's spec.type; its address and
+// credentials stay REPLACE-ME GitOps configuration for the reviewer.
+func TestLocalTemplatesRenderSelectedBindingAdapters(t *testing.T) {
 	requireKustomize(t)
 	root := localTemplatesRoot(t)
 	f := newInitFixtureWith(t, localTemplateEntries(t, root))
@@ -140,26 +159,23 @@ func TestLocalTemplatesRenderPortBindingScaffold(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if err := runManifestPipeline(context.Background(), f.options(&stdout, &stderr)); err != nil {
+	opts := f.options(&stdout, &stderr)
+	opts.Bindings = []string{"erp=sftp"}
+	if err := runManifestPipeline(context.Background(), opts); err != nil {
 		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
 	}
 
 	work := f.clone(t, "manifests-create/sales-distribution-all")
-	bindings := readTreeFile(t, work, "domains/sales/distribution/host/base/bindings/bindings.yaml")
-
+	got := readTreeFile(t, work, "domains/sales/distribution/host/base/bindings/sftp.yaml")
 	for _, want := range []string{
 		"name: erp",
-		"type: REPLACE-ME-BINDING-TYPE",
+		"type: bindings.sftp",
 		"  - order-loader",
+		"REPLACE-ME-SFTP-HOST",
 	} {
-		if !strings.Contains(bindings, want) {
-			t.Errorf("rendered bindings.yaml missing %q\n%s", want, bindings)
+		if !strings.Contains(got, want) {
+			t.Errorf("rendered sftp.yaml missing %q\n%s", want, got)
 		}
-	}
-	// No binding type is pre-chosen: the topology has no transport to switch
-	// on, so no spec.type line names a real Dapr binding.
-	if strings.Contains(bindings, "type: bindings.") {
-		t.Errorf("rendered bindings.yaml pre-chose a binding type\n%s", bindings)
 	}
 }
 

@@ -71,19 +71,22 @@ On success, the command commits only the created paths and pushes
 the default branch. A no-op creates no commit.
 
 `--dry-run` reports the action plan without changing Git. `--diff` prints the
-current/generated file differences and also writes nothing. Created files carry
-no ownership marker: after creation they are ordinary, editable GitOps source.
-Image digest pinning remains the responsibility of `intropy deploy pin` and
-`intropy deploy promote`. Creation is one-time onboarding for the selected
-environment; later structural changes and additional environments are normal,
-reviewed GitOps edits.
+current/generated file differences and also writes nothing. `--binding
+<port>=<kind>` selects the generated `bindings.<kind>` type for each
+port; addresses, credentials and metadata remain reviewable
+`REPLACE-ME` configuration. Created files carry no ownership marker: after
+creation they are ordinary, editable GitOps source. Image digest pinning remains
+the responsibility of `intropy deploy pin` and `intropy deploy promote`.
+Creation is one-time onboarding for the selected environment; later structural
+changes and additional environments are normal, reviewed GitOps edits.
 
 ## Port bindings
 
 A topology port names an external edge but does not decide its deployed
 Dapr binding. Local rendering receives ephemeral fixture choices through
-`--binding` or the interactive selector. GitOps creation always leaves the
-binding type, address, credentials, and metadata as explicit `REPLACE-ME`
-configuration for maintainers to complete after the review branch is created.
-There is no persisted Intropy binding state to drift from those editable GitOps
-files.
+`--binding` or the interactive selector. GitOps creation independently selects
+a `bindings.<kind>` type through its own `--binding` choices; addresses,
+credentials and metadata remain explicit `REPLACE-ME` configuration for
+maintainers to complete after the review branch is created. Local overlays and
+fixtures are never written to the GitOps repository. There is no persisted
+Intropy binding state to drift from those editable GitOps files.

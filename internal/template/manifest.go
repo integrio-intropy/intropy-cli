@@ -43,6 +43,10 @@ type Spec struct {
 	// hardcoded in the CLI.
 	Local *LocalSpec `yaml:"local,omitempty"`
 
+	// GitOps declares the GitOps-specific catalog on deploy-host. It stays
+	// separate from Local because a GitOps binding kind is not a local fixture.
+	GitOps *GitOpsSpec `yaml:"gitops,omitempty"`
+
 	// parameterOrder captures the declaration order of properties in
 	// spec.parameters.properties, since Go maps don't preserve YAML order.
 	// Populated by UnmarshalYAML.
@@ -93,6 +97,11 @@ type DependencySpec struct {
 	When string `yaml:"when,omitempty" json:"when,omitempty"`
 }
 
+// GitOpsSpec is the GitOps-only part of a template manifest.
+type GitOpsSpec struct {
+	BindingKinds []string `yaml:"bindingKinds"`
+}
+
 // LocalSpec is the local-render section of a template manifest.
 //
 // Fixtures is the closed catalog of fixture bindings a port can be bound
@@ -118,6 +127,7 @@ func (s *Spec) UnmarshalYAML(node *yaml.Node) error {
 		Files        []FileRule        `yaml:"files,omitempty"`
 		Dependencies []DependencySpec  `yaml:"dependencies,omitempty"`
 		Local        *LocalSpec        `yaml:"local,omitempty"`
+		GitOps       *GitOpsSpec       `yaml:"gitops,omitempty"`
 	}
 	var r rawSpec
 	if err := node.Decode(&r); err != nil {
@@ -128,6 +138,7 @@ func (s *Spec) UnmarshalYAML(node *yaml.Node) error {
 	s.Files = r.Files
 	s.Dependencies = r.Dependencies
 	s.Local = r.Local
+	s.GitOps = r.GitOps
 	s.parameterOrder = extractPropertyOrder(node)
 	return nil
 }
@@ -281,16 +292,28 @@ func (t *Template) validate() error {
 		}
 	}
 	if t.Spec.Local != nil {
-		seen := make(map[string]bool, len(t.Spec.Local.Fixtures))
-		for i, fx := range t.Spec.Local.Fixtures {
-			if !fixtureNamePattern.MatchString(fx) {
-				return fmt.Errorf("spec.local.fixtures[%d]: %q is not a valid fixture name (lowercase letters, digits and dashes, starting with a letter or digit)", i, fx)
-			}
-			if seen[fx] {
-				return fmt.Errorf("spec.local.fixtures[%d]: %q is declared twice", i, fx)
-			}
-			seen[fx] = true
+		if err := validateBindingCatalog("spec.local.fixtures", t.Spec.Local.Fixtures); err != nil {
+			return err
 		}
+	}
+	if t.Spec.GitOps != nil {
+		if err := validateBindingCatalog("spec.gitops.bindingKinds", t.Spec.GitOps.BindingKinds); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateBindingCatalog(path string, bindings []string) error {
+	seen := make(map[string]bool, len(bindings))
+	for i, binding := range bindings {
+		if !fixtureNamePattern.MatchString(binding) {
+			return fmt.Errorf("%s[%d]: %q is not a valid binding name (lowercase letters, digits and dashes, starting with a letter or digit)", path, i, binding)
+		}
+		if seen[binding] {
+			return fmt.Errorf("%s[%d]: %q is declared twice", path, i, binding)
+		}
+		seen[binding] = true
 	}
 	return nil
 }
