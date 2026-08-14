@@ -11,17 +11,17 @@ func testModel() *Model {
 		Topics: []Topic{
 			{TopicKey: TopicKey{Pubsub: "pubsub", Name: "orders"}, Contract: "Order"},
 		},
-		Connectors: []Connector{
+		Ports: []Port{
 			{Name: "erp-destination"},
 			{Name: "erp-source"},
 			{Name: "order-extractor-source"},
 			{Name: "order-loader-destination"},
 		},
 		Components: []Component{
-			{AppID: "order-extractor", Kind: "extractor", Topic: &TopicKey{Pubsub: "pubsub", Name: "orders"}, Connector: "order-extractor-source", Connectors: []string{"order-extractor-source"}},
-			{AppID: "order-loader", Kind: "loader", Topic: &TopicKey{Pubsub: "pubsub", Name: "orders"}, Connector: "order-loader-destination", Connectors: []string{"order-loader-destination"}},
+			{AppID: "order-extractor", Kind: "extractor", Topic: &TopicKey{Pubsub: "pubsub", Name: "orders"}, Port: "order-extractor-source", Ports: []string{"order-extractor-source"}},
+			{AppID: "order-loader", Kind: "loader", Topic: &TopicKey{Pubsub: "pubsub", Name: "orders"}, Port: "order-loader-destination", Ports: []string{"order-loader-destination"}},
 			{AppID: "audit-loader", Kind: "loader", Topic: &TopicKey{Pubsub: "pubsub", Name: "orders"}},
-			{AppID: "erp-sync", Kind: "transactional-integration", Connectors: []string{"erp-source", "erp-destination"}},
+			{AppID: "erp-sync", Kind: "transactional-integration", Ports: []string{"erp-source", "erp-destination"}},
 		},
 		Shared: &SharedLibrary{Path: "Contracts", Name: "Contracts"},
 	}
@@ -50,13 +50,13 @@ func TestBuildPayloadShape(t *testing.T) {
 		}
 	}
 
-	connectors, ok := payload["connectors"].([]any)
-	if !ok || len(connectors) != 4 {
-		t.Fatalf("connectors = %#v", payload["connectors"])
+	ports, ok := payload["ports"].([]any)
+	if !ok || len(ports) != 4 {
+		t.Fatalf("ports = %#v", payload["ports"])
 	}
-	first := connectors[0].(map[string]any)
+	first := ports[0].(map[string]any)
 	if first["name"] != "erp-destination" || len(first) != 1 {
-		t.Errorf("connector[0] = %#v, want only the name", first)
+		t.Errorf("port[0] = %#v, want only the name", first)
 	}
 
 	components, ok := payload["components"].([]any)
@@ -72,21 +72,21 @@ func TestBuildPayloadShape(t *testing.T) {
 	if !ok || topicKey["pubsub"] != wantTopicKey["pubsub"] || topicKey["name"] != wantTopicKey["name"] {
 		t.Errorf("extractor topic = %#v, want %#v", extractor["topic"], wantTopicKey)
 	}
-	if extractor["connector"] != "order-extractor-source" {
-		t.Errorf("extractor connector = %#v", extractor["connector"])
+	if extractor["port"] != "order-extractor-source" {
+		t.Errorf("extractor port = %#v", extractor["port"])
 	}
 	loader := components[1].(map[string]any)
-	if loader["kind"] != "loader" || loader["connector"] != "order-loader-destination" {
+	if loader["kind"] != "loader" || loader["port"] != "order-loader-destination" {
 		t.Errorf("loader = %#v", loader)
 	}
-	// A component without a connector carries no connector key at all; the
-	// template renders no From/To for it.
+	// A component without a port carries no port key at all; the template
+	// renders no From/To for it.
 	audit := components[2].(map[string]any)
-	if _, ok := audit["connector"]; ok {
-		t.Errorf("connector-less component should carry no connector key: %#v", audit)
+	if _, ok := audit["port"]; ok {
+		t.Errorf("port-less component should carry no port key: %#v", audit)
 	}
 	if _, ok := audit["topic"]; !ok {
-		t.Errorf("connector-less component still carries its topic: %#v", audit)
+		t.Errorf("port-less component still carries its topic: %#v", audit)
 	}
 	// A transactional component emits from/to and no topic.
 	tx := components[3].(map[string]any)
@@ -96,7 +96,7 @@ func TestBuildPayloadShape(t *testing.T) {
 	if tx["from"] != "erp-source" || tx["to"] != "erp-destination" {
 		t.Errorf("transactional wiring = %#v", tx)
 	}
-	for _, absent := range []string{"topic", "connector"} {
+	for _, absent := range []string{"topic", "port"} {
 		if _, ok := tx[absent]; ok {
 			t.Errorf("transactional component should not carry %s: %#v", absent, tx)
 		}
@@ -136,7 +136,7 @@ func TestBuildPayloadIsFactsOnly(t *testing.T) {
 		switch node := v.(type) {
 		case map[string]any:
 			for k, vv := range node {
-				for _, banned := range []string{"field", "topicField", "connectorField", "fromField", "toField"} {
+				for _, banned := range []string{"field", "topicField", "portField", "fromField", "toField"} {
 					if k == banned {
 						t.Errorf("payload key %s at %s: rendering knowledge belongs in the template", k, path)
 					}
@@ -155,12 +155,12 @@ func TestBuildPayloadIsFactsOnly(t *testing.T) {
 func TestBuildPayloadTransactionalOnly(t *testing.T) {
 	m := &Model{
 		Name: "trans",
-		Connectors: []Connector{
+		Ports: []Port{
 			{Name: "erp-destination"},
 			{Name: "erp-source"},
 		},
 		Components: []Component{
-			{AppID: "erp-sync", Kind: "transactional-integration", Connectors: []string{"erp-source", "erp-destination"}},
+			{AppID: "erp-sync", Kind: "transactional-integration", Ports: []string{"erp-source", "erp-destination"}},
 		},
 	}
 
@@ -183,22 +183,22 @@ func TestBuildPayloadTransactionalOnly(t *testing.T) {
 	}
 }
 
-func TestBuildPayloadWithoutConnectors(t *testing.T) {
+func TestBuildPayloadWithoutPorts(t *testing.T) {
 	m := testModel()
-	m.Connectors = nil
+	m.Ports = nil
 	m.Components = m.Components[:1]
-	m.Components[0].Connector = ""
-	m.Components[0].Connectors = nil
+	m.Components[0].Port = ""
+	m.Components[0].Ports = nil
 
 	payload, err := buildPayload(m, "order-flow", "order-flow")
 	if err != nil {
 		t.Fatal(err)
 	}
-	connectors, ok := payload["connectors"].([]any)
+	ports, ok := payload["ports"].([]any)
 	if !ok {
-		t.Fatalf("connectors = %#v, want an (empty) list so the template can range over it", payload["connectors"])
+		t.Fatalf("ports = %#v, want an (empty) list so the template can range over it", payload["ports"])
 	}
-	if len(connectors) != 0 {
-		t.Errorf("connectors = %#v, want empty", connectors)
+	if len(ports) != 0 {
+		t.Errorf("ports = %#v, want empty", ports)
 	}
 }

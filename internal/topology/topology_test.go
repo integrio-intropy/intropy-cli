@@ -15,16 +15,16 @@ const validRecord = `{
       "kind": "extractor",
       "subscribes": [],
       "publishes": [
-        {"port": "b2c", "pubsub": "price-pubsub", "topic": "price-b2c"},
-        {"port": "b2b", "pubsub": "price-pubsub", "topic": "price-b2b"}
+        {"pubsub": "price-pubsub", "topic": "price-b2c"},
+        {"pubsub": "price-pubsub", "topic": "price-b2b"}
       ],
-      "connectors": [{"connector": "price-master", "direction": "in"}]
+      "ports": [{"port": "price-master", "direction": "in"}]
     },
     {
       "name": "erp-loader",
       "kind": "loader",
       "subscribes": [{"pubsub": "price-pubsub", "topic": "price-b2b"}],
-      "connectors": [{"connector": "erp", "direction": "out"}]
+      "ports": [{"port": "erp", "direction": "out"}]
     }
   ],
   "topics": [
@@ -33,7 +33,7 @@ const validRecord = `{
     {"pubsub": "price-pubsub", "topic": "price-b2c", "contract": "Price.Contracts.B2CPrice",
      "publishers": ["extractor"], "subscribers": ["wms-loader"]}
   ],
-  "connectors": [
+  "ports": [
     {"name": "erp", "externalSystem": "erp",
      "directions": ["out"], "usedBy": ["erp-loader"]},
     {"name": "price-master", "externalSystem": "price-master",
@@ -59,18 +59,18 @@ func TestDecodeValid(t *testing.T) {
 	if got.Kind != Kind {
 		t.Errorf("kind = %q, want %q", got.Kind, Kind)
 	}
-	if len(got.Components) != 2 || len(got.Topics) != 2 || len(got.Connectors) != 2 {
+	if len(got.Components) != 2 || len(got.Topics) != 2 || len(got.Ports) != 2 {
 		t.Fatalf("entity counts = %d/%d/%d, want 2/2/2",
-			len(got.Components), len(got.Topics), len(got.Connectors))
+			len(got.Components), len(got.Topics), len(got.Ports))
 	}
 	if c := got.Components[0]; c.Kind != "extractor" || len(c.Publishes) != 2 {
 		t.Fatalf("extractor = %+v", c)
 	}
-	if p := got.Components[0].Publishes[0]; p.Port != "b2c" || p.PubSub != "price-pubsub" || p.Topic != "price-b2c" {
+	if p := got.Components[0].Publishes[0]; p.PubSub != "price-pubsub" || p.Topic != "price-b2c" {
 		t.Errorf("publish = %+v", p)
 	}
-	if u := got.Components[0].Connectors[0]; u.Connector != "price-master" || u.Direction != "in" {
-		t.Errorf("connector use = %+v", u)
+	if u := got.Components[0].Ports[0]; u.Port != "price-master" || u.Direction != "in" {
+		t.Errorf("port use = %+v", u)
 	}
 	if s := got.Components[1].Subscribes[0]; s.PubSub != "price-pubsub" || s.Topic != "price-b2b" {
 		t.Errorf("subscribe = %+v", s)
@@ -78,8 +78,8 @@ func TestDecodeValid(t *testing.T) {
 	if tp := got.Topics[0]; tp.Topic != "price-b2b" || tp.Contract != "Price.Contracts.B2BPrice" {
 		t.Errorf("topic = %+v", tp)
 	}
-	if cn := got.Connectors[1]; cn.Name != "price-master" || cn.ExternalSystem != "price-master" {
-		t.Errorf("connector = %+v", cn)
+	if cn := got.Ports[1]; cn.Name != "price-master" || cn.ExternalSystem != "price-master" {
+		t.Errorf("port = %+v", cn)
 	}
 	if len(got.Contracts) != 1 {
 		t.Fatalf("contracts = %d, want 1", len(got.Contracts))

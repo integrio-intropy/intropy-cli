@@ -83,7 +83,7 @@ type manifestRunOptions struct {
 	// never pins one.
 	Images []string
 
-	// Bindings supplies local connector-to-fixture choices. Selector asks for
+	// Bindings supplies local port-to-fixture choices. Selector asks for
 	// choices omitted from Bindings when terminal interaction is available.
 	Bindings []string
 	Selector interactive.Selector
@@ -186,7 +186,7 @@ func (o *manifestRunOptions) applyDefaults() {
 	}
 }
 
-// renderLocalManifests resolves connector bindings, stages the local tree,
+// renderLocalManifests resolves port bindings, stages the local tree,
 // applies namespace and image overrides through a root kustomization, and
 // returns the complete build. It never inspects or changes a cluster.
 func renderLocalManifests(ctx context.Context, opts manifestRunOptions, found discoveredTopology, lib *template.Library) ([]byte, error) {
@@ -204,7 +204,7 @@ func renderLocalManifests(ctx context.Context, opts manifestRunOptions, found di
 		namespace = facts.System
 	}
 
-	bindings, err := resolveLocalConnectorBindings(ctx, opts, facts, lib)
+	bindings, err := resolveLocalPortBindings(ctx, opts, facts, lib)
 	if err != nil {
 		return nil, err
 	}
@@ -827,7 +827,7 @@ func resolveManifestValues(opts manifestRunOptions, facts manifestFacts, binding
 		template.ReservedGitopsKey:   facts.gitopsMap(dirName, env),
 	}
 	if env == localEnv {
-		// Deprecated: the connectors' binding field carries the same fact. Kept
+		// Deprecated: the ports' binding field carries the same fact. Kept
 		// so a library older than that field still renders its fixture overlay;
 		// remove when the floor template version has moved past it.
 		local, err := toMap(localModel{Bindings: bindingsForEnv(facts.Model, bindings, env)})

@@ -28,7 +28,7 @@ var manifestsRenderCmd = &cobra.Command{
 	Short: "Render a system's Kubernetes manifests as YAML",
 	Long: "Render and validate the complete manifest stream for one environment. For local development, YAML is " +
 		"written to stdout for piping to kubectl; progress, prompts, and errors are written to stderr. Use --binding " +
-		"for reproducible connector fixtures. Missing choices are prompted for when the terminal is interactive and fail " +
+		"for reproducible port fixtures. Missing choices are prompted for when the terminal is interactive and fail " +
 		"clearly otherwise. The complete render is buffered, so a failed render writes no YAML. Nothing is written to Git.",
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
@@ -82,7 +82,7 @@ func init() {
 	f.StringVar(&manifestsRenderFlagValues.templateRepo, "template-repo", "", flagUsageTemplateRepo)
 	f.StringVar(&manifestsRenderFlagValues.namespace, "namespace", "", "target namespace (default: the system name)")
 	f.StringArrayVar(&manifestsRenderFlagValues.images, "image", nil, "image override: <component>=<name:tag> for one component, :<tag> for all (repeatable)")
-	f.StringArrayVar(&manifestsRenderFlagValues.bindings, "binding", nil, "local connector fixture as <connector>=<fixture> (repeatable)")
+	f.StringArrayVar(&manifestsRenderFlagValues.bindings, "binding", nil, "local port fixture as <port>=<fixture> (repeatable)")
 	_ = manifestsRenderCmd.MarkFlagRequired("env")
 	manifestsCmd.AddCommand(manifestsRenderCmd)
 }

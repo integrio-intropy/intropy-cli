@@ -1009,7 +1009,7 @@ body {
   background: var(--bg);
 }
 
-/* Flow inspector: message detail for a clicked topic or connector node,
+/* Flow inspector: message detail for a clicked topic or port node,
    floating over the canvas' right edge. */
 .flow-detail {
   position: absolute;

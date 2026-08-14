@@ -28,7 +28,7 @@ var sysCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Assemble scaffolded integrations into a system host",
 	Long: "Scan the workspace for integration scaffold records (" + template.ScaffoldRelPath + "), validate them into a system model, " +
-		"and render the system-host template with the assembled values. The template writes the full declaration — Topics.cs, Connectors.cs, " +
+		"and render the system-host template with the assembled values. The template writes the full declaration — Topics.cs, Ports.cs, " +
 		"the development and system definitions, and the project file; the CLI supplies only what the workspace records. " +
 		"Run it from the workspace root that contains the scaffolded components and the shared contracts project.",
 	Args: cobra.NoArgs,

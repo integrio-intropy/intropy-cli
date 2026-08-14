@@ -60,7 +60,7 @@ func TestRealSystemHostTransactionalOnly(t *testing.T) {
 	outDir, _ := renderRealHost(t, map[string]any{
 		"name":       "trans",
 		"topics":     []any{},
-		"connectors": []any{map[string]any{"name": "erp-source"}, map[string]any{"name": "erp-destination"}},
+		"ports":      []any{map[string]any{"name": "erp-source"}, map[string]any{"name": "erp-destination"}},
 		"components": []any{map[string]any{"appId": "erp-sync", "kind": "transactional-integration", "from": "erp-source", "to": "erp-destination"}},
 	})
 	if _, err := os.Stat(filepath.Join(outDir, "Topics.cs")); !os.IsNotExist(err) {
@@ -74,23 +74,23 @@ func TestRealSystemHostTransactionalOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`builder.AddTransactionalIntegration("erp-sync")`, ".From(Connectors.ErpSource)", ".To(Connectors.ErpDestination)"} {
+	for _, want := range []string{`builder.AddTransactionalIntegration("erp-sync")`, ".From(Ports.ErpSource)", ".To(Ports.ErpDestination)"} {
 		if !strings.Contains(string(system), want) {
 			t.Errorf("TransSystem.cs missing %q:\n%s", want, system)
 		}
 	}
-	connectors, err := os.ReadFile(filepath.Join(outDir, "Connectors.cs"))
+	ports, err := os.ReadFile(filepath.Join(outDir, "Ports.cs"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(connectors), "ConnectorRef ErpSource") {
-		t.Errorf("Connectors.cs:\n%s", connectors)
+	if !strings.Contains(string(ports), "PortRef ErpSource") {
+		t.Errorf("Ports.cs:\n%s", ports)
 	}
 	dev, err := os.ReadFile(filepath.Join(outDir, "TransDevelopment.cs"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(dev), `development.Files(Connectors.ErpSource).RootPath("./test/erp-source");`) {
+	if !strings.Contains(string(dev), `development.Files(Ports.ErpSource).RootPath("./test/erp-source");`) {
 		t.Errorf("TransDevelopment.cs:\n%s", dev)
 	}
 }
@@ -99,10 +99,10 @@ func TestRealSystemHostTopicSystemWithContracts(t *testing.T) {
 	outDir, _ := renderRealHost(t, map[string]any{
 		"name":       "order-flow",
 		"topics":     []any{map[string]any{"pubsub": "pubsub", "name": "orders", "contract": "Order"}},
-		"connectors": []any{map[string]any{"name": "order-extractor-source"}, map[string]any{"name": "order-loader-destination"}},
+		"ports":      []any{map[string]any{"name": "order-extractor-source"}, map[string]any{"name": "order-loader-destination"}},
 		"components": []any{
-			map[string]any{"appId": "order-extractor", "kind": "extractor", "topic": map[string]any{"pubsub": "pubsub", "name": "orders"}, "connector": "order-extractor-source"},
-			map[string]any{"appId": "order-loader", "kind": "loader", "topic": map[string]any{"pubsub": "pubsub", "name": "orders"}, "connector": "order-loader-destination"},
+			map[string]any{"appId": "order-extractor", "kind": "extractor", "topic": map[string]any{"pubsub": "pubsub", "name": "orders"}, "port": "order-extractor-source"},
+			map[string]any{"appId": "order-loader", "kind": "loader", "topic": map[string]any{"pubsub": "pubsub", "name": "orders"}, "port": "order-loader-destination"},
 		},
 		"sharedContracts": map[string]any{"name": "Contracts", "include": "../Contracts/Contracts.csproj"},
 	})
@@ -119,7 +119,7 @@ func TestRealSystemHostTopicSystemWithContracts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{".From(Connectors.OrderExtractorSource)", ".Publishes(Topics.Orders)", ".Subscribes(Topics.Orders)", ".To(Connectors.OrderLoaderDestination)"} {
+	for _, want := range []string{".From(Ports.OrderExtractorSource)", ".Publishes(Topics.Orders)", ".Subscribes(Topics.Orders)", ".To(Ports.OrderLoaderDestination)"} {
 		if !strings.Contains(string(system), want) {
 			t.Errorf("OrderFlowSystem.cs missing %q:\n%s", want, system)
 		}
@@ -142,7 +142,7 @@ func TestRealSystemHostFieldCollisionFails(t *testing.T) {
 			map[string]any{"pubsub": "pubsub", "name": "order-events", "contract": "Order"},
 			map[string]any{"pubsub": "pubsub", "name": "order.events", "contract": "Order"},
 		},
-		"connectors":      []any{},
+		"ports":           []any{},
 		"components":      []any{},
 		"sharedContracts": map[string]any{"name": "Contracts", "include": "../Contracts/Contracts.csproj"},
 	}, nil)
@@ -190,7 +190,7 @@ func TestRealSystemHostDependencyWhen(t *testing.T) {
 	topicsPayload := map[string]any{
 		"name":       "order-flow",
 		"topics":     []any{map[string]any{"pubsub": "pubsub", "name": "orders", "contract": "Order"}},
-		"connectors": []any{},
+		"ports":      []any{},
 		"components": []any{},
 	}
 	if got := eval(topicsPayload); got == "false" || got == "" {
@@ -199,14 +199,14 @@ func TestRealSystemHostDependencyWhen(t *testing.T) {
 	withContracts := map[string]any{
 		"name":            "order-flow",
 		"topics":          []any{map[string]any{"pubsub": "pubsub", "name": "orders", "contract": "Order"}},
-		"connectors":      []any{},
+		"ports":           []any{},
 		"components":      []any{},
 		"sharedContracts": map[string]any{"name": "Contracts", "include": "../Contracts/Contracts.csproj"},
 	}
 	if got := eval(withContracts); got != "false" {
 		t.Errorf("existing contracts should skip the dependency, when = %q", got)
 	}
-	noTopics := map[string]any{"name": "trans", "topics": []any{}, "connectors": []any{}, "components": []any{}}
+	noTopics := map[string]any{"name": "trans", "topics": []any{}, "ports": []any{}, "components": []any{}}
 	if got := eval(noTopics); got != "false" {
 		t.Errorf("topic-free system should skip the dependency, when = %q", got)
 	}

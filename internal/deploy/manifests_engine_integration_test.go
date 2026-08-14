@@ -117,7 +117,7 @@ spec:
       namespace: { type: string, default: integrations }
       registry: { type: string }
       imageNamespace: { type: string, default: integrations }
-  # Local manifest rendering resolves one fixture per connector, so every
+  # Local manifest rendering resolves one fixture per port, so every
   # fixture library declares the local catalog.
   local:
     fixtures: [sftp, http]

@@ -21,7 +21,7 @@ func TestInjectReserved(t *testing.T) {
 
 	reserved := map[string]any{
 		ReservedTopologyKey: map[string]any{
-			"connectors": []any{map[string]any{"name": "erp"}},
+			"ports": []any{map[string]any{"name": "erp"}},
 		},
 		ReservedGitopsKey: map[string]any{"domain": "sales"},
 	}
@@ -33,8 +33,8 @@ func TestInjectReserved(t *testing.T) {
 	if !ok {
 		t.Fatalf("topology = %T, want map", values[ReservedTopologyKey])
 	}
-	if len(topo["connectors"].([]any)) != 1 {
-		t.Errorf("connectors = %v", topo["connectors"])
+	if len(topo["ports"].([]any)) != 1 {
+		t.Errorf("ports = %v", topo["ports"])
 	}
 	if values["name"] != "order-extract" {
 		t.Errorf("existing value clobbered: %v", values["name"])

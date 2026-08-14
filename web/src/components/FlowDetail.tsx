@@ -4,7 +4,7 @@ import type {
   JsonSchema,
   MessageDoc,
   Topology,
-  TopologyConnector,
+  TopologyPort,
   TopologyTopic,
 } from '../api'
 import {
@@ -17,10 +17,10 @@ import {
 import { Meta, Section } from './chrome'
 
 /** What the flow canvas has put under inspection: a pub/sub topic (internal
- *  message) or a connector (external message). */
+ *  message) or a port (external message). */
 export type FlowSelection =
   | { kind: 'topic'; pubsub: string; topic: string }
-  | { kind: 'connector'; name: string }
+  | { kind: 'port'; name: string }
 
 interface Props {
   selection: FlowSelection
@@ -30,8 +30,8 @@ interface Props {
 
 /** FlowDetail is the flow view's inspector: what message flows here, and what
  *  does it look like. Topics render their contract's field tree (when the
- *  host published a schema); connectors render the authored message doc from
- *  messages/<connector>.md (when one exists). */
+ *  host published a schema); ports render the authored message doc from
+ *  messages/<port>.md (when one exists). */
 export function FlowDetail({ selection, topology, onClose }: Props) {
   return (
     <aside className="flow-detail">
@@ -51,7 +51,7 @@ export function FlowDetail({ selection, topology, onClose }: Props) {
       {selection.kind === 'topic' ? (
         <TopicDetail selection={selection} topology={topology} />
       ) : (
-        <ConnectorDetail name={selection.name} topology={topology} />
+        <PortDetail name={selection.name} topology={topology} />
       )}
     </aside>
   )
@@ -208,8 +208,8 @@ function labelFor(
   return type ?? 'unknown'
 }
 
-function ConnectorDetail({ name, topology }: { name: string; topology: Topology }) {
-  const conn: TopologyConnector | undefined = topology.connectors?.find(
+function PortDetail({ name, topology }: { name: string; topology: Topology }) {
+  const port: TopologyPort | undefined = topology.ports?.find(
     (c) => c.name === name,
   )
   const doc: MessageDoc | undefined = topology.messageDocs?.[name]
@@ -217,16 +217,16 @@ function ConnectorDetail({ name, topology }: { name: string; topology: Topology 
   return (
     <>
       <div className="meta-grid">
-        <Meta label="Connector" value={name} />
-        {conn?.externalSystem && (
-          <Meta label="External system" value={conn.externalSystem} />
+        <Meta label="Port" value={name} />
+        {port?.externalSystem && (
+          <Meta label="External system" value={port.externalSystem} />
         )}
-        {conn?.directions?.length ? (
-          <Meta label="Direction" value={conn.directions.join(', ')} />
+        {port?.directions?.length ? (
+          <Meta label="Direction" value={port.directions.join(', ')} />
         ) : null}
       </div>
 
-      <NameChips label="Used by" names={conn?.usedBy} />
+      <NameChips label="Used by" names={port?.usedBy} />
 
       {doc ? <MessageDocView doc={doc} /> : <MessageDocEmpty topology={topology} name={name} />}
     </>
@@ -329,7 +329,7 @@ Free prose: where the data comes from, quirks, dedupe keys, gotchas.
   return (
     <Section title="Message" icon={DescriptionIcon}>
       <p className="muted">
-        No message description yet. Describe what flows through this connector
+        No message description yet. Describe what flows through this port
         in <code>{dir}messages/{name}.md</code>:
       </p>
       <pre className="doc">{template}</pre>

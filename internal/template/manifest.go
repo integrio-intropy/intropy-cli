@@ -95,7 +95,7 @@ type DependencySpec struct {
 
 // LocalSpec is the local-render section of a template manifest.
 //
-// Fixtures is the closed catalog of fixture bindings a connector can be bound
+// Fixtures is the closed catalog of fixture bindings a port can be bound
 // to in a local render. The CLI reads it from the fetched library, so the menu
 // it presents, the values it accepts and the skeletons it renders all come from
 // one release of one repository.

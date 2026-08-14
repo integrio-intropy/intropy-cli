@@ -2,12 +2,12 @@
 // system's host emits. The record declares the system's shape: its components
 // (blocks) and the wiring between them, expressed inline on each component —
 // the topics it subscribes to and publishes on, the API contracts it provides
-// and consumes, and the external connectors it uses. Top-level topics[] and
-// connectors[] sections carry the shared metadata (contracts, external
-// systems) those inline references point at.
+// and consumes, and the external ports it uses. Top-level topics[] and
+// ports[] sections carry the shared metadata (contracts, external systems)
+// those inline references point at.
 //
-// The record carries only minted facts: the Dapr binding a connector deploys
-// as (its spec.type, address, credentials) is environment-owned deployment
+// The record carries only minted facts: the Dapr binding a port deploys as
+// (its spec.type, address, credentials) is environment-owned deployment
 // configuration in the GitOps repo, and an extractor's cadence is its CronJob
 // there. Neither appears here.
 //
@@ -32,16 +32,16 @@ const (
 
 // Topology is one system's declared graph. Wiring is inlined on each component
 // rather than kept in a separate edge list: a component names the topics it
-// subscribes to and publishes on and the connectors it uses. The top-level
-// Topics and Connectors sections are lookup tables the inline references
-// resolve against (contract, external system).
+// subscribes to and publishes on and the ports it uses. The top-level Topics
+// and Ports sections are lookup tables the inline references resolve against
+// (contract, external system).
 type Topology struct {
 	APIVersion string      `json:"apiVersion"`
 	Kind       string      `json:"kind,omitempty"`
 	System     string      `json:"system"`
 	Components []Component `json:"components,omitempty"`
 	Topics     []Topic     `json:"topics,omitempty"`
-	Connectors []Connector `json:"connectors,omitempty"`
+	Ports      []Port      `json:"ports,omitempty"`
 	Contracts  []Contract  `json:"contracts,omitempty"`
 	// APIs, and each component's Provides/Consumes below, are the contract
 	// (request/response) surfaces. Their element shape is not yet finalized,
@@ -59,7 +59,7 @@ type Component struct {
 	Kind       string         `json:"kind"`
 	Subscribes []TopicRef     `json:"subscribes,omitempty"`
 	Publishes  []Publication  `json:"publishes,omitempty"`
-	Connectors []ConnectorUse `json:"connectors,omitempty"`
+	Ports      []PortUse      `json:"ports,omitempty"`
 	// Provides/Consumes are contract surfaces, parsed opaquely (see APIs).
 	Provides []json.RawMessage `json:"provides,omitempty"`
 	Consumes []json.RawMessage `json:"consumes,omitempty"`
@@ -71,18 +71,16 @@ type TopicRef struct {
 	Topic  string `json:"topic"`
 }
 
-// Publication is a component's output onto a pub/sub topic. Port names the
-// component output the message leaves through.
+// Publication is a component's output onto a pub/sub topic.
 type Publication struct {
-	Port   string `json:"port,omitempty"`
 	PubSub string `json:"pubsub"`
 	Topic  string `json:"topic"`
 }
 
-// ConnectorUse is a component's use of an external connector. Direction is
-// "in" (external → component) or "out" (component → external).
-type ConnectorUse struct {
-	Connector string `json:"connector"`
+// PortUse is a component's use of an external port. Direction is "in"
+// (external → component) or "out" (component → external).
+type PortUse struct {
+	Port      string `json:"port"`
 	Direction string `json:"direction"`
 }
 
@@ -113,12 +111,12 @@ type Contract struct {
 	Schema      json.RawMessage `json:"schema,omitempty"`
 }
 
-// Connector is an external system integration point. The name is its whole
+// Port is an external system integration point. The name is its whole
 // identity — the deployed Dapr binding type, address, and credentials are
 // environment-owned deployment configuration, never part of the record.
 // ExternalSystem is the system it fronts, Directions the directions it is
 // wired in, and UsedBy the components that use it.
-type Connector struct {
+type Port struct {
 	Name           string   `json:"name"`
 	ExternalSystem string   `json:"externalSystem,omitempty"`
 	Directions     []string `json:"directions,omitempty"`

@@ -2,7 +2,7 @@
 // scans the workspace for the .intropy/scaffold.json records `int create`
 // left behind, validates them into a system model, and builds the value
 // payload the system-host template renders every declaration file from —
-// Topics.cs, Connectors.cs, the development and system definitions, and
+// Topics.cs, Ports.cs, the development and system definitions, and
 // the csproj. The template library owns all generated content; this
 // package owns workspace knowledge only.
 package system
@@ -68,7 +68,7 @@ type Summary struct {
 	Name          string      `json:"name"`
 	Components    []Component `json:"components"`
 	Topics        []Topic     `json:"topics"`
-	Connectors    []Connector `json:"connectors,omitempty"`
+	Ports         []Port      `json:"ports,omitempty"`
 	SharedLibrary string      `json:"sharedLibrary"` // scaffold directory
 }
 
@@ -161,8 +161,8 @@ func Create(ctx context.Context, opts CreateOptions) error {
 	if model.Shared != nil {
 		contracts = "contracts from " + model.Shared.Path
 	}
-	fmt.Fprintf(opts.Stderr, "assembled system %q: %d component(s), %d topic(s), %d connector(s), %s\n",
-		model.Name, len(model.Components), len(model.Topics), len(model.Connectors), contracts)
+	fmt.Fprintf(opts.Stderr, "assembled system %q: %d component(s), %d topic(s), %d port(s), %s\n",
+		model.Name, len(model.Components), len(model.Topics), len(model.Ports), contracts)
 
 	return maybeWriteCreateResult(opts, record, model)
 }
@@ -211,7 +211,7 @@ func maybeWriteCreateResult(opts CreateOptions, record *template.Scaffold, model
 			Name:          model.Name,
 			Components:    model.Components,
 			Topics:        model.Topics,
-			Connectors:    model.Connectors,
+			Ports:         model.Ports,
 			SharedLibrary: sharedPath(model),
 		},
 	}

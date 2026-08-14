@@ -42,7 +42,7 @@ type ManifestModel struct {
 	Components []ManifestComponent `json:"components"`
 	PubSubs    []ManifestPubSub    `json:"pubsubs"`
 	Topics     []ManifestTopic     `json:"topics"`
-	Connectors []ManifestConnector `json:"connectors"`
+	Ports      []ManifestPort      `json:"ports"`
 }
 
 // ManifestComponent is one block as the manifests need it.
@@ -67,8 +67,8 @@ type ManifestComponent struct {
 	// warning, not a failure, so the manifests still generate.
 	Dir string `json:"dir,omitempty"`
 
-	Topics     []string `json:"topics,omitempty"`
-	Connectors []string `json:"connectors,omitempty"`
+	Topics []string `json:"topics,omitempty"`
+	Ports  []string `json:"ports,omitempty"`
 }
 
 // ManifestPubSub is one Dapr pub/sub component the system needs.
@@ -90,11 +90,11 @@ type ManifestTopic struct {
 	Subscribers []string `json:"subscribers,omitempty"`
 }
 
-// ManifestConnector is an external integration point. The topology mints only
-// its name: the deployed Dapr binding's address, host and credentials are
+// ManifestPort is an external integration point. The topology mints only its
+// name: the deployed Dapr binding's address, host and credentials are
 // environment-owned deployment configuration, which is exactly why they are
 // placeholders in the rendered manifests.
-type ManifestConnector struct {
+type ManifestPort struct {
 	Name           string   `json:"name"`
 	ExternalSystem string   `json:"externalSystem,omitempty"`
 	Directions     []string `json:"directions,omitempty"`
@@ -114,19 +114,19 @@ func newManifestModel(t *topology.Topology, scaffolds []template.ScaffoldEntry) 
 	m.Components = buildComponents(t.Components, appIDs, dirs)
 	m.Topics = buildTopics(t.Topics, appIDs)
 	m.PubSubs = buildPubSubs(t, appIDs)
-	m.Connectors = buildConnectors(t.Connectors, appIDs)
+	m.Ports = buildPorts(t.Ports, appIDs)
 	return m
 }
 
-// asMap renders the model as plain maps and slices, with each connector's
-// binding set for the environment being rendered.
+// asMap renders the model as plain maps and slices, with each port's binding
+// set for the environment being rendered.
 //
 // Injected reserved values go through this so a skeleton's `index`, `range` and
 // sprig calls see uniform map[string]any — a Go struct behaves differently
 // under `index` and would make the template author's life needlessly subtle.
 func (m ManifestModel) asMap(env string, bindings map[string]map[string]string) (map[string]any, error) {
-	for i, c := range m.Connectors {
-		m.Connectors[i].Binding = bindings[c.Name][env]
+	for i, c := range m.Ports {
+		m.Ports[i].Binding = bindings[c.Name][env]
 	}
 	raw, err := json.Marshal(m)
 	if err != nil {
@@ -139,11 +139,11 @@ func (m ManifestModel) asMap(env string, bindings map[string]map[string]string) 
 	return out, nil
 }
 
-// bindingsForEnv reduces this render's choices to a flat connector-to-binding
-// map for compatibility with older local fixture templates.
+// bindingsForEnv reduces this render's choices to a flat port-to-binding map
+// for compatibility with older local fixture templates.
 func bindingsForEnv(model ManifestModel, bindings map[string]map[string]string, env string) map[string]string {
-	out := make(map[string]string, len(model.Connectors))
-	for _, c := range model.Connectors {
+	out := make(map[string]string, len(model.Ports))
+	for _, c := range model.Ports {
 		if b := bindings[c.Name][env]; b != "" {
 			out[c.Name] = b
 		}
@@ -237,11 +237,11 @@ func buildComponents(components []topology.Component, appIDs, dirs map[string]st
 		}
 		ic.Topics = sortedKeys(topics)
 
-		conns := map[string]bool{}
-		for _, u := range c.Connectors {
-			conns[u.Connector] = true
+		ports := map[string]bool{}
+		for _, u := range c.Ports {
+			ports[u.Port] = true
 		}
-		ic.Connectors = sortedKeys(conns)
+		ic.Ports = sortedKeys(ports)
 
 		out = append(out, ic)
 	}
@@ -330,17 +330,17 @@ func buildPubSubs(t *topology.Topology, appIDs map[string]string) []ManifestPubS
 	return out
 }
 
-func buildConnectors(connectors []topology.Connector, appIDs map[string]string) []ManifestConnector {
-	out := make([]ManifestConnector, 0, len(connectors))
-	for _, c := range connectors {
-		out = append(out, ManifestConnector{
+func buildPorts(ports []topology.Port, appIDs map[string]string) []ManifestPort {
+	out := make([]ManifestPort, 0, len(ports))
+	for _, c := range ports {
+		out = append(out, ManifestPort{
 			Name:           c.Name,
 			ExternalSystem: c.ExternalSystem,
 			Directions:     slices.Sorted(slices.Values(c.Directions)),
 			AppIDs:         sortedAppIDs(appIDs, c.UsedBy),
 		})
 	}
-	slices.SortFunc(out, func(a, b ManifestConnector) int { return strings.Compare(a.Name, b.Name) })
+	slices.SortFunc(out, func(a, b ManifestPort) int { return strings.Compare(a.Name, b.Name) })
 	return out
 }
 

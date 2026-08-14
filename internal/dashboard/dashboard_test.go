@@ -288,7 +288,7 @@ func TestTopologyPopulated(t *testing.T) {
 					Name: "pim-extractor",
 					Kind: "extractor",
 					Publishes: []topology.Publication{
-						{Port: "default", PubSub: "pubsub", Topic: "product-raw"},
+						{PubSub: "pubsub", Topic: "product-raw"},
 					},
 				}},
 				Topics: []topology.Topic{
@@ -353,9 +353,9 @@ func TestTopologyErrorsSurfaced(t *testing.T) {
 }
 
 // TestTopologyMessageDocs checks that authored message descriptions beside a
-// system are served keyed by connector name, that a doc naming an undeclared
-// connector is withheld and reported, and that docs are read fresh per
-// request — an edit shows up without re-running the cached graph provider.
+// system are served keyed by port name, that a doc naming an undeclared port
+// is withheld and reported, and that docs are read fresh per request — an
+// edit shows up without re-running the cached graph provider.
 func TestTopologyMessageDocs(t *testing.T) {
 	tmp := t.TempDir()
 	t.Chdir(tmp)
@@ -380,7 +380,7 @@ func TestTopologyMessageDocs(t *testing.T) {
 			Topology: topology.Topology{
 				APIVersion: topology.APIVersion,
 				System:     system,
-				Connectors: []topology.Connector{{
+				Ports: []topology.Port{{
 					Name: "erp",
 				}},
 			},
@@ -411,12 +411,12 @@ func TestTopologyMessageDocs(t *testing.T) {
 		t.Errorf("erp doc = %+v", got)
 	}
 	if _, ok := report.Topologies[0].MessageDocs["ghost"]; ok {
-		t.Error("undeclared connector doc must be withheld")
+		t.Error("undeclared port doc must be withheld")
 	}
 	if len(report.Errors) != 1 ||
 		!strings.Contains(report.Errors[0], "product-distribution/messages/ghost.md") ||
-		!strings.Contains(report.Errors[0], `no connector "ghost"`) {
-		t.Errorf("errors = %v, want one undeclared-connector error", report.Errors)
+		!strings.Contains(report.Errors[0], `no port "ghost"`) {
+		t.Errorf("errors = %v, want one undeclared-port error", report.Errors)
 	}
 
 	// Edit the doc; a plain GET (no refresh) serves the new content from the

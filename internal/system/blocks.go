@@ -9,7 +9,7 @@ import (
 
 // parseBlock reads one scaffold record's kind-specific values into the
 // component's wiring. The parser owns per-record validation only; every
-// cross-component check (topic contract conflicts, connector uniqueness)
+// cross-component check (topic contract conflicts, port uniqueness)
 // stays in Assemble, gated on the component's shape.
 type parseBlock func(e template.ScaffoldEntry, c *Component) error
 
@@ -34,9 +34,9 @@ func supportedKinds() []string {
 }
 
 // parseTopicBlock parses the wiring of a topic block (extractor, loader):
-// a required topic and contract, and one optional connector. A record
-// without a connector stays a valid component — it just gets no From/To in
-// the generated wiring.
+// a required topic and contract, and one optional port. A record without a
+// port stays a valid component — it just gets no From/To in the generated
+// wiring.
 func parseTopicBlock(e template.ScaffoldEntry, c *Component) error {
 	topic, err := stringValue(e, "topic")
 	if err != nil {
@@ -53,34 +53,34 @@ func parseTopicBlock(e template.ScaffoldEntry, c *Component) error {
 	c.Topic = &TopicKey{Pubsub: pubsub, Name: topic}
 	c.topicContract = contract
 
-	// No fallback for the connector: a default would describe a binding
-	// the rendered code doesn't use. A missing key is reported by the
-	// caller as a warning; a present one must be a non-empty string.
-	if _, ok := e.Values["connector"]; ok {
-		connector, err := stringValue(e, "connector")
+	// No fallback for the port: a default would describe a binding the
+	// rendered code doesn't use. A missing key is reported by the caller as
+	// a warning; a present one must be a non-empty string.
+	if _, ok := e.Values["port"]; ok {
+		port, err := stringValue(e, "port")
 		if err != nil {
 			return err
 		}
-		c.Connector = connector
-		c.Connectors = []string{connector}
+		c.Port = port
+		c.Ports = []string{port}
 	} else {
-		c.missingConnector = true
+		c.missingPort = true
 	}
 	return nil
 }
 
 // parseTransactional parses the wiring of a transactional block: exactly
-// two connectors, From before To, and no topic. Both connectors are
-// required — a half-wired transactional block would render broken code.
+// two ports, From before To, and no topic. Both ports are required — a
+// half-wired transactional block would render broken code.
 func parseTransactional(e template.ScaffoldEntry, c *Component) error {
-	from, err := stringValue(e, "fromConnector")
+	from, err := stringValue(e, "fromPort")
 	if err != nil {
 		return err
 	}
-	to, err := stringValue(e, "toConnector")
+	to, err := stringValue(e, "toPort")
 	if err != nil {
 		return err
 	}
-	c.Connectors = []string{from, to}
+	c.Ports = []string{from, to}
 	return nil
 }
