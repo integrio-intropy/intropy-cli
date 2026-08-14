@@ -40,8 +40,10 @@ func buildPayload(m *Model, outputDir, kebab string) (map[string]any, error) {
 		// Kind is verbatim: Assemble already validated it against the
 		// parse registry. The wiring fields follow the component's shape,
 		// not its kind — a topic carries topic, one port port, two ports
-		// from/to — and the template resolves each name to the field
-		// identifier it derived for the topic or port.
+		// fromPort/toPort — and the template resolves each name to the
+		// field identifier it derived for the topic or port. The keys match
+		// the transactional scaffold record's: the template library's
+		// system-host reads fromPort/toPort (template release v0.4.0+).
 		entry := map[string]any{
 			"appId": c.AppID,
 			"kind":  c.Kind,
@@ -57,8 +59,8 @@ func buildPayload(m *Model, outputDir, kebab string) (map[string]any, error) {
 		case 1:
 			entry["port"] = c.Ports[0]
 		default:
-			entry["from"] = c.Ports[0]
-			entry["to"] = c.Ports[1]
+			entry["fromPort"] = c.Ports[0]
+			entry["toPort"] = c.Ports[1]
 		}
 		components[i] = entry
 	}

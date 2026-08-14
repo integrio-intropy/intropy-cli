@@ -88,15 +88,16 @@ func TestBuildPayloadShape(t *testing.T) {
 	if _, ok := audit["topic"]; !ok {
 		t.Errorf("port-less component still carries its topic: %#v", audit)
 	}
-	// A transactional component emits from/to and no topic.
+	// A transactional component emits fromPort/toPort (the keys the
+	// template library's system-host reads) and no topic.
 	tx := components[3].(map[string]any)
 	if tx["kind"] != "transactional-integration" {
 		t.Errorf("transactional kind = %v", tx["kind"])
 	}
-	if tx["from"] != "erp-source" || tx["to"] != "erp-destination" {
+	if tx["fromPort"] != "erp-source" || tx["toPort"] != "erp-destination" {
 		t.Errorf("transactional wiring = %#v", tx)
 	}
-	for _, absent := range []string{"topic", "port"} {
+	for _, absent := range []string{"topic", "port", "from", "to"} {
 		if _, ok := tx[absent]; ok {
 			t.Errorf("transactional component should not carry %s: %#v", absent, tx)
 		}
@@ -178,7 +179,7 @@ func TestBuildPayloadTransactionalOnly(t *testing.T) {
 	}
 	components := payload["components"].([]any)
 	tx := components[0].(map[string]any)
-	if tx["from"] != "erp-source" || tx["to"] != "erp-destination" {
+	if tx["fromPort"] != "erp-source" || tx["toPort"] != "erp-destination" {
 		t.Errorf("transactional wiring = %#v", tx)
 	}
 }

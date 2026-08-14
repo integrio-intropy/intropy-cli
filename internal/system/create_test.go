@@ -188,8 +188,8 @@ public sealed class {{ .systemClass }} : ISystemDefinition
             .Publishes(Topics.{{ index $topicField (printf "%s/%s" .topic.pubsub .topic.name) }});
 {{- else if eq .kind "transactional-integration" }}
         builder.AddTransactionalIntegration("{{ .appId }}")
-            .From(Ports.{{ index $portField .from }})
-            .To(Ports.{{ index $portField .to }});
+            .From(Ports.{{ index $portField .fromPort }})
+            .To(Ports.{{ index $portField .toPort }});
 {{- else }}
         builder.AddLoader("{{ .appId }}")
             .Subscribes(Topics.{{ index $topicField (printf "%s/%s" .topic.pubsub .topic.name) }})
