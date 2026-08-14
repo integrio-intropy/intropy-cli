@@ -1,16 +1,1 @@
-Make an analysis of the tests of this cli. I know that we for example mock template output in system/create_test. Do we have a poor segragation between templates and the cli?
-
----
-
-Are the recommendations understood well enough to implement or should we analyse more?
-
----
-
-1. Go for a but make a note on what we expect the template repo to test
-2. It is public
-3. Can you do that?
-4. Can you do that?
-
----
-
 yes please
