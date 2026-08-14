@@ -7,9 +7,9 @@ import (
 
 // buildPayload assembles the value map passed as SetValues to the
 // system-host template. The payload carries workspace facts only — topic and
-// connector names, component wiring, the detected contracts sibling — and
-// the template derives everything that exists only inside the generated
-// files: the Topics/Connectors field identifiers, the joins between
+// port names, component wiring, the detected contracts sibling — and the
+// template derives everything that exists only inside the generated
+// files: the Topics/Ports field identifiers, the joins between
 // components and those fields, and the csproj ProjectReference path.
 //
 // The contracts sibling travels as a relative include: the template renders
@@ -28,9 +28,9 @@ func buildPayload(m *Model, outputDir, kebab string) (map[string]any, error) {
 		}
 	}
 
-	connectors := make([]any, len(m.Connectors))
-	for i, c := range m.Connectors {
-		connectors[i] = map[string]any{
+	ports := make([]any, len(m.Ports))
+	for i, c := range m.Ports {
+		ports[i] = map[string]any{
 			"name": c.Name,
 		}
 	}
@@ -39,9 +39,9 @@ func buildPayload(m *Model, outputDir, kebab string) (map[string]any, error) {
 	for i, c := range m.Components {
 		// Kind is verbatim: Assemble already validated it against the
 		// parse registry. The wiring fields follow the component's shape,
-		// not its kind — a topic carries topic, one connector connector,
-		// two connectors from/to — and the template resolves each name to
-		// the field identifier it derived for the topic or connector.
+		// not its kind — a topic carries topic, one port port, two ports
+		// from/to — and the template resolves each name to the field
+		// identifier it derived for the topic or port.
 		entry := map[string]any{
 			"appId": c.AppID,
 			"kind":  c.Kind,
@@ -52,13 +52,13 @@ func buildPayload(m *Model, outputDir, kebab string) (map[string]any, error) {
 				"name":   c.Topic.Name,
 			}
 		}
-		switch len(c.Connectors) {
+		switch len(c.Ports) {
 		case 0:
 		case 1:
-			entry["connector"] = c.Connectors[0]
+			entry["port"] = c.Ports[0]
 		default:
-			entry["from"] = c.Connectors[0]
-			entry["to"] = c.Connectors[1]
+			entry["from"] = c.Ports[0]
+			entry["to"] = c.Ports[1]
 		}
 		components[i] = entry
 	}
@@ -66,7 +66,7 @@ func buildPayload(m *Model, outputDir, kebab string) (map[string]any, error) {
 	payload := map[string]any{
 		"name":       kebab,
 		"topics":     topics,
-		"connectors": connectors,
+		"ports":      ports,
 		"components": components,
 	}
 	if m.Shared != nil {

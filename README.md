@@ -294,12 +294,11 @@ The command reads before it writes: it scans the workspace for the
 validates them into a system model, and passes the assembled values to
 the `system-host` template (a .NET Aspire AppHost), which renders the
 whole declaration — `Topics.cs` defines each topic once as a
-`TopicRef<T>`, `Connectors.cs` defines each edge block's port to the
-outside world (its deployed transport shape — connection values are
-deployment configuration), and the `ISystemDefinition` class wires every
-extractor and loader to its topic plus its connector (`.From(...)` on
-extractors, `.To(...)` on loaders) and the platform services
-(`.Uses(...)`). The workspace's shared contracts project (template role
+`TopicRef<T>`, `Ports.cs` defines each edge block's port to the outside
+world (its deployed transport shape — connection values are deployment
+configuration), and the `ISystemDefinition` class wires every extractor
+and loader to its topic plus its port (`.From(...)` on extractors,
+`.To(...)` on loaders) and the platform services (`.Uses(...)`). The workspace's shared contracts project (template role
 `shared-library`, typically `Contracts/`) is referenced from the host's
 project file, never declared as a component. A contracts project is only
 needed when the system has topics: a host of transactional integrations
@@ -309,7 +308,7 @@ host template itself.
 
 The generated development definition (`<Project>Development.cs`) owns the
 local-run picture: it mocks the platform services from the skeleton's
-OpenAPI documents and resolves each connector to a drop folder under the
+OpenAPI documents and resolves each port to a drop folder under the
 host's `test/` directory, so the assembled system runs end-to-end with
 zero external configuration — drop a file into `test/<name>-source/`,
 collect the result from `test/<name>-destination/`.
@@ -340,12 +339,12 @@ unsupported block kind are skipped with a warning listing the supported
 kinds. The assembled kinds:
 
 - **extractor / loader** — topic blocks. Their records carry `topic`,
-  `contract`, and one optional `connector`; a record without a `connector`
-  value keeps its component but gets no `From`/`To`.
-- **transactional-integration** — a connector-to-connector block with no
-  topic. Its record carries `fromConnector` and `toConnector`; both are
-  required, and a missing one fails the assembly. The generated system
-  class wires it as `.From(Connectors.X).To(Connectors.Y)`.
+  `contract`, and one optional `port`; a record without a `port` value
+  keeps its component but gets no `From`/`To`.
+- **transactional-integration** — a port-to-port block with no topic. Its
+  record carries `fromPort` and `toPort`; both are required, and a missing
+  one fails the assembly. The generated system class wires it as
+  `.From(Ports.X).To(Ports.Y)`.
 
 Validate the result from the host directory with `dotnet run -- check`.
 
@@ -363,7 +362,7 @@ intropy manifests inspect --system order-flow -o json
 ```
 
 `inspect` reads the system topology, scaffold records, and template release. It
-reports components, workloads, connectors, and the release's available local
+reports components, workloads, ports, and the release's available local
 fixtures without rendering or writing anything.
 
 ### Render local YAML
@@ -373,8 +372,8 @@ intropy manifests render --env local | kubectl apply -f -
 intropy manifests render --env local --binding fno=http
 ```
 
-Each topology connector needs a local fixture. Repeat
-`--binding <connector>=<fixture>` for reproducible and non-interactive renders.
+Each topology port needs a local fixture. Repeat
+`--binding <port>=<fixture>` for reproducible and non-interactive renders.
 When a choice is missing in an interactive terminal, a Huh selector asks for it;
 the selection applies to that render only and is never persisted.
 

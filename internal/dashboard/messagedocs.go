@@ -12,15 +12,15 @@ import (
 )
 
 // messagesDirName is the per-system directory holding authored message
-// descriptions: one Markdown file per connector, named after it
-// (messages/<connector>.md), with YAML frontmatter for the structured facts
+// descriptions: one Markdown file per port, named after it
+// (messages/<port>.md), with YAML frontmatter for the structured facts
 // and free prose in the body.
 const messagesDirName = "messages"
 
 // maxMessageBodyBytes caps the prose body served for one message description.
 const maxMessageBodyBytes = 16 * 1024
 
-// messageDoc is an authored description of the payload a connector carries —
+// messageDoc is an authored description of the payload a port carries —
 // the flat file from an SFTP drop, the ad-hoc CSV export — written by a
 // developer because no machine spec exists. It is documentation, not
 // enforcement: the runtime never validates against it. Contact and
@@ -58,7 +58,7 @@ type docSample struct {
 }
 
 // readMessageDocs collects the authored message descriptions under a system
-// directory, keyed by connector name (the filename). Problems are returned as
+// directory, keyed by port name (the filename). Problems are returned as
 // strings for the report's error banner — a broken doc never fails the
 // request, and error paths are relative to dir so callers can prefix the
 // system's identifier.

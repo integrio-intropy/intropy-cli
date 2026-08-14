@@ -9,7 +9,7 @@ import (
 // Reserved value keys carry structured, non-parameter data into a render.
 //
 // spec.parameters is scalar-only by design, so a skeleton cannot declare "the
-// list of connectors" as a parameter. These keys are how it gets one anyway:
+// list of ports" as a parameter. These keys are how it gets one anyway:
 // the caller injects the structures after validation, and the skeleton ranges
 // over them. Which files a render produces is then decided by a spec.files
 // condition over the same data.
@@ -25,7 +25,7 @@ const (
 	// a nested lookup would read badly.
 	ReservedEnvKey = "env"
 
-	// ReservedLocalKey carries the local-render decisions — the per-connector
+	// ReservedLocalKey carries the local-render decisions — the per-port
 	// fixture bindings — into a render for the local development cluster.
 	ReservedLocalKey = "local"
 )

@@ -11,8 +11,8 @@ import (
 )
 
 // A record covering what the model has to derive: two wired components, a
-// topic with a subscriber that is not a component of this system, two
-// connectors, and an unwired component.
+// topic with a subscriber that is not a component of this system, two ports,
+// and an unwired component.
 const initTopologyRecord = `{
   "apiVersion": "topology.intropy.io/v1",
   "kind": "SystemTopology",
@@ -22,16 +22,16 @@ const initTopologyRecord = `{
       "name": "erp-loader",
       "kind": "loader",
       "subscribes": [{"pubsub": "price-pubsub", "topic": "price-b2b"}],
-      "connectors": [{"connector": "erp", "direction": "out"}]
+      "ports": [{"port": "erp", "direction": "out"}]
     },
     {
       "name": "extractor",
       "kind": "extractor",
       "publishes": [
-        {"port": "b2b", "pubsub": "price-pubsub", "topic": "price-b2b"},
-        {"port": "b2c", "pubsub": "price-pubsub", "topic": "price-b2c"}
+        {"pubsub": "price-pubsub", "topic": "price-b2b"},
+        {"pubsub": "price-pubsub", "topic": "price-b2c"}
       ],
-      "connectors": [{"connector": "price-master", "direction": "in"}]
+      "ports": [{"port": "price-master", "direction": "in"}]
     },
     {"name": "reconciler", "kind": "reconciler"}
   ],
@@ -41,7 +41,7 @@ const initTopologyRecord = `{
     {"pubsub": "price-pubsub", "topic": "price-b2b", "contract": "Price.Contracts.B2BPrice",
      "publishers": ["extractor"], "subscribers": ["erp-loader"]}
   ],
-  "connectors": [
+  "ports": [
     {"name": "price-master", "externalSystem": "price-master",
      "directions": ["in"], "usedBy": ["extractor"]},
     {"name": "erp", "externalSystem": "erp",
@@ -120,17 +120,17 @@ func TestManifestModelPubSubsAreDistinctWithSortedScopes(t *testing.T) {
 	}
 }
 
-func TestManifestModelConnectors(t *testing.T) {
+func TestManifestModelPorts(t *testing.T) {
 	m := newManifestModel(decodeManifestTopology(t), nil)
 
-	if len(m.Connectors) != 2 {
-		t.Fatalf("Connectors = %+v", m.Connectors)
+	if len(m.Ports) != 2 {
+		t.Fatalf("Ports = %+v", m.Ports)
 	}
 	// Sorted by name, not emission order: erp is declared second in the record.
-	if m.Connectors[0].Name != "erp" || m.Connectors[1].Name != "price-master" {
-		t.Errorf("connectors not sorted: %q, %q", m.Connectors[0].Name, m.Connectors[1].Name)
+	if m.Ports[0].Name != "erp" || m.Ports[1].Name != "price-master" {
+		t.Errorf("ports not sorted: %q, %q", m.Ports[0].Name, m.Ports[1].Name)
 	}
-	erp := m.Connectors[0]
+	erp := m.Ports[0]
 	if erp.ExternalSystem != "erp" {
 		t.Errorf("erp externalSystem = %q", erp.ExternalSystem)
 	}
@@ -191,7 +191,7 @@ func TestManifestModelScaffoldMatchedByAppID(t *testing.T) {
 func TestManifestModelKeepsUnwiredComponent(t *testing.T) {
 	m := newManifestModel(decodeManifestTopology(t), nil)
 	c := findComponent(t, m, "reconciler")
-	if len(c.Topics) != 0 || len(c.Connectors) != 0 {
+	if len(c.Topics) != 0 || len(c.Ports) != 0 {
 		t.Errorf("reconciler = %+v, want no wiring", c)
 	}
 }
@@ -202,8 +202,8 @@ func TestManifestModelComponentWiringIsSorted(t *testing.T) {
 	if got := strings.Join(c.Topics, ","); got != "price-b2b,price-b2c" {
 		t.Errorf("extractor topics = %q", got)
 	}
-	if got := strings.Join(c.Connectors, ","); got != "price-master" {
-		t.Errorf("extractor connectors = %q", got)
+	if got := strings.Join(c.Ports, ","); got != "price-master" {
+		t.Errorf("extractor ports = %q", got)
 	}
 }
 

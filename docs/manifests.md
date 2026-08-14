@@ -10,11 +10,11 @@ intropy manifests create --env prod
 
 All three derive the same stable deployment model from the system topology and
 scaffold records. Extractors become CronJobs; other blocks become Deployments.
-The model also resolves app IDs, pub/sub scopes, topics, and connectors.
+The model also resolves app IDs, pub/sub scopes, topics, and ports.
 
 ## Inspect
 
-`manifests inspect` prints the derived model, topology connectors, and the local
+`manifests inspect` prints the derived model, topology ports, and the local
 fixture catalog from the selected template release. It does not render
 manifests, prompt, or touch Git.
 
@@ -41,8 +41,8 @@ The local environment uses the conventional development platform and images.
 `--namespace` changes the target namespace. `--image <component>=<name:tag>`
 overrides one image; `--image :<tag>` retags every component.
 
-Each topology connector also needs a local fixture binding. Pass repeatable
-`--binding <connector>=<fixture>` flags for a reproducible render:
+Each topology port also needs a local fixture binding. Pass repeatable
+`--binding <port>=<fixture>` flags for a reproducible render:
 
 ```sh
 intropy manifests render --env local \
@@ -78,9 +78,9 @@ Image digest pinning remains the responsibility of `intropy deploy pin` and
 environment; later structural changes and additional environments are normal,
 reviewed GitOps edits.
 
-## Connector bindings
+## Port bindings
 
-A topology connector names an external edge but does not decide its deployed
+A topology port names an external edge but does not decide its deployed
 Dapr binding. Local rendering receives ephemeral fixture choices through
 `--binding` or the interactive selector. GitOps creation always leaves the
 binding type, address, credentials, and metadata as explicit `REPLACE-ME`

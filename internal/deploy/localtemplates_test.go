@@ -114,10 +114,10 @@ func TestLocalTemplatesRenderAndBuild(t *testing.T) {
 	}
 }
 
-// The topology mints only a connector's name and scopes; the binding's
-// spec.type and metadata are owned by the rendered manifests, so every
-// connector renders as a REPLACE-ME scaffold.
-func TestLocalTemplatesRenderConnectorBindingScaffold(t *testing.T) {
+// The topology mints only a port's name and scopes; the binding's spec.type
+// and metadata are owned by the rendered manifests, so every port renders as
+// a REPLACE-ME scaffold.
+func TestLocalTemplatesRenderPortBindingScaffold(t *testing.T) {
 	requireKustomize(t)
 	root := localTemplatesRoot(t)
 	f := newInitFixtureWith(t, localTemplateEntries(t, root))
@@ -129,9 +129,9 @@ func TestLocalTemplatesRenderConnectorBindingScaffold(t *testing.T) {
 		"system": "distribution",
 		"components": [
 			{"name": "order-loader", "kind": "loader",
-			 "connectors": [{"connector": "erp", "direction": "out"}]}
+			 "ports": [{"port": "erp", "direction": "out"}]}
 		],
-		"connectors": [
+		"ports": [
 			{"name": "erp",
 			 "directions": ["out"], "usedBy": ["order-loader"]}
 		]

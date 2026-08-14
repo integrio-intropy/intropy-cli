@@ -22,7 +22,7 @@ var manifestsInspectCmd = &cobra.Command{
 	Use:   "inspect",
 	Short: "Inspect the deployment model derived from a system topology",
 	Long: "Read the system topology and scaffold records, resolve the template release, and print the components, " +
-		"workloads, connectors, and available local fixtures. Nothing is rendered or written, and Git is not touched.",
+		"workloads, ports, and available local fixtures. Nothing is rendered or written, and Git is not touched.",
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		if err := validateOutputFlag(manifestsInspectFlagValues.output, deploy.OutputPlain, deploy.OutputJSON); err != nil {

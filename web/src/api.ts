@@ -224,8 +224,8 @@ export interface DeployState {
 // record by running the system host's `graph` verb (apiVersion
 // topology.intropy.io/v1) and caches the result until an explicit refresh.
 // Wiring is inlined on each component — the topics it subscribes to and
-// publishes on and the connectors it uses — while the top-level `topics` and
-// `connectors` sections are the lookup tables those inline references resolve
+// publishes on and the ports it uses — while the top-level `topics` and
+// `ports` sections are the lookup tables those inline references resolve
 // against. There is no fallback: a system whose host cannot produce a record
 // appears in `errors` instead of `topologies`.
 
@@ -237,15 +237,13 @@ export interface TopicRef {
 
 /** A component's output onto a pub/sub topic. */
 export interface Publication {
-  /** Component output port the message leaves through. */
-  port?: string
   pubsub: string
   topic: string
 }
 
-/** A component's use of an external connector. */
-export interface ConnectorUse {
-  connector: string
+/** A component's use of an external port. */
+export interface PortUse {
+  port: string
   /** "in" (external → component) or "out" (component → external). */
   direction: 'in' | 'out'
 }
@@ -256,7 +254,7 @@ export interface TopologyComponent {
   kind: string
   subscribes?: TopicRef[]
   publishes?: Publication[]
-  connectors?: ConnectorUse[]
+  ports?: PortUse[]
   /** Contract surfaces — parsed but not yet rendered (shape not finalized). */
   provides?: unknown[]
   consumes?: unknown[]
@@ -275,7 +273,7 @@ export interface TopologyTopic {
 /** An external system integration point. The name is its whole identity —
  *  the deployed Dapr binding type is environment-owned deployment
  *  configuration, never part of the record. */
-export interface TopologyConnector {
+export interface TopologyPort {
   name: string
   externalSystem?: string
   directions?: Array<'in' | 'out'>
@@ -328,9 +326,9 @@ export interface MessageDocSample {
   redacted?: boolean
 }
 
-/** An authored description of the payload a connector carries (the flat file
- *  from an SFTP drop, the ad-hoc CSV export), read from the system's
- *  messages/<connector>.md sidecar. Documentation, not enforcement. */
+/** An authored description of the payload a port carries (the flat file from
+ *  an SFTP drop, the ad-hoc CSV export), read from the system's
+ *  messages/<port>.md sidecar. Documentation, not enforcement. */
 export interface MessageDoc {
   format?: string
   delimiter?: string
@@ -354,15 +352,15 @@ export interface Topology {
   system: string
   components?: TopologyComponent[]
   topics?: TopologyTopic[]
-  connectors?: TopologyConnector[]
+  ports?: TopologyPort[]
   /** Message contract registry topics reference by contract name. Absent
    *  until the system host's topology library emits it. */
   contracts?: Contract[]
   /** Contract surfaces — parsed but not yet rendered (shape not finalized). */
   apis?: unknown[]
-  /** Authored connector payload descriptions, keyed by connector name.
-   *  CLI-merged enrichment from messages/<connector>.md — not part of the
-   *  host-declared topology, and re-read on every request. */
+  /** Authored port payload descriptions, keyed by port name. CLI-merged
+   *  enrichment from messages/<port>.md — not part of the host-declared
+   *  topology, and re-read on every request. */
   messageDocs?: Record<string, MessageDoc>
 }
 

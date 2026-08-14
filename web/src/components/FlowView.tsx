@@ -45,7 +45,7 @@ interface Props {
 
 // Layout geometry. The layout is deterministic: components and the topics
 // they publish/subscribe flow left-to-right by declared depth inside the
-// system boundary, and external systems (via connectors) sit outside it.
+// system boundary, and external systems (via ports) sit outside it.
 const NODE_W = 300
 const NODE_H = 84
 const COL_GAP = 28
@@ -109,9 +109,9 @@ interface ExtNodeData extends Record<string, unknown> {
   name: string
   type: string
   direction?: DaprComponent['direction']
-  /** Declared connector name — the inspector's join key to the topology's
-   *  connectors[] and messageDocs. */
-  connector?: string
+  /** Declared port name — the inspector's join key to the topology's
+   *  ports[] and messageDocs. */
+  port?: string
 }
 
 interface TopicNodeData extends Record<string, unknown> {
@@ -152,10 +152,10 @@ export function FlowView({ selected, onSelect, theme }: Props) {
   const [refreshing, setRefreshing] = useState(false)
   const [system, setSystem] = useState<string | null>(null)
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
-  // What the inspector panel shows: a clicked topic or connector node.
+  // What the inspector panel shows: a clicked topic or port node.
   const [inspect, setInspect] = useState<FlowSelection | null>(null)
 
-  // A different system means different topics/connectors — drop the inspector.
+  // A different system means different topics/ports — drop the inspector.
   useEffect(() => setInspect(null), [system])
 
   useEffect(() => {
@@ -350,7 +350,7 @@ function FlowCanvas({
         }
         if (node.type === 'external') {
           const d = node.data as ExtNodeData
-          if (d.connector) onInspect({ kind: 'connector', name: d.connector })
+          if (d.port) onInspect({ kind: 'port', name: d.port })
         }
       }}
       onPaneClick={() => onInspect(null)}
@@ -373,7 +373,7 @@ function refName(ref: string): string {
 
 // buildDeclaredGraph renders a system's declared topology (v1): components and
 // the topics they publish/subscribe laid out left-to-right by flow depth
-// inside the boundary, external systems (via connectors) outside it. Nothing
+// inside the boundary, external systems (via ports) outside it. Nothing
 // here is inferred — every node and edge comes straight from the record's
 // inline wiring.
 function buildDeclaredGraph(
@@ -382,12 +382,12 @@ function buildDeclaredGraph(
 ): { nodes: Node[]; edges: Edge[] } {
   const comps = topo.components ?? []
 
-  // Metadata lookups: topics carry the contract, connectors the external
+  // Metadata lookups: topics carry the contract, ports the external
   // system a component's inline reference resolves against.
   const topicMeta = new Map(
     (topo.topics ?? []).map((t) => [`${t.pubsub}/${t.topic}`, t]),
   )
-  const connMeta = new Map((topo.connectors ?? []).map((c) => [c.name, c]))
+  const portMeta = new Map((topo.ports ?? []).map((c) => [c.name, c]))
 
   // A topic node is identified by its (pubsub, topic) pair; a component by ref.
   const topicId = (pubsub: string, topic: string): string => `topic:${pubsub}/${topic}`
@@ -559,8 +559,8 @@ function buildDeclaredGraph(
   }
 
   // Externals sit outside the boundary, anchored to the component they touch
-  // so edges stay short: an input connector directly left of its component,
-  // an output connector dropped below the component's column (stacked when
+  // so edges stay short: an input port directly left of its component, an
+  // output port dropped below the component's column (stacked when
   // several share one). This avoids the whole-diagram crossings that a fixed
   // left/right screen edge produces in a multi-column pipeline.
   const belowCount = new Map<number, number>()
@@ -586,20 +586,20 @@ function buildDeclaredGraph(
     const cref = `component:${c.name}`
     const comp = nodeId.get(cref)!
     const anchor = compPos.get(cref)!
-    for (const use of c.connectors ?? []) {
-      const conn = connMeta.get(use.connector)
+    for (const use of c.ports ?? []) {
+      const port = portMeta.get(use.port)
       const isInput = use.direction === 'in'
-      const extId = `ext:${use.connector}`
+      const extId = `ext:${use.port}`
       const data: ExtNodeData = {
-        name: conn?.externalSystem ? refName(conn.externalSystem) : use.connector,
-        type: 'connector',
+        name: port?.externalSystem ? refName(port.externalSystem) : use.port,
+        type: 'port',
         direction: isInput ? 'input' : undefined,
-        connector: use.connector,
+        port: use.port,
       }
       if (isInput) {
         pushExternal(extId, data, anchor.x - EXT_W - EXT_GAP, anchor.y)
         edges.push({
-          id: `e:conn:${c.name}:${use.connector}`,
+          id: `e:port:${c.name}:${use.port}`,
           source: extId,
           sourceHandle: 'out',
           target: comp,
@@ -610,7 +610,7 @@ function buildDeclaredGraph(
       } else {
         pushExternal(extId, data, centerUnder(anchor.x), belowY(anchor.col))
         edges.push({
-          id: `e:conn:${c.name}:${use.connector}`,
+          id: `e:port:${c.name}:${use.port}`,
           source: comp,
           sourceHandle: 'infra',
           target: extId,

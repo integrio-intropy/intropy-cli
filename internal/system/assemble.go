@@ -27,7 +27,7 @@ func Assemble(entries []template.ScaffoldEntry, warnf func(format string, args .
 		byAppID     = map[string]string{}   // appId -> scaffold dir
 		byTopic     = map[TopicKey]Topic{}  // key -> first-seen topic
 		firstDir    = map[TopicKey]string{} // key -> dir that defined it
-		byConnector = map[string]string{}   // connector -> scaffold dir
+		byPort      = map[string]string{}   // port -> scaffold dir
 	)
 
 	for _, e := range entries {
@@ -61,8 +61,8 @@ func Assemble(entries []template.ScaffoldEntry, warnf func(format string, args .
 		if err := parse(e, &c); err != nil {
 			return nil, err
 		}
-		if c.missingConnector {
-			warnf("%s: scaffold record has no connector — re-scaffold with a newer template release to wire From/To", e.Path)
+		if c.missingPort {
+			warnf("%s: scaffold record has no port — re-scaffold with a newer template release to wire From/To", e.Path)
 		}
 
 		if prev, ok := byAppID[appID]; ok {
@@ -70,11 +70,11 @@ func Assemble(entries []template.ScaffoldEntry, warnf func(format string, args .
 		}
 		byAppID[appID] = e.Path
 
-		for _, connector := range c.Connectors {
-			if prev, ok := byConnector[connector]; ok {
-				return nil, fmt.Errorf("duplicate connector %q: declared by both %s and %s (each block gets its own port; rename one in the record's values)", connector, prev, e.Path)
+		for _, port := range c.Ports {
+			if prev, ok := byPort[port]; ok {
+				return nil, fmt.Errorf("duplicate port %q: declared by both %s and %s (each block gets its own port; rename one in the record's values)", port, prev, e.Path)
 			}
-			byConnector[connector] = e.Path
+			byPort[port] = e.Path
 		}
 
 		if c.Topic != nil {
@@ -118,13 +118,13 @@ func Assemble(entries []template.ScaffoldEntry, warnf func(format string, args .
 		return topics[i].Name < topics[j].Name
 	})
 
-	connectors := make([]Connector, 0, len(byConnector))
-	for name := range byConnector {
-		connectors = append(connectors, Connector{Name: name})
+	ports := make([]Port, 0, len(byPort))
+	for name := range byPort {
+		ports = append(ports, Port{Name: name})
 	}
-	sort.Slice(connectors, func(i, j int) bool { return connectors[i].Name < connectors[j].Name })
+	sort.Slice(ports, func(i, j int) bool { return ports[i].Name < ports[j].Name })
 
-	model := &Model{Components: components, Topics: topics, Connectors: connectors}
+	model := &Model{Components: components, Topics: topics, Ports: ports}
 	if len(shared) == 1 {
 		model.Shared = &shared[0]
 	}

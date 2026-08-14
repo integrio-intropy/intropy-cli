@@ -24,11 +24,11 @@ type ManifestInspection struct {
 	Components    []ManifestComponent  `json:"components"`
 	PubSubs       []ManifestPubSub     `json:"pubsubs"`
 	Topics        []ManifestTopic      `json:"topics"`
-	Connectors    []InspectedConnector `json:"connectors"`
+	Ports         []InspectedPort      `json:"ports"`
 }
 
-// InspectedConnector is one external edge derived from the topology.
-type InspectedConnector struct {
+// InspectedPort is one external edge derived from the topology.
+type InspectedPort struct {
 	Name           string   `json:"name"`
 	ExternalSystem string   `json:"externalSystem,omitempty"`
 	Directions     []string `json:"directions,omitempty"`
@@ -141,8 +141,8 @@ func InspectManifests(ctx context.Context, opts InspectManifestOptions) error {
 		PubSubs:       facts.Model.PubSubs,
 		Topics:        facts.Model.Topics,
 	}
-	for _, conn := range facts.Model.Connectors {
-		result.Connectors = append(result.Connectors, InspectedConnector{
+	for _, conn := range facts.Model.Ports {
+		result.Ports = append(result.Ports, InspectedPort{
 			Name:           conn.Name,
 			ExternalSystem: conn.ExternalSystem,
 			Directions:     conn.Directions,
@@ -276,17 +276,17 @@ func reportManifestInspection(w io.Writer, result ManifestInspection) error {
 		return err
 	}
 
-	fmt.Fprintln(w, "\nconnectors")
-	if len(result.Connectors) == 0 {
+	fmt.Fprintln(w, "\nports")
+	if len(result.Ports) == 0 {
 		fmt.Fprintln(w, "  none")
 		return nil
 	}
-	for _, connector := range result.Connectors {
-		details := connector.ExternalSystem
+	for _, port := range result.Ports {
+		details := port.ExternalSystem
 		if details == "" {
 			details = "external system not declared"
 		}
-		fmt.Fprintf(w, "  %s  %s\n", connector.Name, details)
+		fmt.Fprintf(w, "  %s  %s\n", port.Name, details)
 	}
 	return nil
 }

@@ -34,7 +34,7 @@ metadata:
 spec:
   parameters:
     type: object
-    required: [name, topics, connectors, components]
+    required: [name, topics, ports, components]
     properties:
       name:
         type: string
@@ -44,7 +44,7 @@ spec:
         items:
           type: object
           additionalProperties: true
-      connectors:
+      ports:
         type: array
         items:
           type: object
@@ -103,13 +103,13 @@ metadata:
 spec:
   parameters:
     type: object
-    required: [name, topics, connectors, components, sharedContracts]
+    required: [name, topics, ports, components, sharedContracts]
     properties:
       name:
         type: string
       topics:
         type: array
-      connectors:
+      ports:
         type: array
       components:
         type: array
@@ -140,12 +140,12 @@ public static class Topics
 }
 `
 
-const connectorsCSTmpl = `using Intropy.Topology;
+const portsCSTmpl = `using Intropy.Topology;
 
-public static class Connectors
+public static class Ports
 {
-{{- range $c := .connectors }}
-    public static readonly ConnectorRef {{ regexReplaceAll "[-._]" $c.name " " | title | replace " " "" }} = ConnectorRef.Define("{{ $c.name }}");
+{{- range $c := .ports }}
+    public static readonly PortRef {{ regexReplaceAll "[-._]" $c.name " " | title | replace " " "" }} = PortRef.Define("{{ $c.name }}");
 {{- end }}
 }
 `
@@ -154,24 +154,24 @@ const developmentCSTmpl = `public sealed class {{ .projectName }}Development : I
 {
     public void Define(DevelopmentBuilder development)
     {
-{{- range $c := .connectors }}
-        development.Files(Connectors.{{ regexReplaceAll "[-._]" $c.name " " | title | replace " " "" }}).RootPath("./test/{{ $c.name }}");
+{{- range $c := .ports }}
+        development.Files(Ports.{{ regexReplaceAll "[-._]" $c.name " " | title | replace " " "" }}).RootPath("./test/{{ $c.name }}");
 {{- end }}
     }
 }
 `
 
 // The system class joins each component's wiring names to the fields Topics
-// and Connectors declare, keyed by the raw names so the derivation matches
+// and Ports declare, keyed by the raw names so the derivation matches
 // the declaration templates exactly.
 const systemClassCSTmpl = `{{- $topicField := dict -}}
 {{- range $t := .topics -}}
   {{- $key := printf "%s/%s" $t.pubsub $t.name -}}
   {{- $_ := set $topicField $key (regexReplaceAll "[-._]" $t.name " " | title | replace " " "") -}}
 {{- end -}}
-{{- $connField := dict -}}
-{{- range $c := .connectors -}}
-  {{- $_ := set $connField $c.name (regexReplaceAll "[-._]" $c.name " " | title | replace " " "") -}}
+{{- $portField := dict -}}
+{{- range $c := .ports -}}
+  {{- $_ := set $portField $c.name (regexReplaceAll "[-._]" $c.name " " | title | replace " " "") -}}
 {{- end -}}
 public sealed class {{ .systemClass }} : ISystemDefinition
 {
@@ -182,19 +182,19 @@ public sealed class {{ .systemClass }} : ISystemDefinition
 {{- range .components }}
 {{- if eq .kind "extractor" }}
         builder.AddExtractor("{{ .appId }}")
-{{- if hasKey . "connector" }}
-            .From(Connectors.{{ index $connField .connector }})
+{{- if hasKey . "port" }}
+            .From(Ports.{{ index $portField .port }})
 {{- end }}
             .Publishes(Topics.{{ index $topicField (printf "%s/%s" .topic.pubsub .topic.name) }});
 {{- else if eq .kind "transactional-integration" }}
         builder.AddTransactionalIntegration("{{ .appId }}")
-            .From(Connectors.{{ index $connField .from }})
-            .To(Connectors.{{ index $connField .to }});
+            .From(Ports.{{ index $portField .from }})
+            .To(Ports.{{ index $portField .to }});
 {{- else }}
         builder.AddLoader("{{ .appId }}")
             .Subscribes(Topics.{{ index $topicField (printf "%s/%s" .topic.pubsub .topic.name) }})
-{{- if hasKey . "connector" }}
-            .To(Connectors.{{ index $connField .connector }})
+{{- if hasKey . "port" }}
+            .To(Ports.{{ index $portField .port }})
 {{- end }};
 {{- end }}
 {{- end }}
@@ -223,7 +223,7 @@ func systemHostFiles() map[string]string {
 		"system-host/template.yaml":                                      systemHostTemplateYAML,
 		"system-host/skeleton/Program.cs":                                "// dispatch\n",
 		"system-host/skeleton/Topics.cs.tmpl":                            topicsCSTmpl,
-		"system-host/skeleton/Connectors.cs.tmpl":                        connectorsCSTmpl,
+		"system-host/skeleton/Ports.cs.tmpl":                             portsCSTmpl,
 		"system-host/skeleton/{{ .projectName }}Development.cs.tmpl":     developmentCSTmpl,
 		"system-host/skeleton/{{ .systemClass }}.cs.tmpl":                systemClassCSTmpl,
 		"system-host/skeleton/{{ .projectName }}.SystemHost.csproj.tmpl": systemHostCsprojTmpl,
@@ -292,9 +292,9 @@ func writeWorkspace(t *testing.T) string {
 
 func writeBlock(t *testing.T, dir, kind, appID string) {
 	t.Helper()
-	connector := appID + "-source"
+	port := appID + "-source"
 	if kind == template.BlockKindLoader {
-		connector = appID + "-destination"
+		port = appID + "-destination"
 	}
 	err := template.WriteScaffold(dir, template.Scaffold{
 		SchemaVersion: template.ScaffoldSchemaVersion,
@@ -304,7 +304,7 @@ func writeBlock(t *testing.T, dir, kind, appID string) {
 		Version:       "v1",
 		BlockKind:     kind,
 		Values: map[string]any{
-			"appId": appID, "topic": "orders", "contract": "Order", "pubsub": "pubsub", "connector": connector,
+			"appId": appID, "topic": "orders", "contract": "Order", "pubsub": "pubsub", "port": port,
 		},
 	})
 	if err != nil {
@@ -377,27 +377,27 @@ func TestCreateAssemblesSystem(t *testing.T) {
 	for _, want := range []string{
 		`SystemName => "order-flow"`,
 		`builder.AddExtractor("order-extractor")`,
-		".From(Connectors.OrderExtractorSource)",
+		".From(Ports.OrderExtractorSource)",
 		".Publishes(Topics.Orders)",
 		`builder.AddLoader("order-loader")`,
 		".Subscribes(Topics.Orders)",
-		".To(Connectors.OrderLoaderDestination)",
+		".To(Ports.OrderLoaderDestination)",
 	} {
 		if !strings.Contains(string(system), want) {
 			t.Errorf("OrderFlowSystem.cs missing %q:\n%s", want, system)
 		}
 	}
 
-	connectors, err := os.ReadFile(filepath.Join(outDir, "Connectors.cs"))
+	ports, err := os.ReadFile(filepath.Join(outDir, "Ports.cs"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		`ConnectorRef OrderExtractorSource = ConnectorRef.Define("order-extractor-source");`,
-		`ConnectorRef OrderLoaderDestination = ConnectorRef.Define("order-loader-destination");`,
+		`PortRef OrderExtractorSource = PortRef.Define("order-extractor-source");`,
+		`PortRef OrderLoaderDestination = PortRef.Define("order-loader-destination");`,
 	} {
-		if !strings.Contains(string(connectors), want) {
-			t.Errorf("Connectors.cs missing %q:\n%s", want, connectors)
+		if !strings.Contains(string(ports), want) {
+			t.Errorf("Ports.cs missing %q:\n%s", want, ports)
 		}
 	}
 
@@ -407,8 +407,8 @@ func TestCreateAssemblesSystem(t *testing.T) {
 	}
 	for _, want := range []string{
 		"class OrderFlowDevelopment",
-		`development.Files(Connectors.OrderExtractorSource).RootPath("./test/order-extractor-source");`,
-		`development.Files(Connectors.OrderLoaderDestination).RootPath("./test/order-loader-destination");`,
+		`development.Files(Ports.OrderExtractorSource).RootPath("./test/order-extractor-source");`,
+		`development.Files(Ports.OrderLoaderDestination).RootPath("./test/order-loader-destination");`,
 	} {
 		if !strings.Contains(string(development), want) {
 			t.Errorf("OrderFlowDevelopment.cs missing %q:\n%s", want, development)
@@ -447,19 +447,19 @@ func TestCreateAssemblesSystem(t *testing.T) {
 	if result.System.Name != "order-flow" || len(result.System.Components) != 2 || len(result.System.Topics) != 1 {
 		t.Errorf("result.System = %+v", result.System)
 	}
-	if len(result.System.Connectors) != 2 || result.System.Connectors[0].Name != "order-extractor-source" {
-		t.Errorf("result.System.Connectors = %+v", result.System.Connectors)
+	if len(result.System.Ports) != 2 || result.System.Ports[0].Name != "order-extractor-source" {
+		t.Errorf("result.System.Ports = %+v", result.System.Ports)
 	}
-	if !strings.Contains(stderr.String(), `assembled system "order-flow": 2 component(s), 1 topic(s), 2 connector(s)`) {
+	if !strings.Contains(stderr.String(), `assembled system "order-flow": 2 component(s), 1 topic(s), 2 port(s)`) {
 		t.Errorf("stderr = %s", stderr.String())
 	}
 }
 
-func TestCreateWithRecordMissingConnectorOmitsItsFromTo(t *testing.T) {
+func TestCreateWithRecordMissingPortOmitsItsFromTo(t *testing.T) {
 	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
 	defer srv.Close()
 
-	// The loader's record predates the connector value; the extractor's has it.
+	// The loader's record predates the port value; the extractor's has it.
 	ws := t.TempDir()
 	writeBlock(t, filepath.Join(ws, "order-extractor"), template.BlockKindExtractor, "order-extractor")
 	writeShared(t, filepath.Join(ws, "Contracts"), "Contracts")
@@ -488,29 +488,29 @@ func TestCreateWithRecordMissingConnectorOmitsItsFromTo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(system), ".From(Connectors.OrderExtractorSource)") {
+	if !strings.Contains(string(system), ".From(Ports.OrderExtractorSource)") {
 		t.Errorf("extractor should keep its From:\n%s", system)
 	}
 	if strings.Contains(string(system), ".To(") {
-		t.Errorf("loader without a connector should have no To:\n%s", system)
+		t.Errorf("loader without a port should have no To:\n%s", system)
 	}
-	if !strings.Contains(stderr.String(), "has no connector") {
-		t.Errorf("stderr should warn about the missing connector:\n%s", stderr.String())
+	if !strings.Contains(stderr.String(), "has no port") {
+		t.Errorf("stderr should warn about the missing port:\n%s", stderr.String())
 	}
 	development, err := os.ReadFile(filepath.Join(outDir, "OrderFlowDevelopment.cs"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(development), `development.Files(Connectors.OrderExtractorSource).RootPath("./test/order-extractor-source");`) {
-		t.Errorf("development definition should resolve the extractor's connector:\n%s", development)
+	if !strings.Contains(string(development), `development.Files(Ports.OrderExtractorSource).RootPath("./test/order-extractor-source");`) {
+		t.Errorf("development definition should resolve the extractor's port:\n%s", development)
 	}
 	if strings.Contains(string(development), "order-loader") {
-		t.Errorf("development definition should have no resolution for the connector-less loader:\n%s", development)
+		t.Errorf("development definition should have no resolution for the port-less loader:\n%s", development)
 	}
 }
 
 // writeTransactional lays down a transactional integration's scaffold
-// record: two connectors, no topic.
+// record: two ports, no topic.
 func writeTransactional(t *testing.T, dir, appID, from, to string) {
 	t.Helper()
 	err := template.WriteScaffold(dir, template.Scaffold{
@@ -522,7 +522,7 @@ func writeTransactional(t *testing.T, dir, appID, from, to string) {
 		BlockKind:     template.BlockKindTransactional,
 		DataFlow:      "both",
 		Values: map[string]any{
-			"appId": appID, "fromConnector": from, "toConnector": to,
+			"appId": appID, "fromPort": from, "toPort": to,
 		},
 	})
 	if err != nil {
@@ -555,24 +555,24 @@ func TestCreateAssemblesTransactionalIntegration(t *testing.T) {
 	}
 	for _, want := range []string{
 		`builder.AddTransactionalIntegration("erp-sync")`,
-		".From(Connectors.ErpSource)",
-		".To(Connectors.ErpDestination)",
+		".From(Ports.ErpSource)",
+		".To(Ports.ErpDestination)",
 	} {
 		if !strings.Contains(string(system), want) {
 			t.Errorf("OrderFlowSystem.cs missing %q:\n%s", want, system)
 		}
 	}
 
-	connectors, err := os.ReadFile(filepath.Join(outDir, "Connectors.cs"))
+	ports, err := os.ReadFile(filepath.Join(outDir, "Ports.cs"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		`ConnectorRef ErpSource = ConnectorRef.Define("erp-source");`,
-		`ConnectorRef ErpDestination = ConnectorRef.Define("erp-destination");`,
+		`PortRef ErpSource = PortRef.Define("erp-source");`,
+		`PortRef ErpDestination = PortRef.Define("erp-destination");`,
 	} {
-		if !strings.Contains(string(connectors), want) {
-			t.Errorf("Connectors.cs missing %q:\n%s", want, connectors)
+		if !strings.Contains(string(ports), want) {
+			t.Errorf("Ports.cs missing %q:\n%s", want, ports)
 		}
 	}
 
@@ -581,21 +581,21 @@ func TestCreateAssemblesTransactionalIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		`development.Files(Connectors.ErpSource).RootPath("./test/erp-source");`,
-		`development.Files(Connectors.ErpDestination).RootPath("./test/erp-destination");`,
+		`development.Files(Ports.ErpSource).RootPath("./test/erp-source");`,
+		`development.Files(Ports.ErpDestination).RootPath("./test/erp-destination");`,
 	} {
 		if !strings.Contains(string(development), want) {
 			t.Errorf("OrderFlowDevelopment.cs missing %q:\n%s", want, development)
 		}
 	}
 
-	// The JSON summary: transactional components add `connectors` while the
-	// topic blocks keep their scalar `connector`.
+	// The JSON summary: transactional components add `ports` while the
+	// topic blocks keep their scalar `port`.
 	var result CreateResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("output JSON: %v\n%s", err, stdout.String())
 	}
-	if len(result.System.Components) != 3 || len(result.System.Connectors) != 4 || len(result.System.Topics) != 1 {
+	if len(result.System.Components) != 3 || len(result.System.Ports) != 4 || len(result.System.Topics) != 1 {
 		t.Errorf("result.System = %+v", result.System)
 	}
 	var tx *Component
@@ -607,10 +607,10 @@ func TestCreateAssemblesTransactionalIntegration(t *testing.T) {
 	if tx == nil {
 		t.Fatalf("no transactional component in %+v", result.System.Components)
 	}
-	if tx.Connector != "" || len(tx.Connectors) != 2 || tx.Connectors[0] != "erp-source" || tx.Connectors[1] != "erp-destination" {
+	if tx.Port != "" || len(tx.Ports) != 2 || tx.Ports[0] != "erp-source" || tx.Ports[1] != "erp-destination" {
 		t.Errorf("transactional summary = %+v", *tx)
 	}
-	if !strings.Contains(stderr.String(), `assembled system "order-flow": 3 component(s), 1 topic(s), 4 connector(s)`) {
+	if !strings.Contains(stderr.String(), `assembled system "order-flow": 3 component(s), 1 topic(s), 4 port(s)`) {
 		t.Errorf("stderr = %s", stderr.String())
 	}
 }
@@ -653,8 +653,8 @@ func TestCreateAssemblesTransactionalOnlySystem(t *testing.T) {
 	}
 	for _, want := range []string{
 		`builder.AddTransactionalIntegration("erp-sync")`,
-		".From(Connectors.ErpSource)",
-		".To(Connectors.ErpDestination)",
+		".From(Ports.ErpSource)",
+		".To(Ports.ErpDestination)",
 	} {
 		if !strings.Contains(string(system), want) {
 			t.Errorf("TransSystem.cs missing %q:\n%s", want, system)
@@ -667,7 +667,7 @@ func TestCreateAssemblesTransactionalOnlySystem(t *testing.T) {
 		t.Errorf("no contracts project should be scaffolded, stat err = %v", err)
 	}
 
-	if !strings.Contains(stderr.String(), `assembled system "trans": 1 component(s), 0 topic(s), 2 connector(s), no contracts project`) {
+	if !strings.Contains(stderr.String(), `assembled system "trans": 1 component(s), 0 topic(s), 2 port(s), no contracts project`) {
 		t.Errorf("stderr = %s", stderr.String())
 	}
 
@@ -678,7 +678,7 @@ func TestCreateAssemblesTransactionalOnlySystem(t *testing.T) {
 	if result.System.SharedLibrary != "" {
 		t.Errorf("SharedLibrary = %q, want empty", result.System.SharedLibrary)
 	}
-	if len(result.System.Topics) != 0 || len(result.System.Connectors) != 2 {
+	if len(result.System.Topics) != 0 || len(result.System.Ports) != 2 {
 		t.Errorf("result.System = %+v", result.System)
 	}
 }

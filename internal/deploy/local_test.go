@@ -223,19 +223,19 @@ func applyLocalImageOverrides(doc []byte, images []localImageEntry) []byte {
 	return []byte(text)
 }
 
-// localTopologyRecord names two components and two connectors, one of which
-// (erp) the state file already binds.
+// localTopologyRecord names two components and two ports, one of which (erp)
+// the state file already binds.
 const localTopologyRecord = `{
   "apiVersion": "topology.intropy.io/v1",
   "kind": "SystemTopology",
   "system": "distribution",
   "components": [
     {"name": "erp-loader", "kind": "loader",
-     "connectors": [{"connector": "erp", "direction": "out"}]},
+     "ports": [{"port": "erp", "direction": "out"}]},
     {"name": "extractor", "kind": "extractor",
-     "connectors": [{"connector": "price-master", "direction": "in"}]}
+     "ports": [{"port": "price-master", "direction": "in"}]}
   ],
-  "connectors": [
+  "ports": [
     {"name": "erp", "externalSystem": "erp",
      "directions": ["out"], "usedBy": ["erp-loader"]},
     {"name": "price-master", "externalSystem": "price-master",
@@ -417,7 +417,7 @@ func TestLocalNonInteractiveRenderFailsForMissingBindings(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected a missing-binding error")
 	}
-	for _, want := range []string{"local bindings are required for connectors: price-master", "--binding <connector>=<fixture>", "sftp, http"} {
+	for _, want := range []string{"local bindings are required for ports: price-master", "--binding <port>=<fixture>", "sftp, http"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error should name %q: %v", want, err)
 		}
@@ -442,7 +442,7 @@ func TestLocalRejectsAFixtureOutsideTheCatalog(t *testing.T) {
 	}
 }
 
-func TestLocalRejectsABindingForAnUnknownConnector(t *testing.T) {
+func TestLocalRejectsABindingForAnUnknownPort(t *testing.T) {
 	f := newLocalFixture(t)
 	stubKustomizeBuild(t)
 
@@ -450,8 +450,8 @@ func TestLocalRejectsABindingForAnUnknownConnector(t *testing.T) {
 	opts := f.options(&stdout, &stderr)
 	opts.Bindings = append(opts.Bindings, "crm=http")
 	err := runManifestPipeline(context.Background(), opts)
-	if err == nil || !strings.Contains(err.Error(), `connector "crm"`) {
-		t.Fatalf("expected an unknown-connector error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), `port "crm"`) {
+		t.Fatalf("expected an unknown-port error, got %v", err)
 	}
 }
 
@@ -497,10 +497,10 @@ func TestFixtureLabelDescribesKnownFixturesAndFallsBack(t *testing.T) {
 	}
 }
 
-func TestParseConnectorBindingArgsRejectsInvalidAndDuplicateValues(t *testing.T) {
+func TestParsePortBindingArgsRejectsInvalidAndDuplicateValues(t *testing.T) {
 	for _, args := range [][]string{{"erp"}, {"=http"}, {"erp="}, {"erp=http", "erp=sftp"}} {
-		if _, err := parseConnectorBindingArgs(args); err == nil {
-			t.Errorf("parseConnectorBindingArgs(%q) succeeded", args)
+		if _, err := parsePortBindingArgs(args); err == nil {
+			t.Errorf("parsePortBindingArgs(%q) succeeded", args)
 		}
 	}
 }

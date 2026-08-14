@@ -82,7 +82,7 @@ type topologyReport struct {
 }
 
 // topologyEntry is one system's declared topology plus the authored
-// enrichment read from its directory: message descriptions keyed by connector
+// enrichment read from its directory: message descriptions keyed by port
 // name. The docs ride beside the Topology rather than inside it — the
 // topology stays exactly what the host declared.
 type topologyEntry struct {
@@ -366,10 +366,10 @@ func (s *apiServer) warmTopologies() {
 	}()
 }
 
-// messageDocs reads the authored connector payload descriptions beside a
-// system, keyed by connector name. A doc naming a connector the topology does
-// not declare is surfaced as an error and withheld — never guessed around.
-// Error messages carry the doc's workspace-relative path.
+// messageDocs reads the authored port payload descriptions beside a system,
+// keyed by port name. A doc naming a port the topology does not declare is
+// surfaced as an error and withheld — never guessed around. Error messages
+// carry the doc's workspace-relative path.
 func (s *apiServer) messageDocs(e topology.Entry) (map[string]messageDoc, []string) {
 	docs, errs := readMessageDocs(filepath.Join(s.root, filepath.FromSlash(e.Path)))
 	prefix := ""
@@ -380,7 +380,7 @@ func (s *apiServer) messageDocs(e topology.Entry) (map[string]messageDoc, []stri
 		errs[i] = prefix + msg
 	}
 	known := map[string]bool{}
-	for _, c := range e.Connectors {
+	for _, c := range e.Ports {
 		known[c.Name] = true
 	}
 	var unknown []string
@@ -392,7 +392,7 @@ func (s *apiServer) messageDocs(e topology.Entry) (map[string]messageDoc, []stri
 	}
 	sort.Strings(unknown)
 	for _, name := range unknown {
-		errs = append(errs, fmt.Sprintf("%s%s/%s.md: no connector %q declared by system %q",
+		errs = append(errs, fmt.Sprintf("%s%s/%s.md: no port %q declared by system %q",
 			prefix, messagesDirName, name, name, e.System))
 	}
 	if len(docs) == 0 {

@@ -91,7 +91,7 @@ func newLocalFacts(system string, model ManifestModel, scaffolds map[string]temp
 	}
 }
 
-// localModel is the reserved .local structure: the per-connector fixture
+// localModel is the reserved .local structure: the per-port fixture
 // bindings decided by this command.
 type localModel struct {
 	Bindings map[string]string `json:"bindings"`

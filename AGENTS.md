@@ -121,7 +121,7 @@ to git, never trigger a sync:
   resources themselves. Both sides are committed revisions; it never diffs
   an uncommitted worktree.
 - **`inspect`** prints the deployment model derived from one system topology:
-  components, workloads, connectors, and available local fixtures. It never
+  components, workloads, ports, and available local fixtures. It never
   renders manifests or writes project or Git state.
 - **`render`** emits a complete Kubernetes YAML stream for one environment.
   It may ask for missing local fixture choices, buffers and validates the whole
