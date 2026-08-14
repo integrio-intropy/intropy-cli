@@ -1,0 +1,87 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "6d82f8bf35cd",
+  "session_id": "019fff40-6d0c-7935-bff2-8126d5f4d4de",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-14T08:33:12.186091Z",
+  "branch": "feat/connector-to-port",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "internal/topology/topology.go",
+    "internal/topology/topology_test.go",
+    "internal/template/reserved.go",
+    "internal/template/reserved_test.go",
+    "internal/template/manifest.go",
+    "internal/system/model.go",
+    "internal/system/blocks.go",
+    "internal/system/assemble.go",
+    "internal/system/payload.go",
+    "internal/system/create.go",
+    "internal/system/create_test.go",
+    "internal/system/assemble_test.go",
+    "internal/system/payload_test.go",
+    "internal/system/real_template_e2e_test.go",
+    "internal/deploy/manifests_model.go",
+    "internal/deploy/ports.go",
+    "internal/deploy/manifests.go",
+    "internal/deploy/manifests_engine.go",
+    "internal/deploy/manifests_local.go",
+    "internal/dashboard/handlers.go",
+    "internal/dashboard/messagedocs.go",
+    "internal/dashboard/dashboard_test.go",
+    "internal/deploy/manifests_model_test.go",
+    "internal/deploy/local_test.go",
+    "internal/deploy/localtemplates_test.go",
+    "internal/deploy/manifests_ports_integration_test.go",
+    "internal/deploy/manifests_engine_integration_test.go",
+    "cmd/intropy/manifests_inspect.go",
+    "cmd/intropy/manifests_render.go",
+    "cmd/intropy/sys_create.go",
+    "web/src/api.ts",
+    "web/src/components/FlowView.tsx",
+    "web/src/components/FlowDetail.tsx",
+    "web/src/index.css",
+    "README.md",
+    "docs/manifests.md",
+    "AGENTS.md"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "c868ad88dbba",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 160507,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 6906176,
+    "output_tokens": 47516,
+    "api_call_count": 95
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-14T08:33:12.147621Z",
+    "agent_lines": 611,
+    "agent_removed": 420,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 611,
+    "total_lines_changed": 1228,
+    "agent_percentage": 83.95765472312704,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    }
+  ]
+}

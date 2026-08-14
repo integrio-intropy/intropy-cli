@@ -3,18 +3,45 @@
   "checkpoint_id": "6d82f8bf35cd",
   "strategy": "manual-commit",
   "branch": "feat/connector-to-port",
-  "checkpoints_count": 7,
+  "checkpoints_count": 10,
   "files_touched": [
+    "AGENTS.md",
     "README.md",
+    "cmd/intropy/manifests_inspect.go",
+    "cmd/intropy/manifests_render.go",
+    "cmd/intropy/sys_create.go",
+    "docs/manifests.md",
+    "internal/dashboard/dashboard_test.go",
+    "internal/dashboard/handlers.go",
+    "internal/dashboard/messagedocs.go",
+    "internal/deploy/local_test.go",
+    "internal/deploy/localtemplates_test.go",
+    "internal/deploy/manifests.go",
+    "internal/deploy/manifests_engine.go",
+    "internal/deploy/manifests_engine_integration_test.go",
+    "internal/deploy/manifests_local.go",
+    "internal/deploy/manifests_model.go",
+    "internal/deploy/manifests_model_test.go",
+    "internal/deploy/manifests_ports_integration_test.go",
+    "internal/deploy/ports.go",
     "internal/system/assemble.go",
     "internal/system/assemble_test.go",
+    "internal/system/blocks.go",
     "internal/system/create.go",
     "internal/system/create_test.go",
     "internal/system/model.go",
     "internal/system/payload.go",
     "internal/system/payload_test.go",
     "internal/system/real_template_e2e_test.go",
-    "internal/template/manifest.go"
+    "internal/template/manifest.go",
+    "internal/template/reserved.go",
+    "internal/template/reserved_test.go",
+    "internal/topology/topology.go",
+    "internal/topology/topology_test.go",
+    "web/src/api.ts",
+    "web/src/components/FlowDetail.tsx",
+    "web/src/components/FlowView.tsx",
+    "web/src/index.css"
   ],
   "sessions": [
     {
@@ -23,13 +50,20 @@
       "compact_transcript": "/6d/82f8bf35cd/0/transcript.jsonl",
       "content_hash": "/6d/82f8bf35cd/0/content_hash.txt",
       "prompt": "/6d/82f8bf35cd/0/prompt.txt"
+    },
+    {
+      "metadata": "/6d/82f8bf35cd/1/metadata.json",
+      "transcript": "/6d/82f8bf35cd/1/full.jsonl",
+      "compact_transcript": "/6d/82f8bf35cd/1/transcript.jsonl",
+      "content_hash": "/6d/82f8bf35cd/1/content_hash.txt",
+      "prompt": "/6d/82f8bf35cd/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 103469,
+    "input_tokens": 263976,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 9992576,
-    "output_tokens": 44299,
-    "api_call_count": 117
+    "cache_read_tokens": 16898752,
+    "output_tokens": 91815,
+    "api_call_count": 212
   }
 }

@@ -1,0 +1,66 @@
+Can you analyze these changes? Do not make any changes
+   ## The rule
+
+   The topology declares a Port (a name); the environment resolves it to an adapter
+   implemented as a Dapr binding. Ports-and-adapters: "port" is the topology-level
+   concept, "adapter"/"binding" is the Dapr-level implementation.
+
+   ## Mapping
+
+   - ConnectorRef → PortRef
+   - Connectors.cs / public static class Connectors → Ports.cs / Ports (scaffolded
+     SystemHost files)
+   - Connector as a resource/kind name in models, topology JSON, and CLI output → Port:
+     - "connectors": [{"connector": "…"}] → "ports": [{"port": "…"}] (graph document,
+       both the top-level array and per-component port uses)
+     - development file resolutions: "files": [{"connector": "…"}] → [{"port": "…"}]
+     - "N connector(s)" → "N port(s)"; any "connectors" section in inspect/manifests
+       output → "ports"
+   - Scaffold record values connector, fromConnector, toConnector → port, fromPort, toPort
+   - Kubernetes label intropy.io/connector → intropy.io/port
+   - CLI flag spelling --binding <connector>=<fixture> → --binding <port>=<fixture>
+     in help text and error messages
+   - Template/Task variables like CONNECTOR_DIR → PORT_DIR
+
+   ## Do NOT rename (Dapr-level concepts)
+
+   - bindings.* component types (e.g. bindings.localstorage, bindings.sftp)
+   - binding.<name> Dapr component names (the derivation binding.<port-name> is unchanged)
+   - IFileAdapter / LocalFileAdapter / SftpAdapter — adapters stay adapters
+
+   ## Interchange contract
+
+   The graph document is now topology.intropy.io/v2 (was v1). Changes relative to v1:
+   - apiVersion string itself
+   - "connectors" → "ports" (top level and per component)
+   - "connector" → "port" (in port uses and development files)
+   - publishes entries no longer carry "port" (the dormant default-output-port field
+     was removed from the model entirely)
+
+   If this repo parses the graph JSON, accept v2. If it scaffolds SystemHost code,
+   the generated Connectors.cs/ConnectorRef code must become Ports.cs/PortRef — note
+   the example SystemHost in intropy-topology (examples/OrderFlow.SystemHost/Ports.cs,
+   OrderFlowSystem.cs, OrderFlowDevelopment.cs) mirrors this repo's templates verbatim,
+   so golden files (e.g. internal/system/create_test.go in intropy-cli) must match
+   the new output exactly.
+
+   ## Also update
+
+   Error messages, --help text, template release notes, and any tests/snapshots that
+   assert on the old strings. This is a breaking change to the public DSL and the
+   interchange JSON — bump versions accordingly (intropy-topology went to
+   v0.4.0-beta.1 / contract v2).
+
+   Reference commit in intropy-topology: 09419a2 (branch feat/connector-to-port).
+
+---
+
+I understand that was in the requirements but we should not go to v2. We will stay on v1. I will change the topology library
+
+---
+
+can you launch a review agent for the plan with pi --print
+
+---
+
+can you implement it on a new branch of feature/v-next?
