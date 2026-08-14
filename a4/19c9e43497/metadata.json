@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "a419c9e43497",
+  "strategy": "manual-commit",
+  "branch": "fix/sys-create-transactional-payload-keys",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "internal/system/payload.go",
+    "internal/system/payload_test.go",
+    "internal/system/real_template_e2e_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/a4/19c9e43497/0/metadata.json",
+      "transcript": "/a4/19c9e43497/0/full.jsonl",
+      "compact_transcript": "/a4/19c9e43497/0/transcript.jsonl",
+      "content_hash": "/a4/19c9e43497/0/content_hash.txt",
+      "prompt": "/a4/19c9e43497/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 101574,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1798272,
+    "output_tokens": 11049,
+    "api_call_count": 44
+  }
+}
