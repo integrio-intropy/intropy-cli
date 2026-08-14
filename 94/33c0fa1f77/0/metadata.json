@@ -1,0 +1,53 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "9433c0fa1f77",
+  "session_id": "019ffffb-777f-754c-a916-0b86c26e6111",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-14T12:13:23.263585Z",
+  "branch": "feat/manifest-create-bindings-rebased",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "internal/deploy/manifests_local.go"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "38796172696b",
+  "checkpoint_transcript_start": 165,
+  "transcript_lines_at_start": 165,
+  "compact_transcript_start": 73,
+  "token_usage": {
+    "input_tokens": 187438,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 9756096,
+    "output_tokens": 17067,
+    "api_call_count": 101
+  },
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-14T12:13:23.206841Z",
+    "agent_lines": 7,
+    "agent_removed": 0,
+    "human_added": 46,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 53,
+    "total_lines_changed": 65,
+    "agent_percentage": 10.76923076923077,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    }
+  ]
+}
