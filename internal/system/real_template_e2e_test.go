@@ -61,7 +61,7 @@ func TestRealSystemHostTransactionalOnly(t *testing.T) {
 		"name":       "trans",
 		"topics":     []any{},
 		"ports":      []any{map[string]any{"name": "erp-source"}, map[string]any{"name": "erp-destination"}},
-		"components": []any{map[string]any{"appId": "erp-sync", "kind": "transactional-integration", "from": "erp-source", "to": "erp-destination"}},
+		"components": []any{map[string]any{"appId": "erp-sync", "kind": "transactional-integration", "fromPort": "erp-source", "toPort": "erp-destination"}},
 	})
 	if _, err := os.Stat(filepath.Join(outDir, "Topics.cs")); !os.IsNotExist(err) {
 		t.Errorf("Topics.cs should not render, err = %v", err)
@@ -97,9 +97,9 @@ func TestRealSystemHostTransactionalOnly(t *testing.T) {
 
 func TestRealSystemHostTopicSystemWithContracts(t *testing.T) {
 	outDir, _ := renderRealHost(t, map[string]any{
-		"name":       "order-flow",
-		"topics":     []any{map[string]any{"pubsub": "pubsub", "name": "orders", "contract": "Order"}},
-		"ports":      []any{map[string]any{"name": "order-extractor-source"}, map[string]any{"name": "order-loader-destination"}},
+		"name":   "order-flow",
+		"topics": []any{map[string]any{"pubsub": "pubsub", "name": "orders", "contract": "Order"}},
+		"ports":  []any{map[string]any{"name": "order-extractor-source"}, map[string]any{"name": "order-loader-destination"}},
 		"components": []any{
 			map[string]any{"appId": "order-extractor", "kind": "extractor", "topic": map[string]any{"pubsub": "pubsub", "name": "orders"}, "port": "order-extractor-source"},
 			map[string]any{"appId": "order-loader", "kind": "loader", "topic": map[string]any{"pubsub": "pubsub", "name": "orders"}, "port": "order-loader-destination"},
