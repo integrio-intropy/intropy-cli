@@ -42,15 +42,6 @@ func (p templatesProvider) fetchLibrary(ctx context.Context) (*template.Library,
 	})
 }
 
-// templateDetail is the /api/templates/{name} payload: the manifest document
-// `template show -o json` serves, plus the parameter fields in YAML
-// declaration order — the order JSON round-tripping loses and the form
-// renders in.
-type templateDetail struct {
-	*template.DescribeResult
-	Fields []template.FieldSpec `json:"fields"`
-}
-
 // createRequest is the POST /api/templates/{name}/create body.
 type createRequest struct {
 	// Name picks the output directory under the workspace root — the CLI's
@@ -125,7 +116,7 @@ func (s *apiServer) getTemplate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, templateFetchStatus(err), err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, templateDetail{DescribeResult: result, Fields: result.OrderedFields()})
+	writeJSON(w, http.StatusOK, result)
 }
 
 // createTemplate runs `int create` for one template: the form's values

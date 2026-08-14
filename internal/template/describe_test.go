@@ -60,11 +60,22 @@ func TestDescribeJSONStable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Fields carries the declaration order the parameters map loses:
+	// integrationName is declared before namespace.
+	var wire struct {
+		Fields []FieldSpec `json:"fields"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if len(wire.Fields) != 2 || wire.Fields[0].Name != "integrationName" || wire.Fields[1].Name != "namespace" {
+		t.Errorf("fields = %+v", wire.Fields)
+	}
 	// Pin the public field names. Adding new fields is fine; renaming/removing
 	// these breaks downstream Backstage consumers.
 	for _, key := range []string{
 		`"template":`, `"owner":`, `"repo":`, `"version":`,
-		`"parameters":`,
+		`"parameters":`, `"fields":`,
 	} {
 		if !strings.Contains(string(data), key) {
 			t.Errorf("missing key %s in JSON: %s", key, string(data))

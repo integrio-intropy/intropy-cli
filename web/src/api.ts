@@ -427,9 +427,8 @@ export const api = {
 }
 
 // Template API (internal/dashboard/templates.go). The shapes mirror the Go
-// JSON contract the endpoints serve: template.List, template.DescribeResult
-// (plus the ordered `fields` JSON round-tripping would lose), and
-// template.CreateResult.
+// JSON contract the endpoints serve: template.List, template.DescribeResult,
+// and template.CreateResult.
 
 /** The /api/templates payload: one library release's template names. */
 export interface TemplateList {
@@ -452,8 +451,9 @@ export interface TemplateField {
   required: boolean
 }
 
-/** The /api/templates/{name} payload: `template show -o json` plus the
- *  declaration-ordered field list. `parameters` is the raw JSON Schema. */
+/** The /api/templates/{name} payload: the `template show -o json` document.
+ *  `fields` is the parameter list in YAML declaration order; `parameters` is
+ *  the raw JSON Schema. */
 export interface TemplateDetail {
   template: string
   title?: string

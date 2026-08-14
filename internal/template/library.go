@@ -157,16 +157,16 @@ func (l *Library) Describe(name string) (*DescribeResult, error) {
 		return nil, err
 	}
 	return &DescribeResult{
-		Template:      tmpl.Metadata.Name,
-		Title:         tmpl.Metadata.Title,
-		Description:   tmpl.Metadata.Description,
-		Tags:          tmpl.Metadata.Tags,
-		Labels:        tmpl.Metadata.Labels,
-		Owner:         l.Owner,
-		Repo:          l.Repo,
-		Version:       l.Version,
-		Parameters:    tmpl.Spec.Parameters,
-		Dependencies:  tmpl.Spec.Dependencies,
-		orderedFields: tmpl.Fields(),
+		Template:     tmpl.Metadata.Name,
+		Title:        tmpl.Metadata.Title,
+		Description:  tmpl.Metadata.Description,
+		Tags:         tmpl.Metadata.Tags,
+		Labels:       tmpl.Metadata.Labels,
+		Owner:        l.Owner,
+		Repo:         l.Repo,
+		Version:      l.Version,
+		Parameters:   tmpl.Spec.Parameters,
+		Dependencies: tmpl.Spec.Dependencies,
+		Fields:       tmpl.Fields(),
 	}, nil
 }
