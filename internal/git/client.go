@@ -370,8 +370,16 @@ func CloneManaged(ctx context.Context, r command.Runner, url, dir string) error 
 	return clone(ctx, r, url, dir, hardening)
 }
 
-func clone(ctx context.Context, r command.Runner, url, dir string, prefix []string) error {
-	args := slices.Concat(prefix, []string{"clone", "--quiet", url, dir})
+// CloneTagManaged shallow-clones one tag into a directory this CLI will own.
+// Shallow is the whole point: a tag is immutable, so the history behind it is
+// weight the cache carries forever and never uses. Hooks are disabled as in
+// CloneManaged — a tag checkout runs post-checkout like any other.
+func CloneTagManaged(ctx context.Context, r command.Runner, url, dir, tag string) error {
+	return clone(ctx, r, url, dir, hardening, "--depth", "1", "--branch", tag)
+}
+
+func clone(ctx context.Context, r command.Runner, url, dir string, prefix []string, extra ...string) error {
+	args := slices.Concat(prefix, []string{"clone", "--quiet"}, extra, []string{url, dir})
 	if _, _, err := r.Run(ctx, "", "git", args...); err != nil {
 		return fmt.Errorf("clone %s: %w", url, err)
 	}
