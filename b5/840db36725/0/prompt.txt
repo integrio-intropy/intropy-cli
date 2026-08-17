@@ -1,0 +1,23 @@
+Do not make any changes
+
+Where does this error come from?`
+Mac domains/orders/trans on  main [$✘!?] ➜  i sys create -n OrderHost -o order-host --template-version v0.3.0-beta.4                                                                                                                                                                                                                           14:29
+error: no shared contracts project found (template role "shared-library"): Topics.cs needs the contract types
+Components scaffolded from the official extractor/loader templates create a sibling Contracts/ project automatically.
+
+---
+
+a transactional integration has neither shared contracts or topics. This is perhaps a case where to much knowledge about scaffolds is encoded to the cli?
+
+---
+
+Can you analyze and come up with a plan on how we can move the knowledge from the cli to the template?
+
+---
+
+1.1 just so I understand it. It is perfectly valid to have a host with a single transactional that has no Contracts and no topics
+2. yes do alternative 2
+
+---
+
+Ok implement the plan on the current branches. Do not push
