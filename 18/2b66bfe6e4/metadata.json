@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "182b66bfe6e4",
+  "strategy": "manual-commit",
+  "branch": "feat/template-git-clone-cache",
+  "checkpoints_count": 7,
+  "files_touched": [
+    "internal/gitclone/gitclone.go",
+    "internal/gitclone/gitclone_test.go",
+    "internal/gitclone/remote.go",
+    "internal/gitclone/remote_test.go",
+    "internal/gitops/remote.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/18/2b66bfe6e4/0/metadata.json",
+      "transcript": "/18/2b66bfe6e4/0/full.jsonl",
+      "compact_transcript": "/18/2b66bfe6e4/0/transcript.jsonl",
+      "content_hash": "/18/2b66bfe6e4/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 13160,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 567424,
+    "output_tokens": 6368,
+    "api_call_count": 10
+  }
+}
