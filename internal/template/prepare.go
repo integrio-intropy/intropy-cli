@@ -41,7 +41,8 @@ type PreparedCreate struct {
 	Repo    string
 	Version string
 
-	// Cleanup removes the extracted library.
+	// Cleanup is retained for callers that hold a prepared create across a
+	// session; the checkout lives in the shared cache, so it is a no-op.
 	Cleanup func()
 }
 
@@ -56,26 +57,23 @@ func PrepareCreate(ctx context.Context, opts CreateOptions) (*PreparedCreate, er
 		return nil, err
 	}
 
-	gh := newConfiguredGitHub(opts.HTTP, opts.UserAgent, opts.GitHubBaseURL)
-	tag, err := resolveReleaseTag(ctx, gh, opts.Owner, opts.Repo, opts.Version)
+	src, err := FetchSource(ctx, opts.sourceOpts())
 	if err != nil {
 		return nil, err
 	}
 
-	templateRoot, cleanup, err := downloadTemplate(ctx, gh, opts.Owner, opts.Repo, tag, opts.Template, "intropy-template-*")
+	templateRoot, err := templateDir(src, src.Owner, src.Repo, opts.Template)
 	if err != nil {
 		return nil, err
 	}
 
 	tmpl, values, err := prepareCreateTemplate(templateRoot, opts)
 	if err != nil {
-		cleanup()
 		return nil, err
 	}
 
 	skelRoot := filepath.Join(templateRoot, templateSkeletonDir)
 	if info, err := os.Stat(skelRoot); err != nil || !info.IsDir() {
-		cleanup()
 		return nil, fmt.Errorf("template %q is missing %s/ directory", opts.Template, templateSkeletonDir)
 	}
 
@@ -85,10 +83,10 @@ func PrepareCreate(ctx context.Context, opts CreateOptions) (*PreparedCreate, er
 		Values:       values,
 		SkeletonRoot: skelRoot,
 		RepoRoot:     filepath.Dir(templateRoot),
-		Owner:        opts.Owner,
-		Repo:         opts.Repo,
-		Version:      tag,
-		Cleanup:      cleanup,
+		Owner:        src.Owner,
+		Repo:         src.Repo,
+		Version:      src.Version,
+		Cleanup:      func() {},
 	}, nil
 }
 
@@ -109,7 +107,7 @@ func RunCreate(p *PreparedCreate, outputDir string, force bool, stderr io.Writer
 	}
 	fmt.Fprintf(stderr, "created %s from %s/%s@%s (template %s)\n", outputDir, p.Owner, p.Repo, p.Version, p.Template)
 
-	// Dependencies come from the same extracted tarball, so they are always
+	// Dependencies come from the same library checkout, so they are always
 	// version-locked to the component that declared them.
 	depRecords, depResults, err := processDependencies(p.Manifest, p.Values, outputDir, &depContext{
 		repoRoot: p.RepoRoot,

@@ -20,15 +20,15 @@ func requireKubectl(t *testing.T) {
 	}
 }
 
-// newLocalFixtureWith serves the given template entries over the GitHubBaseURL
-// seam and lays out a workspace with a topology file. It mirrors
+// newLocalFixtureWith builds the given template entries as a git-backed
+// library and lays out a workspace with a topology file. It mirrors
 // newInitFixtureWith without its GitOps machinery: a local render never
 // opens a repository.
 func newLocalFixtureWith(t *testing.T, entries map[string]string) localFixture {
 	t.Helper()
 	f := newLocalFixture(t)
-	f.srv.Close()
-	f.srv = localLibraryServer(t, entries)
+	f.lib = localLibrary(t, entries)
+	f.source = f.lib.Source(t)
 	return f
 }
 

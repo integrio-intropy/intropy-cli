@@ -1,17 +1,14 @@
 package main
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/integrio-intropy/intropy-cli/internal/template"
+	"github.com/integrio-intropy/intropy-cli/internal/template/templatetest"
 )
 
 func TestSeedOrganization(t *testing.T) {
@@ -122,10 +119,9 @@ func TestResolveCreateName(t *testing.T) {
 	})
 }
 
-// outDirLibraryServer fakes the GitHub endpoints deriveOutDir's fetch
-// calls: the release lookup and a tarball holding one template whose
-// manifest declares the given extra parameter block.
-func outDirLibraryServer(t *testing.T, extraParams string) *httptest.Server {
+// outDirLibrary builds a git-backed library holding one template whose
+// manifest declares the given extra parameter block, for deriveOutDir's fetch.
+func outDirLibrary(t *testing.T, extraParams string) *templatetest.Library {
 	t.Helper()
 	manifest := `apiVersion: intropy.dev/v1
 kind: Template
@@ -140,50 +136,21 @@ spec:
         type: string
 `
 	manifest += extraParams
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	tw := tar.NewWriter(gz)
-	for name, body := range map[string]string{
-		"o-r-abc/hello-world/template.yaml":           manifest,
-		"o-r-abc/hello-world/skeleton/README.md.tmpl": "{{ .integrationName }}\n",
-	} {
-		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o644, Size: int64(len(body))}); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := tw.Write([]byte(body)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := tw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := gz.Close(); err != nil {
-		t.Fatal(err)
-	}
-	mux := http.NewServeMux()
-	mux.HandleFunc("/repos/o/r/releases/latest", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"tag_name":"v1"}`))
+	return templatetest.NewLibrary(t, "v1", map[string]string{
+		"hello-world/template.yaml":           manifest,
+		"hello-world/skeleton/README.md.tmpl": "{{ .integrationName }}\n",
 	})
-	mux.HandleFunc("/repos/o/r/tarball/v1", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write(buf.Bytes())
-	})
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	return srv
 }
 
-func deriveOutDirOpts(srv *httptest.Server, sets map[string]any) template.CreateOptions {
+func deriveOutDirOpts(t *testing.T, lib *templatetest.Library, sets map[string]any) template.CreateOptions {
+	t.Helper()
 	var stderr bytes.Buffer
 	return template.CreateOptions{
-		Template:      "hello-world",
-		SetValues:     sets,
-		NoInput:       true,
-		Stderr:        &stderr,
-		HTTP:          srv.Client(),
-		Owner:         "o",
-		Repo:          "r",
-		GitHubBaseURL: srv.URL,
+		Template:  "hello-world",
+		SetValues: sets,
+		NoInput:   true,
+		Stderr:    &stderr,
+		Source:    lib.Source(t),
 	}
 }
 
@@ -191,8 +158,8 @@ func TestDeriveOutDir(t *testing.T) {
 	nameParam := "      name:\n        type: string\n"
 
 	t.Run("resolved name kebab-cases into the directory", func(t *testing.T) {
-		srv := outDirLibraryServer(t, nameParam)
-		opts := deriveOutDirOpts(srv, map[string]any{"integrationName": "x", "name": "OrderSync"})
+		lib := outDirLibrary(t, nameParam)
+		opts := deriveOutDirOpts(t, lib, map[string]any{"integrationName": "x", "name": "OrderSync"})
 		out, err := deriveOutDir(context.Background(), opts)
 		if err != nil {
 			t.Fatalf("deriveOutDir: %v", err)
@@ -203,8 +170,8 @@ func TestDeriveOutDir(t *testing.T) {
 	})
 
 	t.Run("no name parameter is a usage error", func(t *testing.T) {
-		srv := outDirLibraryServer(t, "")
-		_, err := deriveOutDir(context.Background(), deriveOutDirOpts(srv, map[string]any{"integrationName": "x"}))
+		lib := outDirLibrary(t, "")
+		_, err := deriveOutDir(context.Background(), deriveOutDirOpts(t, lib, map[string]any{"integrationName": "x"}))
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}

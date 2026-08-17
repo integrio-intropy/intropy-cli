@@ -9,16 +9,12 @@ import (
 )
 
 func TestDescribe(t *testing.T) {
-	srv := newTemplateServer(t, "v1.2.3")
-	defer srv.Close()
+	lib := newTemplateLibrary(t, "v1.2.3")
 
 	got, err := Describe(context.Background(), DescribeOptions{
-		Template:      "test-template",
-		Version:       "v1.2.3",
-		HTTP:          srv.Client(),
-		Owner:         "o",
-		Repo:          "r",
-		GitHubBaseURL: srv.URL,
+		Template: "test-template",
+		Version:  "v1.2.3",
+		Source:   lib.sourceOpts(t.TempDir(), nil),
 	})
 	if err != nil {
 		t.Fatalf("Describe: %v", err)
@@ -42,16 +38,12 @@ func TestDescribe(t *testing.T) {
 }
 
 func TestDescribeJSONStable(t *testing.T) {
-	srv := newTemplateServer(t, "v1")
-	defer srv.Close()
+	lib := newTemplateLibrary(t, "v1")
 
 	got, err := Describe(context.Background(), DescribeOptions{
-		Template:      "test-template",
-		Version:       "v1",
-		HTTP:          srv.Client(),
-		Owner:         "o",
-		Repo:          "r",
-		GitHubBaseURL: srv.URL,
+		Template: "test-template",
+		Version:  "v1",
+		Source:   lib.sourceOpts(t.TempDir(), nil),
 	})
 	if err != nil {
 		t.Fatalf("Describe: %v", err)
@@ -84,16 +76,12 @@ func TestDescribeJSONStable(t *testing.T) {
 }
 
 func TestDescribeFormatTextPreservesDeclarationOrder(t *testing.T) {
-	srv := newTemplateServer(t, "v1")
-	defer srv.Close()
+	lib := newTemplateLibrary(t, "v1")
 
 	got, err := Describe(context.Background(), DescribeOptions{
-		Template:      "test-template",
-		Version:       "v1",
-		HTTP:          srv.Client(),
-		Owner:         "o",
-		Repo:          "r",
-		GitHubBaseURL: srv.URL,
+		Template: "test-template",
+		Version:  "v1",
+		Source:   lib.sourceOpts(t.TempDir(), nil),
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -39,10 +39,11 @@ type CreateOptions struct {
 	UserAgent  string
 
 	// Owner and Repo select the template library; zero values target the
-	// official library. GitHubBaseURL is a test-only seam.
-	Owner         string
-	Repo          string
-	GitHubBaseURL string
+	// official library. Source carries the fetch seams (GitHubBaseURL
+	// redirects the latest-release API call in tests).
+	Owner  string
+	Repo   string
+	Source template.SourceOptions
 }
 
 // minFactsPayloadVersion is the lowest template-library release whose
@@ -123,21 +124,21 @@ func Create(ctx context.Context, opts CreateOptions) error {
 	}
 
 	if err := template.Create(ctx, template.CreateOptions{
-		Template:      hostTemplate,
-		OutputDir:     opts.OutputDir,
-		Version:       opts.Version,
-		SetValues:     payload,
-		Force:         opts.Force,
-		NoInput:       true, // the template's values come from the payload, never prompts
-		OnManifest:    requireFactsPayload,
-		Stdin:         strings.NewReader(""),
-		Stdout:        opts.Stdout,
-		Stderr:        opts.Stderr,
-		HTTP:          opts.HTTP,
-		UserAgent:     opts.UserAgent,
-		Owner:         opts.Owner,
-		Repo:          opts.Repo,
-		GitHubBaseURL: opts.GitHubBaseURL,
+		Template:   hostTemplate,
+		OutputDir:  opts.OutputDir,
+		Version:    opts.Version,
+		SetValues:  payload,
+		Force:      opts.Force,
+		NoInput:    true, // the template's values come from the payload, never prompts
+		OnManifest: requireFactsPayload,
+		Stdin:      strings.NewReader(""),
+		Stdout:     opts.Stdout,
+		Stderr:     opts.Stderr,
+		HTTP:       opts.HTTP,
+		UserAgent:  opts.UserAgent,
+		Owner:      opts.Owner,
+		Repo:       opts.Repo,
+		Source:     opts.Source,
 	}); err != nil {
 		return err
 	}

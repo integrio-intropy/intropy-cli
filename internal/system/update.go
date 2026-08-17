@@ -36,12 +36,13 @@ type UpdateOptions struct {
 
 	// Template, Owner, Repo and Version override the pin the host's
 	// scaffold record carries. Zero values render with exactly what
-	// sys create pinned. GitHubBaseURL is a test-only seam.
-	Template      string
-	Owner         string
-	Repo          string
-	Version       string
-	GitHubBaseURL string
+	// sys create pinned. Source carries the fetch seams (GitHubBaseURL
+	// redirects the latest-release API call in tests).
+	Template string
+	Owner    string
+	Repo     string
+	Version  string
+	Source   template.SourceOptions
 }
 
 // UpdateResult is the machine-readable summary --output json writes.
@@ -132,19 +133,19 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 	// template override fetches what it renders and one download serves
 	// all three resolutions.
 	prep, err := template.PrepareCreate(ctx, template.CreateOptions{
-		Template:      orDefault(opts.Template, plan.hostRec.Template),
-		Version:       orDefault(opts.Version, plan.hostRec.Version),
-		SetValues:     merged,
-		NoInput:       true,
-		OnManifest:    requireFactsPayload,
-		Stdin:         strings.NewReader(""),
-		Stdout:        opts.Stdout,
-		Stderr:        opts.Stderr,
-		HTTP:          opts.HTTP,
-		UserAgent:     opts.UserAgent,
-		Owner:         orDefault(opts.Owner, plan.hostRec.Owner),
-		Repo:          orDefault(opts.Repo, plan.hostRec.Repo),
-		GitHubBaseURL: opts.GitHubBaseURL,
+		Template:   orDefault(opts.Template, plan.hostRec.Template),
+		Version:    orDefault(opts.Version, plan.hostRec.Version),
+		SetValues:  merged,
+		NoInput:    true,
+		OnManifest: requireFactsPayload,
+		Stdin:      strings.NewReader(""),
+		Stdout:     opts.Stdout,
+		Stderr:     opts.Stderr,
+		HTTP:       opts.HTTP,
+		UserAgent:  opts.UserAgent,
+		Owner:      orDefault(opts.Owner, plan.hostRec.Owner),
+		Repo:       orDefault(opts.Repo, plan.hostRec.Repo),
+		Source:     opts.Source,
 	})
 	if err != nil {
 		return err

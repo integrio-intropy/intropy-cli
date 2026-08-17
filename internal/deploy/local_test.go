@@ -1,14 +1,10 @@
 package deploy
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +13,7 @@ import (
 	"github.com/integrio-intropy/intropy-cli/internal/command"
 	"github.com/integrio-intropy/intropy-cli/internal/interactive"
 	"github.com/integrio-intropy/intropy-cli/internal/template"
+	"github.com/integrio-intropy/intropy-cli/internal/template/templatetest"
 	"gopkg.in/yaml.v3"
 )
 
@@ -113,41 +110,11 @@ func localLibraryEntries() map[string]string {
 	}
 }
 
-// localLibraryServer serves one release of the given entries over the
-// GitHubBaseURL seam, exactly as the init tests do.
-func localLibraryServer(t *testing.T, entries map[string]string) *httptest.Server {
+// localLibrary builds one release of the given entries as a git-backed
+// fixture, exactly as the init tests do.
+func localLibrary(t *testing.T, entries map[string]string) *templatetest.Library {
 	t.Helper()
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	tw := tar.NewWriter(gz)
-	for name, content := range entries {
-		h := &tar.Header{Name: "owner-repo-abc123/" + name, Mode: 0o644, Size: int64(len(content)), Typeflag: tar.TypeReg}
-		if err := tw.WriteHeader(h); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := tw.Write([]byte(content)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := tw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := gz.Close(); err != nil {
-		t.Fatal(err)
-	}
-	tarball := buf.Bytes()
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/repos/o/r/releases/latest", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"tag_name":"v1.0.0"}`))
-	})
-	mux.HandleFunc("/repos/o/r/tarball/v1.0.0", func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write(tarball)
-	})
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	return srv
+	return templatetest.NewLibrary(t, "v1.0.0", entries)
 }
 
 // stubKustomizeBuild swaps the kustomize build for a deterministic walk of the
@@ -246,7 +213,8 @@ const localTopologyRecord = `{
 
 type localFixture struct {
 	sourceDir string
-	srv       *httptest.Server
+	lib       *templatetest.Library
+	source    template.SourceOptions
 }
 
 func newLocalFixture(t *testing.T) localFixture {
@@ -255,23 +223,33 @@ func newLocalFixture(t *testing.T) localFixture {
 	if err := os.WriteFile(filepath.Join(sourceDir, "topology.json"), []byte(localTopologyRecord), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	return localFixture{sourceDir: sourceDir, srv: localLibraryServer(t, localLibraryEntries())}
+	lib := localLibrary(t, localLibraryEntries())
+	return localFixture{sourceDir: sourceDir, lib: lib, source: lib.Source(t)}
 }
 
 func (f localFixture) options(stdout, stderr *bytes.Buffer) manifestRunOptions {
 	return manifestRunOptions{
-		Mode:          modeLocal,
-		System:        "distribution",
-		TopologyFile:  filepath.Join(f.sourceDir, "topology.json"),
-		SourceDir:     f.sourceDir,
-		Stdin:         strings.NewReader(""),
-		Bindings:      []string{"erp=sftp", "price-master=http"},
-		Stdout:        stdout,
-		Stderr:        stderr,
-		Owner:         "o",
-		Repo:          "r",
-		GitHubBaseURL: f.srv.URL,
-		HTTP:          f.srv.Client(),
+		Mode:         modeLocal,
+		System:       "distribution",
+		TopologyFile: filepath.Join(f.sourceDir, "topology.json"),
+		SourceDir:    f.sourceDir,
+		Stdin:        strings.NewReader(""),
+		Bindings:     []string{"erp=sftp", "price-master=http"},
+		Stdout:       stdout,
+		Stderr:       stderr,
+		Source:       f.source,
+	}
+}
+
+func (f localFixture) renderOptions(stderr *bytes.Buffer) RenderManifestOptions {
+	return RenderManifestOptions{
+		Environment:  localEnv,
+		System:       "distribution",
+		SourceDir:    f.sourceDir,
+		TopologyFile: filepath.Join(f.sourceDir, "topology.json"),
+		Bindings:     []string{"erp=sftp", "price-master=http"},
+		Stderr:       stderr,
+		Source:       f.source,
 	}
 }
 
@@ -500,8 +478,8 @@ func TestLocalErrorsWhenTheLibraryHasNoCatalog(t *testing.T) {
 	entries["deploy-component/template.yaml"] = strings.Replace(
 		localComponentTemplateYAML, "  local:\n    fixtures: [sftp, http]\n", "", 1)
 	f := newLocalFixture(t)
-	f.srv.Close()
-	f.srv = localLibraryServer(t, entries)
+	f.lib = localLibrary(t, entries)
+	f.source = f.lib.Source(t)
 	stubKustomizeBuild(t)
 
 	var stdout, stderr bytes.Buffer
@@ -586,16 +564,13 @@ func TestInspectManifestsReportsTheModelAndFixtureCatalog(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	err := InspectManifests(context.Background(), InspectManifestOptions{
-		System:        "distribution",
-		SourceDir:     f.sourceDir,
-		TopologyFile:  filepath.Join(f.sourceDir, "topology.json"),
-		OutputFormat:  OutputJSON,
-		Stdout:        &stdout,
-		Stderr:        &stderr,
-		Owner:         "o",
-		Repo:          "r",
-		GitHubBaseURL: f.srv.URL,
-		HTTP:          f.srv.Client(),
+		System:       "distribution",
+		SourceDir:    f.sourceDir,
+		TopologyFile: filepath.Join(f.sourceDir, "topology.json"),
+		OutputFormat: OutputJSON,
+		Stdout:       &stdout,
+		Stderr:       &stderr,
+		Source:       f.source,
 	})
 	if err != nil {
 		t.Fatalf("InspectManifests: %v\nstderr: %s", err, stderr.String())
@@ -613,16 +588,13 @@ func TestRenderManifestsReturnsOnlyACompleteBuild(t *testing.T) {
 
 	var stderr bytes.Buffer
 	built, err := RenderManifests(context.Background(), RenderManifestOptions{
-		Environment:   localEnv,
-		System:        "distribution",
-		SourceDir:     f.sourceDir,
-		TopologyFile:  filepath.Join(f.sourceDir, "topology.json"),
-		Bindings:      []string{"erp=sftp", "price-master=http"},
-		Stderr:        &stderr,
-		Owner:         "o",
-		Repo:          "r",
-		GitHubBaseURL: f.srv.URL,
-		HTTP:          f.srv.Client(),
+		Environment:  localEnv,
+		System:       "distribution",
+		SourceDir:    f.sourceDir,
+		TopologyFile: filepath.Join(f.sourceDir, "topology.json"),
+		Bindings:     []string{"erp=sftp", "price-master=http"},
+		Stderr:       &stderr,
+		Source:       f.source,
 	})
 	if err != nil {
 		t.Fatalf("RenderManifests: %v\nstderr: %s", err, stderr.String())
@@ -641,16 +613,13 @@ func TestRenderManifestsReturnsNoBytesWhenBuildFails(t *testing.T) {
 	t.Cleanup(func() { kustomizeBuild = original })
 
 	built, err := RenderManifests(context.Background(), RenderManifestOptions{
-		Environment:   localEnv,
-		System:        "distribution",
-		SourceDir:     f.sourceDir,
-		TopologyFile:  filepath.Join(f.sourceDir, "topology.json"),
-		Bindings:      []string{"erp=sftp", "price-master=http"},
-		Stderr:        &bytes.Buffer{},
-		Owner:         "o",
-		Repo:          "r",
-		GitHubBaseURL: f.srv.URL,
-		HTTP:          f.srv.Client(),
+		Environment:  localEnv,
+		System:       "distribution",
+		SourceDir:    f.sourceDir,
+		TopologyFile: filepath.Join(f.sourceDir, "topology.json"),
+		Bindings:     []string{"erp=sftp", "price-master=http"},
+		Stderr:       &bytes.Buffer{},
+		Source:       f.source,
 	})
 	if err == nil {
 		t.Fatal("expected the build error")

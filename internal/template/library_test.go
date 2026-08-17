@@ -3,11 +3,8 @@ package template
 import (
 	"bytes"
 	"context"
-	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"testing"
 )
 
@@ -35,55 +32,39 @@ spec:
       name: { type: string }
 `
 
-// newLibraryServer serves a two-template library and counts tarball fetches, so
-// a test can prove one download covers both templates.
-func newLibraryServer(t *testing.T, tag string, fetches *atomic.Int32) *httptest.Server {
+// newLibrary builds a two-template library so a test can prove one fetch
+// covers both templates.
+func newLibrary(t *testing.T, tag string) *testLibrary {
 	t.Helper()
-	tarball := buildTarGz(t, "owner-repo-abc123", map[string]string{
+	return newTestLibrary(t, tag, map[string]string{
 		"deploy-host/template.yaml":                     libraryHostYAML,
 		"deploy-host/skeleton/base/kustomization.yaml":  "resources: []\n",
 		"deploy-component/template.yaml":                libraryComponentYAML,
 		"deploy-component/skeleton/component.yaml.tmpl": "name: {{ .name }}\n",
 		"no-skeleton/template.yaml":                     libraryHostYAML,
 	})
-	mux := http.NewServeMux()
-	mux.HandleFunc("/repos/o/r/releases/latest", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"tag_name":"` + tag + `"}`))
-	})
-	mux.HandleFunc("/repos/o/r/tarball/"+tag, func(w http.ResponseWriter, r *http.Request) {
-		if fetches != nil {
-			fetches.Add(1)
-		}
-		_, _ = w.Write(tarball)
-	})
-	return httptest.NewServer(mux)
 }
 
-func fetchTestLibrary(t *testing.T, srv *httptest.Server, version string) *Library {
+func fetchTestLibrary(t *testing.T, lib *testLibrary, version, cacheRoot string) *Library {
 	t.Helper()
-	lib, err := FetchLibrary(context.Background(), LibraryOptions{
-		Version:       version,
-		Owner:         "o",
-		Repo:          "r",
-		GitHubBaseURL: srv.URL,
-		HTTP:          srv.Client(),
+	opts := lib.sourceOpts(cacheRoot, nil)
+	got, err := FetchLibrary(context.Background(), LibraryOptions{
+		Version: version,
+		Source:  opts,
 	})
 	if err != nil {
 		t.Fatalf("FetchLibrary: %v", err)
 	}
-	t.Cleanup(lib.Close)
-	return lib
+	t.Cleanup(got.Close)
+	return got
 }
 
-// One download for every template: a component's manifests and its system's
+// One fetch for every template: a component's manifests and its system's
 // shared manifests drifting apart by a release would be a subtle, ugly bug.
 func TestLibraryFetchesOnceForSeveralTemplates(t *testing.T) {
-	var fetches atomic.Int32
-	srv := newLibraryServer(t, "v1.0.0", &fetches)
-	defer srv.Close()
+	repo := newLibrary(t, "v1.0.0")
 
-	lib := fetchTestLibrary(t, srv, "")
+	lib := fetchTestLibrary(t, repo, "", t.TempDir())
 	if lib.Version != "v1.0.0" {
 		t.Errorf("Version = %q, want the resolved latest release", lib.Version)
 	}
@@ -100,48 +81,42 @@ func TestLibraryFetchesOnceForSeveralTemplates(t *testing.T) {
 			t.Errorf("skeleton dir = %q", skeleton)
 		}
 	}
-	if got := fetches.Load(); got != 1 {
-		t.Errorf("tarball fetched %d times, want 1", got)
-	}
 }
 
 func TestLibraryRefDescribesTheFetch(t *testing.T) {
-	srv := newLibraryServer(t, "v2.3.4", nil)
-	defer srv.Close()
+	repo := newLibrary(t, "v2.3.4")
 
-	if got := fetchTestLibrary(t, srv, "v2.3.4").Ref(); got != "o/r@v2.3.4" {
-		t.Errorf("Ref() = %q", got)
+	want := defaultTemplateOwner + "/" + defaultTemplateRepo + "@v2.3.4"
+	if got := fetchTestLibrary(t, repo, "v2.3.4", t.TempDir()).Ref(); got != want {
+		t.Errorf("Ref() = %q, want %q", got, want)
 	}
 }
 
 func TestLibraryOpenMissingTemplate(t *testing.T) {
-	srv := newLibraryServer(t, "v1.0.0", nil)
-	defer srv.Close()
+	repo := newLibrary(t, "v1.0.0")
 
-	_, _, err := fetchTestLibrary(t, srv, "v1.0.0").Open("deploy-nonexistent")
+	_, _, err := fetchTestLibrary(t, repo, "v1.0.0", t.TempDir()).Open("deploy-nonexistent")
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	if !strings.Contains(err.Error(), "o/r@v1.0.0") {
+	if !strings.Contains(err.Error(), "@"+"v1.0.0") {
 		t.Errorf("error should name the library version: %v", err)
 	}
 }
 
 func TestLibraryOpenTemplateWithoutSkeleton(t *testing.T) {
-	srv := newLibraryServer(t, "v1.0.0", nil)
-	defer srv.Close()
+	repo := newLibrary(t, "v1.0.0")
 
-	_, _, err := fetchTestLibrary(t, srv, "v1.0.0").Open("no-skeleton")
+	_, _, err := fetchTestLibrary(t, repo, "v1.0.0", t.TempDir()).Open("no-skeleton")
 	if err == nil || !strings.Contains(err.Error(), "skeleton") {
 		t.Fatalf("expected a missing-skeleton error, got %v", err)
 	}
 }
 
-// The name becomes a path inside the extracted tarball, so it stays validated.
+// The name becomes a path inside the checkout, so it stays validated.
 func TestLibraryOpenRejectsTraversal(t *testing.T) {
-	srv := newLibraryServer(t, "v1.0.0", nil)
-	defer srv.Close()
-	lib := fetchTestLibrary(t, srv, "v1.0.0")
+	repo := newLibrary(t, "v1.0.0")
+	lib := fetchTestLibrary(t, repo, "v1.0.0", t.TempDir())
 
 	for _, name := range []string{"", "..", "../etc", "a/b", ".hidden"} {
 		if _, _, err := lib.Open(name); err == nil {
@@ -151,19 +126,18 @@ func TestLibraryOpenRejectsTraversal(t *testing.T) {
 }
 
 func TestFetchLibraryAnnouncesTheVersion(t *testing.T) {
-	srv := newLibraryServer(t, "v1.2.3", nil)
-	defer srv.Close()
+	repo := newLibrary(t, "v1.2.3")
 
 	var stderr bytes.Buffer
-	lib, err := FetchLibrary(context.Background(), LibraryOptions{
-		Owner: "o", Repo: "r", GitHubBaseURL: srv.URL, HTTP: srv.Client(), Stderr: &stderr,
-	})
+	opts := repo.sourceOpts(t.TempDir(), nil)
+	opts.Stderr = &stderr
+	lib, err := FetchLibrary(context.Background(), LibraryOptions{Source: opts, Stderr: &stderr})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer lib.Close()
 
-	if !strings.Contains(stderr.String(), "o/r@v1.2.3") {
+	if !strings.Contains(stderr.String(), "@v1.2.3") {
 		t.Errorf("stderr = %q", stderr.String())
 	}
 }

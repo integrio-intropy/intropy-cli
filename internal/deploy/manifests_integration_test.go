@@ -13,27 +13,25 @@ import (
 	"github.com/integrio-intropy/intropy-cli/internal/gittest"
 )
 
-func createManifestFixtureOptions(f initFixture, stdout, stderr *bytes.Buffer) CreateManifestOptions {
+func createManifestFixtureOptions(t *testing.T, f initFixture, stdout, stderr *bytes.Buffer) CreateManifestOptions {
+	t.Helper()
 	return CreateManifestOptions{
-		Environment:   "prod",
-		Bindings:      []string{"erp=sftp", "price-master=http"},
-		Domain:        "sales",
-		SourceDir:     f.sourceDir,
-		TopologyFile:  f.topologyFile,
-		CacheRoot:     f.cacheRoot,
-		Stdout:        stdout,
-		Stderr:        stderr,
-		Owner:         "o",
-		Repo:          "r",
-		GitHubBaseURL: f.srv.URL,
-		HTTP:          f.srv.Client(),
+		Environment:  "prod",
+		Bindings:     []string{"erp=sftp", "price-master=http"},
+		Domain:       "sales",
+		SourceDir:    f.sourceDir,
+		TopologyFile: f.topologyFile,
+		CacheRoot:    f.cacheRoot,
+		Stdout:       stdout,
+		Stderr:       stderr,
+		Source:       f.lib.Source(t),
 	}
 }
 
 func TestCreateManifestsPublishesOnlyTheSelectedEnvironment(t *testing.T) {
 	f := newInitFixture(t)
 	var stdout, stderr bytes.Buffer
-	if err := CreateManifests(context.Background(), createManifestFixtureOptions(f, &stdout, &stderr)); err != nil {
+	if err := CreateManifests(context.Background(), createManifestFixtureOptions(t, f, &stdout, &stderr)); err != nil {
 		t.Fatalf("CreateManifests: %v\nstderr: %s", err, stderr.String())
 	}
 
@@ -54,7 +52,7 @@ func TestCreateManifestsPublishesOnlyTheSelectedEnvironment(t *testing.T) {
 func TestCreateManifestsPublishesEveryEnvironmentWhenUnspecified(t *testing.T) {
 	f := newInitFixture(t)
 	var stdout, stderr bytes.Buffer
-	opts := createManifestFixtureOptions(f, &stdout, &stderr)
+	opts := createManifestFixtureOptions(t, f, &stdout, &stderr)
 	opts.Environment = ""
 	if err := CreateManifests(context.Background(), opts); err != nil {
 		t.Fatalf("CreateManifests: %v\nstderr: %s", err, stderr.String())
@@ -76,7 +74,7 @@ func TestCreateManifestsPublishesEveryEnvironmentWhenUnspecified(t *testing.T) {
 func TestCreateManifestsAcceptsExistingIdenticalFiles(t *testing.T) {
 	f := newInitFixture(t)
 	var firstOut, firstErr bytes.Buffer
-	if err := CreateManifests(context.Background(), createManifestFixtureOptions(f, &firstOut, &firstErr)); err != nil {
+	if err := CreateManifests(context.Background(), createManifestFixtureOptions(t, f, &firstOut, &firstErr)); err != nil {
 		t.Fatalf("first CreateManifests: %v", err)
 	}
 	branch := "manifests-create/sales-distribution-prod"
@@ -84,7 +82,7 @@ func TestCreateManifestsAcceptsExistingIdenticalFiles(t *testing.T) {
 	gittest.Run(t, f.gitopsOrigin, "branch", "-D", branch)
 
 	var stdout, stderr bytes.Buffer
-	if err := CreateManifests(context.Background(), createManifestFixtureOptions(f, &stdout, &stderr)); err != nil {
+	if err := CreateManifests(context.Background(), createManifestFixtureOptions(t, f, &stdout, &stderr)); err != nil {
 		t.Fatalf("second CreateManifests: %v\nstderr: %s", err, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "all manifest files already exist; nothing created") {
@@ -98,7 +96,7 @@ func TestCreateManifestsRefusesAnExistingDifferentFile(t *testing.T) {
 	gittest.Commit(t, f.gitopsOrigin, rel, "hand-written: true\n", "add hand-written manifest")
 
 	var stdout, stderr bytes.Buffer
-	err := CreateManifests(context.Background(), createManifestFixtureOptions(f, &stdout, &stderr))
+	err := CreateManifests(context.Background(), createManifestFixtureOptions(t, f, &stdout, &stderr))
 	if err == nil {
 		t.Fatal("expected a create-only conflict")
 	}
@@ -116,7 +114,7 @@ func TestCreateManifestsRefusesAnExistingDifferentFile(t *testing.T) {
 func TestCreateManifestsDryRunCreatesNoReviewBranch(t *testing.T) {
 	f := newInitFixture(t)
 	var stdout, stderr bytes.Buffer
-	opts := createManifestFixtureOptions(f, &stdout, &stderr)
+	opts := createManifestFixtureOptions(t, f, &stdout, &stderr)
 	opts.DryRun = true
 	if err := CreateManifests(context.Background(), opts); err != nil {
 		t.Fatalf("CreateManifests --dry-run: %v", err)
@@ -136,7 +134,7 @@ func TestCreateManifestsDiffReportsConflictWithoutWriting(t *testing.T) {
 	gittest.Commit(t, f.gitopsOrigin, rel, "hand-written: true\n", "add hand-written manifest")
 
 	var stdout, stderr bytes.Buffer
-	opts := createManifestFixtureOptions(f, &stdout, &stderr)
+	opts := createManifestFixtureOptions(t, f, &stdout, &stderr)
 	opts.Diff = true
 	if err := CreateManifests(context.Background(), opts); err != nil {
 		t.Fatalf("CreateManifests --diff: %v", err)

@@ -56,8 +56,8 @@ func (s *apiServer) syncSystem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// The same serialization bargain template creates make: two concurrent
-	// syncs of one host would race on its files, and each run may download
-	// a template tarball.
+	// syncs of one host would race on its files, and each run may clone the
+	// template library.
 	s.createMu.Lock()
 	defer s.createMu.Unlock()
 
@@ -75,16 +75,16 @@ func (s *apiServer) syncSystem(w http.ResponseWriter, r *http.Request) {
 func (s *apiServer) updateHost(w http.ResponseWriter, r *http.Request, dir string, force bool) {
 	var out, logs bytes.Buffer
 	err := system.Update(r.Context(), system.UpdateOptions{
-		StartDir:      dir,
-		Force:         force,
-		Version:       s.templates.version,
-		OutputJSON:    "-",
-		Stdout:        &out,
-		Stderr:        &logs,
-		UserAgent:     s.templates.userAgent,
-		Owner:         s.templates.owner,
-		Repo:          s.templates.repo,
-		GitHubBaseURL: s.templates.githubBaseURL,
+		StartDir:   dir,
+		Force:      force,
+		Version:    s.templates.version,
+		OutputJSON: "-",
+		Stdout:     &out,
+		Stderr:     &logs,
+		UserAgent:  s.templates.userAgent,
+		Owner:      s.templates.owner,
+		Repo:       s.templates.repo,
+		Source:     s.templates.source,
 	})
 	if err != nil {
 		writeError(w, syncErrorStatus(err), err.Error())
@@ -113,18 +113,18 @@ func (s *apiServer) createHost(w http.ResponseWriter, r *http.Request, dir strin
 	name := hostSystemName(dir)
 	var out, logs bytes.Buffer
 	err := system.Create(r.Context(), system.CreateOptions{
-		Name:          name,
-		StartDir:      dir,
-		OutputDir:     filepath.Join(dir, xstrings.ToKebabCase(name)+"-host"),
-		Version:       s.templates.version,
-		Force:         force,
-		OutputJSON:    "-",
-		Stdout:        &out,
-		Stderr:        &logs,
-		UserAgent:     s.templates.userAgent,
-		Owner:         s.templates.owner,
-		Repo:          s.templates.repo,
-		GitHubBaseURL: s.templates.githubBaseURL,
+		Name:       name,
+		StartDir:   dir,
+		OutputDir:  filepath.Join(dir, xstrings.ToKebabCase(name)+"-host"),
+		Version:    s.templates.version,
+		Force:      force,
+		OutputJSON: "-",
+		Stdout:     &out,
+		Stderr:     &logs,
+		UserAgent:  s.templates.userAgent,
+		Owner:      s.templates.owner,
+		Repo:       s.templates.repo,
+		Source:     s.templates.source,
 	})
 	if err != nil {
 		writeError(w, syncErrorStatus(err), err.Error())

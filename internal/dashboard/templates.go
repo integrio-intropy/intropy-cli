@@ -28,20 +28,20 @@ type templatesProvider struct {
 
 	// Test overrides; production leaves these zero-valued and gets the
 	// official library.
-	owner         string
-	repo          string
-	githubBaseURL string
+	owner  string
+	repo   string
+	source template.SourceOptions
 }
 
 // fetchLibrary resolves and downloads the provider's library release. The
 // caller owns the returned Library and must Close it.
 func (p templatesProvider) fetchLibrary(ctx context.Context) (*template.Library, error) {
 	return template.FetchLibrary(ctx, template.LibraryOptions{
-		Version:       p.version,
-		UserAgent:     p.userAgent,
-		Owner:         p.owner,
-		Repo:          p.repo,
-		GitHubBaseURL: p.githubBaseURL,
+		Version:   p.version,
+		UserAgent: p.userAgent,
+		Owner:     p.owner,
+		Repo:      p.repo,
+		Source:    p.source,
 	})
 }
 
@@ -93,8 +93,8 @@ type templateSummary struct {
 
 // listTemplates mirrors `template list -o json` against the server's library
 // release, adding per-template metadata (`entries`) on top of the names. The
-// describes are local reads on the already-extracted tarball; one malformed
-// manifest drops that entry rather than hiding the rest of the library.
+// describes are local reads on the library checkout; one malformed manifest
+// drops that entry rather than hiding the rest of the library.
 func (s *apiServer) listTemplates(w http.ResponseWriter, r *http.Request) {
 	lib, err := s.templates.fetchLibrary(r.Context())
 	if err != nil {
@@ -299,13 +299,13 @@ func (s *apiServer) createTemplate(w http.ResponseWriter, r *http.Request) {
 	defer s.createMu.Unlock()
 
 	prep, err := template.PrepareCreate(r.Context(), template.CreateOptions{
-		Template:      name,
-		Version:       s.templates.version,
-		SetValues:     values,
-		UserAgent:     s.templates.userAgent,
-		Owner:         s.templates.owner,
-		Repo:          s.templates.repo,
-		GitHubBaseURL: s.templates.githubBaseURL,
+		Template:  name,
+		Version:   s.templates.version,
+		SetValues: values,
+		UserAgent: s.templates.userAgent,
+		Owner:     s.templates.owner,
+		Repo:      s.templates.repo,
+		Source:    s.templates.source,
 	})
 	if err != nil {
 		writeError(w, createErrorStatus(err), err.Error())

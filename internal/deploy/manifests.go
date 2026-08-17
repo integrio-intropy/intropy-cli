@@ -48,7 +48,7 @@ type InspectManifestOptions struct {
 	Stderr          io.Writer
 	Owner           string
 	Repo            string
-	GitHubBaseURL   string
+	Source          template.SourceOptions
 	HTTP            *http.Client
 }
 
@@ -69,7 +69,7 @@ type RenderManifestOptions struct {
 	Stderr          io.Writer
 	Owner           string
 	Repo            string
-	GitHubBaseURL   string
+	Source          template.SourceOptions
 	HTTP            *http.Client
 }
 
@@ -95,7 +95,7 @@ type CreateManifestOptions struct {
 	Stderr          io.Writer
 	Owner           string
 	Repo            string
-	GitHubBaseURL   string
+	Source          template.SourceOptions
 	HTTP            *http.Client
 }
 
@@ -115,7 +115,7 @@ func InspectManifests(ctx context.Context, opts InspectManifestOptions) error {
 		Stderr:          opts.Stderr,
 		Owner:           opts.Owner,
 		Repo:            opts.Repo,
-		GitHubBaseURL:   opts.GitHubBaseURL,
+		Source:          opts.Source,
 		HTTP:            opts.HTTP,
 	}
 	initOpts.applyDefaults()
@@ -185,7 +185,7 @@ func RenderManifests(ctx context.Context, opts RenderManifestOptions) ([]byte, e
 		Stderr:          opts.Stderr,
 		Owner:           opts.Owner,
 		Repo:            opts.Repo,
-		GitHubBaseURL:   opts.GitHubBaseURL,
+		Source:          opts.Source,
 		HTTP:            opts.HTTP,
 	}
 	initOpts.applyDefaults()
@@ -228,7 +228,7 @@ func CreateManifests(ctx context.Context, opts CreateManifestOptions) error {
 		Stderr:          opts.Stderr,
 		Owner:           opts.Owner,
 		Repo:            opts.Repo,
-		GitHubBaseURL:   opts.GitHubBaseURL,
+		Source:          opts.Source,
 		HTTP:            opts.HTTP,
 		diffOnly:        opts.Diff,
 		reviewEnv:       reviewEnv,
@@ -249,13 +249,13 @@ func prepareManifests(ctx context.Context, opts manifestRunOptions) (discoveredT
 		return discoveredTopology{}, nil, err
 	}
 	lib, err := template.FetchLibrary(ctx, template.LibraryOptions{
-		Version:       opts.TemplateVersion,
-		HTTP:          opts.HTTP,
-		UserAgent:     opts.UserAgent,
-		Stderr:        opts.Stderr,
-		Owner:         opts.Owner,
-		Repo:          opts.Repo,
-		GitHubBaseURL: opts.GitHubBaseURL,
+		Version:   opts.TemplateVersion,
+		HTTP:      opts.HTTP,
+		UserAgent: opts.UserAgent,
+		Stderr:    opts.Stderr,
+		Owner:     opts.Owner,
+		Repo:      opts.Repo,
+		Source:    opts.Source,
 	})
 	if err != nil {
 		return discoveredTopology{}, nil, err

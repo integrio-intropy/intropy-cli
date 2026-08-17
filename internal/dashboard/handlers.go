@@ -56,8 +56,8 @@ type apiServer struct {
 	organization string
 
 	// createMu serializes template create runs: two concurrent renders of the
-	// same name would race on the output directory, and each run downloads a
-	// library tarball. The same bargain depMu makes for the shared checkout.
+	// same name would race on the output directory, and a cold cache would have
+	// both cloning the library. The same bargain depMu makes for its checkout.
 	createMu sync.Mutex
 
 	// topoMu guards the cached provider result. Fetching runs the hosts'
