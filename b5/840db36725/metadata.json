@@ -3,7 +3,7 @@
   "checkpoint_id": "b5840db36725",
   "strategy": "manual-commit",
   "branch": "feat/template-git-clone-cache",
-  "checkpoints_count": 8,
+  "checkpoints_count": 15,
   "files_touched": [
     "internal/deploy/local_test.go",
     "internal/deploy/localtemplates_test.go",
@@ -12,7 +12,11 @@
     "internal/deploy/manifests_ports_integration_test.go",
     "internal/template/create.go",
     "internal/template/dependencies_test.go",
-    "internal/template/prepare.go"
+    "internal/template/list_test.go",
+    "internal/template/prepare.go",
+    "internal/template/source.go",
+    "internal/template/source_test.go",
+    "internal/template/templatetest/templatetest.go"
   ],
   "sessions": [
     {
@@ -28,13 +32,20 @@
       "compact_transcript": "/b5/840db36725/1/transcript.jsonl",
       "content_hash": "/b5/840db36725/1/content_hash.txt",
       "prompt": "/b5/840db36725/1/prompt.txt"
+    },
+    {
+      "metadata": "/b5/840db36725/2/metadata.json",
+      "transcript": "/b5/840db36725/2/full.jsonl",
+      "compact_transcript": "/b5/840db36725/2/transcript.jsonl",
+      "content_hash": "/b5/840db36725/2/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
-    "input_tokens": 411471,
+    "input_tokens": 472544,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 23715008,
-    "output_tokens": 78865,
-    "api_call_count": 292
+    "cache_read_tokens": 42869248,
+    "output_tokens": 134929,
+    "api_call_count": 444
   }
 }
