@@ -1,0 +1,53 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "92274f8a11c8",
+  "session_id": "01a00ffa-021e-737f-9ae4-3fb0ceda761f",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-17T14:14:18.31619Z",
+  "branch": "feat/template-git-clone-cache",
+  "checkpoints_count": 7,
+  "files_touched": [
+    "docs/plans/2026-08-17-001-refactor-template-library-git-clone-cache-plan.md"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "07269284bf13",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 59687,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 536128,
+    "output_tokens": 18849,
+    "api_call_count": 23
+  },
+  "session_metrics": {
+    "turn_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-17T14:14:18.292701Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 72,
+    "human_modified": 55,
+    "human_removed": 0,
+    "total_committed": 72,
+    "total_lines_changed": 127,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 820,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "docs/plans/2026-08-14-001-refactor-machine-checked-repo-boundaries-plan.md": 332,
+        "docs/plans/2026-08-17-001-refactor-template-library-git-clone-cache-plan.md": 428
+      }
+    }
+  ]
+}
