@@ -108,12 +108,19 @@ type RenderUpdateOptions struct {
 	Force bool
 	// DryRun computes outcomes without persisting anything.
 	DryRun bool
+	// Baseline, when set, is the value set the destination was last
+	// rendered from. A file matching the baseline render differs from the
+	// merged render only by the update itself, so it is updated; a file
+	// matching neither is a genuine divergence (a hand edit or drift) and
+	// conflicts. Without a baseline every differing file conflicts.
+	Baseline map[string]any
 }
 
 // RenderUpdate is RenderFiltered with per-file outcomes instead of
 // unconditional overwrite: rendering produces bytes first, then each file is
-// classified against the destination — absent is created, identical is
-// unchanged, differing is a conflict (or, with Force, an update). Nothing is
+// classified against the destination — absent is created, identical to the
+// merged render is unchanged, identical to the baseline render is updated,
+// and anything else is a conflict (or, with Force, an update). Nothing is
 // written on dry-run, and nothing is written past the first conflict without
 // Force, so a caller can refuse a divergent tree without leaving a partial
 // render behind. The destination is not subjected to the create flow's
@@ -162,31 +169,44 @@ func RenderUpdate(srcDir, destDir string, values map[string]any, rules []FileRul
 		if err != nil {
 			return err
 		}
-		content, err := renderFileBytes(path, renderedRel, values)
+		merged, err := renderFileBytes(path, renderedRel, values)
 		if err != nil {
 			return err
 		}
+		// A baseline render that fails (an older record missing a value the
+		// template needs) is unknown, not an error: the strict comparison
+		// below then decides, conservatively.
+		var baseline []byte
+		baselineKnown := false
+		if opts.Baseline != nil {
+			if b, berr := renderFileBytes(path, renderedRel, opts.Baseline); berr == nil {
+				baseline = b
+				baselineKnown = true
+			}
+		}
 		existing, err := os.ReadFile(target)
-		switch {
-		case err == nil && bytes.Equal(existing, content):
-			outcomes = append(outcomes, FileOutcome{Path: outRel, Outcome: OutcomeUnchanged})
-			return nil
-		case err == nil && !opts.Force:
-			outcomes = append(outcomes, FileOutcome{Path: outRel, Outcome: OutcomeConflict})
-			return nil
-		case err != nil && !os.IsNotExist(err):
+		if err != nil && !os.IsNotExist(err) {
 			return err
 		}
-		outcome := OutcomeCreated
-		if err == nil {
+		var outcome FileOutcomeKind
+		switch {
+		case err != nil:
+			outcome = OutcomeCreated
+		case bytes.Equal(existing, merged):
+			outcome = OutcomeUnchanged
+		case baselineKnown && bytes.Equal(existing, baseline):
+			outcome = OutcomeUpdated
+		case !opts.Force:
+			outcome = OutcomeConflict
+		default:
 			outcome = OutcomeUpdated
 		}
 		outcomes = append(outcomes, FileOutcome{Path: outRel, Outcome: outcome})
-		if opts.DryRun {
+		if outcome == OutcomeUnchanged || outcome == OutcomeConflict || opts.DryRun {
 			return nil
 		}
 		return writeAtomically(target, info.Mode().Perm(), func(w io.Writer) error {
-			_, err := w.Write(content)
+			_, err := w.Write(merged)
 			return err
 		})
 	})

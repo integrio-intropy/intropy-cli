@@ -127,6 +127,10 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 	}
 	fmt.Fprintf(opts.Stderr, "updating %s: adding components %s\n", plan.hostDir, strings.Join(names, ", "))
 
+	// The fetch resolves once against the merged payload; the baseline and
+	// override payloads re-resolve against the same extracted library, so a
+	// template override fetches what it renders and one download serves
+	// all three resolutions.
 	prep, err := template.PrepareCreate(ctx, template.CreateOptions{
 		Template:      orDefault(opts.Template, plan.hostRec.Template),
 		Version:       orDefault(opts.Version, plan.hostRec.Version),
@@ -147,9 +151,22 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 	}
 	defer prep.Cleanup()
 
+	// The baseline is what the host was last rendered from; the render
+	// decides per file whether a difference is the update itself (safe to
+	// write) or a genuine divergence (a conflict). A template override
+	// invalidates the baseline, so the strict comparison applies instead.
+	var baseline map[string]any
+	if opts.Template == "" && opts.Version == "" && (opts.Owner == "" || opts.Owner == plan.hostRec.Owner) && (opts.Repo == "" || opts.Repo == plan.hostRec.Repo) {
+		baseline, err = template.Resolve(prep.Manifest, nil, strings.NewReader(""), plan.baseline, nil)
+		if err != nil {
+			fmt.Fprintf(opts.Stderr, "note: stored values do not re-resolve against %s@%s (%v) — treating every differing file as a conflict\n", prep.Template, prep.Version, err)
+		}
+	}
+
 	outcomes, err := template.RenderUpdate(prep.SkeletonRoot, plan.hostDir, prep.Values, prep.Manifest.Spec.Files, template.RenderUpdateOptions{
-		Force:  opts.Force,
-		DryRun: opts.DryRun,
+		Force:    opts.Force,
+		DryRun:   opts.DryRun,
+		Baseline: baseline,
 	})
 	if err != nil {
 		return err

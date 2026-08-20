@@ -238,3 +238,41 @@ func TestRenderUpdateHonorsFileRules(t *testing.T) {
 		t.Errorf("always.txt outcome = %q", got["always.txt"])
 	}
 }
+
+func TestRenderUpdateBaselineDistinguishesUpdateFromDivergence(t *testing.T) {
+	src := t.TempDir()
+	dst := t.TempDir()
+
+	// One skeleton file whose content depends on the values.
+	writeFile(t, filepath.Join(src, "def.txt.tmpl"), "value: {{ .v }}\n")
+
+	baselineValues := map[string]any{"v": 1}
+	mergedValues := map[string]any{"v": 2}
+
+	// A file matching the baseline render differs only by the update itself.
+	writeFile(t, filepath.Join(dst, "def.txt"), "value: 1\n")
+
+	outcomes, err := RenderUpdate(src, dst, mergedValues, nil, RenderUpdateOptions{Baseline: baselineValues})
+	if err != nil {
+		t.Fatalf("RenderUpdate: %v", err)
+	}
+	if got := outcomeByPath(outcomes)["def.txt"]; got != OutcomeUpdated {
+		t.Errorf("baseline-matching file: outcome = %q, want %q", got, OutcomeUpdated)
+	}
+	if got := readFile(t, filepath.Join(dst, "def.txt")); got != "value: 2\n" {
+		t.Errorf("def.txt = %q, want the merged render", got)
+	}
+
+	// A file matching neither baseline nor merged render is a conflict.
+	writeFile(t, filepath.Join(dst, "def.txt"), "value: hand-edited\n")
+	outcomes, err = RenderUpdate(src, dst, mergedValues, nil, RenderUpdateOptions{Baseline: baselineValues})
+	if err != nil {
+		t.Fatalf("RenderUpdate: %v", err)
+	}
+	if got := outcomeByPath(outcomes)["def.txt"]; got != OutcomeConflict {
+		t.Errorf("divergent file: outcome = %q, want %q", got, OutcomeConflict)
+	}
+	if got := readFile(t, filepath.Join(dst, "def.txt")); got != "value: hand-edited\n" {
+		t.Errorf("conflict overwrote def.txt: %q", got)
+	}
+}

@@ -78,13 +78,44 @@ func componentEntry(appID, kind, topic, port string) map[string]any {
 }
 
 // updateWorkspace is the update fixture: the tutorial workspace plus a
-// host declaring both components.
+// host declaring both components, with the declaration files rendered from
+// the recorded values on disk — the state sys create leaves behind, which
+// the update's baseline comparison reads.
 func updateWorkspace(t *testing.T) (ws, hostDir string) {
 	t.Helper()
 	ws = writeWorkspace(t)
 	hostDir = filepath.Join(ws, "order-flow")
-	writeHost(t, hostDir, nil)
+	values := hostValues("order-flow", []any{
+		componentEntry("order-extractor", template.BlockKindExtractor, "orders", "order-extractor-source"),
+		componentEntry("order-loader", template.BlockKindLoader, "orders", "order-loader-destination"),
+	})
+	writeHost(t, hostDir, values)
+	renderFixtureHost(t, hostDir, values)
 	return ws, hostDir
+}
+
+// renderFixtureHost writes the files the system-host fixture template
+// renders from values, resolved the way PrepareCreate resolves them (the
+// spec.values derivations are already in the recorded values).
+func renderFixtureHost(t *testing.T, hostDir string, values map[string]any) {
+	t.Helper()
+	src := t.TempDir()
+	for name, content := range systemHostFiles() {
+		const prefix = "system-host/skeleton/"
+		if !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		path := filepath.Join(src, filepath.FromSlash(strings.TrimPrefix(name, prefix)))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := template.Render(src, hostDir, values); err != nil {
+		t.Fatalf("render fixture host: %v", err)
+	}
 }
 
 func runUpdate(t *testing.T, srv *httptest.Server, opts UpdateOptions) (stdout, stderr bytes.Buffer, err error) {
@@ -130,13 +161,18 @@ func TestUpdateFoldsOrphanIntoHost(t *testing.T) {
 		t.Errorf("stderr missing completion line:\n%s", stderr.String())
 	}
 
-	// The system definition now wires the orphan.
+	// The system definition now wires the orphan, and its ports were added
+	// to the shared declarations without a conflict.
 	systemClass := readFile(t, filepath.Join(hostDir, "OrderFlowSystem.cs"))
 	if !strings.Contains(systemClass, `builder.AddTransactionalIntegration("billing-sync")`) {
 		t.Errorf("OrderFlowSystem.cs does not declare billing-sync:\n%s", systemClass)
 	}
 	if !strings.Contains(systemClass, "Ports.Erp") || !strings.Contains(systemClass, "Ports.Billing") {
 		t.Errorf("OrderFlowSystem.cs does not wire the new ports:\n%s", systemClass)
+	}
+	portsCS := readFile(t, filepath.Join(hostDir, "Ports.cs"))
+	if !strings.Contains(portsCS, `PortRef.Define("erp")`) || !strings.Contains(portsCS, `PortRef.Define("billing")`) {
+		t.Errorf("Ports.cs does not declare the new ports:\n%s", portsCS)
 	}
 
 	// The record was rewritten with the merged values.
@@ -272,13 +308,16 @@ func TestUpdateDryRunWritesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	systemBefore := readFile(t, filepath.Join(hostDir, "OrderFlowSystem.cs"))
 
 	stdout, stderr, err := runUpdate(t, srv, UpdateOptions{StartDir: ws, DryRun: true, OutputJSON: "-"})
 	if err != nil {
 		t.Fatalf("Update: %v\nstderr: %s", err, stderr.String())
 	}
 
-	// The plan names the orphan and the files that would change.
+	// The plan names the orphan and the files that would change: the
+	// system class matches the baseline render, so folding the orphan in
+	// is an update, not a conflict.
 	var result UpdateResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode UpdateResult: %v\n%s", err, stdout.String())
@@ -293,11 +332,11 @@ func TestUpdateDryRunWritesNothing(t *testing.T) {
 	for _, f := range result.Files {
 		outcomes[f.Path] = f.Outcome
 	}
-	if outcomes["OrderFlowSystem.cs"] != template.OutcomeCreated {
-		t.Errorf("OrderFlowSystem.cs outcome = %q, want created", outcomes["OrderFlowSystem.cs"])
+	if outcomes["OrderFlowSystem.cs"] != template.OutcomeUpdated {
+		t.Errorf("OrderFlowSystem.cs outcome = %q, want updated", outcomes["OrderFlowSystem.cs"])
 	}
 
-	// Neither the record nor any declaration file landed.
+	// Neither the record nor any declaration file changed on disk.
 	recordAfter, err := os.ReadFile(filepath.Join(hostDir, filepath.FromSlash(template.ScaffoldRelPath)))
 	if err != nil {
 		t.Fatal(err)
@@ -305,8 +344,8 @@ func TestUpdateDryRunWritesNothing(t *testing.T) {
 	if !bytes.Equal(recordBefore, recordAfter) {
 		t.Errorf("dry-run rewrote the scaffold record")
 	}
-	if _, err := os.Stat(filepath.Join(hostDir, "OrderFlowSystem.cs")); !os.IsNotExist(err) {
-		t.Errorf("dry-run wrote OrderFlowSystem.cs")
+	if got := readFile(t, filepath.Join(hostDir, "OrderFlowSystem.cs")); got != systemBefore {
+		t.Errorf("dry-run modified OrderFlowSystem.cs")
 	}
 }
 
