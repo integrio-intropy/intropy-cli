@@ -167,12 +167,16 @@ export function FlowView({ selected, onSelect, theme }: Props) {
   const [inspect, setInspect] = useState<FlowSelection | null>(null)
   // A clicked placeholder slot: which block kind the create drawer offers.
   const [draft, setDraft] = useState<SlotKind | null>(null)
+  // The banner's host re-assembly (sys update / sys create) in flight.
+  const [syncing, setSyncing] = useState(false)
+  const [syncError, setSyncError] = useState<string | null>(null)
 
-  // A different system means different topics/ports — drop the inspector and
-  // any half-open create drawer.
+  // A different system means different topics/ports — drop the inspector,
+  // any half-open create drawer, and a stale sync error.
   useEffect(() => {
     setInspect(null)
     setDraft(null)
+    setSyncError(null)
   }, [system])
 
   useEffect(() => {
@@ -291,6 +295,39 @@ export function FlowView({ selected, onSelect, theme }: Props) {
     )
   }
 
+  const sysDir = system === WORKSPACE_KEY ? '.' : system
+  const hasHost = (systemList ?? []).some((s) => s.path === sysDir)
+
+  // Re-assemble the host (sys update, or sys create when the system has no
+  // host yet), then refresh the topology so the ghosts turn into declared
+  // nodes — the banner's one click that closes the create loop.
+  const syncHost = () => {
+    if (!sysDir) return
+    setSyncing(true)
+    setSyncError(null)
+    api
+      .syncSystem(sysDir)
+      .then((resp) => {
+        setSyncing(false)
+        refresh()
+        // The create branch writes a new host scaffold: pick it up so the
+        // picker and the button label agree with the workspace again.
+        api.systems().then(setSystemList).catch(() => {})
+        if (resp.action === 'create' && resp.hostDir) {
+          // A new host changes every sibling's systemPath (the group key),
+          // so the stale flow data would leave a duplicate picker entry.
+          // Re-fetch and follow the selection onto the host's system dir.
+          api.flow().then(setGraph).catch(() => {})
+          const slash = resp.hostDir.lastIndexOf('/')
+          setSystem(slash >= 0 ? resp.hostDir.slice(0, slash) : '.')
+        }
+      })
+      .catch((e: unknown) => {
+        setSyncing(false)
+        setSyncError(e instanceof Error ? e.message : String(e))
+      })
+  }
+
   // Reflect the shared selection without disturbing dragged positions.
   useEffect(() => {
     setNodes((ns) =>
@@ -348,10 +385,29 @@ export function FlowView({ selected, onSelect, theme }: Props) {
           {built.ghosts.length === 1
             ? '1 scaffolded component is'
             : `${built.ghosts.length} scaffolded components are`}{' '}
-          not in the declared topology yet. Run <code>intropy sys create</code>{' '}
-          to re-assemble the system host, then refresh the topology.
+          not in the declared topology yet.
+          <button
+            type="button"
+            className="flow-refresh"
+            onClick={syncHost}
+            disabled={syncing || refreshing}
+            title={
+              hasHost
+                ? 'Fold the new components into the system host (sys update), then refresh the topology'
+                : 'Assemble a system host from the scaffolds (sys create), then refresh the topology'
+            }
+          >
+            {syncing
+              ? hasHost
+                ? 'Updating host…'
+                : 'Creating host…'
+              : hasHost
+                ? 'Update host & refresh'
+                : 'Create host & refresh'}
+          </button>
         </div>
       )}
+      {syncError && <div className="banner error">{syncError}</div>}
       {effective ? (
         <div className="flow-canvas">
           <ReactFlowProvider>

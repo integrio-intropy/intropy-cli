@@ -1900,6 +1900,10 @@ body {
   border: 1px solid var(--border);
 }
 
+.banner.hint .flow-refresh {
+  margin-left: 10px;
+}
+
 .banner.hint code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;

@@ -139,6 +139,9 @@ func newHandler(root, version string, p providers) (http.Handler, error) {
 	mux.HandleFunc("GET /api/health", api.health)
 	mux.HandleFunc("GET /api/integrations", api.listIntegrations)
 	mux.HandleFunc("GET /api/systems", api.listSystems)
+	// GET lists what is declared; POST re-assembles one system's host
+	// (sys update, or sys create when the directory has none).
+	mux.HandleFunc("POST /api/systems/{path...}", api.syncSystem)
 	mux.HandleFunc("GET /api/integrations/{path...}", api.getIntegration)
 	mux.HandleFunc("GET /api/catalog/{path...}", api.catalog)
 	mux.HandleFunc("GET /api/flow", api.flow)

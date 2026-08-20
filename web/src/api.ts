@@ -81,6 +81,19 @@ export interface SystemInfo {
   name: string
 }
 
+/** The POST /api/systems/{path} payload: what the host sync did. "update"
+ *  folded orphans into an existing host, "create" assembled a new one,
+ *  "none" found nothing to add and wrote nothing. */
+export interface SystemSyncResponse {
+  action: 'update' | 'create' | 'none'
+  hostDir?: string
+  system?: string
+  added?: string[]
+  /** Declared components whose scaffold is gone — kept as declared. */
+  kept?: string[]
+  diagnostics?: string[]
+}
+
 // Deployment state (internal/deploy). The server obtains each record by running
 // the `deploy status` command with a JSON writer and passing its result through
 // unchanged, so everything below is that command's own output — including the
@@ -412,6 +425,15 @@ export const api = {
   /** Every declared system — including hosts with no blocks yet, which
    *  /api/flow cannot surface (it only carries systems through their blocks). */
   systems: () => getJSON<SystemInfo[]>('/api/systems'),
+  /** Re-assemble one system's host the way the CLI would: `sys update` when
+   *  the directory has a host, `sys create` when it does not. Path "." is
+   *  the workspace root. */
+  syncSystem: (path: string, force = false) =>
+    requestJSON<SystemSyncResponse>(`/api/systems/${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force }),
+    }),
   /** Every declared system topology, cached from the hosts' graph verbs. */
   topologies: () => getJSON<TopologyReport>('/api/topology'),
   /** Re-run every host's graph verb and return the fresh report. */
