@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "2795cbc8244f",
+  "strategy": "manual-commit",
+  "branch": "feat/sys-update-orphans",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "internal/system/update.go",
+    "internal/system/update_test.go",
+    "internal/template/render.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/27/95cbc8244f/0/metadata.json",
+      "transcript": "/27/95cbc8244f/0/full.jsonl",
+      "compact_transcript": "/27/95cbc8244f/0/transcript.jsonl",
+      "content_hash": "/27/95cbc8244f/0/content_hash.txt",
+      "prompt": "/27/95cbc8244f/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 276558,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 660736,
+    "output_tokens": 12772,
+    "api_call_count": 17
+  }
+}

@@ -1,0 +1,7 @@
+I am testing in this system. The host contains an extractor and then I added a loader which is not in the system. It fails on this:
+arning: skipping ordernotification-host: an existing system host
+updating ordernotification-host: adding components wms-loader
+error: declaration files differ from what the update would render: Ports.cs, OrderNotificationHostDevelopment.cs, OrderNotificationHostSystem.cs
+reconcile them by hand, or re-run with --force to overwrite
+
+But I have not made any changes from the scaffold
