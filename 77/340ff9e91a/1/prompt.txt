@@ -1,0 +1,1 @@
+Do not make any changes. How hard would it be to overlay the integration flow in the dashboard with tracing data from aspire? If the integrations are not running we should show nothing but if we could pull aspire trace data if it is running would be great
