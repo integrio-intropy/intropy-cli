@@ -1,0 +1,474 @@
+I want to experiment with converting the flow part of the dashboard to an interface where you can also create new components. Can you give a few suggestions on how we might design such an interface?
+
+---
+
+<task-notification>
+<task-id>ab90b78ca81003ed4</task-id>
+<tool-use-id>toolu_01LTpVpoPEVApM6mykAUFfef</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/71b87eb7-bd8d-43ad-ae7e-95db76ccea81/tasks/ab90b78ca81003ed4.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore dashboard flow implementation" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have a complete picture. Here is the report.
+
+---
+
+# Dashboard feature — architecture map
+
+## 1. Where the dashboard lives and what it is
+
+**Command:** `/Users/robinhultman/dev/intropy/tooling/intropy-cli/cmd/intropy/dashboard.go` — `intropy dashboard [dir]`, registered on `rootCmd` (line 63). Pure flag plumbing (58-64): `--port/-p` (default 8730), `--no-browser`, `--template-version`. It stats the dir, wires a SIGINT context, and calls `dashboard.Serve` with `Options{Root, Addr:"127.0.0.1", Port, OpenBrowser, Version, TemplateVersion, Stdout, Stderr}` (45-54).
+
+**Server:** `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/server.go` — stdlib `net/http` only, no framework. `Serve` (60) resolves Root to absolute (74-76, load-bearing: `relPath` needs it), builds the handler with three injected providers (78-85), listens, prints the URL to stderr, optionally opens the browser, and graceful-shuts on ctx cancel with a 5s drain (`shutdownTimeout`, line 55).
+
+**Web tech:** a **React 18 + TypeScript SPA built by Vite**, embedded in the binary.
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/package.json` — deps: `react`, `react-dom`, **`@xyflow/react` ^12.11.2 (React Flow)**. Dev deps: vite, `@vitejs/plugin-react`, `vite-plugin-svgr`, `@material-symbols/svg-400`. No d3, no cytoscape, no CSS framework — a single hand-written `web/src/index.css` (32k) with `data-theme` light/dark.
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/embed.go` — `//go:embed all:placeholder/dist all:dist`, and `pick()` chooses: if `dist/placeholder.html` marker is **absent**, serve the real `dist/`; else serve the committed `placeholder/dist/`. `web/dist` is gitignored; it is currently built locally (`web/dist/assets/index-Bcbygmqw.js`, 379k).
+- `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/static.go` — SPA static handler: extension-less unknown paths fall back to `index.html` (client routing), paths **with** an extension 404 (deliberate, lines 16-20, so a missing JS bundle doesn't get served HTML).
+- Build: `Makefile` lines 48-64 — `make web` (`npm ci &amp;&amp; npm run build`), `make web-dev` (vite dev server on :5173, `/api` proxied to `127.0.0.1:8730` per `web/vite.config.ts`), `make web-clean` (restores the marker), `make bundle` (web + build).
+
+**App shell:** `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/App.tsx`. There is **no router** — a `View` union of three tabs (line 12-18): `catalog | flow | templates`, switched by `useState`. Shared cross-view state lives here: `integrations`, `selected` (root-relative path string), `deployState`, theme. Note line 146-153 `onTemplateCreated(path)` — after a create it re-lists integrations, sets `selected`, and jumps to the catalog view.
+
+Components in `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/components/`: `Sidebar.tsx`, `Catalog.tsx`, `CatalogEnvironments.tsx`, `ContractDetail.tsx`, `FlowView.tsx`, `FlowDetail.tsx`, `TemplatesView.tsx`, `Combobox.tsx` (dependency-free searchable select), `chrome.tsx` (`Meta`, `Section` primitives).
+
+## 2. The flow view
+
+`/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/components/FlowView.tsx` (714 lines) — the whole thing.
+
+**Data it renders.** Two fetches on mount (161-167):
+- `api.flow()` → `GET /api/flow` → `IntegrationDetail[]` (scaffold records + dapr components + pipeline step filenames).
+- `api.topologies()` → `GET /api/topology` → `TopologyReport { topologies: Topology[], errors?: string[] }`.
+
+The declared topology is the **only** source of nodes and edges. `/api/flow` is used *only* to (a) build the system dropdown with counts, and (b) join a declared component name to a scaffolded integration path so clicking selects it (`nodeId` map, 398-407). Comment at 218-219 is explicit: "Only a declared topology is drawn — there is no inferred fallback." A system with no record renders the empty state (299-304).
+
+**Schema (`topology.intropy.io/v1`, kind `SystemTopology`).** Go: `/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/topology/topology.go`; mirrored TS: `web/src/api.ts:232-373`.
+
+```
+Entry { path }            // root-relative system dir, injected by the CLI (handlers.go:322)
+Topology {
+  apiVersion, kind, system
+  components[] { name, kind, subscribes[]{pubsub,topic}, publishes[]{pubsub,topic},
+                 ports[]{port, direction:"in"|"out"}, provides[], consumes[] /*opaque json.RawMessage*/ }
+  topics[]    { pubsub, topic, contract?, publishers[], subscribers[] }   // lookup table
+  ports[]     { name, externalSystem?, directions[], usedBy[] }          // lookup table
+  contracts[] { name, kind, shortName, mediaType, fingerprint, schema /*raw JSON Schema*/ }
+  apis[]      // opaque
+  messageDocs?: Record&lt;portName, MessageDoc&gt;   // CLI-merged, NOT host-declared
+}
+```
+Wiring is **inline edges on each component** — there is no top-level edge list. `topics[]`/`ports[]` are metadata tables the inline refs resolve against. Anything opaque (`apis`, `provides`, `consumes`) is `json.RawMessage` passed through unrendered because the shape isn't final (topology.go:46-50).
+
+**How nodes/edges are drawn.** React Flow (SVG edges + DOM nodes), not raw SVG/canvas. `buildDeclaredGraph(topo, items)` at **FlowView.tsx:379-626** is the entire layout engine, hand-rolled:
+1. Build `topicMeta` / `portMeta` lookup maps (387-390).
+2. Node IDs: component → matched integration path if a scaffold exists, else `component:&lt;name&gt;` (402-407); topic → `topic:&lt;pubsub&gt;/&lt;topic&gt;` (393).
+3. Collect unique topic refs and internal flow edges from inline `publishes`/`subscribes` (411-425).
+4. **Longest-path layering** (Kahn relaxation, 431-457) over internal edges → `depth` map = column index. Cycles land in column 0 rather than failing.
+5. Deterministic geometry from constants at lines 49-60: `NODE_W 300`, `NODE_H 84`, `COL_GAP 28`, `ROW_GAP 28`, `GROUP_HEADER 44`, `GROUP_PAD 20`, `INFRA_W/H 200/76` (topics), `EXT_W/H 184/72`, `EXT_GAP 96`, `EXT_VGAP 24`. `place(depth)` (468-471) assigns the next free row in a column.
+6. A `group` node (517-525) is the system boundary, `draggable:false, selectable:false`; components and topics are its children (`parentId: groupId, extent:'parent'`).
+7. Edges (530-559): publish = component `ext` handle (right) → topic `in`; subscribe = topic `out` → component `in`. All with `MarkerType.ArrowClosed` and `className:'rf-edge-ext'`.
+8. Externals (ports) sit **outside** the group (566-623): direction `in` → placed left of its component; direction `out` → stacked below the component's column via `belowY(col)`. Deliberate to avoid whole-diagram crossings (comment 561-565).
+
+**Node types** (`NODE_TYPES`, 708-713): `group` → `GroupNode`, `integration` → `IntegrationNode`, `external` → `ExternalNode`, `topic` → `TopicNode` (628-706). Handles: IntegrationNode has target `in` (Left), source `infra` (Bottom), source `ext` (Right) — lines 656-658. TopicNode: target `in` Left, source `out` Right. ExternalNode: targets `in` Left / `top` Top, source `out` Right.
+
+**Canvas chrome:** `FlowCanvas` (312-363) wraps `&lt;ReactFlow&gt;` with `Background`, `Controls`, `MiniMap`, `colorMode={theme}`, `minZoom 0.3`, `hideAttribution`. It uses `useNodesInitialized` + `rf.fitView()` keyed on `fitSignal` (the system key) to refit when the system changes. `useNodesState` holds nodes so **drags persist**; `built.edges` is passed straight through (edges are not stateful). **There is no `onConnect`, no `onNodesDelete`, no `nodesDraggable`/`connectable` config, no edge-creation path** — the canvas is strictly read-only today.
+
+**Interaction:** `onNodeClick` (345-355) — integration → `onSelect(node.id)` (lifts to App's `selected`); topic → `setInspect({kind:'topic',pubsub,topic})`; external → `setInspect({kind:'port',name})`. `onPaneClick` clears. Toolbar (253-270): a `Combobox` system picker + a "Refresh topology" button → `POST /api/topology/refresh`.
+
+**Inspector:** `/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/components/FlowDetail.tsx` — `FlowSelection` union `{kind:'topic',pubsub,topic} | {kind:'port',name}`. Topic panel resolves `topology.topics` → `topology.contracts` and renders the JSON Schema as a field tree (`SchemaTree`, exported and reused by the catalog). Port panel renders `messageDocs[name]`, and its empty state (308-338) is an authoring prompt printing a YAML frontmatter template for `&lt;systemPath&gt;/messages/&lt;port&gt;.md` — a useful precedent for "write something from the UI" affordances, though it only *shows* the text.
+
+**Kind→glyph mapping** (FlowView.tsx:70-92): `KIND_DATA_FLOW` maps `extractor→in`, `loader→out`, `transactional`/`transactionalintegration→both`, `aggregator→internal`, normalized case-insensitively with hyphens stripped. Used only for the card icon — the comment stresses it is "never to invent wiring".
+
+CSS hooks in `web/src/index.css`: `.flow-view` 958, `.flow-toolbar` 966, `.flow-canvas` 1002, `.flow-detail` 1014, `.rf-group` 1322, `.rf-int` 1343, `.rf-infra` 1436, `.rf-ext` ~1465, React Flow overrides 1294-1321.
+
+## 3. How the dashboard gets its data
+
+All HTTP JSON, `fetch` from `web/src/api.ts:375-425`. **No websockets, no SSE, no background polling.** Route table — `internal/dashboard/handlers.go:138-157`:
+
+| Route | Handler | Notes |
+|---|---|---|
+| `GET /api/health` | `health` (160) | `{status, version}` |
+| `GET /api/integrations` | `listIntegrations` (171) | mirrors `int list -o json` + derived name/system/domain/systemPath |
+| `GET /api/integrations/{path...}` | `getIntegration` (404) | + AGENTS.md/README.md/dapr components/pipeline steps |
+| `GET /api/catalog/{path...}` | `catalog` (catalog.go:98) | never blocks; answers `pending` and calls `warmTopologies()` |
+| `GET /api/flow` | `flow` (265) | all integrations + components + pipeline steps in one shot |
+| `GET /api/topology` | `topologies` (284) | cached provider result |
+| **`POST /api/topology/refresh`** | `refreshTopologies` (290) | re-runs every host's graph verb |
+| `GET /api/deploy/{path...}` | `getDeployState` (416) | runs `deploy status` on first ask, then cached |
+| **`POST /api/deploy/{path...}`** | `refreshDeployState` (422) | re-run |
+| `GET /api/templates` | `listTemplates` (templates.go:77) | |
+| `GET /api/templates/{name}` | `getTemplate` (100) | |
+| **`POST /api/templates/{name}/create`** | `createTemplate` (127) | **writes files** |
+| `/` | static SPA | |
+
+**Caching model** (`apiServer`, handlers.go:46-74):
+- `topoMu` / `topoLoaded` / `topoEntries` / `topoErrs`: the topology is computed **once, lazily on first request**, because it runs `dotnet build` + `dotnet run -- graph` per host. `cachedTopologies(ctx, force)` (315). `warmTopologies()` (348) computes in a detached goroutine so the catalog endpoint never queues behind a build.
+- `depMu` / `depStates map[path]deployState`: per-integration, `deployStateTimeout = 1 minute` (43) — the bound exists to release the shared GitOps checkout lock, not for the browser.
+- `createMu`: serializes create runs (two renders of the same name would race, and each downloads a tarball).
+- Message docs are re-read from disk **on every request** (`topologyReport`, 298-310), so editing a `messages/*.md` shows up on browser refresh without re-running graph verbs.
+
+The only client-side timer: `Catalog.tsx:33-34` `PENDING_RETRY_MS = 5000`, `PENDING_RETRY_CAP = 36` — retries a `topologyPending` catalog entry for up to 3 minutes while the background build finishes. Nothing else polls (deliberate; README lines ~950-957 explain why a background poll would deadlock the user's own `intropy deploy`).
+
+**Topology provider** — `internal/dashboard/topology.go:25-42`: `hostGraphProvider(root)` → `template.ListSystemHosts(root)` → `topology.RunGraph(ctx, hostDir)` per host; `Entry.Path = filepath.Dir(h.Path)` (the system dir, since components are siblings of the host). Policy: never fail, report per host into `errs`. `topology.RunGraph` (`internal/topology/graph.go:28`) does `dotnet build` then `dotnet run --no-build --no-launch-profile --project &lt;hostDir&gt; -- graph`, decodes stdout, `GraphTimeout = 5 * time.Minute`. `Decode` rejects any other `apiVersion` outright (topology.go:136-146).
+
+## 4. Create machinery a create-UI can reuse
+
+**This already exists end-to-end.** The dashboard has a working template-create surface — the "Templates" tab.
+
+### Go layer (all callable independently of cobra)
+
+`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/`:
+
+- **`create.go:79 Create(ctx, CreateOptions) error`** — the one-shot path `int create` uses. `CreateOptions` (15-43): `Template` (library subdir), `OutputDir`, `Version`, `SetValues map[string]any`, `Files []string` (values files), `Force`, `NoInput`, `OutputJSON`, `Stdin/Stdout/Stderr`, `HTTP`, `UserAgent`, `Owner/Repo/GitHubBaseURL`, and **`OnManifest func(*Template) error`** — a pre-write gate hook (used by `sys create` for a version check).
+- **`prepare.go` — the split the dashboard uses.** `PrepareCreate(ctx, CreateOptions) (*PreparedCreate, error)` (53) fetches + resolves values + validates the skeleton, writing nothing; `RunCreate(p, outputDir, force, stderr) (*CreateResult, error)` (99) renders, processes dependencies, writes `.intropy/scaffold.json`, returns the result. `PreparedCreate` (21-46) carries `Template, Manifest, Values, SkeletonRoot, RepoRoot, Owner, Repo, Version, Cleanup`. The doc comment (18-20) says this seam exists *specifically* for the dashboard: one release resolved per form session.
+- **`library.go` — `FetchLibrary(ctx, LibraryOptions) (*Library, error)`** with `Library.List()`, `Library.Describe(name)`, `Library.Open(name)`, `Library.Close()`, `Library.Ref()`. One download, one version across many templates.
+- **`describe.go:41 DescribeResult`** — `{template, title, description, tags, labels, owner, repo, version, parameters (raw JSON Schema), dependencies, fields}`.
+- **`manifest.go:182 FieldSpec`** = `{name, title, description, type("string"|"boolean"|"integer"|"number"), enum, default, pattern, required}`, produced by `Template.Fields()` (195) **in YAML declaration order** (`Spec.parameterOrder`). Form renderers consume `Fields`, never the raw schema (comment 177-181). `spec.parameters` is scalar-only by design.
+- **`reserved.go`** — `ReservedTopologyKey "topology"`, `ReservedComponentKey "component"`, `ReservedGitopsKey "gitops"`, `ReservedScaffoldKey "scaffold"`, `ReservedEnvKey "env"`, `ReservedLocalKey "local"`, and `InjectReserved(t, values, reserved)` (43) which must run **after** value resolution and refuses collisions. This is how structured (non-scalar) data reaches a skeleton.
+- **`ValidateTemplateName(name)`** (create.go:246) — rejects separators, `.`/`..`, leading dots.
+- **`scaffold_list.go`** — `ListScaffolds(root)`, `ListSystemHosts(root)`, `ScaffoldEntry{Path, Scaffold}`.
+- Labels that classify a template (scaffold.go:24-52): `intropy.dev/template-role` (`system-host`, `shared-library`), `intropy.dev/block-kind` (`extractor`, `loader`, `transactional-integration`), `intropy.dev/data-flow` (`in`/`out`/`both`). **These labels are already served on `TemplateDetail.labels`**, so a create-UI can filter/group templates by block kind without new backend work.
+
+`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/system/create.go`:
+- **`system.Create(ctx, CreateOptions) error`** (94). `CreateOptions` (29-46): `Name` (PascalCase or kebab, normalized with `xstrings.ToKebabCase`), `StartDir` (scan root, default "."), `OutputDir` (default kebab name), `Version`, `Force`, `OutputJSON`, `Stdout/Stderr`, `HTTP`, `UserAgent`, `Owner/Repo/GitHubBaseURL`. It scans `ListScaffolds` → `Assemble(entries, warnf)` → `buildPayload(model, outputDir, kebab)` → `template.Create(... Template:"system-host", NoInput:true, OnManifest:requireFactsPayload ...)` → reads the record back → prints a summary. **No cobra dependency**, but it writes warnings to `Stderr` and hardcodes `StartDir` scanning — a server caller would set `StartDir` to the workspace root and capture Stderr, exactly as the template endpoint captures `logs bytes.Buffer`.
+- `system.CreateResult`/`Summary` (55-73) mirror what the host's `graph` verb prints: `{name, components, topics, ports, sharedLibrary}`. So `sys create` can report an expected topology *before* any dotnet build.
+- Supporting: `assemble.go:23 Assemble`, `blocks.go:27 supportedKinds()`, `model.go` (`Model`, `Component`, `Topic`, `Port`, `SharedLibrary`), `payload.go:21 buildPayload`.
+
+`deploy.CreateManifests(ctx, deploy.CreateManifestOptions{...})` — called from `cmd/intropy/manifests_create.go:48`. Inputs: `Environment`, `Bindings []string`, `Selector` (an `interactive.Selector` — `interactive.NewTerminalSelector(stdin, stderr)`), `Domain`, `System`, `TemplateVersion`, `GitopsRepo`, `DryRun`, `Diff`, `UserAgent`, `CliVersion`, streams, `Owner/Repo`. **Note the `Selector` seam** — the interactive per-port binding question is already abstracted behind an interface, which is what a web UI would need to substitute. This one touches the network/git heavily and has `DryRun`/`Diff` modes.
+
+**Cobra separation verdict:** clean. Every `cmd/intropy/*_create.go` file is flag plumbing only — `int_create.go` (53-68) calls `template.Create`, `sys_create.go` (49-60) calls `system.Create`, `manifests_create.go` (48-65) calls `deploy.CreateManifests`. The only logic in the cmd layer is `resolveCreateName` (int_create.go:78-90, folds `-n` into `--set name=` and defaults out-dir) and `resolveTemplateRepo` (template_repo.go, config/env/flag layering).
+
+### Existing dashboard create surface
+
+`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/templates.go`:
+- `templatesProvider` (22-31): `{version, userAgent}` + test seams `{owner, repo, githubBaseURL}`. `fetchLibrary` (35) wraps `template.FetchLibrary`. Resolved once per server so form and run see the same release (comment 17-21).
+- `createRequest` (46-59): `{name string, values map[string]any, force bool}`. `name` is **both** the out-dir segment and the default `values.name`.
+- `createResponse` (63-68): `*template.CreateResult` + `diagnostics []string` (stderr split per line).
+- `createTemplate` (127-176): validate name → decode body (`maxCreateBodyBytes = 1MB`) → `resolveCreate` → lock `createMu` → `PrepareCreate` → `defer prep.Cleanup()` → `RunCreate(prep, outputDir, force, &amp;logs)` → `result.OutputDir = s.relPath(...)` → 201.
+- **`resolveCreate` (182-219) is the security boundary**: `name` must be a single path segment (no `/`, `\`, `.`, `..`), reserved value keys are refused up front (`isReservedValueKey`, 225-235), and the output is asserted to be exactly `filepath.Join(rootAbs, req.Name)` so a create can never escape the workspace root. **Any new write endpoint should reuse this.**
+- `createErrorStatus` (250-263) / `templateFetchStatus` (239-244): string-matched status mapping — `not empty` → 409 (form offers `--force`), `missing required parameter`/`unknown parameter`/`not found in` → 422, `fetch`/`download` → 502, else 500. This is brittle-by-design and worth noting if you add error cases.
+
+`/Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/components/TemplatesView.tsx` (350 lines):
+- `TemplatesView` — template list on the left, `TemplatePanel` keyed by name on the right (so switching resets form state).
+- `TemplatePanel` (94-240): fetches `getTemplate`, **seeds `values` from `field.default`** (107-112), computes `missing` required fields (121-126), submits via `api.createTemplate(name, {name: intName, values, force})`. `CreateState` union `idle | running | done{result} | error{message,status}` (15-19). The `force` checkbox only appears after a 409 (201-206). On success it renders `outputDir`, the dependency list, and a "view in catalog" button calling `onCreated(outputDir)`.
+- `FormField` (245-310) — the reusable schema→control renderer: boolean→checkbox, `enum`→`&lt;select&gt;`, integer/number→number input with step, else text input with `pattern`. `Field` (314-341) is the label/description/required-marker row.
+
+**A flow-view create UI is mostly a re-composition job:** `FormField`/`Field` + `api.createTemplate` + the `POST /api/templates/{name}/create` endpoint already do the work. What's missing for creating *into a system from the canvas*:
+1. `resolveCreate` confines output to `root/&lt;single-segment&gt;` — a component created inside a system needs `root/&lt;systemPath&gt;/&lt;name&gt;`, so that constraint must be relaxed (carefully) to a validated multi-segment path under root.
+2. No endpoint runs `sys create` (re-assembling the host after adding a component), and no endpoint re-runs the graph verb for a single host.
+3. Nothing pre-fills a template's params from canvas context (the topic a new node should subscribe to, the contract, the pubsub name). The `values` map is free-form `map[string]any`, so this is a frontend concern plus possibly a reserved-key injection.
+4. `/api/templates` returns only names; `labels` (block-kind) arrive only from the per-template `GET /api/templates/{name}`, so filtering the palette by block kind costs N requests today.
+
+## 5. Existing write/POST endpoints
+
+Three, all in `newHandler` (handlers.go:138-157):
+
+1. **`POST /api/topology/refresh`** — re-runs graph verbs. Writes nothing to disk (runs `dotnet build`).
+2. **`POST /api/deploy/{path...}`** — re-runs `deploy status`. Refreshes a shared GitOps checkout under an exclusive lock; read-only w.r.t. the workspace.
+3. **`POST /api/templates/{name}/create`** — **the only endpoint that writes files.** Renders a skeleton + its dependencies into the workspace and writes `.intropy/scaffold.json`.
+
+There is no auth, no CSRF token, and no `Origin` check — the server binds `127.0.0.1` by default (`dashboard.go:47`) and that is the entire threat model. Something to weigh if the create surface grows.
+
+## 6. `scaffold.json` record format
+
+`/Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/template/scaffold.go:61-92`. Written by `RunCreate` (prepare.go:128-141) / `Create` (create.go:124-137) to **`&lt;projectRoot&gt;/.intropy/scaffold.json`** (`ScaffoldRelPath`, line 18), `ScaffoldSchemaVersion = 1`.
+
+```json
+{
+  "schemaVersion": 1,
+  "template": "hello-world",          // library DIRECTORY name, not metadata.name — what a re-fetch needs
+  "owner": "integrio-intropy",
+  "repo": "intropy-templates",
+  "version": "v0.4.1",                // resolved release tag, never "latest"
+  "values": { "name": "...", "...": "..." },   // the fully resolved render values
+  "role": "system-host",              // omitempty; from intropy.dev/template-role
+  "blockKind": "extractor",           // omitempty; from intropy.dev/block-kind
+  "dataFlow": "in",                   // omitempty; from intropy.dev/data-flow
+  "dependsOn": [ { "template": "shared-models", "dir": "../Acme.Models" } ]
+}
+```
+
+`dir` is slash-separated, relative to the component root. Note it carries **no `outputDir`** — the file's own location *is* the project root (comment 57-60). Helpers: `WriteScaffold` (107), `LoadScaffold` (124), `FindScaffold(startDir)` (139, walks up; `ErrScaffoldNotFound`). This record is the join key for everything: `sys create` assembles from it, the dashboard sidebar/catalog groups by it, and a component's *directory name* is what joins it to its topology `components[].name` (catalog.go:185-192, FlowView.tsx:398-407).
+
+## How the pieces connect
+
+```
+intropy dashboard [dir]                       cmd/intropy/dashboard.go
+  └─ dashboard.Serve(Options)                 internal/dashboard/server.go
+       ├─ newHandler(root, version, providers{               handlers.go:131
+       │     topology:  hostGraphProvider(root)  → template.ListSystemHosts
+       │                                        → topology.RunGraph (dotnet run -- graph)
+       │     deploy:    statusCommandProvider   → internal/deploy status
+       │     templates: templatesProvider       → template.FetchLibrary (GitHub tarball)
+       │  })
+       └─ staticHandler() → web.Assets (go:embed dist | placeholder/dist)
+
+Browser (React SPA, no router)
+  App.tsx  ── selected: root-relative path, shared across views
+   ├─ catalog   → GET /api/catalog/{path} (+ retry while pending), GET|POST /api/deploy/{path}
+   ├─ flow      → GET /api/flow  +  GET /api/topology  |  POST /api/topology/refresh
+   │              buildDeclaredGraph(topology, integrations) → React Flow nodes/edges
+   │              node click → App.selected  |  topic/port click → FlowDetail inspector
+   └─ templates → GET /api/templates, GET /api/templates/{name}
+                  POST /api/templates/{name}/create
+                    → resolveCreate (confine to root/&lt;segment&gt;)
+                    → template.PrepareCreate → template.RunCreate
+                    → files + .intropy/scaffold.json  → onCreated(path) → catalog view
+```
+
+The **join key throughout is the root-relative directory path** (`apiServer.relPath`, handlers.go:254). An integration's `path`, its system's `systemPath`, and a topology `Entry.path` all live in the same identifier space, and a component's directory basename equals its topology `components[].name`. Any create-UI must preserve that identity or the new node will render as `not-in-graph` (catalog.go:200-205).</result>
+<usage><subagent_tokens>124759</subagent_tokens><tool_uses>50</tool_uses><duration_ms>260740</duration_ms></usage>
+</task-notification>
+
+---
+
+What do you think about having placeholders that you can click on a map? Like having an extractor placeholder on the left, the core blocks in the middle and loader placeholders to the right?
+
+---
+
+<task-notification>
+<task-id>a7eb331637e0ca44c</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/71b87eb7-bd8d-43ad-ae7e-95db76ccea81/tasks/a7eb331637e0ca44c.output</output-file>
+<status>completed</status>
+<summary>Agent "Design slot-create implementation plan" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>The Write tool isn't available in this read-only planning context, so I'll return the full plan directly as my final output.
+
+# Implementation Plan: Create-from-canvas via placeholder slots in the Flow view
+
+All file references verified against the current tree on `feature/v-next`.
+
+## Verified facts the plan relies on
+
+- `GET /api/flow` (handlers.go:265) already carries everything ghost rendering needs: `integrationSummary` embeds `template.ScaffoldEntry` → `Scaffold`, so each row has `blockKind`, `dataFlow`, `systemPath`, `path`. **No flow-payload change is needed for ghosts.**
+- The FlowView system picker is already derived from `/api/flow` grouping by `systemPath` (FlowView.tsx:185-206), so any system with ≥1 block scaffold already appears even without topology — the gap is (a) it renders the "No declared topology" empty state, and (b) a **host-only** system (fresh `sys` scaffold, zero blocks) never appears, because `scan()` (handlers.go:185) filters `RoleSystemHost`/`RoleSharedLibrary` out of the entries.
+- `GET /api/templates` returns names only (`lib.List()`); labels live on `Library.Describe(name)` (library.go:154-172), which after `fetchLibrary` is **pure local-disk reads on the extracted tarball** — per-name Describe in the list handler is cheap.
+- Block-kind constants (scaffold.go:50-53): `extractor`, `loader`, `transactional-integration`. Labels: `intropy.dev/block-kind`, `intropy.dev/data-flow`.
+- `resolveCreate` (templates.go:182-219) is the security boundary: single-segment name + absolute-path equality assertion.
+- No JS test runner exists (package.json: only `tsc -b &amp;&amp; vite build`); Go handler tests use `testHandlerWith`, `writeScaffold`/`writeScaffoldRole`, `newTemplateLibraryServer`, `postJSON`, `get` helpers. **No fixture workspace in testdata** — dashboard tests build workspaces with `t.TempDir()` + `writeScaffold`.
+- The topology↔scaffold join is `joinProject(topo.path, c.name)` matched against `it.path` (FlowView.tsx:398-407); ghosts are exactly the reverse set.
+
+---
+
+## Phase 1 — Backend: create into a system directory
+
+### 1.1 Extend `createRequest` with an optional `dir`
+
+`internal/dashboard/templates.go`:
+
+```go
+type createRequest struct {
+    Name string `json:"name"`
+    // Dir is the root-relative, slash-separated directory the output is
+    // rendered under ("" or "." means the workspace root — today's behavior).
+    // It must already exist: the endpoint scaffolds into systems, it does
+    // not invent directory trees.
+    Dir    string         `json:"dir,omitempty"`
+    Values map[string]any `json:"values"`
+    Force  bool           `json:"force,omitempty"`
+}
+```
+
+### 1.2 Extend `resolveCreate` — validation rules spelled out
+
+Keep the existing name rule untouched, add dir handling before the join:
+
+1. `Name`: unchanged — non-empty, no `/` or `\`, not `.`/`..` (existing lines 186-188).
+2. Normalize `Dir`: `""` → `"."`. If `"."`, behavior is byte-for-byte today's (`filepath.Join(s.root, req.Name)`), so existing clients/tests are unaffected.
+3. Otherwise split `Dir` on `/` and validate **every segment** with one rule (mirror `validateTemplateName`'s posture, create.go:254): reject empty segments (`"a//b"`, trailing `/`), `.`, `..`, any segment starting with `.`, and any `\` anywhere in `Dir`. Also reject a rooted `Dir` (`strings.HasPrefix(dir, "/")` is caught by the empty-first-segment rule — note it in the test table).
+4. Join: `outputDir = filepath.Join(s.root, filepath.FromSlash(dir), req.Name)` and keep the existing absolute-equality assertion, generalized:
+   `outAbs == filepath.Join(rootAbs, append(segments, req.Name)...)` — the same "output would escape the workspace root" refusal.
+5. **Existence rule (decision):** `filepath.Join(s.root, dir)` must `os.Stat` as an existing directory → 422 (`"directory %q does not exist under the workspace root"`). This is the minimal posture: the endpoint can only render into directories the served workspace already has. Do **not** require a known system/scaffold in the dir — it would block the legitimate "first block into a hand-made system dir" case and buys little, since writes are already confined under root. (Flag: if you want the stricter rule later, check `dir` against `scan()`'s systems map ∪ observed `systemPath`s.)
+6. Optional hardening worth one extra line: `filepath.EvalSymlinks` on the dir and assert the resolved path still has `rootAbs` (resolved) as prefix — the current code shares this (theoretical) symlink gap for `Name`, so it's consistent either way; note it in the commit message if skipped.
+
+No response-shape change: `result.OutputDir` already goes through `s.relPath`, so the client gets `"domain/sys/new-extractor"` — exactly the identifier space `/api/flow` uses, which the frontend needs for the ghost join.
+
+### 1.3 Labels on the list endpoint
+
+In `listTemplates` (templates.go:77), after `lib.List()`, loop `lib.Describe(name)` and add an **additive** field so the response keeps mirroring `template list -o json`:
+
+```go
+writeJSON(w, http.StatusOK, map[string]any{
+    "owner": ..., "repo": ..., "version": ...,
+    "templates": names,                 // unchanged
+    "entries":   entries,               // new: []templateSummary
+})
+```
+
+`templateSummary`: `{Name, Title, Description string; Labels map[string]string}` (json-tagged, omitempty). A per-name Describe failure (malformed manifest) should skip that entry rather than 502 the list — one bad template must not hide the rest (same policy as `ListScaffolds` warnings). Cost: N local `LoadTemplate` calls on the already-extracted tarball; no extra network.
+
+### 1.4 `GET /api/systems` for host-only systems
+
+New handler in handlers.go + route in `newHandler`:
+
+```go
+mux.HandleFunc("GET /api/systems", api.listSystems)
+```
+
+Implementation: reuse `scan()`'s systems map (`dir → declared name`), emit `[{ "path": s.relPath(dir), "name": name }]`, sorted by path, always an array. This is what lets the picker show a freshly scaffolded system with a host but zero blocks, rendering as the three-slot skeleton.
+
+### 1.5 Go tests (`internal/dashboard/templates_test.go`, `dashboard_test.go`)
+
+- `TestCreateTemplateIntoDir` — happy path: pre-create `root/acme/erp`, POST `{"name":"orders","dir":"acme/erp",...}`, assert 201, `outputDir == "acme/erp/orders"`, README rendered on disk, scaffold visible via `scanRoot`.
+- `TestCreateTemplateDirValidation` — table-driven, following `TestCreateTemplateRejectsTraversal`'s shape: `"../x"`, `"a/../b"`, `"/etc"`, `"a\\b"`, `"a//b"`, `".hidden/x"`, `"missing-dir"` (422 not-exists), `"."` (equivalent to omitting). For each traversal case assert nothing landed outside `root` (`os.Stat` sibling of root).
+- `TestListTemplatesIncludesLabels` — add `labels: {intropy.dev/block-kind: extractor, intropy.dev/data-flow: in}` under `metadata:` in `testTemplateYAML`, assert `entries[0].labels`.
+- `TestListSystems` — `writeScaffoldRole(t, root+"/acme/erp/erp-host", "system", "v1", template.RoleSystemHost)` → `GET /api/systems` returns `[{path:"acme/erp", name:...}]`; empty workspace returns `[]`.
+
+---
+
+## Phase 2 — Frontend plumbing (no visual change yet)
+
+### 2.1 `web/src/api.ts`
+
+- `CreateRequest` gains `dir?: string`.
+- `TemplateList` gains `entries?: TemplateSummary[]`; new `interface TemplateSummary { name: string; title?: string; description?: string; labels?: Record&lt;string, string&gt; }`.
+- New `SystemInfo { path: string; name: string }` + `api.systems: () =&gt; getJSON&lt;SystemInfo[]&gt;('/api/systems')`.
+
+### 2.2 Extract shared form controls
+
+New `web/src/components/form.tsx`: move `FormField`, `Field`, `isEmpty` verbatim out of TemplatesView.tsx (they take only `TemplateField`/props — no view state); TemplatesView imports them. Keep `errText` local copies (it's 1 line, already duplicated across views — follow existing precedent). Verify with `npm run typecheck` / `make web`; zero behavior change.
+
+---
+
+## Phase 3 — FlowView: slots, ghosts, skeleton systems
+
+All in `web/src/components/FlowView.tsx` unless noted.
+
+### 3.1 Column rule and geometry
+
+Inside `buildDeclaredGraph`, after depth assignment (line 459):
+
+- `maxDepth = cols - 1` as computed today; **`effCols = Math.max(cols, 3)`** so a 1-column (or empty) graph still gets a 3-column skeleton. `groupWidth` uses `effCols`.
+- Slot columns:
+  - extractor → `0`
+  - loader → `Math.max(2, maxDepth)` (the true right edge when the graph is wide; column 2 in the skeleton)
+  - transactional → `Math.min(loaderCol - 1, Math.max(1, Math.round(loaderCol / 2)))` — the middle, clamped strictly between the other two.
+- Ghost column per scaffold `blockKind` (values from scaffold.json, kebab-case): `extractor` → extractor col, `loader` → loader col, everything else (`transactional-integration`, missing) → transactional col.
+
+### 3.2 Emission order (bottom-of-column semantics)
+
+`rowsInCol`/`place()` already assign next-free-row per column, so ordering does the work: components → topics (existing code, unchanged) → **ghosts** (`place(ghostCol)`) → **slots** (one `place(slotCol)` each, always emitted). This must happen **before** the `maxRows`/`groupHeight` computation at line 515-516 so the boundary grows to contain them (externals anchor below `groupHeight` and stay correct). Extend `rowsInCol` to `effCols` length.
+
+### 3.3 Ghost derivation (the reverse join)
+
+```ts
+const matched = new Set(comps.map((c) =&gt; joinProject(topo.path, c.name)))
+const ghosts = items.filter((it) =&gt; !matched.has(it.path))
+```
+
+`items` is already the selected system's blocks (role'd entries filtered server-side). Render ghosts with the existing `'integration'` node type, adding `ghost?: boolean` to `IntNodeData` (class `rf-int ghost`, tag text "scaffolded", `dataFlow` from `it.dataFlow`). Node id = `it.path`, so clicking a ghost selects it in the shared catalog selection like any matched node — no new click handling.
+
+### 3.4 Slot node type
+
+- New `SlotNode` component + `slot: SlotNode` in `NODE_TYPES`; data `{ kind: 'extractor' | 'transactional' | 'loader' }`; `draggable: false`, `selectable: false`; sized `NODE_W × NODE_H` via `style`; label like "+ Extractor" with a muted sublabel ("scaffold a new block"). No handles.
+- `onNodeClick` (line 345 block): `if (node.type === 'slot') onSlotClick((node.data as SlotNodeData).kind)`.
+
+### 3.5 Scaffold-only and host-only systems
+
+- Fetch `api.systems()` alongside `api.flow()`; merge into the `systems` memo: any `SystemInfo.path` not already present becomes an option (count 0, declared name as label — it wins like a topology name does).
+- Replace the "No declared topology…" empty-state branch: when a system is selected but `declared` is undefined, build from a **synthetic topology** — `{ path: systemPath, system: label, components: [] }` fed to the same `buildDeclaredGraph`. Everything falls out: no components → all `items` are ghosts, 3-column skeleton, three slots. Keep the old hint as a small note above the canvas rather than replacing the canvas; guard `FlowDetail` (inspector) behind `declared` since topics/ports can't exist.
+
+### 3.6 State/wiring in `FlowView`
+
+- `const [draft, setDraft] = useState&lt;{ kind: SlotKind } | null&gt;(null)` — drawer open state; clear on system change (same effect as `inspect`).
+- `onCreated(outputDir)`: re-fetch `api.flow().then(setGraph)` (the new scaffold then appears as a ghost via the normal join — the "placeholder → ghost transition" is just data), keep the drawer open showing the success line or close it (recommend: close, the ghost + banner are the confirmation).
+- **Re-sync banner** (decision: minimal — show the command, button only refreshes): when `ghosts.length &gt; 0` for the selected system, render above the canvas:
+  &gt; *N scaffolded component(s) are not in the declared topology yet. Run `intropy sys create` in `&lt;systemPath&gt;` to re-assemble the host, then refresh.* — [Refresh topology]
+  The button reuses the existing `refresh()` (POST `/api/topology/refresh`). No auto-run of `sys create`. Class `banner hint` (new variant) so it doesn't read as an error.
+
+---
+
+## Phase 4 — CreateDrawer
+
+New `web/src/components/CreateDrawer.tsx`, rendered inside `.flow-canvas` (same absolute-right positioning pattern as `.flow-detail`, index.css:1014):
+
+Props: `{ kind, systemPath, systemLabel, onClose, onCreated: (outputDir: string) =&gt; void }`.
+
+- On mount: `api.listTemplates()`; filter `list.entries` by `labels['intropy.dev/block-kind'] === kindLabel` where `kindLabel` is `extractor` / `transactional-integration` / `loader` (match `BlockKindTransactional` exactly; normalize-compare hyphens like `dataFlowFor` does for safety). Empty result → explicit empty state naming the label, with a "show all templates" escape hatch (one boolean) — the official library's labeling can't be verified from this repo (open question below).
+- Template select (reuse `Combobox`), then the `TemplatePanel` form pattern: `api.getTemplate(name)`, seed defaults, `missing` computed identically, `FormField`/`Field` from `form.tsx`, out-dir name input, plus a **locked** row showing the destination: `&lt;systemPath&gt;/` prefix rendered read-only before the name input.
+- Submit: `api.createTemplate(tpl, { name, values, force, dir: systemPath })` — where FlowView passes `'.'` for the workspace pseudo-system (`WORKSPACE_KEY` → `'.'`, mirroring `topologyFor`). 409 → force checkbox (copy the existing `CreateState` union and 409 branch). 201 → `onCreated(result.outputDir)`.
+
+Keep `TemplatesView` untouched apart from the form.tsx imports — the drawer is a parallel consumer, not a refactor of `TemplatePanel` (they differ in: pre-filter, locked dir, no "view in catalog" CTA; sharing `FormField`/`Field` is the right granularity).
+
+## Phase 5 — CSS (`web/src/index.css`)
+
+Following the `.rf-*` block (from line 1322):
+
+- `.rf-slot`: dashed 1.5px `var(--border)`, transparent/`--bg` fill, `color: var(--text-muted)`, low opacity (~0.6), `border-radius` matching `.rf-int`, transition; `.rf-slot:hover` → full opacity, `border-color: var(--text-muted)`, subtle surface fill. Both themes come free from the vars; spot-check dark since dashed low-contrast lines can vanish on dark backgrounds — may need a `:root[data-theme='dark'] .rf-slot` opacity tweak (precedent at line 1739).
+- `.rf-int.ghost`: dashed border, ~0.65 opacity, muted name; small "scaffolded" tag styled like `.rf-int-tag`.
+- `.create-drawer`: clone `.flow-detail`'s geometry (absolute right, `z-index: 10`), plus form spacing (reuse `.template-form` rules where selectors allow).
+- `.banner.hint`: neutral/info variant of `.banner`; inline `&lt;code&gt;` styling for the `sys create` command.
+
+---
+
+## Sequencing (each step independently verifiable)
+
+1. **Backend create-into-dir** (1.1, 1.2, 1.5 create tests) — `go test ./internal/dashboard/`; verifiable via `curl` against a running dashboard.
+2. **Backend list labels + /api/systems** (1.3, 1.4, remaining tests) — additive, existing web build keeps working.
+3. **Frontend plumbing** (Phase 2) — `make web` green, zero visual change.
+4. **FlowView ghosts + slots + skeleton** (Phase 3, slot click a no-op) — visually verifiable read-only; ghosts already demonstrable by hand-writing a `.intropy/scaffold.json` beside a system.
+5. **CreateDrawer + wiring + banner** (Phase 4 + 3.6 wiring).
+6. **CSS polish, light/dark pass** (Phase 5).
+
+## Verification
+
+- Go: `go test ./internal/dashboard/ ./internal/template/`.
+- Web: `make web` (runs `tsc -b &amp;&amp; vite build`) — the only automated JS gate; there is **no JS test runner** (confirmed in web/package.json).
+- Manual: there is **no fixture workspace in testdata** (confirmed by find). Build a scratch one: `mkdir /tmp/ws &amp;&amp; cd /tmp/ws`, hand-write `acme/erp/erp-host/.intropy/scaffold.json` with `"role":"system-host"` plus a couple of block scaffolds with `"blockKind":"extractor"` etc. (5-line JSON each, matching `writeScaffoldRole`'s shape) — this exercises scaffold-only systems, ghosts, slots, and the drawer end-to-end without dotnet. Run `intropy dashboard` in it (serves :8730) and `make web-dev` for the HMR proxy. Full topology confirmation (ghost → declared after `sys create` + Refresh) needs a real dotnet system host — verify once against a real workspace.
+
+## Risks / open questions
+
+1. **Do the official library's templates carry `intropy.dev/block-kind` labels?** Unverifiable from this repo (labels live in the templates repo). The drawer's strict filter could show an empty list in production — hence the "show all" escape hatch. Worth checking one library release before building the filter UX.
+2. **Middle-column semantics**: the "transactional" slot column is a heuristic (`round(loaderCol/2)` clamped); in graphs where topics occupy the middle columns the slot lands beside topics, not components. Acceptable for an experiment; flag in the PR.
+3. **Host-only + topology-less vs. topology-errored systems**: a host whose graph verb *fails* appears in `report.errors` and gets the skeleton treatment too (declared undefined). The error banner already shows why — acceptable, but the skeleton could be misread as "empty system"; the existing errors banner mitigates.
+4. **Symlinked dir escape** in `resolveCreate` is theoretical (local single-user tool, same posture as today's name handling); `EvalSymlinks` hardening is one line if wanted.
+5. **Workspace pseudo-system**: slots there scaffold at the root (`dir: "."`), which equals today's Templates-view behavior — fine, but the "system" label in the drawer should say "Workspace".
+6. `entries` on `/api/templates` slightly departs from "mirrors `template list -o json`" — kept additive with `templates` untouched; consider back-porting a `--detailed` flag to the CLI later if the mirror matters.
+
+### Critical Files for Implementation
+
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/templates.go
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/internal/dashboard/handlers.go
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/components/FlowView.tsx
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/components/TemplatesView.tsx
+- /Users/robinhultman/dev/intropy/tooling/intropy-cli/web/src/api.ts</result>
+<usage><subagent_tokens>93150</subagent_tokens><tool_uses>24</tool_uses><duration_ms>314149</duration_ms></usage>
+</task-notification>
+
+---
+
+can we have the loader destinations to render on the right side?
+
+---
+
+Is it possible to use a rotated cylinder for the topic to distinguish it?
+
+---
+
+the icons in the components and resources are barely visible in dark mode
+
+---
+
+If you run the dashboard on an empty folder you get "No integrations to visualise." but now that we allow for creating components in the dashboard we need to be able to render an empty system
+
+---
+
+i have now implemented sys update. Should we call that whenever we add a new component?
+
+---
+
+yes, build the endpoint and banner button
+
+---
+
+still running?
+
+---
+
+<task-notification>
+<task-id>bjae1iig3</task-id>
+<tool-use-id>toolu_014Gg4ydmo66tbprq5T5HNev</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/71b87eb7-bd8d-43ad-ae7e-95db76ccea81/tasks/bjae1iig3.output</output-file>
+<status>completed</status>
+<summary>Background command "Wait for server and warm topology (incremental dotnet build)" completed (exit code 0)</summary>
+</task-notification>

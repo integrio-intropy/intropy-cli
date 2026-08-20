@@ -1,0 +1,114 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "77340ff9e91a",
+  "session_id": "71b87eb7-bd8d-43ad-ae7e-95db76ccea81",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-20T15:28:47.2213Z",
+  "branch": "feature/flow-slot-create",
+  "checkpoints_count": 4,
+  "save_step_count": 3,
+  "files_touched": [
+    "internal/dashboard/handlers.go",
+    "internal/dashboard/systems.go",
+    "internal/dashboard/systems_test.go",
+    "web/src/api.ts",
+    "web/src/components/FlowView.tsx",
+    "web/src/index.css"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "0fbc054fc76e",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 436,
+    "cache_creation_tokens": 620241,
+    "cache_read_tokens": 52073489,
+    "output_tokens": 151896,
+    "api_call_count": 218
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_011sDkPx8F3s5TuGpzg2MQHh",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "golang-cli"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "0fbc054fc76e",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 114,
+        "end": 115,
+        "entry_ids": [
+          "65755887-f333-4fb8-afcc-930f067185f7"
+        ],
+        "tool_use_id": "toolu_011sDkPx8F3s5TuGpzg2MQHh"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_011sDkPx8F3s5TuGpzg2MQHh"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: golang-cli",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-20T15:28:46.976284Z",
+    "agent_lines": 365,
+    "agent_removed": 4,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 365,
+    "total_lines_changed": 369,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 392,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "docs/plans/2026-08-14-001-refactor-machine-checked-repo-boundaries-plan.md": 332
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 689,
+      "agent_lines_removed": 4,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 697,
+      "agent_lines_removed": 4,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    }
+  ]
+}
