@@ -1,0 +1,5 @@
+Do not change anything. With the new features to be able to scaffold integrations directly from the integration flow tab of the dashboard how hard would it be to implement an action button on any extractor component that would seed a test file to the folder that is configured in the topologies dev settings
+
+---
+
+I think that we need to have a folder with test files. That folder can be by convention. Perhaps we need to be able to select which file to use if there are multiple test files
