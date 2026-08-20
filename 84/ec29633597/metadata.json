@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "84ec29633597",
+  "strategy": "manual-commit",
+  "branch": "feature/flow-slot-create",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "internal/dashboard/dashboard_test.go",
+    "internal/dashboard/handlers.go",
+    "internal/dashboard/templates.go",
+    "internal/dashboard/templates_test.go",
+    "web/src/api.ts",
+    "web/src/components/FlowView.tsx",
+    "web/src/components/TemplatesView.tsx",
+    "web/src/index.css"
+  ],
+  "sessions": [
+    {
+      "metadata": "/84/ec29633597/0/metadata.json",
+      "transcript": "/84/ec29633597/0/full.jsonl",
+      "compact_transcript": "/84/ec29633597/0/transcript.jsonl",
+      "content_hash": "/84/ec29633597/0/content_hash.txt",
+      "prompt": "/84/ec29633597/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 49926,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 684800,
+    "output_tokens": 20015,
+    "api_call_count": 24
+  }
+}

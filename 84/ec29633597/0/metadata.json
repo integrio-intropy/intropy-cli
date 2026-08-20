@@ -1,0 +1,111 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "84ec29633597",
+  "session_id": "01a01dbf-f42f-7e14-8dae-0117c88ad98a",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-20T06:12:16.675753Z",
+  "branch": "feature/flow-slot-create",
+  "checkpoints_count": 4,
+  "save_step_count": 4,
+  "files_touched": [
+    "internal/dashboard/dashboard_test.go",
+    "internal/dashboard/handlers.go",
+    "internal/dashboard/templates.go",
+    "internal/dashboard/templates_test.go",
+    "web/src/api.ts",
+    "web/src/components/FlowView.tsx",
+    "web/src/components/TemplatesView.tsx",
+    "web/src/index.css"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "e2f3bf8cdd43",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 49926,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 684800,
+    "output_tokens": 20015,
+    "api_call_count": 24
+  },
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-20T06:12:16.655415Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 157,
+    "total_committed": 0,
+    "total_lines_changed": 157,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 1528,
+      "user_lines_removed": 157,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "docs/plans/2026-08-14-001-refactor-machine-checked-repo-boundaries-plan.md": 332,
+        "internal/dashboard/dashboard_test.go": 37,
+        "internal/dashboard/handlers.go": 38,
+        "internal/dashboard/templates.go": 71,
+        "internal/dashboard/templates_test.go": 114,
+        "web/src/api.ts": 34,
+        "web/src/components/CreateDrawer.tsx": 275,
+        "web/src/components/FlowView.tsx": 236,
+        "web/src/components/TemplatesView.tsx": 1,
+        "web/src/components/form.tsx": 110,
+        "web/src/index.css": 220
+      },
+      "user_removed_per_file": {
+        "internal/dashboard/dashboard_test.go": 1,
+        "internal/dashboard/handlers.go": 2,
+        "internal/dashboard/templates.go": 5,
+        "web/src/api.ts": 3,
+        "web/src/components/FlowView.tsx": 40,
+        "web/src/components/TemplatesView.tsx": 106
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1468,
+      "agent_lines_removed": 157,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1468,
+      "agent_lines_removed": 157,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1744,
+      "agent_lines_removed": 157,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    }
+  ]
+}

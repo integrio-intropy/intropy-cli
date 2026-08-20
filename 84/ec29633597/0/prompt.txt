@@ -1,0 +1,19 @@
+Do not make any changes. How could we implement a sys update that updates an existing topology with any orphaned components?
+
+---
+
+1. I agree, no by default
+2. Not sure here. What do you suggest?
+3. I agree. Keep out of scope
+
+---
+
+yes turn it into a plan that I can give to another agent
+
+---
+
+can you pass it to a review agent with pi --print?
+
+---
+
+You are a senior Go engineer reviewing an implementation plan for the intropy-cli repository (a Go CLI; cobra commands under cmd/intropy, engine code under internal/). Review the plan at docs/plans/2026-08-15-001-feat-sys-update-orphaned-components-plan.md for correctness and feasibility against the actual code. Read the plan, then read the files it references (internal/system/create.go, internal/system/assemble.go, internal/system/payload.go, internal/system/model.go, internal/template/scaffold.go, internal/template/scaffold_list.go, internal/template/render.go, internal/template/create.go, internal/topology/graph.go, cmd/intropy/sys_create.go, cmd/intropy/helptext_test.go) and verify the plan's claims. Focus on: (1) factual errors about the codebase — wrong assumptions about existing functions, signatures, or behavior; (2) feasibility gaps — things the plan assumes are easy that are actually hard, or vice versa; (3) missing risks or edge cases; (4) sequencing problems between the units U1-U4. Do NOT make any changes to any files. Return a concise review: verdict (sound / needs changes), then numbered findings, each tagged [blocking], [should-fix], or [nit].
