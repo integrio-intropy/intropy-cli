@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -20,6 +21,9 @@ kind: Template
 metadata:
   name: test-template
   title: Test
+  labels:
+    intropy.dev/block-kind: extractor
+    intropy.dev/data-flow: in
 spec:
   parameters:
     type: object
@@ -330,6 +334,116 @@ func TestCreateTemplateRejectsReservedValue(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "reserved") {
 		t.Errorf("error should say why: %s", rec.Body)
+	}
+}
+
+func TestListTemplatesIncludesLabels(t *testing.T) {
+	srv := newTemplateLibraryServer(t, "v1")
+	defer srv.Close()
+	h := testHandlerWith(t, t.TempDir(), templateProviders(srv.URL))
+
+	rec := get(t, h, "/api/templates")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	var got struct {
+		Entries []templateSummary `json:"entries"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Entries) != 1 || got.Entries[0].Name != "test-template" {
+		t.Fatalf("entries = %+v", got.Entries)
+	}
+	if got.Entries[0].Title != "Test" {
+		t.Errorf("title = %q", got.Entries[0].Title)
+	}
+	// The labels are what a flow-view slot filters the palette by.
+	if got.Entries[0].Labels["intropy.dev/block-kind"] != "extractor" {
+		t.Errorf("labels = %v", got.Entries[0].Labels)
+	}
+}
+
+func TestCreateTemplateIntoDir(t *testing.T) {
+	srv := newTemplateLibraryServer(t, "v1")
+	defer srv.Close()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "acme", "erp"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	h := testHandlerWith(t, root, templateProviders(srv.URL))
+
+	rec := postJSON(t, h, "/api/templates/test-template/create",
+		`{"name":"orders","dir":"acme/erp","values":{"integrationName":"Orders"}}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body)
+	}
+	var got struct {
+		OutputDir string `json:"outputDir"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	// The root-relative identifier the flow view joins ghost nodes on.
+	if got.OutputDir != "acme/erp/orders" {
+		t.Errorf("outputDir = %q, want %q", got.OutputDir, "acme/erp/orders")
+	}
+	if _, err := os.Stat(filepath.Join(root, "acme", "erp", "orders", "README.md")); err != nil {
+		t.Fatalf("rendered file: %v", err)
+	}
+	entries, _ := scanRoot(root)
+	if len(entries) != 1 || !strings.HasSuffix(filepath.ToSlash(entries[0].Path), "acme/erp/orders") {
+		t.Errorf("scaffolds = %+v", entries)
+	}
+}
+
+func TestCreateTemplateDirValidation(t *testing.T) {
+	srv := newTemplateLibraryServer(t, "v1")
+	defer srv.Close()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "sys"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	h := testHandlerWith(t, root, templateProviders(srv.URL))
+
+	cases := []struct{ name, dir string }{
+		{"parent traversal", "../x"},
+		{"inner traversal", "sys/../sys"},
+		{"rooted", "/etc"},
+		{"backslash", `sys\x`},
+		{"empty segment", "sys//x"},
+		{"trailing slash", "sys/"},
+		{"hidden segment", ".hidden/x"},
+		{"missing dir", "missing-dir"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"name":"x","dir":` + strconv.Quote(tc.dir) + `,"values":{"integrationName":"A"}}`
+			rec := postJSON(t, h, "/api/templates/test-template/create", body)
+			if rec.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("dir %q: status = %d, want 422: %s", tc.dir, rec.Code, rec.Body)
+			}
+		})
+	}
+	// None of the rejected dirs left anything beside the workspace root.
+	if _, err := os.Stat(filepath.Join(filepath.Dir(root), "x")); !os.IsNotExist(err) {
+		t.Error("render escaped the workspace root")
+	}
+
+	// "." is the workspace root — byte-for-byte the no-dir behavior.
+	rec := postJSON(t, h, "/api/templates/test-template/create",
+		`{"name":"at-root","dir":".","values":{"integrationName":"A"}}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("dir \".\": status = %d, want 201: %s", rec.Code, rec.Body)
+	}
+	var got struct {
+		OutputDir string `json:"outputDir"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.OutputDir != "at-root" {
+		t.Errorf("outputDir = %q, want %q", got.OutputDir, "at-root")
 	}
 }
 

@@ -138,6 +138,7 @@ func newHandler(root, version string, p providers) (http.Handler, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", api.health)
 	mux.HandleFunc("GET /api/integrations", api.listIntegrations)
+	mux.HandleFunc("GET /api/systems", api.listSystems)
 	mux.HandleFunc("GET /api/integrations/{path...}", api.getIntegration)
 	mux.HandleFunc("GET /api/catalog/{path...}", api.catalog)
 	mux.HandleFunc("GET /api/flow", api.flow)
@@ -159,9 +160,23 @@ func newHandler(root, version string, p providers) (http.Handler, error) {
 
 func (s *apiServer) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{
-		"status":  "ok",
-		"version": s.version,
+		"status":    "ok",
+		"version":   s.version,
+		"workspace": s.workspaceName(),
 	})
+}
+
+// workspaceName is the served root's directory name — the label the flow
+// view gives the workspace pseudo-system, so a dashboard on ~/dev/acme says
+// "acme" rather than a generic "Workspace". Serve hands the handler an
+// absolute root; the extra Abs covers callers (tests) that pass a relative
+// one, where Base would otherwise answer ".".
+func (s *apiServer) workspaceName() string {
+	root := s.root
+	if abs, err := filepath.Abs(root); err == nil {
+		root = abs
+	}
+	return filepath.Base(root)
 }
 
 // listIntegrations mirrors `int list -o json` — the same scaffold entries in
@@ -175,6 +190,27 @@ func (s *apiServer) listIntegrations(w http.ResponseWriter, _ *http.Request) {
 		summaries = append(summaries, s.summarize(e, systems))
 	}
 	writeJSON(w, http.StatusOK, summaries)
+}
+
+// systemInfo is one declared system: the directory holding a system-host
+// scaffold, root-relative, plus the name the host declares.
+type systemInfo struct {
+	Path string `json:"path"`
+	Name string `json:"name"`
+}
+
+// listSystems reports every declared system, so the flow view can offer a
+// system that has a host but no blocks yet — /api/flow only carries systems
+// through the blocks that belong to them. The response is always an array
+// (never null) even when empty.
+func (s *apiServer) listSystems(w http.ResponseWriter, _ *http.Request) {
+	_, systems := s.scan()
+	out := make([]systemInfo, 0, len(systems))
+	for dir, name := range systems {
+		out = append(out, systemInfo{Path: s.relPath(dir), Name: name})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	writeJSON(w, http.StatusOK, out)
 }
 
 // scan splits the workspace's scaffold entries for the API: the integration

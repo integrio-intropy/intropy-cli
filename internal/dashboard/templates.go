@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -51,6 +52,12 @@ type createRequest struct {
 	// (--set name=X --out-dir y). Required.
 	Name string `json:"name"`
 
+	// Dir is the root-relative, slash-separated directory the output renders
+	// under; "" or "." is the workspace root — the pre-Dir behavior. It must
+	// already exist: the endpoint scaffolds into systems, it does not invent
+	// directory trees.
+	Dir string `json:"dir,omitempty"`
+
 	// Values are the template parameters, as --set would supply them.
 	Values map[string]any `json:"values"`
 
@@ -72,8 +79,20 @@ type createResponse struct {
 // streaming unbounded input into memory.
 const maxCreateBodyBytes = 1 << 20
 
+// templateSummary is one list entry with the manifest metadata the create
+// surfaces filter on — notably the intropy.dev/* labels a flow-view slot
+// selects templates by. Additive beside the bare names `templates` keeps.
+type templateSummary struct {
+	Name        string            `json:"name"`
+	Title       string            `json:"title,omitempty"`
+	Description string            `json:"description,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
+}
+
 // listTemplates mirrors `template list -o json` against the server's library
-// release.
+// release, adding per-template metadata (`entries`) on top of the names. The
+// describes are local reads on the already-extracted tarball; one malformed
+// manifest drops that entry rather than hiding the rest of the library.
 func (s *apiServer) listTemplates(w http.ResponseWriter, r *http.Request) {
 	lib, err := s.templates.fetchLibrary(r.Context())
 	if err != nil {
@@ -87,11 +106,25 @@ func (s *apiServer) listTemplates(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	entries := make([]templateSummary, 0, len(names))
+	for _, name := range names {
+		desc, err := lib.Describe(name)
+		if err != nil {
+			continue
+		}
+		entries = append(entries, templateSummary{
+			Name:        name,
+			Title:       desc.Title,
+			Description: desc.Description,
+			Labels:      desc.Labels,
+		})
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"owner":     lib.Owner,
 		"repo":      lib.Repo,
 		"version":   lib.Version,
 		"templates": names,
+		"entries":   entries,
 	})
 }
 
@@ -177,14 +210,18 @@ func (s *apiServer) createTemplate(w http.ResponseWriter, r *http.Request) {
 
 // resolveCreate folds the request into the output directory and value set
 // `int create --name` would produce: name doubles as values.name and as the
-// output directory under the workspace root, confined there so the endpoint
-// can never write outside the tree the dashboard serves.
+// output directory under dir (the workspace root when dir is empty), confined
+// there so the endpoint can never write outside the tree the dashboard serves.
 func (s *apiServer) resolveCreate(req createRequest) (string, map[string]any, error) {
 	if req.Name == "" {
 		return "", nil, errors.New("name is required")
 	}
 	if strings.ContainsAny(req.Name, `/\`) || req.Name == "." || req.Name == ".." {
 		return "", nil, fmt.Errorf("invalid name %q (must be a single path segment)", req.Name)
+	}
+	segments, err := splitCreateDir(req.Dir)
+	if err != nil {
+		return "", nil, err
 	}
 
 	values := req.Values
@@ -203,19 +240,48 @@ func (s *apiServer) resolveCreate(req createRequest) (string, map[string]any, er
 		}
 	}
 
-	outputDir := filepath.Join(s.root, req.Name)
 	rootAbs, err := filepath.Abs(s.root)
 	if err != nil {
 		return "", nil, err
 	}
+	parentDir := filepath.Join(append([]string{s.root}, segments...)...)
+	if len(segments) > 0 {
+		// The dir must already exist: creating into a system means the system
+		// directory is there; anything else is a client mistake, not a mkdir.
+		if info, statErr := os.Stat(parentDir); statErr != nil || !info.IsDir() {
+			return "", nil, fmt.Errorf("directory %q does not exist under the workspace root", req.Dir)
+		}
+	}
+	outputDir := filepath.Join(parentDir, req.Name)
 	outAbs, err := filepath.Abs(outputDir)
 	if err != nil {
 		return "", nil, err
 	}
-	if outAbs != filepath.Join(rootAbs, req.Name) {
+	want := filepath.Join(append(append([]string{rootAbs}, segments...), req.Name)...)
+	if outAbs != want {
 		return "", nil, fmt.Errorf("invalid name %q (output would escape the workspace root)", req.Name)
 	}
 	return outputDir, values, nil
+}
+
+// splitCreateDir validates a create request's dir and returns its segments.
+// "" and "." mean the workspace root (no segments). Each segment must be a
+// plain directory name — no separators besides "/", no dot entries, nothing
+// hidden — so the joined path can only descend from the root.
+func splitCreateDir(dir string) ([]string, error) {
+	if dir == "" || dir == "." {
+		return nil, nil
+	}
+	if strings.Contains(dir, `\`) {
+		return nil, fmt.Errorf("invalid dir %q (must be slash-separated)", dir)
+	}
+	segments := strings.Split(dir, "/")
+	for _, seg := range segments {
+		if seg == "" || seg == ".." || strings.HasPrefix(seg, ".") {
+			return nil, fmt.Errorf("invalid dir %q (each segment must be a plain directory name)", dir)
+		}
+	}
+	return segments, nil
 }
 
 // isReservedValueKey reports whether key is one of the reserved value keys a

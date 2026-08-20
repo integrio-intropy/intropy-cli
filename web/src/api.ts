@@ -69,6 +69,16 @@ export interface IntegrationDetail extends Integration {
 export interface Health {
   status: string
   version: string
+  /** The served root's directory name — labels the workspace pseudo-system. */
+  workspace?: string
+}
+
+/** One declared system: the directory holding a system-host scaffold
+ *  (root-relative, the same identifier space as Integration.systemPath) and
+ *  the name the host declares. */
+export interface SystemInfo {
+  path: string
+  name: string
 }
 
 // Deployment state (internal/deploy). The server obtains each record by running
@@ -382,7 +392,11 @@ async function requestJSON<T>(url: string, init?: RequestInit): Promise<T> {
     } catch {
       // response had no JSON error body; keep the status line
     }
-    throw new Error(message)
+    // Carry the status so callers can branch on it — the create forms offer
+    // force on a 409 (non-empty output directory).
+    const err = new Error(message) as Error & { status?: number }
+    err.status = res.status
+    throw err
   }
   return (await res.json()) as T
 }
@@ -395,6 +409,9 @@ export const api = {
     getJSON<IntegrationDetail>(`/api/integrations/${path}`),
   /** Every integration enriched with pipeline steps + Dapr components for the flow canvas. */
   flow: () => getJSON<IntegrationDetail[]>('/api/flow'),
+  /** Every declared system — including hosts with no blocks yet, which
+   *  /api/flow cannot surface (it only carries systems through their blocks). */
+  systems: () => getJSON<SystemInfo[]>('/api/systems'),
   /** Every declared system topology, cached from the hosts' graph verbs. */
   topologies: () => getJSON<TopologyReport>('/api/topology'),
   /** Re-run every host's graph verb and return the fresh report. */
@@ -428,12 +445,23 @@ export const api = {
 // JSON contract the endpoints serve: template.List, template.DescribeResult,
 // and template.CreateResult.
 
-/** The /api/templates payload: one library release's template names. */
+/** One list entry with the manifest metadata create surfaces filter on —
+ *  notably the intropy.dev/* labels a flow-view slot selects templates by. */
+export interface TemplateSummary {
+  name: string
+  title?: string
+  description?: string
+  labels?: Record<string, string>
+}
+
+/** The /api/templates payload: one library release's template names, plus
+ *  per-template metadata in `entries` (additive beside the bare names). */
 export interface TemplateList {
   owner: string
   repo: string
   version: string
   templates: string[]
+  entries?: TemplateSummary[]
 }
 
 /** One parameter of a template's schema, in YAML declaration order. Mirrors
@@ -467,9 +495,12 @@ export interface TemplateDetail {
 }
 
 /** The POST body for create. `name` folds into values.name and becomes the
- *  output directory under the workspace root, as `int create --name` does. */
+ *  output directory under `dir` (the workspace root when omitted or "."), as
+ *  `int create --name` does. `dir` must be an existing root-relative
+ *  directory — creating into a system, not inventing directory trees. */
 export interface CreateRequest {
   name: string
+  dir?: string
   values: Record<string, unknown>
   force?: boolean
 }
