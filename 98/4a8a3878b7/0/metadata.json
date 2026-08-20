@@ -1,0 +1,54 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "984a8a3878b7",
+  "session_id": "01a01de7-70bd-7f1b-a636-badffbd27314",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-20T06:58:18.836642Z",
+  "branch": "feat/sys-update-orphans",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "internal/template/render.go",
+    "internal/system/update.go",
+    "cmd/intropy/sys_update.go",
+    "internal/system/update_test.go",
+    "cmd/intropy/sys_update_test.go"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "98423ef43353",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 53571,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1492544,
+    "output_tokens": 18102,
+    "api_call_count": 39
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-20T06:58:18.81776Z",
+    "agent_lines": 1195,
+    "agent_removed": 0,
+    "human_added": 121,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1316,
+    "total_lines_changed": 1316,
+    "agent_percentage": 90.80547112462007,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 707,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "docs/plans/2026-08-14-001-refactor-machine-checked-repo-boundaries-plan.md": 332,
+        "docs/plans/2026-08-15-001-feat-sys-update-orphaned-components-plan.md": 315
+      }
+    }
+  ]
+}
