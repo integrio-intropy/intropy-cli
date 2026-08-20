@@ -1,0 +1,13 @@
+Do not make any changes. I would like to be able to start and stop a system from the flow tab of the dashboard. That is basically a dotnet run on the host project. Where would you implement such a thing?
+
+---
+
+should we create a sys run command?
+
+---
+
+and you agree with whats in AGENTS.md or are you just complying?
+
+---
+
+ok can you make a plan for this feature and pass it off to a review agent with pi --print?
