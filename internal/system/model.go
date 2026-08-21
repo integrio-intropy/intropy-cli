@@ -28,7 +28,7 @@ type Component struct {
 	// additive-only.
 	Port  string   `json:"port,omitempty"`
 	Ports []string `json:"ports,omitempty"` // transactional blocks: exactly [from, to]
-	Path  string   `json:"path"`           // scaffold directory, for error messages
+	Path  string   `json:"path"`            // scaffold directory, for error messages
 
 	// topicContract is the contract type of Topic, carried on the
 	// component because topics dedupe across components: the model's

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -246,9 +247,9 @@ func TestCatalogPendingWhenCacheIsCold(t *testing.T) {
 	writeScaffold(t, filepath.Join(tmp, "order-flow", "order-extractor"), "extractor", "v0.2.0")
 	writeSystemHost(t, filepath.Join(tmp, "order-flow", "host"), "order-flow")
 
-	calls := 0
+	var calls atomic.Int64
 	provider := func(context.Context) ([]topology.Entry, []string) {
-		calls++
+		calls.Add(1)
 		return nil, nil
 	}
 	h := testHandlerWithTopo(t, ".", provider)
@@ -273,10 +274,10 @@ func TestCatalogPendingWhenCacheIsCold(t *testing.T) {
 	// The warm-up runs the provider asynchronously; wait for it rather than
 	// racing it.
 	deadline := time.Now().Add(5 * time.Second)
-	for calls == 0 && time.Now().Before(deadline) {
+	for calls.Load() == 0 && time.Now().Before(deadline) {
 		time.Sleep(5 * time.Millisecond)
 	}
-	if calls == 0 {
+	if calls.Load() == 0 {
 		t.Fatal("a pending answer should warm the topology cache in the background")
 	}
 }

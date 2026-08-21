@@ -18,13 +18,13 @@ import (
 // ManifestInspection is the environment-neutral deployment model derived from
 // a system topology. Field names are stable and additive-only.
 type ManifestInspection struct {
-	System        string               `json:"system"`
-	Template      string               `json:"template"`
-	LocalFixtures []string             `json:"localFixtures,omitempty"`
-	Components    []ManifestComponent  `json:"components"`
-	PubSubs       []ManifestPubSub     `json:"pubsubs"`
-	Topics        []ManifestTopic      `json:"topics"`
-	Ports         []InspectedPort      `json:"ports"`
+	System        string              `json:"system"`
+	Template      string              `json:"template"`
+	LocalFixtures []string            `json:"localFixtures,omitempty"`
+	Components    []ManifestComponent `json:"components"`
+	PubSubs       []ManifestPubSub    `json:"pubsubs"`
+	Topics        []ManifestTopic     `json:"topics"`
+	Ports         []InspectedPort     `json:"ports"`
 }
 
 // InspectedPort is one external edge derived from the topology.

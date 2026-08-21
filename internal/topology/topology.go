@@ -55,11 +55,11 @@ type Topology struct {
 // which joins it to its .intropy/scaffold.json project, is its Name relative
 // to the system root.
 type Component struct {
-	Name       string         `json:"name"`
-	Kind       string         `json:"kind"`
-	Subscribes []TopicRef     `json:"subscribes,omitempty"`
-	Publishes  []Publication  `json:"publishes,omitempty"`
-	Ports      []PortUse      `json:"ports,omitempty"`
+	Name       string        `json:"name"`
+	Kind       string        `json:"kind"`
+	Subscribes []TopicRef    `json:"subscribes,omitempty"`
+	Publishes  []Publication `json:"publishes,omitempty"`
+	Ports      []PortUse     `json:"ports,omitempty"`
 	// Provides/Consumes are contract surfaces, parsed opaquely (see APIs).
 	Provides []json.RawMessage `json:"provides,omitempty"`
 	Consumes []json.RawMessage `json:"consumes,omitempty"`

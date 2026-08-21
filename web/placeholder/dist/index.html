@@ -1,0 +1,90 @@
+<!doctype html>
+<!--
+  PLACEHOLDER — not the real dashboard.
+
+  This file is committed so `go build` and `go test` work without a Node
+  toolchain: the web package embeds it via go:embed and serves it until the
+  SPA is built. A `vite build` (`make web` / `make bundle`) writes the real
+  SPA into ../dist, which is gitignored, and the embed logic (web/embed.go)
+  prefers it over this page.
+
+  Keep this file free of references to dist/assets: those are never
+  committed, and a page that links to them renders blank when embedded
+  without the bundles. It doubles as the unbuilt marker — copied to
+  dist/placeholder.html by `make web` — so its removal from a built dist is
+  what flips the embed to the real SPA.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="data:," />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Intropy Dashboard</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --fg: #1a1a1a;
+        --muted: #666;
+        --bg: #fff;
+        --border: #e0e0e0;
+        --code-bg: #f4f4f5;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --fg: #e8e8e8;
+          --muted: #999;
+          --bg: #16161a;
+          --border: #2c2c31;
+          --code-bg: #22222a;
+        }
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 2rem;
+        background: var(--bg);
+        color: var(--fg);
+        font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, sans-serif;
+      }
+      main {
+        max-width: 34rem;
+      }
+      h1 {
+        margin: 0 0 0.5rem;
+        font-size: 1.25rem;
+        font-weight: 600;
+      }
+      p {
+        margin: 0 0 1rem;
+        color: var(--muted);
+      }
+      pre {
+        margin: 0 0 1rem;
+        padding: 0.75rem 1rem;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--code-bg);
+        color: var(--fg);
+        overflow-x: auto;
+        font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Dashboard assets not built</h1>
+      <p>
+        This binary embeds the placeholder page rather than the compiled
+        dashboard. The JSON API is running — only the frontend bundle is
+        missing. Rebuild with the SPA included:
+      </p>
+      <pre>make bundle    # builds web/dist, then the CLI</pre>
+      <p>
+        Released binaries always ship the real dashboard; GoReleaser builds the
+        SPA before compiling.
+      </p>
+    </main>
+  </body>
+</html>

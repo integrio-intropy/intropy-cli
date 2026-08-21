@@ -22,12 +22,12 @@ var ErrNoComponents = errors.New("no assemblable integration scaffolds found")
 // around the template render.
 func Assemble(entries []template.ScaffoldEntry, warnf func(format string, args ...any)) (*Model, error) {
 	var (
-		components  []Component
-		shared      []SharedLibrary
-		byAppID     = map[string]string{}   // appId -> scaffold dir
-		byTopic     = map[TopicKey]Topic{}  // key -> first-seen topic
-		firstDir    = map[TopicKey]string{} // key -> dir that defined it
-		byPort      = map[string]string{}   // port -> scaffold dir
+		components []Component
+		shared     []SharedLibrary
+		byAppID    = map[string]string{}   // appId -> scaffold dir
+		byTopic    = map[TopicKey]Topic{}  // key -> first-seen topic
+		firstDir   = map[TopicKey]string{} // key -> dir that defined it
+		byPort     = map[string]string{}   // port -> scaffold dir
 	)
 
 	for _, e := range entries {

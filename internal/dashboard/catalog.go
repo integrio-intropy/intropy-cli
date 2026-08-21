@@ -200,7 +200,7 @@ func joinTopology(entry *CatalogEntry, sum integrationSummary, topo *topology.En
 		entry.GraphStatus = graphNotInGraph
 		entry.Checks = appendCheck(entry.Checks, Check{
 			Severity: severityWarn,
-			Message: fmt.Sprintf("the system graph does not declare a component named %s — renamed without re-scaffolding?", sum.Name),
+			Message:  fmt.Sprintf("the system graph does not declare a component named %s — renamed without re-scaffolding?", sum.Name),
 		})
 		return
 	}
