@@ -1,11 +1,3 @@
-Yes to 1
-
----
-
-what do I need to do when I want the new version on my machine where the old one is installed?
-
----
-
 Run .github/scripts/update-homebrew-formula.sh
 Cloning into '/tmp/tmp.jyD9q3Gi4N/tap'...
 rm 'Casks/intropy.rb'
@@ -22,3 +14,7 @@ To https://github.com/integrio-intropy/homebrew-tap.git
  * [new branch]      HEAD -> release/intropy-0.10.0
 pull request create failed: GraphQL: Resource not accessible by personal access token (createPullRequest)
 Error: Process completed with exit code 1.
+
+---
+
+But we can also give the cli repo permission to create the PR?
