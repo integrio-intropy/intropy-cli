@@ -1,8 +1,8 @@
 // Package registrytest provides an in-memory OCI distribution registry for
 // tests. It implements only the endpoints oras-go exercises: the version
-// check, monolithic blob upload (with cross-repo mount), blob fetch, and
-// manifest push/fetch by tag or digest. Chunked uploads, the referrers API,
-// pagination, and authentication challenges are not implemented.
+// check, monolithic blob upload (with cross-repo mount), blob fetch, manifest
+// push/fetch by tag or digest, and tag listing. Chunked uploads, the referrers
+// API, pagination, and authentication challenges are not implemented.
 package registrytest
 
 import (
@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -100,6 +101,9 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// Repository names contain slashes, so split on the last operation
 	// segment rather than a fixed position.
 	switch {
+	case strings.HasSuffix(rest, "/tags/list"):
+		repo := strings.TrimSuffix(rest, "/tags/list")
+		r.handleTags(w, req, repo)
 	case strings.Contains(rest, "/blobs/uploads/"):
 		repo, id, _ := strings.Cut(rest, "/blobs/uploads/")
 		r.handleUpload(w, req, repo, id)
@@ -112,6 +116,37 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	default:
 		writeError(w, http.StatusNotFound, "UNSUPPORTED", "not a registry endpoint")
 	}
+}
+
+// handleTags serves the tag listing. An unknown repository is a 404 rather
+// than an empty list, matching a real registry: a caller cannot otherwise tell
+// "never pushed" from "pushed and since emptied". Tags come back sorted so
+// tests do not depend on map iteration order. Pagination is not implemented,
+// so the n and last parameters are ignored.
+func (r *Registry) handleTags(w http.ResponseWriter, req *http.Request, repo string) {
+	if req.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "UNSUPPORTED", "tag listing is read-only")
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	repoTags, ok := r.tags[repo]
+	if !ok {
+		writeError(w, http.StatusNotFound, "NAME_UNKNOWN", "repository unknown")
+		return
+	}
+
+	tags := make([]string, 0, len(repoTags))
+	for tag := range repoTags {
+		tags = append(tags, tag)
+	}
+	sort.Strings(tags)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]any{"name": repo, "tags": tags})
 }
 
 func (r *Registry) handleUpload(w http.ResponseWriter, req *http.Request, repo, id string) {

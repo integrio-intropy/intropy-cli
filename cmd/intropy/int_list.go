@@ -10,6 +10,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// int list walks a directory tree for scaffold records. The walk and the
+// record parsing live in internal/template; this file is flag plumbing and
+// table formatting.
 type intListFlags struct {
 	output string
 }
@@ -53,7 +56,7 @@ var intListCmd = &cobra.Command{
 		}
 
 		if len(entries) == 0 {
-			fmt.Fprintln(cmd.ErrOrStderr(), "No scaffolded integrations found.")
+			fmt.Fprintln(cmd.ErrOrStderr(), "no scaffolded integrations found")
 			return nil
 		}
 
@@ -68,6 +71,6 @@ var intListCmd = &cobra.Command{
 
 func init() {
 	f := intListCmd.Flags()
-	f.StringVarP(&intListOpts.output, "output", "o", "plain", "output format: plain or json")
+	f.StringVarP(&intListOpts.output, "output", "o", "plain", flagUsageOutput)
 	intCmd.AddCommand(intListCmd)
 }

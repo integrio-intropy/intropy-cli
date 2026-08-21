@@ -112,6 +112,11 @@ func TestResolveByTagAndDigest(t *testing.T) {
 	if byTag.Annotations["org.opencontainers.image.title"] != "component-x" {
 		t.Errorf("resolve by tag annotations = %v; want the title annotation", byTag.Annotations)
 	}
+	// Callers tell one kind of artifact from another without pulling it, so the
+	// artifact type has to survive a resolve.
+	if byTag.ArtifactType != testArtifact().ArtifactType {
+		t.Errorf("resolve by tag artifactType = %q; want %q", byTag.ArtifactType, testArtifact().ArtifactType)
+	}
 
 	byDigest, err := c.Resolve(ctx, srv.Host+"/releases/component-x@"+pushed.Digest)
 	if err != nil {
@@ -150,11 +155,11 @@ func TestPushIndexCopiesChildren(t *testing.T) {
 	c, srv := testClient(t)
 	ctx := context.Background()
 
-	first, err := c.PushArtifact(ctx, srv.Host+"/skills/alpha:1.0.0", testArtifact())
+	first, err := c.PushArtifact(ctx, srv.Host+"/artifacts/alpha:1.0.0", testArtifact())
 	if err != nil {
 		t.Fatalf("push alpha: %v", err)
 	}
-	second, err := c.PushArtifact(ctx, srv.Host+"/skills/beta:2.0.0", testArtifact())
+	second, err := c.PushArtifact(ctx, srv.Host+"/artifacts/beta:2.0.0", testArtifact())
 	if err != nil {
 		t.Fatalf("push beta: %v", err)
 	}
@@ -171,7 +176,7 @@ func TestPushIndexCopiesChildren(t *testing.T) {
 					Size:         first.Size,
 					Annotations:  map[string]string{"io.intropy.name": "alpha"},
 				},
-				SourceRef: srv.Host + "/skills/alpha:1.0.0",
+				SourceRef: srv.Host + "/artifacts/alpha:1.0.0",
 			},
 			{
 				Descriptor: Descriptor{
@@ -181,12 +186,12 @@ func TestPushIndexCopiesChildren(t *testing.T) {
 					Size:         second.Size,
 					Annotations:  map[string]string{"io.intropy.name": "beta"},
 				},
-				SourceRef: srv.Host + "/skills/beta:2.0.0",
+				SourceRef: srv.Host + "/artifacts/beta:2.0.0",
 			},
 		},
 	}
 
-	pushed, err := c.PushIndex(ctx, srv.Host+"/skills/index:latest", index)
+	pushed, err := c.PushIndex(ctx, srv.Host+"/collections/index:latest", index)
 	if err != nil {
 		t.Fatalf("PushIndex: %v", err)
 	}
@@ -195,12 +200,12 @@ func TestPushIndexCopiesChildren(t *testing.T) {
 	}
 
 	for _, child := range []string{first.Digest, second.Digest} {
-		if !srv.Registry.HasManifest("skills/index", child) {
+		if !srv.Registry.HasManifest("collections/index", child) {
 			t.Errorf("child manifest %s was not copied into the index repository", child)
 		}
 	}
 
-	got, desc, err := c.PullIndex(ctx, srv.Host+"/skills/index:latest")
+	got, desc, err := c.PullIndex(ctx, srv.Host+"/collections/index:latest")
 	if err != nil {
 		t.Fatalf("PullIndex: %v", err)
 	}

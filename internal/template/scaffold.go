@@ -39,22 +39,25 @@ const (
 	TemplateBlockKindLabel = "intropy.dev/block-kind"
 
 	// TemplateDataFlowLabel names the manifest label that declares the
-	// block's data flow direction relative to the system ("in" or "out").
-	// Recorded alongside the block kind.
+	// block's data flow direction relative to the system ("in", "out",
+	// or "both"). Recorded alongside the block kind.
 	TemplateDataFlowLabel = "intropy.dev/data-flow"
 
-	// BlockKindExtractor and BlockKindLoader are the block kinds `sys
-	// create` knows how to assemble.
-	BlockKindExtractor = "extractor"
-	BlockKindLoader    = "loader"
+	// The BlockKind constants name the block kinds with a parse entry in
+	// internal/system's blockParsers registry — the set `sys create`
+	// assembles. Records carrying any other kind are skipped with a
+	// warning.
+	BlockKindExtractor     = "extractor"
+	BlockKindLoader        = "loader"
+	BlockKindTransactional = "transactional-integration"
 )
 
 var ErrScaffoldNotFound = errors.New("no " + ScaffoldRelPath + " found in current directory or any parent")
 
 // Scaffold is the committed record of what `int create` rendered. Unlike
 // CreateResult it carries no outputDir — the file's location is the project
-// root — and it is written into the project so later commands (e.g.
-// `manifests create`) can re-fetch the exact template version.
+// root — and it is written into the project so later commands (e.g. `sys
+// create`) can re-fetch the exact template version.
 type Scaffold struct {
 	SchemaVersion int            `json:"schemaVersion"`
 	Template      string         `json:"template"` // directory name in the template library repo

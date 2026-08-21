@@ -27,11 +27,19 @@ type CreateOptions struct {
 	HTTP       *http.Client
 	UserAgent  string
 
-	// Test overrides. Production callers leave these zero-valued; the CLI
-	// always targets the official template library at integrio-intropy/intropy-templates.
+	// Owner and Repo select the template library. Zero values target the
+	// official library at integrio-intropy/intropy-templates; the CLI sets
+	// them from --template-repo, INTROPY_TEMPLATE_REPO, or templateRepo in
+	// the config file. GitHubBaseURL remains a test-only seam.
 	Owner         string
 	Repo          string
 	GitHubBaseURL string
+
+	// OnManifest, when set, runs after the manifest loads and before
+	// values resolve, render, dependency processing, or the scaffold
+	// record write. A non-nil error aborts the create. Callers use it for
+	// gates that must run before any output is written.
+	OnManifest func(*Template) error
 }
 
 // CreateResult is the machine-readable summary written when --output-json is
@@ -92,7 +100,7 @@ func Create(ctx context.Context, opts CreateOptions) error {
 		return err
 	}
 
-	if err := renderCreateOutput(templateRoot, opts.Template, opts.OutputDir, opts.Force, values); err != nil {
+	if err := renderCreateOutput(filepath.Join(templateRoot, templateSkeletonDir), tmpl, opts.Template, opts.OutputDir, opts.Force, values); err != nil {
 		return err
 	}
 	fmt.Fprintf(opts.Stderr, "created %s from %s/%s@%s (template %s)\n", opts.OutputDir, opts.Owner, opts.Repo, tag, opts.Template)
@@ -136,7 +144,7 @@ func validateCreateOptions(opts CreateOptions) error {
 		return err
 	}
 	if opts.OutputDir == "" {
-		return errors.New("--output is required")
+		return errors.New("--out-dir is required")
 	}
 	return nil
 }
@@ -145,6 +153,11 @@ func prepareCreateTemplate(templateRoot string, opts CreateOptions) (*Template, 
 	tmpl, err := LoadTemplate(filepath.Join(templateRoot, templateManifestName))
 	if err != nil {
 		return nil, nil, err
+	}
+	if opts.OnManifest != nil {
+		if err := opts.OnManifest(tmpl); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	prompter := selectPrompter(&opts)
@@ -155,15 +168,18 @@ func prepareCreateTemplate(templateRoot string, opts CreateOptions) (*Template, 
 	return tmpl, values, nil
 }
 
-func renderCreateOutput(templateRoot, templateName, outputDir string, force bool, values map[string]any) error {
-	skelRoot := filepath.Join(templateRoot, templateSkeletonDir)
+// renderCreateOutput renders an extracted skeleton into outputDir, honoring
+// the manifest's spec.files rules. The caller passes the skeleton root
+// itself (PrepareCreate has already verified it), so the missing-skeleton
+// check lives next to the fetch that could produce it.
+func renderCreateOutput(skelRoot string, tmpl *Template, templateName, outputDir string, force bool, values map[string]any) error {
 	if info, err := os.Stat(skelRoot); err != nil || !info.IsDir() {
 		return fmt.Errorf("template %q is missing %s/ directory", templateName, templateSkeletonDir)
 	}
 	if err := ensureOutputDir(outputDir, force); err != nil {
 		return err
 	}
-	return Render(skelRoot, outputDir, values)
+	return RenderFiltered(skelRoot, outputDir, values, tmpl.Spec.Files)
 }
 
 func maybeWriteCreateResult(opts CreateOptions, tmpl *Template, values map[string]any, tag string, deps []DependencyResult) error {
@@ -203,12 +219,6 @@ func writeOutputJSON(path string, stdout io.Writer, r CreateResult) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
-// EnsureOutputDir creates dir if missing and refuses to render into a
-// non-empty directory unless force is set.
-func EnsureOutputDir(dir string, force bool) error {
-	return ensureOutputDir(dir, force)
-}
-
 func ensureOutputDir(dir string, force bool) error {
 	info, err := os.Stat(dir)
 	switch {
@@ -227,6 +237,14 @@ func ensureOutputDir(dir string, force bool) error {
 		return fmt.Errorf("--output %s is not empty (use --force to overwrite)", dir)
 	}
 	return nil
+}
+
+// ValidateTemplateName reports whether name is safe to use as a template
+// directory — the exported half of validateTemplateName for callers that
+// resolve a library themselves (the dashboard's template endpoints) and need
+// the same refusal before joining user input into a path.
+func ValidateTemplateName(name string) error {
+	return validateTemplateName(name)
 }
 
 // validateTemplateName rejects empty names and anything that could escape the

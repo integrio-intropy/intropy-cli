@@ -6,61 +6,76 @@ import (
 	"syscall"
 
 	"github.com/integrio-intropy/intropy-cli/internal/deploy"
-	"github.com/integrio-intropy/intropy-cli/internal/template"
+	"github.com/integrio-intropy/intropy-cli/internal/interactive"
 	"github.com/spf13/cobra"
 )
 
 type manifestsCreateFlags struct {
-	output     string
-	version    string
-	values     []string
-	sets       []string
-	force      bool
-	noInput    bool
-	outputJSON string
+	env             string
+	domain          string
+	system          string
+	templateVersion string
+	templateRepo    string
+	gitopsRepo      string
+	dryRun          bool
+	diff            bool
+	bindings        []string
 }
 
 var manifestsCreateFlagValues manifestsCreateFlags
 
 var manifestsCreateCmd = &cobra.Command{
 	Use:   "create",
-	Short: "Create Kubernetes manifests for a scaffolded integration",
-	Long: "Generate a kustomize base + overlays tree of Kubernetes deployment manifests for a previously scaffolded integration. " +
-		"Run it inside the integration project: the command walks up from the current directory to find " + template.ScaffoldRelPath + ", " +
-		"re-fetches the exact template version recorded there, and renders its manifests/ templates. " +
-		"Scaffold values (e.g. name, appPort) pre-fill matching manifest parameters; remaining required parameters are prompted for, or supplied via --set/--values.",
+	Short: "Create missing manifests on a GitOps review branch",
+	Long: "Render one environment from the system topology and create its missing files on a " +
+		"manifests-create/<domain>-<system>-<environment> review branch. Existing identical files are accepted, " +
+		"but an existing file that differs is never replaced or deleted. Without --env, overlays are created for every environment in deploy.yaml. " +
+		"Use --binding to choose each port's GitOps binding kind; missing choices are prompted for when the terminal is interactive and fail clearly otherwise. " +
+		"The default branch is never updated directly. Use --dry-run for the file plan or --diff for the generated file differences; neither creates manifest files, commits, or pushes.",
 	Args: cobra.NoArgs,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		sets, err := template.ParseSets(manifestsCreateFlagValues.sets)
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		if manifestsCreateFlagValues.env == "local" {
+			return newUsageErrorf("--env local belongs to 'intropy manifests render --env local'")
+		}
+		owner, repo, err := resolveTemplateRepo(manifestsCreateFlagValues.templateRepo)
 		if err != nil {
 			return err
 		}
+
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
-		return deploy.Create(ctx, deploy.CreateOptions{
-			OutputDir:  manifestsCreateFlagValues.output,
-			Version:    manifestsCreateFlagValues.version,
-			SetValues:  sets,
-			Files:      manifestsCreateFlagValues.values,
-			Force:      manifestsCreateFlagValues.force,
-			NoInput:    manifestsCreateFlagValues.noInput,
-			OutputJSON: manifestsCreateFlagValues.outputJSON,
-			Stdin:      cmd.InOrStdin(),
-			Stdout:     cmd.OutOrStdout(),
-			Stderr:     cmd.ErrOrStderr(),
-			UserAgent:  "intropy-cli/" + version,
+		selector := interactive.NewTerminalSelector(cmd.InOrStdin(), cmd.ErrOrStderr())
+		return deploy.CreateManifests(ctx, deploy.CreateManifestOptions{
+			Environment:     manifestsCreateFlagValues.env,
+			Bindings:        manifestsCreateFlagValues.bindings,
+			Selector:        selector,
+			Domain:          manifestsCreateFlagValues.domain,
+			System:          manifestsCreateFlagValues.system,
+			TemplateVersion: manifestsCreateFlagValues.templateVersion,
+			GitopsRepo:      manifestsCreateFlagValues.gitopsRepo,
+			DryRun:          manifestsCreateFlagValues.dryRun,
+			Diff:            manifestsCreateFlagValues.diff,
+			UserAgent:       "intropy-cli/" + version,
+			CliVersion:      version,
+			Stdin:           cmd.InOrStdin(),
+			Stdout:          cmd.OutOrStdout(),
+			Stderr:          cmd.ErrOrStderr(),
+			Owner:           owner,
+			Repo:            repo,
 		})
 	},
 }
 
 func init() {
 	f := manifestsCreateCmd.Flags()
-	f.StringVarP(&manifestsCreateFlagValues.output, "output", "o", "", "destination directory (default: deploy, relative to the project root)")
-	f.StringVar(&manifestsCreateFlagValues.version, "version", "", "template release tag (default: the version pinned in "+template.ScaffoldRelPath+")")
-	f.StringArrayVarP(&manifestsCreateFlagValues.values, "values", "f", nil, "values file in YAML/JSON (repeatable; use - to read one doc from stdin)")
-	f.StringArrayVarP(&manifestsCreateFlagValues.sets, "set", "s", nil, "set a value as key=value (repeatable)")
-	f.BoolVar(&manifestsCreateFlagValues.force, "force", false, "allow rendering into a non-empty output directory")
-	f.BoolVar(&manifestsCreateFlagValues.noInput, "no-input", false, "disable interactive prompts for missing values")
-	f.StringVar(&manifestsCreateFlagValues.outputJSON, "output-json", "", "write a machine-readable result document to this path (- for stdout)")
+	f.StringVarP(&manifestsCreateFlagValues.env, "env", "e", "", flagUsageManifestCreateEnv)
+	f.StringVar(&manifestsCreateFlagValues.domain, "domain", "", flagUsageManifestDomain)
+	f.StringVar(&manifestsCreateFlagValues.system, "system", "", flagUsageManifestSystem)
+	f.StringVar(&manifestsCreateFlagValues.templateVersion, "template-version", "", flagUsageTemplateVer)
+	f.StringVar(&manifestsCreateFlagValues.templateRepo, "template-repo", "", flagUsageTemplateRepo)
+	f.StringVar(&manifestsCreateFlagValues.gitopsRepo, "gitops-repo", "", flagUsageGitopsRepo)
+	f.BoolVar(&manifestsCreateFlagValues.dryRun, "dry-run", false, "report file actions without creating manifest files, commits, or pushes")
+	f.BoolVar(&manifestsCreateFlagValues.diff, "diff", false, "print generated file differences without creating manifest files, commits, or pushes")
+	f.StringArrayVar(&manifestsCreateFlagValues.bindings, "binding", nil, flagUsageGitOpsBinding)
 	manifestsCmd.AddCommand(manifestsCreateCmd)
 }

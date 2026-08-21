@@ -159,3 +159,98 @@ spec:
 		}
 	}
 }
+
+// The regression test for the rawSpec failure mode its comment warns about:
+// a spec.local block must survive load, or every local.yaml value would fail
+// against a silently-empty catalog.
+func TestLoadTemplateLocalFixturesRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, templateManifestName)
+	body := `
+apiVersion: intropy.dev/v1
+kind: Template
+metadata:
+  name: local-test
+spec:
+  parameters:
+    type: object
+    properties: {}
+  local:
+    fixtures: [sftp, smb, http, file]
+`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tmpl, err := LoadTemplate(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tmpl.Spec.Local == nil {
+		t.Fatal("spec.local was silently dropped")
+	}
+	want := []string{"sftp", "smb", "http", "file"}
+	if len(tmpl.Spec.Local.Fixtures) != len(want) {
+		t.Fatalf("fixtures = %v, want %v", tmpl.Spec.Local.Fixtures, want)
+	}
+	for i, f := range want {
+		if tmpl.Spec.Local.Fixtures[i] != f {
+			t.Errorf("fixtures[%d] = %q, want %q", i, tmpl.Spec.Local.Fixtures[i], f)
+		}
+	}
+}
+
+func TestLoadTemplateGitOpsBindingKindsRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, templateManifestName)
+	body := `
+apiVersion: intropy.dev/v1
+kind: Template
+metadata:
+  name: deploy-host
+spec:
+  parameters:
+    type: object
+    properties: {}
+  gitops:
+    bindingKinds: [sftp, http]
+`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tmpl, err := LoadTemplate(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tmpl.Spec.GitOps == nil || len(tmpl.Spec.GitOps.BindingKinds) != 2 {
+		t.Fatalf("GitOps = %+v", tmpl.Spec.GitOps)
+	}
+}
+
+func TestLoadTemplateRejectsBadFixtureNames(t *testing.T) {
+	for _, fixtures := range []string{
+		"[SFTP]",       // not lowercase path-safe
+		"[sftp, sftp]", // declared twice
+		"[-sftp]",      // must start with a letter or digit
+	} {
+		dir := t.TempDir()
+		path := filepath.Join(dir, templateManifestName)
+		body := `
+apiVersion: intropy.dev/v1
+kind: Template
+metadata:
+  name: local-test
+spec:
+  parameters:
+    type: object
+    properties: {}
+  local:
+    fixtures: ` + fixtures + `
+`
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadTemplate(path); err == nil {
+			t.Errorf("fixtures %s: expected a validation error", fixtures)
+		}
+	}
+}

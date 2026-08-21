@@ -35,3 +35,30 @@ func TestSysCreateRejectsSetFlag(t *testing.T) {
 		t.Errorf("exitCode = %d, want 2", exitCode(err))
 	}
 }
+
+func TestSysCreateOutputValidation(t *testing.T) {
+	resetFlags := func(t *testing.T) {
+		t.Helper()
+		sysCreateFlagValues = sysCreateFlags{}
+		t.Cleanup(func() { sysCreateFlagValues = sysCreateFlags{} })
+	}
+
+	t.Run("non-json --output is a usage error", func(t *testing.T) {
+		resetFlags(t)
+		var stdout, stderr bytes.Buffer
+		resetRootIO(t, &stdout, &stderr)
+		t.Chdir(t.TempDir())
+
+		rootCmd.SetArgs([]string{"sys", "create", "-n", "OrderFlow", "--output", "./host"})
+		err := rootCmd.Execute()
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "invalid output format") {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if exitCode(err) != 2 {
+			t.Errorf("exitCode = %d, want 2", exitCode(err))
+		}
+	})
+}

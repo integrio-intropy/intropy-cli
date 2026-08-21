@@ -3,3 +3,6 @@
 *.exe
 *.test
 *.out
+
+# Subagent run artifacts (inputs, transcripts, outputs) — local scratch, not source.
+.pi-subagents/

@@ -10,12 +10,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// sys create assembles scaffolded integrations into a system host. The
+// scan, render, and assembly live in internal/system.Create; this file is
+// flag plumbing.
 type sysCreateFlags struct {
-	name       string
-	output     string
-	version    string
-	force      bool
-	outputJSON string
+	name            string
+	outDir          string
+	output          string
+	templateVersion string
+	templateRepo    string
+	force           bool
 }
 
 var sysCreateFlagValues sysCreateFlags
@@ -23,22 +27,36 @@ var sysCreateFlagValues sysCreateFlags
 var sysCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Assemble scaffolded integrations into a system host",
-	Long: "Scan the workspace for integration scaffold records (" + template.ScaffoldRelPath + "), render the system-host template, " +
-		"and assemble the typed system declaration — Topics.cs and the ISystemDefinition class — from what the scaffolds recorded. " +
+	Long: "Scan the workspace for integration scaffold records (" + template.ScaffoldRelPath + "), validate them into a system model, " +
+		"and render the system-host template with the assembled values. The template writes the full declaration — Topics.cs, Ports.cs, " +
+		"the development and system definitions, and the project file; the CLI supplies only what the workspace records. " +
 		"Run it from the workspace root that contains the scaffolded components and the shared contracts project.",
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if sysCreateFlagValues.output != "" && sysCreateFlagValues.output != "json" {
+			return newUsageErrorf("invalid output format %q (allowed: json)", sysCreateFlagValues.output)
+		}
+		outputJSON := ""
+		if sysCreateFlagValues.output == "json" {
+			outputJSON = "-"
+		}
+		owner, repo, err := resolveTemplateRepo(sysCreateFlagValues.templateRepo)
+		if err != nil {
+			return err
+		}
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 		return system.Create(ctx, system.CreateOptions{
 			Name:       sysCreateFlagValues.name,
-			OutputDir:  sysCreateFlagValues.output,
-			Version:    sysCreateFlagValues.version,
+			OutputDir:  sysCreateFlagValues.outDir,
+			Version:    sysCreateFlagValues.templateVersion,
 			Force:      sysCreateFlagValues.force,
-			OutputJSON: sysCreateFlagValues.outputJSON,
+			OutputJSON: outputJSON,
 			Stdout:     cmd.OutOrStdout(),
 			Stderr:     cmd.ErrOrStderr(),
 			UserAgent:  "intropy-cli/" + version,
+			Owner:      owner,
+			Repo:       repo,
 		})
 	},
 }
@@ -46,10 +64,12 @@ var sysCreateCmd = &cobra.Command{
 func init() {
 	f := sysCreateCmd.Flags()
 	f.StringVarP(&sysCreateFlagValues.name, "name", "n", "", "system name; PascalCase or kebab-case (OrderFlow and order-flow are equivalent)")
-	f.StringVarP(&sysCreateFlagValues.output, "output", "o", "", "destination directory (default: the kebab-cased name)")
-	f.StringVar(&sysCreateFlagValues.version, "version", "", "system-host template release tag (default: latest)")
+	f.StringVarP(&sysCreateFlagValues.outDir, "out-dir", "o", "", "destination directory (default: the kebab-cased name)")
+	f.StringVar(&sysCreateFlagValues.output, "output", "", flagUsageOutputJSONOnly)
+	_ = sysCreateCmd.MarkFlagDirname("out-dir")
+	f.StringVar(&sysCreateFlagValues.templateVersion, "template-version", "", flagUsageTemplateVer)
+	f.StringVar(&sysCreateFlagValues.templateRepo, "template-repo", "", flagUsageTemplateRepo)
 	f.BoolVar(&sysCreateFlagValues.force, "force", false, "allow rendering into a non-empty output directory")
-	f.StringVar(&sysCreateFlagValues.outputJSON, "output-json", "", "write a machine-readable result document to this path (- for stdout)")
 	_ = sysCreateCmd.MarkFlagRequired("name")
 	sysCmd.AddCommand(sysCreateCmd)
 }

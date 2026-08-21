@@ -8,30 +8,44 @@ type TopicKey struct {
 	Name   string `json:"topic"`
 }
 
-// Topic is one assembled topic: its key, the C# contract type its messages
-// carry, and the identifier it gets in the generated Topics class.
+// Topic is one assembled topic: its key and the C# contract type its
+// messages carry. The identifier it gets in the generated Topics class is
+// derived by the template, not the CLI.
 type Topic struct {
 	TopicKey
 	Contract string `json:"contract"`
-	Field    string `json:"-"`
 }
 
-// Component is one assembled system block.
+// Component is one assembled system block. Its wiring is shape-driven:
+// Topic is nil for kinds without one, and Ports carries the named ports in
+// the kind's order (From before To for transactional blocks).
 type Component struct {
-	AppID     string   `json:"name"` // the AddExtractor/AddLoader argument
-	Kind      string   `json:"kind"` // template.BlockKindExtractor or BlockKindLoader
-	Topic     TopicKey `json:"-"`
-	Connector string   `json:"connector,omitempty"` // the From/To port; empty for records that predate it
-	Path      string   `json:"path"`                // scaffold directory, for error messages
+	AppID string    `json:"name"` // the Add<Kind> argument in the generated system class
+	Kind  string    `json:"kind"` // a key of the blockParsers registry
+	Topic *TopicKey `json:"-"`    // nil for kinds without a topic
+	// Port is the single port of a topic block; empty for records that
+	// predate it. Kept alongside Ports so the --output-json summary stays
+	// additive-only.
+	Port  string   `json:"port,omitempty"`
+	Ports []string `json:"ports,omitempty"` // transactional blocks: exactly [from, to]
+	Path  string   `json:"path"`            // scaffold directory, for error messages
+
+	// topicContract is the contract type of Topic, carried on the
+	// component because topics dedupe across components: the model's
+	// Topics list needs one contract per key, first seen wins.
+	topicContract string
+	// missingPort marks a topic-block record that predates the port value,
+	// so Assemble can warn without failing the record.
+	missingPort bool
 }
 
-// Connector is one assembled connector: the named port an edge block reaches
-// the outside world through, and the identifier it gets in the generated
-// Connectors class. `sys create` resolves every connector to a local file
-// transport rooted in the host's test/ folder.
-type Connector struct {
-	Name  string `json:"name"`
-	Field string `json:"-"`
+// Port is one assembled port: the named edge a block reaches the outside
+// world through. The declaration carries only the deployed transport shape;
+// `sys create` resolves every port to a folder under the host's test/
+// directory through the generated development definition. The identifier it
+// gets in the generated Ports class is derived by the template, not the CLI.
+type Port struct {
+	Name string `json:"name"`
 }
 
 // SharedLibrary is the workspace's contract project: referenced by the
@@ -49,7 +63,10 @@ type Model struct {
 	ProjectName string // template-derived PascalCase name
 	SystemClass string // template-derived ISystemDefinition class name
 	Components  []Component
-	Topics      []Topic     // sorted by (Pubsub, Name)
-	Connectors  []Connector // sorted by Name
-	Shared      SharedLibrary
+	Topics      []Topic // sorted by (Pubsub, Name)
+	Ports       []Port  // sorted by Name
+	// Shared is the workspace's shared-library scaffold, nil when none
+	// exists — valid for a topic-free system, and for a topic-bearing one
+	// the host template scaffolds the contracts project as a dependency.
+	Shared *SharedLibrary
 }

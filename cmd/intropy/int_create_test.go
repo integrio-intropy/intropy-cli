@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -62,6 +64,30 @@ func TestResolveCreateName(t *testing.T) {
 		}
 		if _, ok := sets["name"]; ok {
 			t.Errorf("sets should be untouched, got %v", sets)
+		}
+	})
+}
+
+func TestIntCreateOutputValidation(t *testing.T) {
+	resetCreateFlags := func(t *testing.T) {
+		t.Helper()
+		intCreateFlags = createFlags{}
+		t.Cleanup(func() { intCreateFlags = createFlags{} })
+	}
+
+	t.Run("non-json --output is a usage error", func(t *testing.T) {
+		resetCreateFlags(t)
+		var stdout, stderr bytes.Buffer
+		resetRootIO(t, &stdout, &stderr)
+		t.Chdir(t.TempDir())
+
+		rootCmd.SetArgs([]string{"int", "create", "hello-world", "--output", "./out", "--name", "x", "--no-input"})
+		err := rootCmd.Execute()
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "invalid output format") {
+			t.Errorf("unexpected error: %v", err)
 		}
 	})
 }

@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -37,8 +38,12 @@ func (c *Client) Resolve(ctx context.Context, ref string) (Descriptor, error) {
 	}
 
 	return Descriptor{
-		MediaType:    desc.MediaType,
-		ArtifactType: desc.ArtifactType,
+		MediaType: desc.MediaType,
+		// The manifest body is authoritative for its own artifact type. A
+		// descriptor built from a tag resolution carries only what the
+		// registry's headers said, which is media type, digest and size — so
+		// without this the field would silently always be empty here.
+		ArtifactType: cmp.Or(manifest.ArtifactType, desc.ArtifactType),
 		Digest:       desc.Digest.String(),
 		Size:         desc.Size,
 		Annotations:  manifest.Annotations,

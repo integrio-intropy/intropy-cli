@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 )
@@ -64,13 +65,9 @@ func (g *GitHub) ResolveTag(ctx context.Context, owner, repo, requestedTag strin
 	return g.LatestTag(ctx, owner, repo)
 }
 
-// DownloadTemplate fetches the repo tarball at tag, extracts it to a temp
+// downloadTemplate fetches the repo tarball at tag, extracts it to a temp
 // dir (created with tempPattern), and returns the path of the named template
 // subdirectory plus a cleanup func that removes the temp dir.
-func DownloadTemplate(ctx context.Context, gh *GitHub, owner, repo, tag, templateName, tempPattern string) (string, func(), error) {
-	return downloadTemplate(ctx, gh, owner, repo, tag, templateName, tempPattern)
-}
-
 func downloadTemplate(ctx context.Context, gh *GitHub, owner, repo, tag, templateName, tempPattern string) (string, func(), error) {
 	rc, err := gh.Tarball(ctx, owner, repo, tag)
 	if err != nil {
@@ -151,8 +148,9 @@ func (g *GitHub) Tarball(ctx context.Context, owner, repo, tag string) (io.ReadC
 }
 
 // ListTemplates returns the names of template directories at the root of
-// the templates repository. On any error an empty slice is returned.
-func (g *GitHub) ListTemplates(ctx context.Context, owner, repo string) ([]string, error) {
+// the templates repository at the given ref (a release tag). An empty ref
+// lists the default branch.
+func (g *GitHub) ListTemplates(ctx context.Context, owner, repo, ref string) ([]string, error) {
 	if owner == "" {
 		owner = defaultTemplateOwner
 	}
@@ -160,6 +158,9 @@ func (g *GitHub) ListTemplates(ctx context.Context, owner, repo string) ([]strin
 		repo = defaultTemplateRepo
 	}
 	u := fmt.Sprintf("%s/repos/%s/%s/contents/", g.BaseURL, owner, repo)
+	if ref != "" {
+		u += "?ref=" + url.QueryEscape(ref)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, err

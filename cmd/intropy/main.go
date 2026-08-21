@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"os"
 	"strings"
+
+	"github.com/integrio-intropy/intropy-cli/internal/command"
 )
 
 func main() {
@@ -14,9 +17,11 @@ func main() {
 
 // exitCode maps errors to Unix-style exit codes.
 //
-//	0 — success
-//	1 — runtime error
-//	2 — usage error (invalid flags, arguments, or missing required input)
+//	0   — success
+//	1   — runtime error
+//	2   — usage error (invalid flags, arguments, or missing required input)
+//	127 — a required external binary is missing from PATH
+//	130 — interrupted (SIGINT)
 func exitCode(err error) int {
 	if err == nil {
 		return 0
@@ -30,6 +35,16 @@ func exitCode(err error) int {
 	if isCobraUsageError(err) {
 		return 2
 	}
+	// A missing dependency is "command not found", not a generic failure —
+	// scripts and CI can tell the two apart and react differently.
+	if errors.Is(err, command.ErrNotInstalled) {
+		return 127
+	}
+	// Ctrl-C during a long operation (the ArgoCD wait, a push over SSH) must
+	// look like a signal, not a failure of the thing being run.
+	if errors.Is(err, context.Canceled) {
+		return 130
+	}
 	return 1
 }
 
@@ -41,6 +56,7 @@ func isCobraUsageError(err error) bool {
 	prefixes := []string{
 		"unknown command",
 		"unknown flag",
+		"unknown shorthand flag",
 		"invalid argument",
 		"accepts ",
 		"requires ",

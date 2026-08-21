@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,28 +15,28 @@ func resetChangeDirFlag(t *testing.T) {
 	})
 }
 
+// resetRootIO points the root command at the given buffers and restores
+// default output, error, and args on cleanup. Shared by every command test.
+func resetRootIO(t *testing.T, stdout, stderr *bytes.Buffer) {
+	t.Helper()
+	rootCmd.SetOut(stdout)
+	rootCmd.SetErr(stderr)
+	t.Cleanup(func() {
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+	})
+}
+
+func writeFileT(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
 func TestRootChangeDirectory(t *testing.T) {
 	projectDir := t.TempDir()
-	writeFileT(t, filepath.Join(projectDir, "skills.json"), `{"skills":[{"name":"pr-review","source":"ghcr.io/example/skills/pr-review","version":"1.0.0"}]}`+"\n")
-	writeFileT(t, filepath.Join(projectDir, "skills.lock.json"), `{
-  "lockfileVersion": 1,
-  "generatedAt": "2025-01-01T00:00:00Z",
-  "skills": [
-    {
-      "name": "pr-review",
-      "path": ".agents/skills/pr-review",
-      "source": {
-        "registry": "ghcr.io",
-        "repository": "example/skills/pr-review",
-        "tag": "1.0.0",
-        "digest": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
-        "ref": "ghcr.io/example/skills/pr-review:1.0.0@sha256:abc"
-      },
-      "installedAt": "2025-01-01T00:00:00Z"
-    }
-  ]
-}
-`)
 
 	t.Chdir(t.TempDir())
 	resetChangeDirFlag(t)
@@ -43,12 +44,12 @@ func TestRootChangeDirectory(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	resetRootIO(t, stdout, stderr)
 
-	rootCmd.SetArgs([]string{"-C", projectDir, "skills", "list"})
+	rootCmd.SetArgs([]string{"-C", projectDir, "version"})
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "pr-review") {
-		t.Errorf("expected skills from %s, got:\n%s", projectDir, stdout.String())
+	if !strings.Contains(stdout.String(), version) {
+		t.Errorf("expected version output, got:\n%s", stdout.String())
 	}
 }
 
@@ -59,7 +60,7 @@ func TestRootChangeDirectoryNotFound(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	resetRootIO(t, stdout, stderr)
 
-	rootCmd.SetArgs([]string{"-C", filepath.Join(t.TempDir(), "nonexistent"), "skills", "list"})
+	rootCmd.SetArgs([]string{"-C", filepath.Join(t.TempDir(), "nonexistent"), "version"})
 	err := rootCmd.Execute()
 	if err == nil {
 		t.Fatal("expected error for nonexistent directory")

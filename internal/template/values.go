@@ -215,13 +215,22 @@ func validateSchema(schema map[string]any, values map[string]any) error {
 	return s.Validate(values)
 }
 
-// renderExpr renders a Go text/template string (with sprig) against the
-// supplied data map. Used for spec.values entries.
-func renderExpr(expr string, data map[string]any) (string, error) {
-	tmpl, err := template.New("expr").
+// compileExpr parses a Go text/template string with sprig helpers and
+// missingkey=error, so an undefined value name is a loud failure rather than a
+// silently empty string. Separate from renderExpr because spec.files rules are
+// parsed at load time to reject a syntax error early, and only evaluated later
+// once values exist.
+func compileExpr(expr string) (*template.Template, error) {
+	return template.New("expr").
 		Funcs(sprig.TxtFuncMap()).
 		Option("missingkey=error").
 		Parse(expr)
+}
+
+// renderExpr renders a Go text/template string (with sprig) against the
+// supplied data map. Used for spec.values entries and spec.files conditions.
+func renderExpr(expr string, data map[string]any) (string, error) {
+	tmpl, err := compileExpr(expr)
 	if err != nil {
 		return "", err
 	}

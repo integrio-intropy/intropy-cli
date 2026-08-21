@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
-	"sort"
 )
 
 // DescribeOptions selects which template release to inspect. Fields mirror
@@ -17,7 +16,8 @@ type DescribeOptions struct {
 	HTTP      *http.Client
 	UserAgent string
 
-	// Test overrides; production callers leave these zero-valued.
+	// Owner and Repo select the template library; zero values target the
+	// official library. GitHubBaseURL is a test-only seam.
 	Owner         string
 	Repo          string
 	GitHubBaseURL string
@@ -53,10 +53,11 @@ type DescribeResult struct {
 	// alongside its own output (spec.dependencies).
 	Dependencies []DependencySpec `json:"dependencies,omitempty"`
 
-	// orderedFields preserves YAML declaration order for FormatText; YAML
-	// order is lost once Parameters round-trips through JSON, so we keep it
-	// here. Unexported so it stays out of the wire contract.
-	orderedFields []FieldSpec
+	// Fields is the parameter schema as FieldSpecs in YAML declaration
+	// order — the order Parameters loses when the document round-trips
+	// through a JSON map. Form renderers (the dashboard, editor extensions)
+	// consume Fields and never touch the raw schema.
+	Fields []FieldSpec `json:"fields"`
 }
 
 // Describe fetches the template tarball at the requested version (or latest)
@@ -86,17 +87,17 @@ func Describe(ctx context.Context, opts DescribeOptions) (*DescribeResult, error
 	}
 
 	return &DescribeResult{
-		Template:      tmpl.Metadata.Name,
-		Title:         tmpl.Metadata.Title,
-		Description:   tmpl.Metadata.Description,
-		Tags:          tmpl.Metadata.Tags,
-		Labels:        tmpl.Metadata.Labels,
-		Owner:         opts.Owner,
-		Repo:          opts.Repo,
-		Version:       tag,
-		Parameters:    tmpl.Spec.Parameters,
-		Dependencies:  tmpl.Spec.Dependencies,
-		orderedFields: tmpl.Fields(),
+		Template:     tmpl.Metadata.Name,
+		Title:        tmpl.Metadata.Title,
+		Description:  tmpl.Metadata.Description,
+		Tags:         tmpl.Metadata.Tags,
+		Labels:       tmpl.Metadata.Labels,
+		Owner:        opts.Owner,
+		Repo:         opts.Repo,
+		Version:      tag,
+		Parameters:   tmpl.Spec.Parameters,
+		Dependencies: tmpl.Spec.Dependencies,
+		Fields:       tmpl.Fields(),
 	}, nil
 }
 
@@ -122,16 +123,9 @@ func (r *DescribeResult) FormatText(w io.Writer) {
 		}
 	}
 
-	fields := r.orderedFields
-	if fields == nil {
-		// Result was JSON-unmarshaled by a downstream consumer; declaration
-		// order is gone. Fall back to alphabetical so output is at least
-		// deterministic.
-		fields = fieldsFromSchema(r.Parameters)
-	}
-	if len(fields) > 0 {
+	if len(r.Fields) > 0 {
 		fmt.Fprintln(w, "\nParameters:")
-		for _, f := range fields {
+		for _, f := range r.Fields {
 			marker := " "
 			if f.Required {
 				marker = "*"
@@ -156,33 +150,4 @@ func (r *DescribeResult) FormatText(w io.Writer) {
 		}
 		fmt.Fprintln(w, "  (* = required)")
 	}
-}
-
-// fieldsFromSchema returns FieldSpecs from a raw parameters block. Unlike
-// Template.Fields it has no declaration-order information, so it falls back
-// to alphabetical order for stable output.
-func fieldsFromSchema(parameters map[string]any) []FieldSpec {
-	props, _ := parameters["properties"].(map[string]any)
-	if props == nil {
-		return nil
-	}
-	required := map[string]bool{}
-	if list, ok := parameters["required"].([]any); ok {
-		for _, r := range list {
-			if s, ok := r.(string); ok {
-				required[s] = true
-			}
-		}
-	}
-	names := make([]string, 0, len(props))
-	for k := range props {
-		names = append(names, k)
-	}
-	sort.Strings(names)
-	out := make([]FieldSpec, 0, len(names))
-	for _, name := range names {
-		raw, _ := props[name].(map[string]any)
-		out = append(out, fieldFromSchema(name, raw, required[name]))
-	}
-	return out
 }

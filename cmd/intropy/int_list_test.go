@@ -29,7 +29,7 @@ func TestIntListEmpty(t *testing.T) {
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	if !strings.Contains(stderr.String(), "No scaffolded integrations found.") {
+	if !strings.Contains(stderr.String(), "no scaffolded integrations found") {
 		t.Errorf("expected empty notice on stderr, got %q", stderr.String())
 	}
 	if stdout.Len() != 0 {

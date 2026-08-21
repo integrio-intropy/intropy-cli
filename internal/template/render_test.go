@@ -117,3 +117,162 @@ func readFile(t *testing.T, path string) string {
 	}
 	return string(b)
 }
+
+func outcomeByPath(outcomes []FileOutcome) map[string]FileOutcomeKind {
+	m := make(map[string]FileOutcomeKind, len(outcomes))
+	for _, o := range outcomes {
+		m[o.Path] = o.Outcome
+	}
+	return m
+}
+
+func TestRenderUpdateClassifiesFiles(t *testing.T) {
+	src := t.TempDir()
+	dst := t.TempDir()
+
+	writeFile(t, filepath.Join(src, "same.txt.tmpl"), "value: {{ .v }}\n")
+	writeFile(t, filepath.Join(src, "new.txt"), "fresh\n")
+	writeFile(t, filepath.Join(src, "changed.txt"), "updated\n")
+
+	writeFile(t, filepath.Join(dst, "same.txt"), "value: 1\n")
+	writeFile(t, filepath.Join(dst, "changed.txt"), "original\n")
+
+	outcomes, err := RenderUpdate(src, dst, map[string]any{"v": 1}, nil, RenderUpdateOptions{})
+	if err != nil {
+		t.Fatalf("RenderUpdate: %v", err)
+	}
+	got := outcomeByPath(outcomes)
+	want := map[string]FileOutcomeKind{
+		"same.txt":    OutcomeUnchanged,
+		"new.txt":     OutcomeCreated,
+		"changed.txt": OutcomeConflict,
+	}
+	for path, wantKind := range want {
+		if got[path] != wantKind {
+			t.Errorf("%s: outcome = %q, want %q", path, got[path], wantKind)
+		}
+	}
+
+	// unchanged and conflict leave the destination exactly as it was.
+	if got := readFile(t, filepath.Join(dst, "same.txt")); got != "value: 1\n" {
+		t.Errorf("same.txt rewritten: %q", got)
+	}
+	if got := readFile(t, filepath.Join(dst, "changed.txt")); got != "original\n" {
+		t.Errorf("conflict overwrote changed.txt: %q", got)
+	}
+	// the created file did land.
+	if got := readFile(t, filepath.Join(dst, "new.txt")); got != "fresh\n" {
+		t.Errorf("new.txt = %q", got)
+	}
+}
+
+func TestRenderUpdateForceOverwritesConflict(t *testing.T) {
+	src := t.TempDir()
+	dst := t.TempDir()
+
+	writeFile(t, filepath.Join(src, "changed.txt"), "updated\n")
+	writeFile(t, filepath.Join(dst, "changed.txt"), "original\n")
+
+	outcomes, err := RenderUpdate(src, dst, nil, nil, RenderUpdateOptions{Force: true})
+	if err != nil {
+		t.Fatalf("RenderUpdate: %v", err)
+	}
+	if got := outcomeByPath(outcomes)["changed.txt"]; got != OutcomeUpdated {
+		t.Errorf("outcome = %q, want %q", got, OutcomeUpdated)
+	}
+	if got := readFile(t, filepath.Join(dst, "changed.txt")); got != "updated\n" {
+		t.Errorf("changed.txt = %q", got)
+	}
+}
+
+func TestRenderUpdateDryRunWritesNothing(t *testing.T) {
+	src := t.TempDir()
+	dst := t.TempDir()
+
+	writeFile(t, filepath.Join(src, "new.txt"), "fresh\n")
+	writeFile(t, filepath.Join(src, "nested", "deep.txt.tmpl"), "v {{ .v }}\n")
+	writeFile(t, filepath.Join(src, "changed.txt"), "updated\n")
+	writeFile(t, filepath.Join(dst, "changed.txt"), "original\n")
+
+	outcomes, err := RenderUpdate(src, dst, map[string]any{"v": 1}, nil, RenderUpdateOptions{DryRun: true, Force: true})
+	if err != nil {
+		t.Fatalf("RenderUpdate: %v", err)
+	}
+	got := outcomeByPath(outcomes)
+	if got["new.txt"] != OutcomeCreated || got["nested/deep.txt"] != OutcomeCreated {
+		t.Errorf("dry-run outcomes for new files: %v", got)
+	}
+	if got["changed.txt"] != OutcomeUpdated {
+		t.Errorf("dry-run with force: outcome = %q, want %q", got["changed.txt"], OutcomeUpdated)
+	}
+
+	// The destination tree is untouched: no new files, no modified ones.
+	if _, err := os.Stat(filepath.Join(dst, "new.txt")); !os.IsNotExist(err) {
+		t.Errorf("dry-run wrote new.txt")
+	}
+	if _, err := os.Stat(filepath.Join(dst, "nested")); !os.IsNotExist(err) {
+		t.Errorf("dry-run created the nested directory")
+	}
+	if got := readFile(t, filepath.Join(dst, "changed.txt")); got != "original\n" {
+		t.Errorf("dry-run modified changed.txt: %q", got)
+	}
+}
+
+func TestRenderUpdateHonorsFileRules(t *testing.T) {
+	src := t.TempDir()
+	dst := t.TempDir()
+
+	writeFile(t, filepath.Join(src, "Topics.cs.tmpl"), "topics {{ len .topics }}\n")
+	writeFile(t, filepath.Join(src, "always.txt"), "always\n")
+
+	rules := []FileRule{{Path: "Topics.cs.tmpl", When: "{{ gt (len .topics) 0 }}"}}
+	outcomes, err := RenderUpdate(src, dst, map[string]any{"topics": []any{}}, rules, RenderUpdateOptions{})
+	if err != nil {
+		t.Fatalf("RenderUpdate: %v", err)
+	}
+	got := outcomeByPath(outcomes)
+	if _, ok := got["Topics.cs"]; ok {
+		t.Errorf("excluded file was rendered: %v", got)
+	}
+	if got["always.txt"] != OutcomeCreated {
+		t.Errorf("always.txt outcome = %q", got["always.txt"])
+	}
+}
+
+func TestRenderUpdateBaselineDistinguishesUpdateFromDivergence(t *testing.T) {
+	src := t.TempDir()
+	dst := t.TempDir()
+
+	// One skeleton file whose content depends on the values.
+	writeFile(t, filepath.Join(src, "def.txt.tmpl"), "value: {{ .v }}\n")
+
+	baselineValues := map[string]any{"v": 1}
+	mergedValues := map[string]any{"v": 2}
+
+	// A file matching the baseline render differs only by the update itself.
+	writeFile(t, filepath.Join(dst, "def.txt"), "value: 1\n")
+
+	outcomes, err := RenderUpdate(src, dst, mergedValues, nil, RenderUpdateOptions{Baseline: baselineValues})
+	if err != nil {
+		t.Fatalf("RenderUpdate: %v", err)
+	}
+	if got := outcomeByPath(outcomes)["def.txt"]; got != OutcomeUpdated {
+		t.Errorf("baseline-matching file: outcome = %q, want %q", got, OutcomeUpdated)
+	}
+	if got := readFile(t, filepath.Join(dst, "def.txt")); got != "value: 2\n" {
+		t.Errorf("def.txt = %q, want the merged render", got)
+	}
+
+	// A file matching neither baseline nor merged render is a conflict.
+	writeFile(t, filepath.Join(dst, "def.txt"), "value: hand-edited\n")
+	outcomes, err = RenderUpdate(src, dst, mergedValues, nil, RenderUpdateOptions{Baseline: baselineValues})
+	if err != nil {
+		t.Fatalf("RenderUpdate: %v", err)
+	}
+	if got := outcomeByPath(outcomes)["def.txt"]; got != OutcomeConflict {
+		t.Errorf("divergent file: outcome = %q, want %q", got, OutcomeConflict)
+	}
+	if got := readFile(t, filepath.Join(dst, "def.txt")); got != "value: hand-edited\n" {
+		t.Errorf("conflict overwrote def.txt: %q", got)
+	}
+}

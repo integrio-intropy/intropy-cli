@@ -8,8 +8,6 @@ import (
 )
 
 var (
-	verboseFlag   bool
-	quietFlag     bool
 	noColorFlag   bool
 	changeDirFlag string
 )
@@ -17,7 +15,7 @@ var (
 var rootCmd = &cobra.Command{
 	Use:           "intropy",
 	Short:         "Intropy CLI",
-	Long:          "intropy is the command-line interface for working with Intropy skills and integrations.",
+	Long:          "intropy is the command-line interface for working with Intropy integrations.",
 	Version:       version,
 	SilenceUsage:  true,
 	SilenceErrors: true,
@@ -52,8 +50,6 @@ func validateOutputFlag(format string, allowed ...string) error {
 }
 
 func init() {
-	rootCmd.PersistentFlags().BoolVarP(&verboseFlag, "verbose", "v", false, "enable verbose output")
-	rootCmd.PersistentFlags().BoolVarP(&quietFlag, "quiet", "q", false, "suppress non-error output")
 	rootCmd.PersistentFlags().BoolVar(&noColorFlag, "no-color", false, "disable colored output")
 	rootCmd.PersistentFlags().StringVarP(&changeDirFlag, "directory", "C", "", "change to directory before running the command")
 	_ = rootCmd.MarkPersistentFlagDirname("directory")

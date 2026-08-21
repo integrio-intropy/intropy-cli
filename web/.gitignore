@@ -1,0 +1,9 @@
+# Dependencies and build caches. The root dist/ is vite build output and never
+# committed — the committed fallback page lives under placeholder/dist and the
+# go:embed marker dist/placeholder.html is produced by `make web`.
+node_modules
+/dist
+.tmp
+*.tsbuildinfo
+*.local
+.DS_Store

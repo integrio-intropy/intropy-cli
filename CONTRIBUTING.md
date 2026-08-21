@@ -46,6 +46,46 @@ Verify the build:
 make run ARGS="version"
 ```
 
+### The dashboard SPA (`intropy dashboard`)
+
+`intropy dashboard` serves a local web dashboard. The frontend is a Vite +
+React + TypeScript app under [`web/`](web/); its production build (`web/dist`)
+is embedded into the Go binary via `//go:embed` (see `web/embed.go`).
+
+A minimal placeholder page (`web/placeholder/dist/index.html`) is committed
+so `go build` and `go test` work **without** a Node toolchain. The real
+assets are built on demand — locally with `make web`, and in CI / GoReleaser
+before the Go build. All of `web/dist` is gitignored, so a local build never
+dirties the tree; the embed prefers a built `web/dist` and falls back to the
+placeholder otherwise.
+
+To build the CLI with the real dashboard embedded:
+
+```bash
+make bundle    # = make web && make build
+```
+
+Frontend dev loop (hot reload, talks to a running CLI):
+
+```bash
+# terminal 1 — the CLI serves the JSON API on :8730
+./bin/intropy dashboard --no-browser
+
+# terminal 2 — Vite dev server proxies /api to the CLI
+make web-dev   # or: cd web && npm run dev
+```
+
+> Note: `make web-clean` removes a local build and restores the unbuilt
+> state. You only need it to verify the placeholder path; nothing built
+> under `web/dist` can be committed.
+
+The flow view renders each system's declared topology, which the server
+obtains by running the system host's `graph` verb (`dotnet build` followed by
+`dotnet run --no-build --no-launch-profile --project <host> -- graph`, the
+invocation the Intropy.Topology library documents). The verb must print the
+`topology.intropy.io/v1` record as JSON on stdout (logs go to stderr); the
+result is cached until the dashboard's "Refresh topology" action re-runs it.
+
 ## Development Workflow
 
 We use a **feature-branch workflow** with pull requests to `main`.
@@ -90,7 +130,7 @@ automated changelog generation.
 
 **Types:** `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
 
-**Scopes (common):** `int`, `skills`, `oci`, `template`, `cli`, `deps`
+**Scopes (common):** `int`, `template`, `deploy`, `release`, `cli`, `deps`
 
 **Examples:**
 
@@ -121,8 +161,15 @@ docs(readme): update install instructions for macOS
 - [ ] Commit messages follow the convention above
 - [ ] Only relevant files are committed (no `git add .`)
 - [ ] No debug code, `fmt.Printf` artifacts, or temporary files
+- [ ] Help text, output text, and code comments follow `AGENTS.md`
 
 ## Code Standards
+
+### Writing style
+
+`AGENTS.md` defines the house style for code comments, `--help` output, flag
+descriptions, and runtime output text. Read it before adding or changing any
+user-facing string. `CLAUDE.md` points at the same file.
 
 ### Go style
 
@@ -134,19 +181,39 @@ docs(readme): update install instructions for macOS
 
 ### CLI patterns
 
-This project uses Cobra + Viper. When adding or modifying commands:
+This project uses Cobra. It deliberately does **not** use Viper — the
+dependency list is kept short, and configuration layering is a few lines in
+`internal/config`. When adding or modifying commands:
 
 - Set `SilenceUsage: true` and `SilenceErrors: true` on the command.
 - Return errors from `RunE` — never call `os.Exit()` inside commands.
 - Write diagnostic output to `cmd.ErrOrStderr()`, program output to `cmd.OutOrStdout()`.
-- Bind flags to Viper with `viper.BindPFlag` for env/config support.
 - Use `cobra.ExactArgs`, `cobra.MinimumNArgs`, etc. for argument validation.
 - Provide `RegisterFlagCompletionFunc` for flag value completion.
+- Do not add `PersistentPreRunE` to a subcommand. Cobra runs only the closest
+  one in the chain, so a subcommand's would shadow the root's — which is where
+  `-C/--directory` changes the working directory — and break that flag for
+  that command alone.
+
+### Configuration
+
+Precedence is **flag > environment > file > zero**, resolved with `cmp.Or`.
+
+- Per-user settings live in `internal/config` (`~/.config/intropy/config.yaml`,
+  honouring `XDG_CONFIG_HOME`). A missing file is not an error; a malformed one
+  is, and unknown keys are rejected so a typo cannot look like an unset value.
+- Project-scoped state is found by walking up from the working directory
+  (`.intropy/scaffold.json`).
+- Environment variables this CLI owns are prefixed `INTROPY_`. The only
+  exceptions are variables borrowed from another tool, where honouring its name
+  means an existing setup works unchanged (e.g. `ARGOCD_SERVER`) — document
+  them as borrowed.
 
 ### Error handling
 
 - Return wrapped errors with context: `fmt.Errorf("resolving template: %w", err)`
-- Use exit code `2` for usage errors (invalid flags/args), `1` for runtime errors.
+- Exit codes: `2` usage errors (invalid flags/args), `1` runtime errors, `127`
+  a required external binary is missing from `PATH`, `130` interrupted.
 
 ## Testing
 
@@ -192,11 +259,28 @@ go test -race ./...
 ### Project layout
 
 ```
-cmd/intropy/         Cobra commands — one file per command + tests
-internal/template/  Template download, validation, describe, render
-internal/skill/      skills.json/lockfile, install/update/add, collection cache
-internal/skill/oci/  OCI client wrappers, pack/push/pull, references
+cmd/intropy/          Cobra commands — one file per command + tests
+internal/template/    Template download, validation, describe, render
+internal/system/      `sys create` — assemble scaffolds into a system host
+internal/dashboard/   Local `intropy dashboard`: HTTP server + JSON API
+                      (deploy.go runs `deploy status` for the catalog's ladder)
+internal/topology/    topology.intropy.io/v1 schema + decoder (host graph verb output)
+internal/registry/    Generic OCI registry client — pull/push/index, ListTags
+internal/config/      Per-user settings (~/.config/intropy/config.yaml)
+internal/command/     Runner for external binaries (git, kustomize, dotnet, argocd)
+internal/git/         Git plumbing — clone, worktree, commit, push, tag
+internal/gitops/      GitOps repo: config, overlay layout, coordinate lookup
+internal/kustomize/   kustomization.yaml editing + manifest render/diff
+internal/source/      Resolve the source commit and its image digests
+internal/deploy/      `deploy` — plan, publish, diff, promote, status, sync gate
+internal/release/     `release` — immutable release manifests, changelog, list, view
+internal/argocd/      ArgoCD client; waits for a pushed revision to be applied
+web/                  Dashboard SPA (Vite + React + TS), embedded via go:embed
 ```
+
+Packages ending in `test` (`internal/gittest`, `internal/gitops/gitopstest`,
+`internal/registry/registrytest`) are test-only helpers that build throwaway
+repositories and registries for the suites above.
 
 ### Version stamping
 
@@ -209,14 +293,6 @@ go build -ldflags "\
   -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   -o bin/intropy ./cmd/intropy
 ```
-
-### OCI and skills compliance
-
-The `skills` subsystem implements the
-[Agent Skills OCI Artifacts Spec](https://github.com/ThomasVitale/agents-skills-oci-artifacts-spec).
-When modifying OCI packaging, pulling, or metadata, ensure conformance with the
-spec. Changes that affect wire format or artifact structure should be discussed
-in an issue first.
 
 ## Reporting Issues
 
