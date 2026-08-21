@@ -1,0 +1,24 @@
+Yes to 1
+
+---
+
+what do I need to do when I want the new version on my machine where the old one is installed?
+
+---
+
+Run .github/scripts/update-homebrew-formula.sh
+Cloning into '/tmp/tmp.jyD9q3Gi4N/tap'...
+rm 'Casks/intropy.rb'
+Switched to a new branch 'release/intropy-0.10.0'
+[release/intropy-0.10.0 5f018d6] Brew formula update for intropy version v0.10.0
+ 2 files changed, 42 insertions(+), 47 deletions(-)
+ delete mode 100644 Casks/intropy.rb
+ create mode 100644 Formula/intropy.rb
+remote: 
+remote: Create a pull request for 'release/intropy-0.10.0' on GitHub by visiting:        
+remote:      https://github.com/integrio-intropy/homebrew-tap/pull/new/release/intropy-0.10.0        
+remote: 
+To https://github.com/integrio-intropy/homebrew-tap.git
+ * [new branch]      HEAD -> release/intropy-0.10.0
+pull request create failed: GraphQL: Resource not accessible by personal access token (createPullRequest)
+Error: Process completed with exit code 1.

@@ -1,0 +1,53 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "12b5d67bcb8f",
+  "session_id": "01a02358-5a95-74f7-b32a-a1295e6f804f",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-21T09:15:33.366456Z",
+  "branch": "fix/homebrew-formula-pr-fallback",
+  "checkpoints_count": 2,
+  "files_touched": [
+    ".github/scripts/update-homebrew-formula.sh"
+  ],
+  "agent": "Pi",
+  "model": "gpt-5.5",
+  "turn_id": "c6e215c5f8a9",
+  "checkpoint_transcript_start": 224,
+  "transcript_lines_at_start": 224,
+  "compact_transcript_start": 99,
+  "token_usage": {
+    "input_tokens": 23292,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 948224,
+    "output_tokens": 3030,
+    "api_call_count": 10
+  },
+  "session_metrics": {
+    "turn_count": 8
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-21T09:15:33.32809Z",
+    "agent_lines": 25,
+    "agent_removed": 8,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 25,
+    "total_lines_changed": 33,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    }
+  ]
+}
