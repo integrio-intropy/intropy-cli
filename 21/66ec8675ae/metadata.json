@@ -3,7 +3,7 @@
   "checkpoint_id": "2166ec8675ae",
   "strategy": "manual-commit",
   "branch": "feature/flow-slot-create",
-  "checkpoints_count": 6,
+  "checkpoints_count": 7,
   "files_touched": [
     "cmd/intropy/dashboard.go",
     "internal/dashboard/dashboard_test.go",
@@ -29,13 +29,20 @@
       "compact_transcript": "/21/66ec8675ae/1/transcript.jsonl",
       "content_hash": "/21/66ec8675ae/1/content_hash.txt",
       "prompt": "/21/66ec8675ae/1/prompt.txt"
+    },
+    {
+      "metadata": "/21/66ec8675ae/2/metadata.json",
+      "transcript": "/21/66ec8675ae/2/full.jsonl",
+      "compact_transcript": "/21/66ec8675ae/2/transcript.jsonl",
+      "content_hash": "/21/66ec8675ae/2/content_hash.txt",
+      "prompt": "/21/66ec8675ae/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 151385,
+    "input_tokens": 188574,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 5812160,
-    "output_tokens": 39914,
-    "api_call_count": 100
+    "cache_read_tokens": 6223104,
+    "output_tokens": 45176,
+    "api_call_count": 121
   }
 }

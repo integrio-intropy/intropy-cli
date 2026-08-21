@@ -1,0 +1,77 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "2166ec8675ae",
+  "session_id": "01a02066-f916-7f87-9294-abee93caea5f",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-21T04:12:09.780339Z",
+  "branch": "feature/flow-slot-create",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "cmd/intropy/dashboard.go",
+    "internal/dashboard/dashboard_test.go",
+    "internal/dashboard/handlers.go",
+    "internal/dashboard/server.go",
+    "web/src/api.ts",
+    "web/src/components/FlowView.tsx",
+    "web/src/index.css"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "81561c0f2c37",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 37189,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 410944,
+    "output_tokens": 5262,
+    "api_call_count": 21
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-21T04:12:09.768844Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 20,
+    "total_committed": 0,
+    "total_lines_changed": 20,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 1797,
+      "user_lines_removed": 20,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        ".pi/plans/dashboard-run-stop-plan.md": 249,
+        "cmd/intropy/dashboard.go": 3,
+        "docs/plans/2026-08-14-001-refactor-machine-checked-repo-boundaries-plan.md": 332,
+        "docs/plans/2026-08-16-001-feat-flow-seed-test-file-plan.md": 178,
+        "internal/dashboard/dashboard_test.go": 1,
+        "internal/dashboard/handlers.go": 23,
+        "internal/dashboard/run.go": 390,
+        "internal/dashboard/run_test.go": 347,
+        "internal/dashboard/server.go": 20,
+        "web/src/api.ts": 23,
+        "web/src/components/FlowView.tsx": 94,
+        "web/src/index.css": 77
+      },
+      "user_removed_per_file": {
+        "cmd/intropy/dashboard.go": 2,
+        "internal/dashboard/dashboard_test.go": 1,
+        "internal/dashboard/handlers.go": 5,
+        "internal/dashboard/server.go": 11,
+        "web/src/components/FlowView.tsx": 1
+      }
+    }
+  ]
+}
