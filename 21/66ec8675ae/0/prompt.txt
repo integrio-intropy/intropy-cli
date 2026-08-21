@@ -1,0 +1,5 @@
+can you make a plan an pass it to an review agent with pi --print?
+
+---
+
+tooling/intropy-topology is the correct one atleast
