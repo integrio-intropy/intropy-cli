@@ -1,0 +1,13 @@
+yes, implement on this branch and do not commit anything
+
+---
+
+if we limit this cli to only work in windows through WSL do we still need a windows runproc?
+
+---
+
+yes
+
+---
+
+Do you think this feature fits in the cli or is it becomming to large?

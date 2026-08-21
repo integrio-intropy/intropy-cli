@@ -1,0 +1,98 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "2166ec8675ae",
+  "session_id": "01a01fbc-2e75-7e32-90b3-bc903ee03503",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-21T04:12:09.587912Z",
+  "branch": "feature/flow-slot-create",
+  "checkpoints_count": 4,
+  "save_step_count": 4,
+  "files_touched": [
+    "cmd/intropy/dashboard.go",
+    "internal/dashboard/dashboard_test.go",
+    "internal/dashboard/handlers.go",
+    "internal/dashboard/run.go",
+    "internal/dashboard/run_test.go",
+    "internal/dashboard/server.go",
+    "web/src/api.ts",
+    "web/src/components/FlowView.tsx",
+    "web/src/index.css"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "75cbc472fe22",
+  "checkpoint_transcript_start": 52,
+  "transcript_lines_at_start": 52,
+  "compact_transcript_start": 24,
+  "token_usage": {
+    "input_tokens": 99932,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 4699712,
+    "output_tokens": 27742,
+    "api_call_count": 78
+  },
+  "session_metrics": {
+    "turn_count": 8
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-21T04:12:09.553976Z",
+    "agent_lines": 978,
+    "agent_removed": 20,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 978,
+    "total_lines_changed": 998,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 641,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        ".pi/plans/dashboard-run-stop-plan.md": 249,
+        "docs/plans/2026-08-14-001-refactor-machine-checked-repo-boundaries-plan.md": 332
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1585,
+      "agent_lines_removed": 20,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1585,
+      "agent_lines_removed": 20,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 238,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1559,
+      "agent_lines_removed": 20,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "docs/plans/2026-08-16-001-feat-flow-seed-test-file-plan.md": 178
+      }
+    }
+  ]
+}
