@@ -1041,6 +1041,42 @@ OCI operations use the standard Docker credential chain — log in once with
 `docker login`, `gh auth login` (for `ghcr.io`), or your registry-specific
 tooling, and the CLI will pick up the credentials transparently.
 
+## Seeding test files from the dashboard
+
+An extractor's local input is a folder: the host's development definition
+resolves each external port to one (`development.Files(Ports.ErpSource)
+.RootPath("./test/erp-source")`, emitted by the host's `graph --development`
+verb), and the running extractor watches it through a localstorage binding.
+The flow view can fill that folder for you: every declared extractor carries a
+seed action that copies a chosen sample payload into the port's dev folder.
+
+Sample payloads live in a per-system library, keyed by port name — the twin of
+the `messages/<port>.md` docs convention:
+
+```
+order-flow/
+  messages/erp-source.md        # what the payload means
+  testdata/erp-source/          # what the payload looks like
+    orders-2024-01.csv
+    orders-missing-column.csv
+```
+
+The library is **committed to git** — it is shared team material, served by any
+developer's dashboard — and its samples must be sanitized before committing
+them, the same bar the message docs' `redacted: true` assertion sets. Keep it
+named `testdata/`: the dev folder itself is conventionally `test/<port>`, and a
+library named `test/` would collide with the inbox an extractor consumes from.
+
+The copy lands flat at `<rootPath>/<filename>` — the localstorage binding
+reads the folder, not subdirectories. Writing onto a file that is already
+there is a conflict the drawer offers to replace; two components consuming the
+same port share one inbox, so seeding for one overwrites the other's pending
+drop (the conflict prompt is the guard).
+
+A scaffolded-but-undeclared extractor (a ghost) shows the action disabled:
+without the declared topology there is no port wiring to seed against. Update
+the host, refresh the topology, and the action comes alive.
+
 ## Project layout
 
 ```

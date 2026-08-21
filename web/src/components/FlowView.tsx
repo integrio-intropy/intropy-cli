@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import {
   Background,
   Controls,
@@ -26,9 +26,11 @@ import {
   type TopologyReport,
 } from '../api'
 import { CreateDrawer, type SlotKind } from './CreateDrawer'
+import { SeedDrawer } from './SeedDrawer'
 import {
   CloudIcon,
   CycleIcon,
+  FileUploadIcon,
   HardDriveIcon,
   HubIcon,
   InputIcon,
@@ -104,6 +106,11 @@ interface IntNodeData extends Record<string, unknown> {
   /** Scaffolded but not in the declared topology yet — rendered muted/dashed
    *  until `sys create` re-assembles the host and the topology is refreshed. */
   ghost?: boolean
+  /** The node offers test-file seeding. Set at graph build: 'ready' for a
+   *  declared extractor (the seed drawer resolves ports and dev folders),
+   *  'ghost' for a scaffolded one (identified as an extractor but without
+   *  declared wiring to seed against — a disabled, explained button). */
+  seed?: 'ready' | 'ghost'
 }
 
 interface SlotNodeData extends Record<string, unknown> {
@@ -168,6 +175,8 @@ export function FlowView({ selected, onSelect, theme }: Props) {
   const [inspect, setInspect] = useState<FlowSelection | null>(null)
   // A clicked placeholder slot: which block kind the create drawer offers.
   const [draft, setDraft] = useState<SlotKind | null>(null)
+  // A clicked seed action: which component the seed drawer targets.
+  const [seeding, setSeeding] = useState<string | null>(null)
   // The banner's host re-assembly (sys update / sys create) in flight.
   const [syncing, setSyncing] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
@@ -183,6 +192,7 @@ export function FlowView({ selected, onSelect, theme }: Props) {
   useEffect(() => {
     setInspect(null)
     setDraft(null)
+    setSeeding(null)
     setSyncError(null)
     setRunError(null)
   }, [system])
@@ -292,7 +302,41 @@ export function FlowView({ selected, onSelect, theme }: Props) {
         : { nodes: [] as Node[], edges: [] as Edge[], ghosts: [] as IntegrationDetail[] },
     [effective, items],
   )
-  useEffect(() => setNodes(built.nodes), [built, setNodes])
+
+  // Mark the nodes that offer seeding. A declared extractor (kind maps to
+  // data flow "in") is 'ready' — the drawer resolves its in-ports and dev
+  // folders. A ghost identified as an extractor is 'ghost' — a disabled,
+  // explained button: without declared wiring there is no port to seed.
+  // Ghosts of unknown kind get nothing: the data model cannot always tell
+  // "known extractor, undeclared" from "unknown kind", so it errs on
+  // absence rather than a misleading disabled button.
+  const seededNodes = useMemo(() => {
+    const ready = new Set(
+      (effective?.components ?? [])
+        .filter((c) => dataFlowFor(c.kind) === 'in')
+        .map((c) => c.name),
+    )
+    const ghostPaths = new Set(
+      built.ghosts
+        .filter(
+          (g) => (g.dataFlow ?? (g.blockKind ? dataFlowFor(g.blockKind) : undefined)) === 'in',
+        )
+        .map((g) => g.path),
+    )
+    return built.nodes.map((n) => {
+      if (n.type !== 'integration') return n
+      const d = n.data as IntNodeData
+      const seed = d.ghost
+        ? ghostPaths.has(n.id)
+          ? ('ghost' as const)
+          : undefined
+        : ready.has(d.name)
+          ? ('ready' as const)
+          : undefined
+      return seed === d.seed ? n : { ...n, data: { ...d, seed } }
+    })
+  }, [built, effective])
+  useEffect(() => setNodes(seededNodes), [seededNodes, setNodes])
 
   // After a create, the new scaffold shows up as a ghost through the normal
   // join — the placeholder→ghost transition is a data refresh, not UI state.
@@ -516,6 +560,12 @@ export function FlowView({ selected, onSelect, theme }: Props) {
               onSlotClick={(kind) => {
                 setDraft(kind)
                 setInspect(null)
+                setSeeding(null)
+              }}
+              onSeed={(component) => {
+                setSeeding(component)
+                setDraft(null)
+                setInspect(null)
               }}
               fitSignal={system ?? ''}
               theme={theme}
@@ -526,6 +576,14 @@ export function FlowView({ selected, onSelect, theme }: Props) {
               selection={inspect}
               topology={declared}
               onClose={() => setInspect(null)}
+            />
+          )}
+          {seeding && declared && (
+            <SeedDrawer
+              target={{ component: seeding }}
+              topology={declared}
+              onClose={() => setSeeding(null)}
+              onRefreshTopology={refresh}
             />
           )}
           {draft && system && (
@@ -555,6 +613,7 @@ function FlowCanvas({
   onSelect,
   onInspect,
   onSlotClick,
+  onSeed,
   fitSignal,
   theme,
 }: {
@@ -564,6 +623,7 @@ function FlowCanvas({
   onSelect: (path: string) => void
   onInspect: (selection: FlowSelection | null) => void
   onSlotClick: (kind: SlotKind) => void
+  onSeed: (component: string) => void
   fitSignal: string
   theme: 'light' | 'dark'
 }) {
@@ -574,37 +634,46 @@ function FlowCanvas({
     if (initialized) rf.fitView({ padding: 0.2 })
   }, [initialized, fitSignal, rf])
 
+  // The seed action is one callback for every integration node, handed down
+  // through React context: node data is serialized state, so the callback
+  // travels the provider the NODE_TYPES renderers read.
   return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      onNodesChange={onNodesChange}
-      nodeTypes={NODE_TYPES}
-      colorMode={theme}
-      minZoom={0.3}
-      proOptions={{ hideAttribution: true }}
-      onNodeClick={(_, node) => {
-        if (node.type === 'integration') onSelect(node.id)
-        if (node.type === 'topic') {
-          const d = node.data as TopicNodeData
-          if (d.pubsub) onInspect({ kind: 'topic', pubsub: d.pubsub, topic: d.name })
-        }
-        if (node.type === 'external') {
-          const d = node.data as ExtNodeData
-          if (d.port) onInspect({ kind: 'port', name: d.port })
-        }
-        if (node.type === 'slot') {
-          onSlotClick((node.data as SlotNodeData).kind)
-        }
-      }}
-      onPaneClick={() => onInspect(null)}
-    >
-      <Background gap={20} />
-      <Controls showInteractive={false} />
-      <MiniMap pannable zoomable />
-    </ReactFlow>
+    <SeedContext.Provider value={onSeed}>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        nodeTypes={NODE_TYPES}
+        colorMode={theme}
+        minZoom={0.3}
+        proOptions={{ hideAttribution: true }}
+        onNodeClick={(_, node) => {
+          if (node.type === 'integration') onSelect(node.id)
+          if (node.type === 'topic') {
+            const d = node.data as TopicNodeData
+            if (d.pubsub) onInspect({ kind: 'topic', pubsub: d.pubsub, topic: d.name })
+          }
+          if (node.type === 'external') {
+            const d = node.data as ExtNodeData
+            if (d.port) onInspect({ kind: 'port', name: d.port })
+          }
+          if (node.type === 'slot') {
+            onSlotClick((node.data as SlotNodeData).kind)
+          }
+        }}
+        onPaneClick={() => onInspect(null)}
+      >
+        <Background gap={20} />
+        <Controls showInteractive={false} />
+        <MiniMap pannable zoomable />
+      </ReactFlow>
+    </SeedContext.Provider>
   )
 }
+
+// SeedContext carries the canvas's seed callback to the node renderers —
+// the one channel node data (serialized state) cannot provide.
+const SeedContext = createContext<(component: string) => void>(() => {})
 
 
 // refName extracts the display name from an entity ref: "component:pim-extractor"
@@ -941,7 +1010,8 @@ function GroupNode({ data }: NodeProps) {
 }
 
 function IntegrationNode({ data }: NodeProps) {
-  const { name, template, dataFlow, selected, trigger, ghost } = data as IntNodeData
+  const { name, template, dataFlow, selected, trigger, ghost, seed } = data as IntNodeData
+  const onSeed = useContext(SeedContext)
   const Icon = dataFlow ? DATA_FLOW_ICONS[dataFlow] : MemoryIcon
   return (
     <div className={`rf-int${selected ? ' selected' : ''}${ghost ? ' ghost' : ''}`}>
@@ -961,6 +1031,33 @@ function IntegrationNode({ data }: NodeProps) {
           >
             scaffolded
           </span>
+        )}
+        {/* The seed action sits last: the first tag's auto margin pushes the
+            whole trailing cluster right, and the button hangs off its end. */}
+        {seed === 'ready' && (
+          <button
+            type="button"
+            className="rf-int-seed nodrag"
+            title="Seed a test file into this extractor's dev folder"
+            onClick={(e) => {
+              // The card click selects the integration; the action is not a
+              // selection.
+              e.stopPropagation()
+              onSeed(name)
+            }}
+          >
+            <FileUploadIcon aria-hidden />
+          </button>
+        )}
+        {seed === 'ghost' && (
+          <button
+            type="button"
+            className="rf-int-seed"
+            disabled
+            title="Seeding needs the declared topology — update the host and refresh first"
+          >
+            <FileUploadIcon aria-hidden />
+          </button>
         )}
       </div>
 

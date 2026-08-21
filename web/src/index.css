@@ -1970,6 +1970,51 @@ body {
   margin-left: 6px;
 }
 
+/* The extractor's seed action: an icon button at the end of the card head,
+   quiet until hover like the slot placeholders. The trailing tags keep their
+   margins; the button only needs its own gap when it directly follows the
+   name (no tags). */
+.rf-int-seed {
+  margin-left: 6px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0.55;
+}
+
+.rf-int-name + .rf-int-seed {
+  margin-left: auto;
+}
+
+.rf-int-seed svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.rf-int:hover .rf-int-seed {
+  opacity: 1;
+}
+
+.rf-int-seed:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--accent);
+}
+
+.rf-int-seed:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
 /* Neutral informational banner (the ghost re-sync prompt). */
 .banner.hint {
   color: var(--text-muted);

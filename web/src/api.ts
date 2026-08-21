@@ -380,6 +380,22 @@ export interface MessageDoc {
   body?: string
 }
 
+/** One port's development file resolution: the local folder that stands in
+ *  for the port on a developer machine, declared host-relative in the
+ *  development definition ("./test/erp-source"). */
+export interface FilePort {
+  port: string
+  rootPath: string
+}
+
+/** The development section of a topology record, emitted by
+ *  `graph --development`. Absent on hosts whose Intropy.Topology predates
+ *  the flag (< v0.4.2), on hosts without a development definition, and on
+ *  plain graph runs. */
+export interface Development {
+  files?: FilePort[]
+}
+
 export interface Topology {
   /** Root-relative system directory, same identifier space as Integration.path. */
   path: string
@@ -395,10 +411,32 @@ export interface Topology {
   contracts?: Contract[]
   /** Contract surfaces — parsed but not yet rendered (shape not finalized). */
   apis?: unknown[]
+  /** The host's local-run picture — where a port's dev inbox lives. */
+  development?: Development
   /** Authored port payload descriptions, keyed by port name. CLI-merged
    *  enrichment from messages/<port>.md — not part of the host-declared
    *  topology, and re-read on every request. */
   messageDocs?: Record<string, MessageDoc>
+}
+
+/** The GET /api/testdata/{systemPath} payload: the system's test-file
+ *  library, files keyed by port name (testdata/<port>/). */
+export interface TestDataLibrary {
+  ports: Record<string, string[]>
+}
+
+/** The POST /api/seed body. */
+export interface SeedRequest {
+  systemPath: string
+  port: string
+  component: string
+  file: string
+  force?: boolean
+}
+
+/** The 201 payload: the seeded file's root-relative destination. */
+export interface SeedResponse {
+  path: string
 }
 
 /** The /api/topology payload: every declared topology plus the per-host
@@ -480,6 +518,19 @@ export const api = {
   /** Render a template into the workspace — the Run button's `int create`. */
   createTemplate: (name: string, req: CreateRequest) =>
     requestJSON<CreateResponse>(`/api/templates/${name}/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+    }),
+
+  // Test-file seeding (internal/dashboard/testdata.go): one system's
+  // testdata/<port>/ library, and copying a chosen file into the port's dev
+  // inbox. A 409 from seedFile means the inbox file already exists — the
+  // caller offers force, as the create forms do.
+  listTestData: (systemPath: string) =>
+    getJSON<TestDataLibrary>(`/api/testdata/${systemPath}`),
+  seedFile: (req: SeedRequest) =>
+    requestJSON<SeedResponse>('/api/seed', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req),

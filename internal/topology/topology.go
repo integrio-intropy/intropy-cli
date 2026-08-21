@@ -48,6 +48,29 @@ type Topology struct {
 	// so they are parsed opaquely: preserved for round-tripping to the
 	// frontend without asserting a schema the CLI does not yet render.
 	APIs []json.RawMessage `json:"apis,omitempty"`
+	// Development is the host's local-run picture, present only when the
+	// graph verb ran with --development against a host whose Intropy.Topology
+	// is new enough to emit it. A nil Development means "no dev configuration
+	// known" — older hosts, hosts without a development definition, and plain
+	// graph runs all decode identically.
+	Development *Development `json:"development,omitempty"`
+}
+
+// Development is the development section of a topology record: the host
+// author's local substitutions, emitted by `graph --development`.
+type Development struct {
+	// Files maps an external port to the local folder that stands in for it
+	// on a developer machine (the localstorage binding's root).
+	Files []FilePort `json:"files,omitempty"`
+}
+
+// FilePort is one port's development file resolution. RootPath is declared
+// relative to the system host's directory ("./test/erp-source"); the host
+// library rejects paths that escape it, and consumers confine again before
+// writing.
+type FilePort struct {
+	Port     string `json:"port"`
+	RootPath string `json:"rootPath"`
 }
 
 // Component is a deployable block of the system. Kind is the block type

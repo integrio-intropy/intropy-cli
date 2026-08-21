@@ -175,6 +175,11 @@ func newHandler(root, version string, p providers) (http.Handler, *apiServer, er
 	mux.HandleFunc("GET /api/templates", api.listTemplates)
 	mux.HandleFunc("GET /api/templates/{name}", api.getTemplate)
 	mux.HandleFunc("POST /api/templates/{name}/create", api.createTemplate)
+	// Test-file seeding: GET lists one system's testdata/<port>/ library,
+	// POST copies a chosen file into the port's dev inbox. The GET's
+	// {path...} wildcard is the root-relative system path.
+	mux.HandleFunc("GET /api/testdata/{path...}", api.listTestData)
+	mux.HandleFunc("POST /api/seed", api.seedTestFile)
 	mux.Handle("/", static)
 	return mux, api, nil
 }
