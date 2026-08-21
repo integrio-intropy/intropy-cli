@@ -172,20 +172,37 @@ git -C "$WORKDIR/tap" config user.email "41898282+github-actions[bot]@users.nore
 git -C "$WORKDIR/tap" commit -m "Brew formula update for intropy version ${TAG}"
 git -C "$WORKDIR/tap" push --force-with-lease origin "HEAD:${BRANCH}"
 
-EXISTING_PR=$(GH_TOKEN="$TAP_GITHUB_TOKEN" gh pr list \
+MANUAL_PR_URL="https://github.com/${TAP_OWNER}/${TAP_REPO}/pull/new/${BRANCH}"
+
+if EXISTING_PR=$(GH_TOKEN="$TAP_GITHUB_TOKEN" gh pr list \
   --repo "${TAP_OWNER}/${TAP_REPO}" \
   --head "$BRANCH" \
   --json url \
-  --jq '.[0].url')
-
-if [ -n "$EXISTING_PR" ]; then
-  echo "$EXISTING_PR"
-  exit 0
+  --jq '.[0].url'); then
+  if [ -n "$EXISTING_PR" ]; then
+    echo "$EXISTING_PR"
+    exit 0
+  fi
 fi
 
-GH_TOKEN="$TAP_GITHUB_TOKEN" gh pr create \
+if GH_TOKEN="$TAP_GITHUB_TOKEN" gh pr create \
   --repo "${TAP_OWNER}/${TAP_REPO}" \
   --base "$BASE_BRANCH" \
   --head "$BRANCH" \
   --title "Brew formula update for intropy version ${TAG}" \
-  --body "Updates the intropy Homebrew formula for ${TAG}."
+  --body "Updates the intropy Homebrew formula for ${TAG}."; then
+  exit 0
+fi
+
+echo "homebrew formula branch pushed, but pull request creation failed" >&2
+echo "open the tap PR manually: ${MANUAL_PR_URL}" >&2
+
+if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  {
+    echo "## Homebrew formula PR"
+    echo
+    echo "The formula branch was pushed, but the workflow token could not create the pull request."
+    echo
+    echo "Open it manually: ${MANUAL_PR_URL}"
+  } >> "$GITHUB_STEP_SUMMARY"
+fi
