@@ -120,32 +120,6 @@ changelog:
     - title: Other Changes
       order: 999
 
-homebrew_casks:
-  - name: intropy
-    repository:
-      owner: integrio-intropy
-      name: homebrew-tap
-      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
-    directory: Casks
-    homepage: "https://github.com/integrio-intropy/intropy-cli"
-    description: "CLI for Intropy integrations"
-    generate_completions_from_executable:
-      executable: intropy
-      args:
-        - completion
-      shells:
-        - bash
-        - zsh
-        - fish
-    # The binary is signed with cosign (sigstore), not Apple-notarized, so macOS
-    # Gatekeeper would quarantine it. Strip the quarantine attribute on install.
-    hooks:
-      post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/intropy"]
-          end
-
 release:
   github:
     owner: integrio-intropy
