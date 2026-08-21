@@ -999,6 +999,83 @@ body {
   cursor: default;
 }
 
+/* Run supervision: the flow toolbar's start/stop for a system host, its
+   status chip, and the log tail panel. Shares the toolbar button shape. */
+.flow-run {
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.flow-run:hover:not(:disabled) {
+  border-color: var(--text-muted);
+}
+
+.flow-run:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.flow-run.running {
+  border-color: var(--text-muted);
+}
+
+.flow-run-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.flow-run-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3fb950;
+}
+
+.flow-run-status.crashed .flow-run-dot {
+  background: #d64545;
+}
+
+.flow-logs-toggle {
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.flow-logs-toggle:hover {
+  border-color: var(--text-muted);
+}
+
+.flow-run-logs {
+  flex: 0 0 auto;
+  max-height: 180px;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 .flow-canvas {
   position: relative;
   flex: 1 1 auto;

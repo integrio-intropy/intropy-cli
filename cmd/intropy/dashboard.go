@@ -25,8 +25,9 @@ var dashboardCmd = &cobra.Command{
 	Short: "Launch the local integration dashboard",
 	Long: "Start a local web dashboard that visualizes the integrations and systems scaffolded under dir " +
 		"(default: the current directory) — their template, pinned source, version, scaffold values and " +
-		"system topology. The dashboard is served from the CLI itself and opens in your browser; it does " +
-		"not start any integration processes. Press Ctrl+C to stop.",
+		"system topology. The flow view can also start and stop a system's host locally (dotnet run); " +
+		"started hosts stop when the dashboard does. The dashboard is served from the CLI itself and " +
+		"opens in your browser. Press Ctrl+C to stop.",
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		root := "."

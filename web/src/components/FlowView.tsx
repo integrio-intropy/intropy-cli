@@ -20,6 +20,7 @@ import {
   api,
   type DaprComponent,
   type IntegrationDetail,
+  type RunState,
   type SystemInfo,
   type Topology,
   type TopologyReport,
@@ -170,13 +171,20 @@ export function FlowView({ selected, onSelect, theme }: Props) {
   // The banner's host re-assembly (sys update / sys create) in flight.
   const [syncing, setSyncing] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
+  // The selected system's host process, as the dashboard last knew it, plus
+  // the start/stop click in flight and the run log panel's visibility.
+  const [run, setRun] = useState<RunState | null>(null)
+  const [runBusy, setRunBusy] = useState(false)
+  const [runError, setRunError] = useState<string | null>(null)
+  const [logsOpen, setLogsOpen] = useState(false)
 
   // A different system means different topics/ports — drop the inspector,
-  // any half-open create drawer, and a stale sync error.
+  // any half-open create drawer, and stale sync/run errors.
   useEffect(() => {
     setInspect(null)
     setDraft(null)
     setSyncError(null)
+    setRunError(null)
   }, [system])
 
   useEffect(() => {
@@ -298,6 +306,42 @@ export function FlowView({ selected, onSelect, theme }: Props) {
   const sysDir = system === WORKSPACE_KEY ? '.' : system
   const hasHost = (systemList ?? []).some((s) => s.path === sysDir)
 
+  // Track the selected system's host process. Poll on a steady interval
+  // while a host is selected so a start, stop, or crash surfaces without the
+  // user clicking anything; start/stop clicks also set the state directly
+  // from their response, so the interval only ever reconciles.
+  useEffect(() => {
+    if (!sysDir || !hasHost) {
+      setRun(null)
+      return
+    }
+    let alive = true
+    const pull = () =>
+      api
+        .runState(sysDir)
+        .then((st) => {
+          if (alive) setRun(st)
+        })
+        .catch(() => {})
+    pull()
+    const tick = setInterval(pull, 2000)
+    return () => {
+      alive = false
+      clearInterval(tick)
+    }
+  }, [sysDir, hasHost])
+
+  const runClick = () => {
+    if (!sysDir || runBusy) return
+    setRunBusy(true)
+    setRunError(null)
+    const call = run?.running ? api.stopSystem(sysDir) : api.startSystem(sysDir)
+    call
+      .then(setRun)
+      .catch((e: unknown) => setRunError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setRunBusy(false))
+  }
+
   // Re-assemble the host (sys update, or sys create when the system has no
   // host yet), then refresh the topology so the ghosts turn into declared
   // nodes — the banner's one click that closes the create loop.
@@ -356,6 +400,49 @@ export function FlowView({ selected, onSelect, theme }: Props) {
           onChange={setSystem}
           placeholder="Select a system…"
         />
+        {hasHost && (
+          <button
+            type="button"
+            className={`flow-run${run?.running ? ' running' : ''}`}
+            onClick={runClick}
+            disabled={runBusy}
+            title={
+              run?.running
+                ? 'Stop the system host (SIGTERM the dotnet run process group)'
+                : 'Start the system host locally (dotnet run --project <host>)'
+            }
+          >
+            {runBusy
+              ? run?.running
+                ? 'Stopping…'
+                : 'Starting…'
+              : run?.running
+                ? 'Stop'
+                : 'Start'}
+          </button>
+        )}
+        {hasHost && run?.running && (
+          <span className="flow-run-status" title={`pid ${run.pid} · started ${run.startedAt}`}>
+            <span className="flow-run-dot" />
+            running
+          </span>
+        )}
+        {hasHost && run && !run.running && run.exitError && (
+          <span className="flow-run-status crashed" title={run.exitError}>
+            <span className="flow-run-dot" />
+            exited
+          </span>
+        )}
+        {hasHost && run && run.logs.length > 0 && (
+          <button
+            type="button"
+            className="flow-logs-toggle"
+            onClick={() => setLogsOpen((o) => !o)}
+            title="Show the host's stdout/stderr tail"
+          >
+            {logsOpen ? 'Hide logs' : 'Logs'}
+          </button>
+        )}
         <button
           type="button"
           className="flow-refresh"
@@ -366,6 +453,12 @@ export function FlowView({ selected, onSelect, theme }: Props) {
           {refreshing ? 'Refreshing…' : 'Refresh topology'}
         </button>
       </div>
+      {runError && <div className="banner error">{runError}</div>}
+      {logsOpen && run && (
+        <pre className="flow-run-logs">
+          {run.logs.join('\n') || 'no output yet'}
+        </pre>
+      )}
       {report.errors?.length ? (
         <div className="banner error">
           {report.errors.map((e) => (

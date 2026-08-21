@@ -62,7 +62,7 @@ func testHandlerWithDeploy(t *testing.T, root string, dep deployProvider) http.H
 
 func testHandlerWith(t *testing.T, root string, p providers) http.Handler {
 	t.Helper()
-	h, err := newHandler(root, "test", p)
+	h, _, err := newHandler(root, "test", p) // apiServer unused: these tests swap nothing
 	if err != nil {
 		t.Fatalf("newHandler: %v", err)
 	}

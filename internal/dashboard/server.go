@@ -1,15 +1,19 @@
 // Package dashboard serves the local Intropy integration dashboard: a small
-// stdlib net/http server that exposes a read-only JSON API over the
-// integrations discovered under a workspace root and serves the embedded SPA
-// that renders them.
+// stdlib net/http server that exposes a JSON API over the integrations
+// discovered under a workspace root and serves the embedded SPA that renders
+// them.
 //
-// It starts no integration processes and changes nothing. What it does run is
-// two things, both on request rather than at startup: each system host's `graph`
-// verb, for the topology the flow view draws, and the deploy status command, for
-// what the catalog reports each environment is running. The second one refreshes
-// the cached GitOps checkout and reads ArgoCD, so it is the only part of this
-// package that touches the network — asked for one integration at a time, and
-// reused until an explicit refresh.
+// It changes nothing on disk except when asked: the flow view can start and
+// stop a system's host locally (run.go — the one long-lived process the
+// package supervises, parented to the dashboard's lifetime), and the template
+// and system endpoints render scaffolds into the workspace the way the CLI
+// would. What it runs read-only is two things, both on request rather than at
+// startup: each system host's `graph` verb, for the topology the flow view
+// draws, and the deploy status command, for what the catalog reports each
+// environment is running. The second one refreshes the cached GitOps checkout
+// and reads ArgoCD, so it is the only part of this package that touches the
+// network — asked for one integration at a time, and reused until an explicit
+// refresh.
 //
 // Deployment facts are never derived here. The command owns every refusal that
 // matters — an unset gitopsRepo, a component name matching several, an
@@ -75,7 +79,7 @@ func Serve(ctx context.Context, opts Options) error {
 		root = abs
 	}
 
-	handler, err := newHandler(root, opts.Version, providers{
+	handler, api, err := newHandler(root, opts.Version, providers{
 		topology: hostGraphProvider(root),
 		deploy:   statusCommandProvider(opts.Version),
 		templates: templatesProvider{
@@ -120,10 +124,15 @@ func Serve(ctx context.Context, opts Options) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
+			api.shutdownRuns()
 			return fmt.Errorf("run: shutdown: %w", err)
 		}
+		// Hosts started from the flow view are children of the dashboard:
+		// they stop when it does.
+		api.shutdownRuns()
 		return nil
 	case err := <-errCh:
+		api.shutdownRuns()
 		if err != nil {
 			return fmt.Errorf("run: server error: %w", err)
 		}

@@ -94,6 +94,20 @@ export interface SystemSyncResponse {
   diagnostics?: string[]
 }
 
+/** The /api/run/{path} payload: the dashboard's last known state of one
+ *  system's host process. `exitError` is set when the host exited on its own
+ *  (a crash) — a deliberate stop clears the entry and reports neither.
+ *  `logs` is a tail of the host's combined stdout/stderr, the only terminal
+ *  a dashboard-started host has. */
+export interface RunState {
+  system: string
+  running: boolean
+  pid?: number
+  startedAt?: string
+  exitError?: string
+  logs: string[]
+}
+
 // Deployment state (internal/deploy). The server obtains each record by running
 // the `deploy status` command with a JSON writer and passing its result through
 // unchanged, so everything below is that command's own output — including the
@@ -434,6 +448,15 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ force }),
     }),
+  /** Run supervision for one system's host (internal/dashboard/run.go).
+   *  GET is the last known state; POST starts (a crashed run restarts, a
+   *  running one is a 409); DELETE stops and clears. Path "." is the
+   *  workspace root. */
+  runState: (path: string) => getJSON<RunState>(`/api/run/${path}`),
+  startSystem: (path: string) =>
+    requestJSON<RunState>(`/api/run/${path}`, { method: 'POST' }),
+  stopSystem: (path: string) =>
+    requestJSON<RunState>(`/api/run/${path}`, { method: 'DELETE' }),
   /** Every declared system topology, cached from the hosts' graph verbs. */
   topologies: () => getJSON<TopologyReport>('/api/topology'),
   /** Re-run every host's graph verb and return the fresh report. */

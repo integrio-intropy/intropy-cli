@@ -71,6 +71,13 @@ type apiServer struct {
 	// the ones actually asked about.
 	depMu     sync.Mutex
 	depStates map[string]deployState
+
+	// runMu guards the supervised system hosts, keyed by root-relative system
+	// dir. start launches through the start function value (dotnet run in
+	// production, a fake in tests — the same seam providers uses).
+	runMu sync.Mutex
+	runs  map[string]*systemRun
+	start starter
 }
 
 // topologyReport is the /api/topology payload: every declared topology plus
@@ -127,12 +134,15 @@ type integrationDetail struct {
 	PipelineSteps []string        `json:"pipelineSteps,omitempty"`
 }
 
-// newHandler wires the API routes and the SPA static handler onto a mux.
-func newHandler(root, version string, p providers) (http.Handler, error) {
-	api := &apiServer{root: root, version: version, topo: p.topology, dep: p.deploy, templates: p.templates}
+// newHandler wires the API routes and the SPA static handler onto a mux and
+// returns the apiServer alongside: Serve needs its shutdownRuns (stopping the
+// supervised system hosts after the HTTP server drains) and tests need its
+// start seam.
+func newHandler(root, version string, p providers) (http.Handler, *apiServer, error) {
+	api := &apiServer{root: root, version: version, topo: p.topology, dep: p.deploy, templates: p.templates, start: dotnetStart}
 	static, err := staticHandler()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	mux := http.NewServeMux()
@@ -152,13 +162,21 @@ func newHandler(root, version string, p providers) (http.Handler, error) {
 	// already been read, POST runs the command again.
 	mux.HandleFunc("GET /api/deploy/{path...}", api.getDeployState)
 	mux.HandleFunc("POST /api/deploy/{path...}", api.refreshDeployState)
+	// Run supervision: the flow view's start/stop for a system's host. A
+	// dedicated prefix — ServeMux forbids a {path...} wildcard mid-pattern, so
+	// /api/systems/{path...}/run cannot exist. The workspace-root system
+	// arrives as "" (ServeMux redirects /api/run/. to /api/run/) and the
+	// handlers normalize it to ".", the same rule byPath applies.
+	mux.HandleFunc("GET /api/run/{path...}", api.getRun)
+	mux.HandleFunc("POST /api/run/{path...}", api.startRun)
+	mux.HandleFunc("DELETE /api/run/{path...}", api.stopRun)
 	// Template endpoints follow the same GET-read / POST-act split: list and
 	// show fetch the library release, create renders into the workspace.
 	mux.HandleFunc("GET /api/templates", api.listTemplates)
 	mux.HandleFunc("GET /api/templates/{name}", api.getTemplate)
 	mux.HandleFunc("POST /api/templates/{name}/create", api.createTemplate)
 	mux.Handle("/", static)
-	return mux, nil
+	return mux, api, nil
 }
 
 func (s *apiServer) health(w http.ResponseWriter, _ *http.Request) {
