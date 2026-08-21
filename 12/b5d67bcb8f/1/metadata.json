@@ -1,0 +1,107 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "12b5d67bcb8f",
+  "session_id": "71b87eb7-bd8d-43ad-ae7e-95db76ccea81",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-21T09:15:34.153472Z",
+  "branch": "fix/homebrew-formula-pr-fallback",
+  "checkpoints_count": 4,
+  "files_touched": [
+    ".github/scripts/update-homebrew-formula.sh"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "aa05eaa7fe50",
+  "checkpoint_transcript_start": 1362,
+  "transcript_lines_at_start": 1362,
+  "compact_transcript_start": 272,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_011sDkPx8F3s5TuGpzg2MQHh",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "golang-cli"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "aa05eaa7fe50",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 114,
+        "end": 115,
+        "entry_ids": [
+          "65755887-f333-4fb8-afcc-930f067185f7"
+        ],
+        "tool_use_id": "toolu_011sDkPx8F3s5TuGpzg2MQHh"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_011sDkPx8F3s5TuGpzg2MQHh"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: golang-cli",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-21T09:15:33.911326Z",
+    "agent_lines": 25,
+    "agent_removed": 8,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 25,
+    "total_lines_changed": 33,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 2412,
+      "user_lines_removed": 38,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        ".pi/plans/dashboard-run-stop-plan.md": 249,
+        "README.md": 36,
+        "docs/plans/2026-08-14-001-refactor-machine-checked-repo-boundaries-plan.md": 332,
+        "docs/plans/2026-08-16-001-feat-flow-seed-test-file-plan.md": 255,
+        "internal/dashboard/handlers.go": 28,
+        "internal/dashboard/testdata.go": 374,
+        "internal/dashboard/testdata_test.go": 382,
+        "internal/topology/graph.go": 5,
+        "internal/topology/topology.go": 23,
+        "internal/topology/topology_test.go": 33,
+        "web/src/api.ts": 74,
+        "web/src/components/FlowView.tsx": 222,
+        "web/src/components/SeedDrawer.tsx": 216,
+        "web/src/icons.ts": 1,
+        "web/src/index.css": 122
+      },
+      "user_removed_per_file": {
+        "internal/dashboard/handlers.go": 5,
+        "internal/topology/graph.go": 1,
+        "web/src/components/FlowView.tsx": 32
+      }
+    }
+  ]
+}

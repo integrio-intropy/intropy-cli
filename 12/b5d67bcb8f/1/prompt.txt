@@ -1,0 +1,3 @@
+I get this "dev folder for port "erp-extractor-source": path "/Users/robinhultman/dev/intropy/customers/fluxia/integrations/domains/order-management/order-notification/ordernotification-host/test/erp-extractor-source" must be relative to the system directory"
+
+Is that an error in our implementation here or should we scaffold the dev folders in another way?

@@ -3,7 +3,7 @@
   "checkpoint_id": "12b5d67bcb8f",
   "strategy": "manual-commit",
   "branch": "fix/homebrew-formula-pr-fallback",
-  "checkpoints_count": 2,
+  "checkpoints_count": 6,
   "files_touched": [
     ".github/scripts/update-homebrew-formula.sh"
   ],
@@ -14,6 +14,13 @@
       "compact_transcript": "/12/b5d67bcb8f/0/transcript.jsonl",
       "content_hash": "/12/b5d67bcb8f/0/content_hash.txt",
       "prompt": "/12/b5d67bcb8f/0/prompt.txt"
+    },
+    {
+      "metadata": "/12/b5d67bcb8f/1/metadata.json",
+      "transcript": "/12/b5d67bcb8f/1/full.jsonl",
+      "compact_transcript": "/12/b5d67bcb8f/1/transcript.jsonl",
+      "content_hash": "/12/b5d67bcb8f/1/content_hash.txt",
+      "prompt": "/12/b5d67bcb8f/1/prompt.txt"
     }
   ],
   "token_usage": {
