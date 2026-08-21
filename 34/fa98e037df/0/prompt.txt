@@ -1,0 +1,38 @@
+I have created a github release so that the homebrew package is updated but when I try to upgrade I get:
+Robins-MacBook-Pro intropy-cli on  main [$] ➜  brew upgrade intropy                     10:02
+==> Would upgrade 1 outdated package
+integrio-intropy/tap/intropy 0.8.0 -> 0.9.0
+==> Do you want to proceed with the upgrade? [y/n]
+==> Upgrading 1 outdated package:
+integrio-intropy/tap/intropy 0.8.0 -> 0.9.0
+==> Fetching downloads for: integrio-intropy/tap/intropy
+✔︎ Cask intropy (0.9.0)                                              Downloaded    5.6MB/  5.6MB
+==> Upgrading intropy
+  0.8.0 -> 0.9.0
+==> Purging files for version 0.9.0 of Cask intropy
+==> Purging files for version 0.9.0 of Cask intropy
+Warning: Reverting upgrade for Cask intropy
+==> Purging files for version 0.8.0 of Cask intropy
+Warning: Rolling back the failed upgrade of intropy also failed: Cask::CaskError: It seems there is already a Binary at '/opt/homebrew/bin/intropy'.
+Error: integrio-intropy/tap/intropy: It seems there is already a Binary at '/opt/homebrew/bin/intropy'.
+
+---
+
+Hm, I get this macos warning:
+Apple could not verify “intropy” is free of malware that may harm your Mac or compromise your privacy.
+
+---
+
+It worked when I just pressed "Done" in the dialog. But I usually do not get that warning when I install things through homebrew
+
+---
+
+what would it mean in practice to publish it as a formula?
+
+---
+
+OK what of this can you do for me? Do not do anything yet, just tell me
+
+---
+
+Ok start doing this, tell me when I need to do something

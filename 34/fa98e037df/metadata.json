@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "34fa98e037df",
+  "strategy": "manual-commit",
+  "branch": "chore/homebrew-formula",
+  "checkpoints_count": 6,
+  "files_touched": [
+    ".github/scripts/update-homebrew-formula.sh",
+    ".github/workflows/release.yaml",
+    ".goreleaser.yaml",
+    "README.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/34/fa98e037df/0/metadata.json",
+      "transcript": "/34/fa98e037df/0/full.jsonl",
+      "compact_transcript": "/34/fa98e037df/0/transcript.jsonl",
+      "content_hash": "/34/fa98e037df/0/content_hash.txt",
+      "prompt": "/34/fa98e037df/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 221485,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 4729344,
+    "output_tokens": 29129,
+    "api_call_count": 86
+  }
+}
