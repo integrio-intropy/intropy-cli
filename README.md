@@ -7,9 +7,9 @@ tracks, deploys, and releases them.
 
 ## Install
 
-### Homebrew (macOS)
+### Homebrew
 
-Distributed as a Homebrew cask (macOS only):
+Distributed as a Homebrew formula:
 
 ```sh
 brew tap integrio-intropy/tap
@@ -21,8 +21,8 @@ The `brew trust` step is required when `HOMEBREW_REQUIRE_TAP_TRUST` is set —
 the default on current Homebrew (6.x+). On older versions without that
 requirement you can skip it.
 
-On Linux, use the quick install script below or download a binary from the
-[releases page](https://github.com/integrio-intropy/intropy-cli/releases).
+On Linux, use Homebrew, the quick install script below, or download a binary
+from the [releases page](https://github.com/integrio-intropy/intropy-cli/releases).
 
 ### Quick install (macOS / Linux)
 
