@@ -1,0 +1,40 @@
+can you make a plan an pass it to an review agent with pi --print?
+
+---
+
+tooling/intropy-topology is the correct one atleast
+
+---
+
+Can you implement the plan on this branch without committing anything?
+
+---
+
+❯ I get this "dev folder for port "erp-extractor-source": path
+  "/Users/robinhultman/dev/intropy/customers/fluxia/integrations/domains/order-management/orde
+  r-notification/ordernotification-host/test/erp-extractor-source" must be relative to the
+  system directory"
+
+  Is that an error in our implementation here or should we scaffold the dev folders in another
+  way?
+
+---
+
+I did option A and now the seeding works but I think that when I think that the components pulls the test folder relative to the host and not the root. Perhaps also in the topology?
+
+---
+
+Look at /Users/robinhultman/dev/intropy/customers/fluxia/integrations/domains/new
+The host seeds test files to ./test/order-extractor-source but the extractor polls ./new-host/test/order-extractor-source/
+
+---
+
+yes, but do not commit anything
+
+---
+
+I am still having the same problem. /Users/robinhultman/dev/intropy/customers/fluxia/integrations/domains/empty/empty-host/obj/dapr-components/order-extractor still points to the wrong path
+
+---
+
+I think the template change would be good but I am not sure that the template is able to render a folder outside of the host project (at the root?
