@@ -1,0 +1,5 @@
+Without making any changes can you suggest how we might use the telemetry data on the integration flow? The idea is perhaps not to show a lot of details but show a number of messages on the arrows between boxes and perhaps indicate with red (everything on this component have failed), yellow (some have failed), and green (everything has passed)
+
+---
+
+Similar to how we can see the logs for running the host could each component get a button to show the logs (from aspire) for that component?

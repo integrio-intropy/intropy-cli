@@ -1,0 +1,93 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "471ba1069052",
+  "session_id": "01a01fb8-ff44-78c7-97d1-db8ab9b48ec0",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-21T07:36:59.630583Z",
+  "branch": "feature/flow-slot-create",
+  "checkpoints_count": 2,
+  "save_step_count": 2,
+  "files_touched": [
+    "README.md",
+    "internal/dashboard/handlers.go",
+    "internal/topology/graph.go",
+    "internal/topology/topology.go",
+    "internal/topology/topology_test.go",
+    "web/src/api.ts",
+    "web/src/components/FlowView.tsx",
+    "web/src/icons.ts",
+    "web/src/index.css"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "aa8306bf9f6e",
+  "checkpoint_transcript_start": 34,
+  "transcript_lines_at_start": 34,
+  "compact_transcript_start": 14,
+  "token_usage": {
+    "input_tokens": 36589,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 261184,
+    "output_tokens": 3446,
+    "api_call_count": 9
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-21T07:36:59.613707Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 98,
+    "human_modified": 38,
+    "human_removed": 0,
+    "total_committed": 98,
+    "total_lines_changed": 137,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 2412,
+      "user_lines_removed": 38,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        ".pi/plans/dashboard-run-stop-plan.md": 249,
+        "README.md": 36,
+        "docs/plans/2026-08-14-001-refactor-machine-checked-repo-boundaries-plan.md": 332,
+        "docs/plans/2026-08-16-001-feat-flow-seed-test-file-plan.md": 255,
+        "internal/dashboard/handlers.go": 28,
+        "internal/dashboard/testdata.go": 374,
+        "internal/dashboard/testdata_test.go": 382,
+        "internal/topology/graph.go": 5,
+        "internal/topology/topology.go": 23,
+        "internal/topology/topology_test.go": 33,
+        "web/src/api.ts": 74,
+        "web/src/components/FlowView.tsx": 222,
+        "web/src/components/SeedDrawer.tsx": 216,
+        "web/src/icons.ts": 1,
+        "web/src/index.css": 122
+      },
+      "user_removed_per_file": {
+        "internal/dashboard/handlers.go": 5,
+        "internal/topology/graph.go": 1,
+        "web/src/components/FlowView.tsx": 32
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2135,
+      "agent_lines_removed": 32,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    }
+  ]
+}
