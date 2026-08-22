@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "6abc8e64a615",
+  "strategy": "manual-commit",
+  "branch": "chore/remove-compat-shims",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "internal/deploy/manifests_engine.go",
+    "internal/deploy/manifests_model.go",
+    "internal/system/assemble.go",
+    "internal/system/assemble_test.go",
+    "internal/system/blocks.go",
+    "internal/template/reserved.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/6a/bc8e64a615/0/metadata.json",
+      "transcript": "/6a/bc8e64a615/0/full.jsonl",
+      "compact_transcript": "/6a/bc8e64a615/0/transcript.jsonl",
+      "content_hash": "/6a/bc8e64a615/0/content_hash.txt",
+      "prompt": "/6a/bc8e64a615/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 50710,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1032960,
+    "output_tokens": 7483,
+    "api_call_count": 34
+  }
+}
