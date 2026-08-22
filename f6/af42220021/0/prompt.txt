@@ -1,9 +1,1 @@
-Analyse the plan in 02-cli-int-adopt.md
-
----
-
-If the plan is good enough to start implementation you can do that on a new branch off main. Do not push
-
----
-
 Should we update the plan with your findings?
