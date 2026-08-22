@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "f6af42220021",
+  "session_id": "01a02865-ad35-7b5e-a9b2-4defac698288",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-22T07:51:30.441991Z",
+  "branch": "feature/int-adopt",
+  "checkpoints_count": 2,
+  "save_step_count": 1,
+  "files_touched": [],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "c4a47b5a398b",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 49686,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2108352,
+    "output_tokens": 27965,
+    "api_call_count": 61
+  },
+  "session_metrics": {
+    "turn_count": 2
+  }
+}

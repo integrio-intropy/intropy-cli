@@ -1,0 +1,24 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "f6af42220021",
+  "strategy": "manual-commit",
+  "branch": "feature/int-adopt",
+  "checkpoints_count": 2,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/f6/af42220021/0/metadata.json",
+      "transcript": "/f6/af42220021/0/full.jsonl",
+      "compact_transcript": "/f6/af42220021/0/transcript.jsonl",
+      "content_hash": "/f6/af42220021/0/content_hash.txt",
+      "prompt": "/f6/af42220021/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 49686,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2108352,
+    "output_tokens": 27965,
+    "api_call_count": 61
+  }
+}
