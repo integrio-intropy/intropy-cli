@@ -1,0 +1,1 @@
+Analyse the plan in 02-cli-int-adopt.md
