@@ -1,1 +1,0 @@
-This branch introduces the adpot sub-command and it seems that maxbo and perfion is mention in the help texts. Can you replace maxbo with fluxia and perfion with pim so that maxbo and perfion isnt in the git history either (as long as they were introduced in this branch, we should make no such changes on the main branch)

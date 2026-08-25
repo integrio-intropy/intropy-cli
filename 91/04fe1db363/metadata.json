@@ -6,9 +6,7 @@
   "checkpoints_count": 1,
   "files_touched": [
     "README.md",
-    "cmd/intropy/int_adopt.go",
-    "internal/system/adopt_integration_test.go",
-    "internal/template/adopt_test.go"
+    "cmd/intropy/int_adopt.go"
   ],
   "sessions": [
     {
@@ -16,14 +14,14 @@
       "transcript": "/91/04fe1db363/0/full.jsonl",
       "compact_transcript": "/91/04fe1db363/0/transcript.jsonl",
       "content_hash": "/91/04fe1db363/0/content_hash.txt",
-      "prompt": "/91/04fe1db363/0/prompt.txt"
+      "prompt": ""
     }
   ],
   "token_usage": {
-    "input_tokens": 21819,
+    "input_tokens": 1919,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 96832,
-    "output_tokens": 1859,
-    "api_call_count": 10
+    "cache_read_tokens": 88576,
+    "output_tokens": 730,
+    "api_call_count": 6
   }
 }
