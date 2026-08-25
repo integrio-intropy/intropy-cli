@@ -15,3 +15,7 @@ The experiment should show any changes we should make to the templates, to the c
 ---
 
 yes please do that. And can we be fairly certain that the changes wont break the main flow where you create from template?
+
+---
+
+can you apply the cli changes to the int-adopt branch? That branch isnt released yet so there is no point in separating the changes
