@@ -1,0 +1,17 @@
+I am working on the adopt sub command. The purspose is to with the least possible effort be able to get components not created with the scaffolding to be usable in the dashboard and runnable via the host. The host should always be created via the intropy sys create. The idea is that you run the adopt command and you specify the parameters the tool cant figure out and when you then run i sys create it should be able to wire up the topology and it will be runnable. Do not make any changes
+
+---
+
+Can you run through a concrete case
+
+---
+
+Run through a concrete case. Break if it just wont be possible. 
+Adpot the extractor in /Users/robinhultman/dev/intropy/customers/lovenskiold/integrations/domains/product/distribution
+create a new host. Make sure you can run dotnet run on the host. Create a new branch off main and dont push anything
+
+The experiment should show any changes we should make to the templates, to the cli, and what we possibly would require the developer to change manually before migrating (hopefully nothing)
+
+---
+
+yes please do that. And can we be fairly certain that the changes wont break the main flow where you create from template?
