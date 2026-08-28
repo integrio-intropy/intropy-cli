@@ -437,6 +437,13 @@ body {
   border: 1px solid var(--danger);
 }
 
+.banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
 .detail {
   max-width: 860px;
 }

@@ -177,9 +177,12 @@ export function FlowView({ selected, onSelect, theme }: Props) {
   const [draft, setDraft] = useState<SlotKind | null>(null)
   // A clicked seed action: which component the seed drawer targets.
   const [seeding, setSeeding] = useState<string | null>(null)
-  // The banner's host re-assembly (sys update / sys create) in flight.
+  // The banner's host re-assembly (sys update / sys create) in flight, and
+  // the force checkbox a 409 offers, as the create and seed drawers do.
   const [syncing, setSyncing] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
+  const [syncErrorStatus, setSyncErrorStatus] = useState<number | null>(null)
+  const [syncForce, setSyncForce] = useState(false)
   // The selected system's host process, as the dashboard last knew it, plus
   // the start/stop click in flight and the run log panel's visibility.
   const [run, setRun] = useState<RunState | null>(null)
@@ -194,6 +197,8 @@ export function FlowView({ selected, onSelect, theme }: Props) {
     setDraft(null)
     setSeeding(null)
     setSyncError(null)
+    setSyncErrorStatus(null)
+    setSyncForce(false)
     setRunError(null)
   }, [system])
 
@@ -389,14 +394,16 @@ export function FlowView({ selected, onSelect, theme }: Props) {
   // Re-assemble the host (sys update, or sys create when the system has no
   // host yet), then refresh the topology so the ghosts turn into declared
   // nodes — the banner's one click that closes the create loop.
-  const syncHost = () => {
+  const syncHost = (force = false) => {
     if (!sysDir) return
     setSyncing(true)
     setSyncError(null)
+    setSyncErrorStatus(null)
     api
-      .syncSystem(sysDir)
+      .syncSystem(sysDir, force)
       .then((resp) => {
         setSyncing(false)
+        setSyncForce(false)
         refresh()
         // The create branch writes a new host scaffold: pick it up so the
         // picker and the button label agree with the workspace again.
@@ -413,6 +420,11 @@ export function FlowView({ selected, onSelect, theme }: Props) {
       .catch((e: unknown) => {
         setSyncing(false)
         setSyncError(e instanceof Error ? e.message : String(e))
+        setSyncErrorStatus(
+          e instanceof Error && 'status' in e && typeof e.status === 'number'
+            ? e.status
+            : null,
+        )
       })
   }
 
@@ -526,7 +538,7 @@ export function FlowView({ selected, onSelect, theme }: Props) {
           <button
             type="button"
             className="flow-refresh"
-            onClick={syncHost}
+            onClick={() => syncHost()}
             disabled={syncing || refreshing}
             title={
               hasHost
@@ -544,7 +556,31 @@ export function FlowView({ selected, onSelect, theme }: Props) {
           </button>
         </div>
       )}
-      {syncError && <div className="banner error">{syncError}</div>}
+      {syncError && (
+        <div className="banner error">
+          {syncError}
+          {syncErrorStatus === 409 && (
+            <div className="banner-actions">
+              <label className="force-row">
+                <input
+                  type="checkbox"
+                  checked={syncForce}
+                  onChange={(e) => setSyncForce(e.target.checked)}
+                />
+                overwrite the files listed above
+              </label>
+              <button
+                type="button"
+                className="flow-refresh"
+                onClick={() => syncHost(true)}
+                disabled={syncing || !syncForce}
+              >
+                {syncing ? 'Retrying…' : 'Retry with overwrite'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       {effective ? (
         <div className="flow-canvas">
           <ReactFlowProvider>
@@ -705,18 +741,29 @@ function buildDeclaredGraph(
   // A topic node is identified by its (pubsub, topic) pair; a component by ref.
   const topicId = (pubsub: string, topic: string): string => `topic:${pubsub}/${topic}`
 
-  // Map component refs to integration paths (a component's directory is its
-  // name relative to the system root) so clicking a declared node selects the
-  // scaffolded integration when one exists.
+  // Map component refs to integration paths so clicking a declared node
+  // selects the scaffolded integration when one exists. The declared name is
+  // the component's appId, and the scaffold record's appId is the same value
+  // — the directory name is not, since a scaffold can be rendered under a
+  // folder that differs from its --name. The path-shaped fallback keeps
+  // matching scaffolds whose record predates the appId value.
   const joinProject = (base: string, project: string): string => {
     if (project === '.' || project === '') return base
     return base === '.' ? project : `${base}/${project}`
   }
+  const byAppId = new Map<string, string>()
+  for (const it of items) {
+    const appId = it.values?.appId
+    if (typeof appId === 'string' && appId !== '') byAppId.set(appId, it.path)
+  }
+  const scaffoldPath = (name: string): string | undefined =>
+    byAppId.get(name) ??
+    (items.some((it) => it.path === joinProject(topo.path, name))
+      ? joinProject(topo.path, name)
+      : undefined)
   const nodeId = new Map<string, string>()
   for (const c of comps) {
-    const path = joinProject(topo.path, c.name)
-    const matched = items.some((it) => it.path === path) ? path : undefined
-    nodeId.set(`component:${c.name}`, matched ?? `component:${c.name}`)
+    nodeId.set(`component:${c.name}`, scaffoldPath(c.name) ?? `component:${c.name}`)
   }
 
   // Collect the unique topics the components reference, and the internal flow
@@ -836,7 +883,9 @@ function buildDeclaredGraph(
   // in this system but whose name the declared topology does not carry —
   // brand new (pre `sys create`) or renamed. They render as ghosts in their
   // block kind's column, wireless, until the host declares them.
-  const declaredPaths = new Set(comps.map((c) => joinProject(topo.path, c.name)))
+  const declaredPaths = new Set(
+    comps.map((c) => scaffoldPath(c.name) ?? joinProject(topo.path, c.name)),
+  )
   const ghosts = items.filter((it) => !declaredPaths.has(it.path))
   for (const g of ghosts) {
     const flow = g.dataFlow ?? (g.blockKind ? dataFlowFor(g.blockKind) : undefined)

@@ -2,7 +2,7 @@
 # committed — the committed fallback page lives under placeholder/dist and the
 # go:embed marker dist/placeholder.html is produced by `make web`.
 node_modules
-dist
+/dist
 .tmp
 *.tsbuildinfo
 *.local
