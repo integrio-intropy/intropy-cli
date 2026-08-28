@@ -1,0 +1,53 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "5fa5f1333820",
+  "session_id": "01a04691-c055-78ea-9e68-6bac2a131482",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-28T20:31:00.271117Z",
+  "branch": "feature/flow-slot-create",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "web/.gitignore",
+    "web/placeholder/dist/index.html"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "6b232149ea95",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 19440,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 101824,
+    "output_tokens": 1901,
+    "api_call_count": 12
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-28T20:31:00.265064Z",
+    "agent_lines": 48,
+    "agent_removed": 1,
+    "human_added": 68,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 116,
+    "total_lines_changed": 129,
+    "agent_percentage": 37.98449612403101,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    }
+  ]
+}

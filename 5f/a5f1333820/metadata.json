@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "5fa5f1333820",
+  "strategy": "manual-commit",
+  "branch": "feature/flow-slot-create",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "web/.gitignore",
+    "web/placeholder/dist/index.html"
+  ],
+  "sessions": [
+    {
+      "metadata": "/5f/a5f1333820/0/metadata.json",
+      "transcript": "/5f/a5f1333820/0/full.jsonl",
+      "compact_transcript": "/5f/a5f1333820/0/transcript.jsonl",
+      "content_hash": "/5f/a5f1333820/0/content_hash.txt",
+      "prompt": "/5f/a5f1333820/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 19440,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 101824,
+    "output_tokens": 1901,
+    "api_call_count": 12
+  }
+}
