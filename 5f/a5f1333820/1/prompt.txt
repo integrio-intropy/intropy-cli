@@ -1,0 +1,10 @@
+I am trying to update the host via the dashboard but I get this error: 
+declaration files differ from what the update would render: Ports.cs, OrderNotificationHostDevelopment.cs, OrderNotificationHostSystem.cs reconcile them by hand, or re-run with --force to overwrite
+
+---
+
+Can you check what the problem is for that solution specifically? ~/dev/intropy/customers/fluxia/integrations/domains/order-management/order-notification
+
+---
+
+that worked. I thing we have a bug though. I scaffolded a new loader in folder tge but with name Ssdf. The Ssdf component is displayed correctly in the diagram but there is also an orphan tge. I think it is only a rendering bug in the diagram, it seems correct otherwise
