@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "162f26c02383",
+  "strategy": "manual-commit",
+  "branch": "feature/int-adopt",
+  "checkpoints_count": 7,
+  "files_touched": [
+    "README.md",
+    "cmd/intropy/int_adopt.go",
+    "cmd/intropy/int_adopt_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/16/2f26c02383/0/metadata.json",
+      "transcript": "/16/2f26c02383/0/full.jsonl",
+      "compact_transcript": "/16/2f26c02383/0/transcript.jsonl",
+      "content_hash": "/16/2f26c02383/0/content_hash.txt",
+      "prompt": "/16/2f26c02383/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 305298,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 10342144,
+    "output_tokens": 42207,
+    "api_call_count": 155
+  }
+}
