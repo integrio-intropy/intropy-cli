@@ -1,0 +1,5 @@
+Do not make any changes. I need to be able to infer parameter values in some cases. For example if I have created a system with a topic and I am creating another loader I want to suggest that topic instead of having the developer type it in again. How do you suggest we implement things like that?
+
+---
+
+Make a plan please
