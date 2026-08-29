@@ -1,0 +1,128 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "688996ed308a",
+  "session_id": "01a04c60-426d-7346-82e0-bebeeedb17a8",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-29T07:38:39.950223Z",
+  "branch": "feature/flow-slot-create",
+  "checkpoints_count": 3,
+  "save_step_count": 3,
+  "files_touched": [
+    "cmd/intropy/int_create.go",
+    "cmd/intropy/int_create_test.go",
+    "internal/dashboard/handlers.go",
+    "internal/dashboard/templates.go",
+    "internal/dashboard/templates_test.go",
+    "internal/system/model.go",
+    "internal/template/create.go",
+    "internal/template/create_test.go",
+    "internal/template/manifest.go",
+    "internal/template/prompt.go",
+    "internal/template/values.go",
+    "internal/template/values_test.go",
+    "web/src/api.ts",
+    "web/src/components/CreateDrawer.tsx",
+    "web/src/components/TemplatesView.tsx",
+    "web/src/components/form.tsx",
+    "web/src/components/useTemplateFields.ts",
+    "web/src/index.css"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "fc67c05aa64f",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 59788,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2709888,
+    "output_tokens": 22754,
+    "api_call_count": 62
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-29T07:38:39.926427Z",
+    "agent_lines": 199,
+    "agent_removed": 1,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 96,
+    "total_committed": 199,
+    "total_lines_changed": 296,
+    "agent_percentage": 67.56756756756756,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 2468,
+      "user_lines_removed": 96,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "cmd/intropy/int_create.go": 27,
+        "cmd/intropy/int_create_test.go": 18,
+        "docs/plans/2026-08-28-001-feat-parameter-value-suggestions-plan.md": 563,
+        "internal/dashboard/templates.go": 34,
+        "internal/dashboard/templates_test.go": 152,
+        "internal/system/facts.go": 32,
+        "internal/system/facts_test.go": 89,
+        "internal/system/model.go": 6,
+        "internal/template/create.go": 14,
+        "internal/template/create_test.go": 208,
+        "internal/template/facts.go": 146,
+        "internal/template/facts_test.go": 148,
+        "internal/template/manifest.go": 7,
+        "internal/template/prompt.go": 110,
+        "internal/template/prompt_test.go": 161,
+        "internal/template/suggest.go": 119,
+        "internal/template/suggest_test.go": 254,
+        "internal/template/values.go": 153,
+        "internal/template/values_test.go": 5,
+        "web/src/api.ts": 7,
+        "web/src/components/CreateDrawer.tsx": 24,
+        "web/src/components/TemplatesView.tsx": 23,
+        "web/src/components/form.tsx": 38,
+        "web/src/components/useTemplateFields.ts": 56,
+        "web/src/index.css": 14
+      },
+      "user_removed_per_file": {
+        "cmd/intropy/int_create.go": 1,
+        "internal/dashboard/templates.go": 1,
+        "internal/system/model.go": 5,
+        "internal/template/create.go": 1,
+        "internal/template/prompt.go": 22,
+        "internal/template/values.go": 12,
+        "internal/template/values_test.go": 3,
+        "web/src/api.ts": 2,
+        "web/src/components/CreateDrawer.tsx": 25,
+        "web/src/components/TemplatesView.tsx": 24
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2408,
+      "agent_lines_removed": 96,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2408,
+      "agent_lines_removed": 96,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    }
+  ]
+}

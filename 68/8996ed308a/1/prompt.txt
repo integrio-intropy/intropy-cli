@@ -1,0 +1,12 @@
+We are working on a feature to be able to derive some template parameters value. Like if you have created an extractor with the topic orders that topic is automatically selected when you create a loader in the same system. This does not seem to work in the dashboard. The idea was that the derived parameters should be hidden under advanced
+
+---
+
+We are working on a feature to be able to derive some template parameters value. Like if you have created an extractor with the topic orders that topic is automatically selected when you create a loader in the same system. This does not seem to work in the dashboard. The idea was that the derived parameters should be hidden under advanced
+
+---
+
+1. Yes I abree.
+2. It is in scope
+
+Keep it in this branch and do not commit anything
