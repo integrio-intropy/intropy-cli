@@ -166,6 +166,10 @@ intropy
 │   ├── create <component>     Publish a release manifest and push a git tag
 │   ├── list <component>       List the releases published for a component
 │   └── view <component> <ver> Read a published release manifest
+├── context                Manage customer contexts
+│   ├── use <name>           Switch the active customer context
+│   ├── list                 List customer contexts
+│   └── show                 Show the active context's resolved settings
 ├── dashboard [dir]        Browse the integrations scaffolded under dir
 └── version                Print version information
 ```
@@ -670,7 +674,8 @@ Credentials come from the argocd CLI's own configuration, so if you have run
 `ARGOCD_AUTH_TOKEN` override it — those are argocd's variable names, honoured
 deliberately so an existing CI setup works unchanged. Precedence for the server
 is the `--argocd-server` flag, then `ARGOCD_SERVER`, then `deploy.yaml`, and
-finally `argocdServer` in the user configuration. `deploy.yaml` beats the user
+finally `argocdServer` in the user configuration — where the active
+context's value beats the top-level one. `deploy.yaml` beats the user
 configuration on purpose: it travels with the repository the overlays live in.
 
 The wait is defined in terms of the pushed revision, not just sync status.
@@ -759,6 +764,39 @@ API, so URLs and SSH remotes are rejected. Override it with `--template-repo`
 or `INTROPY_TEMPLATE_REPO`, on `int create`, `sys create`, `template list`,
 `template show`, and the `manifests` commands. Unset, the official library at
 `integrio-intropy/intropy-templates` is used.
+
+#### Customer contexts
+
+Working across several customers means the settings above change together.
+The same file holds them as named contexts, kubeconfig-style:
+
+```yaml
+organization: integrio
+currentContext: acme
+contexts:
+  acme:
+    organization: acme
+    gitopsRepo: git@gitlab.com:integrio/intropy/customers/acme/gitops.git
+  staging-eu:
+    gitopsRepo: git@gitlab.com:integrio/intropy/customers/staging-eu/gitops.git
+```
+
+A context overrides only the top-level keys it sets; the rest fall through
+to the file's defaults, so `staging-eu` above keeps the top-level
+`organization`. Precedence is flag > environment > active context >
+top-level keys, and a file with no `contexts:` behaves exactly as before.
+
+Contexts are authored in the file by hand; the CLI switches, lists, and
+inspects them:
+
+```sh
+intropy context use acme     # persist the active context
+intropy context list         # show contexts, marking the active one
+intropy context show         # show the resolved settings and where each came from
+```
+
+`context show` annotates every value with its source — `env`, `context`, or
+`file` — so a forgotten exported variable is visible before a deploy.
 
 ### What the GitOps repository must contain
 
