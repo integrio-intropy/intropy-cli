@@ -1,0 +1,17 @@
+I am thinking of introducing some kind of repo-wide config file for the cli. It could among other things be used to specify the organization so that you do not need to fill that in every time you scaffold a new component. How could we implement such a mechanism?
+
+---
+
+I remember now. We discussed using ~/.config/intropy/config.yaml for this and use it kind of the same way as .kubeconfig where you can switch context, which would mean switch customer
+
+---
+
+I think I want 2.
+
+---
+
+can you do a plan for it? But I think we should base it off main instead
+
+---
+
+can you send the plan to a review agent with pi --print?
