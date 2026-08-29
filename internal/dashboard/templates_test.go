@@ -36,12 +36,19 @@ spec:
         default: default
 `
 
-// newTemplateLibraryServer fakes the GitHub endpoints the template provider
-// calls: the latest-release lookup and the tarball holding one template.
+// newTemplateLibraryServer serves the standard test template.
 func newTemplateLibraryServer(t *testing.T, tag string) *httptest.Server {
 	t.Helper()
+	return newTemplateLibraryServerWith(t, tag, testTemplateYAML)
+}
+
+// newTemplateLibraryServerWith fakes the GitHub endpoints the template
+// provider calls: the latest-release lookup and the tarball holding one
+// template with the given manifest.
+func newTemplateLibraryServerWith(t *testing.T, tag, manifest string) *httptest.Server {
+	t.Helper()
 	tarball := buildTarGz(t, "owner-repo-abc123", map[string]string{
-		"test-template/template.yaml":           testTemplateYAML,
+		"test-template/template.yaml":           manifest,
 		"test-template/skeleton/README.md.tmpl": "{{ .integrationName }} in {{ .namespace }}\n",
 	})
 	mux := http.NewServeMux()
@@ -233,6 +240,94 @@ func TestCreateTemplate(t *testing.T) {
 	entries, _ := scanRoot(root)
 	if len(entries) != 1 || entries[0].Template != "test-template" {
 		t.Errorf("scaffolds = %+v", entries)
+	}
+}
+
+func TestCreateTemplatePascalNameKebabDir(t *testing.T) {
+	srv := newTemplateLibraryServer(t, "v1")
+	defer srv.Close()
+	root := t.TempDir()
+	h := testHandlerWith(t, root, templateProviders(srv.URL))
+
+	// The CLI's --name default: a PascalCase name scaffolds the kebab-cased
+	// directory while values.name keeps the verbatim spelling.
+	rec := postJSON(t, h, "/api/templates/test-template/create",
+		`{"name":"OrderSync","values":{"integrationName":"Order Sync"}}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body)
+	}
+	var got struct {
+		OutputDir string         `json:"outputDir"`
+		Values    map[string]any `json:"values"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.OutputDir != "order-sync" {
+		t.Errorf("outputDir = %q, want order-sync", got.OutputDir)
+	}
+	if got.Values["name"] != "OrderSync" {
+		t.Errorf("values.name = %v, want the verbatim name", got.Values["name"])
+	}
+}
+
+func TestCreateTemplateDerivesDirFromNameValue(t *testing.T) {
+	// The form sends no name; the resolved "name" parameter kebab-cases
+	// into the directory, the same convention the CLI's --name defaults by.
+	srv := newTemplateLibraryServerWith(t, "v1", `apiVersion: intropy.dev/v1
+kind: Template
+metadata:
+  name: test-template
+spec:
+  parameters:
+    type: object
+    required: [name, integrationName]
+    properties:
+      name:
+        type: string
+      integrationName:
+        type: string
+      namespace:
+        type: string
+        default: default
+`)
+	defer srv.Close()
+	root := t.TempDir()
+	h := testHandlerWith(t, root, templateProviders(srv.URL))
+
+	rec := postJSON(t, h, "/api/templates/test-template/create",
+		`{"values":{"name":"OrderSync","integrationName":"Order Sync"}}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body)
+	}
+	var got struct {
+		OutputDir string `json:"outputDir"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.OutputDir != "order-sync" {
+		t.Errorf("outputDir = %q, want order-sync", got.OutputDir)
+	}
+	if _, err := os.Stat(filepath.Join(root, "order-sync", "README.md")); err != nil {
+		t.Fatalf("rendered file: %v", err)
+	}
+}
+
+func TestCreateTemplateNamelessWithoutNameParameter(t *testing.T) {
+	// The test template's parameters have no "name", so a nameless request
+	// has nothing to derive a directory from.
+	srv := newTemplateLibraryServer(t, "v1")
+	defer srv.Close()
+	h := testHandlerWith(t, t.TempDir(), templateProviders(srv.URL))
+
+	rec := postJSON(t, h, "/api/templates/test-template/create",
+		`{"values":{"integrationName":"A"}}`)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422: %s", rec.Code, rec.Body)
+	}
+	if !strings.Contains(rec.Body.String(), "name is required") {
+		t.Errorf("error should name the missing name: %s", rec.Body)
 	}
 }
 

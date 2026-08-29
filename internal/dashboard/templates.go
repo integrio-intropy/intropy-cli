@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/huandu/xstrings"
 	"github.com/integrio-intropy/intropy-cli/internal/system"
 	"github.com/integrio-intropy/intropy-cli/internal/template"
 )
@@ -46,11 +47,11 @@ func (p templatesProvider) fetchLibrary(ctx context.Context) (*template.Library,
 
 // createRequest is the POST /api/templates/{name}/create body.
 type createRequest struct {
-	// Name picks the output directory under the workspace root — the CLI's
-	// --out-dir. It is deliberately decoupled from values.name, the schema
-	// parameter: a template can want a PascalCase project name next to a
-	// kebab-case directory, and the CLI separates the two the same way
-	// (--set name=X --out-dir y). Required.
+	// Name folds into values.name when the caller did not set it directly
+	// (the CLI's --name sugar) and defaults the output directory:
+	// kebab-cased, under Dir. Empty means the resolved "name" parameter
+	// decides the directory instead — the no-prompt default both surfaces
+	// prefer.
 	Name string `json:"name"`
 
 	// Dir is the root-relative, slash-separated directory the output renders
@@ -287,7 +288,7 @@ func (s *apiServer) createTemplate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	outputDir, values, err := s.resolveCreate(req)
+	values, err := createValues(req)
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
@@ -311,6 +312,12 @@ func (s *apiServer) createTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 	defer prep.Cleanup()
 
+	outputDir, err := s.resolveCreateDir(req, prep)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+
 	var logs bytes.Buffer
 	result, err := template.RunCreate(prep, outputDir, req.Force, &logs)
 	if err != nil {
@@ -324,60 +331,73 @@ func (s *apiServer) createTemplate(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// resolveCreate folds the request into the output directory and value set
-// `int create --name` would produce: name doubles as values.name and as the
-// output directory under dir (the workspace root when dir is empty), confined
-// there so the endpoint can never write outside the tree the dashboard serves.
-func (s *apiServer) resolveCreate(req createRequest) (string, map[string]any, error) {
-	if req.Name == "" {
-		return "", nil, errors.New("name is required")
-	}
-	if strings.ContainsAny(req.Name, `/\`) || req.Name == "." || req.Name == ".." {
-		return "", nil, fmt.Errorf("invalid name %q (must be a single path segment)", req.Name)
-	}
-	segments, err := splitCreateDir(req.Dir)
-	if err != nil {
-		return "", nil, err
-	}
-
+// createValues folds the request's name into the value set `int create
+// --name` would produce: name doubles as values.name when the caller did
+// not set it directly. When the template does not declare `name`, the
+// value still lands there — the CLI's sugar does the same.
+func createValues(req createRequest) (map[string]any, error) {
 	values := req.Values
 	if values == nil {
 		values = map[string]any{}
 	}
-	// A template that does not declare `name` still gets the directory as
-	// values.name — the CLI's --name sugar. When the template does declare
-	// it, the form's value wins; the two are separate concerns.
-	if _, ok := values["name"]; !ok {
+	if _, ok := values["name"]; !ok && req.Name != "" {
 		values["name"] = req.Name
 	}
 	for key := range values {
 		if isReservedValueKey(key) {
-			return "", nil, fmt.Errorf("value %q is reserved and cannot be supplied", key)
+			return nil, fmt.Errorf("value %q is reserved and cannot be supplied", key)
 		}
 	}
+	return values, nil
+}
 
-	rootAbs, err := filepath.Abs(s.root)
+// resolveCreateDir picks the output directory, confined to the tree the
+// dashboard serves so the endpoint can never write outside it. An explicit
+// name kebab-cases under Dir (the workspace root when empty), as
+// `int create --name` does; without a name the resolved "name" parameter
+// kebab-cases the same way, and a template without one is the error
+// --out-dir would have spared.
+func (s *apiServer) resolveCreateDir(req createRequest, prep *template.PreparedCreate) (string, error) {
+	segments, err := splitCreateDir(req.Dir)
 	if err != nil {
-		return "", nil, err
+		return "", err
 	}
 	parentDir := filepath.Join(append([]string{s.root}, segments...)...)
 	if len(segments) > 0 {
 		// The dir must already exist: creating into a system means the system
 		// directory is there; anything else is a client mistake, not a mkdir.
 		if info, statErr := os.Stat(parentDir); statErr != nil || !info.IsDir() {
-			return "", nil, fmt.Errorf("directory %q does not exist under the workspace root", req.Dir)
+			return "", fmt.Errorf("directory %q does not exist under the workspace root", req.Dir)
 		}
 	}
-	outputDir := filepath.Join(parentDir, req.Name)
+
+	name := req.Name
+	if name == "" {
+		v, ok := prep.Values["name"].(string)
+		if !ok || v == "" {
+			return "", errors.New("name is required (template declares no 'name' parameter to derive the directory from)")
+		}
+		name = v
+	}
+	leaf := xstrings.ToKebabCase(name)
+	if strings.ContainsAny(leaf, `/\`) || leaf == "." || leaf == ".." {
+		return "", fmt.Errorf("invalid output directory %q (must be a single path segment)", leaf)
+	}
+
+	rootAbs, err := filepath.Abs(s.root)
+	if err != nil {
+		return "", err
+	}
+	outputDir := filepath.Join(parentDir, leaf)
 	outAbs, err := filepath.Abs(outputDir)
 	if err != nil {
-		return "", nil, err
+		return "", err
 	}
-	want := filepath.Join(append(append([]string{rootAbs}, segments...), req.Name)...)
+	want := filepath.Join(append(append([]string{rootAbs}, segments...), leaf)...)
 	if outAbs != want {
-		return "", nil, fmt.Errorf("invalid name %q (output would escape the workspace root)", req.Name)
+		return "", fmt.Errorf("invalid output directory %q (output would escape the workspace root)", leaf)
 	}
-	return outputDir, values, nil
+	return outputDir, nil
 }
 
 // splitCreateDir validates a create request's dir and returns its segments.

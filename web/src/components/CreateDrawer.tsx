@@ -166,7 +166,6 @@ function DrawerForm({
     { template, dir: systemPath },
   )
   const [showAdvanced, setShowAdvanced] = useState(false)
-  const [intName, setIntName] = useState('')
   const [force, setForce] = useState(false)
   const [create, setCreate] = useState<CreateState>({ phase: 'idle' })
 
@@ -179,14 +178,16 @@ function DrawerForm({
 
   const run = useCallback(() => {
     setCreate({ phase: 'running' })
+    // No name: the resolved "name" parameter kebab-cases into the
+    // directory, confined inside the slot's system directory server-side.
     api
-      .createTemplate(template, { name: intName, dir: systemPath, values, force })
+      .createTemplate(template, { dir: systemPath, values, force })
       .then((result: CreateResponse) => onCreated(result.outputDir))
       .catch((e: unknown) => {
         const err = e as { message?: string; status?: number }
         setCreate({ phase: 'error', message: errText(e), status: err.status ?? 0 })
       })
-  }, [template, intName, systemPath, values, force, onCreated])
+  }, [template, systemPath, values, force, onCreated])
 
   if (error) {
     return <div className="banner error">{error}</div>
@@ -195,7 +196,7 @@ function DrawerForm({
     return <div className="empty">loading {template}…</div>
   }
 
-  const canRun = intName.trim() !== '' && missing.length === 0 && create.phase !== 'running'
+  const canRun = missing.length === 0 && create.phase !== 'running'
   const prefix = systemPath === '.' ? '' : `${systemPath}/`
 
   return (
@@ -208,27 +209,7 @@ function DrawerForm({
     >
       {detail.description && <p className="template-desc">{detail.description}</p>}
 
-      <Field
-        label="out-dir"
-        title="Output directory"
-        description={
-          prefix
-            ? 'Scaffolded inside the system directory'
-            : 'Scaffolded under the workspace root'
-        }
-        required
-      >
-        <div className="drawer-dir">
-          {prefix && <span className="drawer-dir-prefix">{prefix}</span>}
-          <input
-            type="text"
-            value={intName}
-            onChange={(e) => setIntName(e.target.value)}
-            placeholder="my-integration"
-            autoFocus
-          />
-        </div>
-      </Field>
+      {prefix && <p className="form-hint">scaffolds under {prefix}</p>}
 
       {visible.map((f) => (
         <FormField key={f.name} field={f} value={values[f.name]} onChange={setValue} />

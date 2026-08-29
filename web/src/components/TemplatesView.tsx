@@ -5,7 +5,7 @@ import {
   type TemplateDetail,
   type TemplateList,
 } from '../api'
-import { Field, FormField } from './form'
+import { FormField } from './form'
 import { useTemplateFields } from './useTemplateFields'
 
 interface Props {
@@ -103,7 +103,6 @@ function TemplatePanel({ name, onCreated }: { name: string; onCreated: Props['on
     { template: name, dir: '.' },
   )
   const [showAdvanced, setShowAdvanced] = useState(false)
-  const [intName, setIntName] = useState('')
   const [force, setForce] = useState(false)
   const [create, setCreate] = useState<CreateState>({ phase: 'idle' })
 
@@ -116,16 +115,16 @@ function TemplatePanel({ name, onCreated }: { name: string; onCreated: Props['on
 
   const run = useCallback(() => {
     setCreate({ phase: 'running' })
-    // name is the output directory (the CLI's --out-dir); values carries the
-    // schema parameters, including the template's own `name` when declared.
+    // No name: the resolved "name" parameter kebab-cases into the
+    // directory, the CLI's no-flag convention.
     api
-      .createTemplate(name, { name: intName, values, force })
+      .createTemplate(name, { values, force })
       .then((result) => setCreate({ phase: 'done', result }))
       .catch((e: unknown) => {
         const err = e as { message?: string; status?: number }
         setCreate({ phase: 'error', message: errText(e), status: err.status ?? 0 })
       })
-  }, [name, intName, values, force])
+  }, [name, values, force])
 
   if (error) {
     return <div className="banner error">{error}</div>
@@ -134,7 +133,7 @@ function TemplatePanel({ name, onCreated }: { name: string; onCreated: Props['on
     return <div className="empty">loading {name}…</div>
   }
 
-  const canRun = intName.trim() !== '' && missing.length === 0 && create.phase !== 'running'
+  const canRun = missing.length === 0 && create.phase !== 'running'
 
   return (
     <div className="template-panel">
@@ -164,21 +163,6 @@ function TemplatePanel({ name, onCreated }: { name: string; onCreated: Props['on
           if (canRun) run()
         }}
       >
-        <Field
-          label="out-dir"
-          title="Output directory"
-          description="Where the integration is scaffolded, under the workspace root"
-          required
-        >
-          <input
-            type="text"
-            value={intName}
-            onChange={(e) => setIntName(e.target.value)}
-            placeholder="my-integration"
-            autoFocus
-          />
-        </Field>
-
         {visible.map((f) => (
           <FormField key={f.name} field={f} value={values[f.name]} onChange={setValue} />
         ))}

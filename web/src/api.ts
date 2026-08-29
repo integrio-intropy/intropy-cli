@@ -623,12 +623,14 @@ export interface TemplateDetail {
   fields: TemplateField[]
 }
 
-/** The POST body for create. `name` folds into values.name and becomes the
- *  output directory under `dir` (the workspace root when omitted or "."), as
- *  `int create --name` does. `dir` must be an existing root-relative
- *  directory — creating into a system, not inventing directory trees. */
+/** The POST body for create. `name`, when sent, folds into values.name and
+ *  defaults the output directory to its kebab-cased form under `dir` (the
+ *  workspace root when omitted or "."), as `int create --name` does. The
+ *  forms omit it and let the resolved "name" parameter kebab-case into the
+ *  directory instead. `dir` must be an existing root-relative directory —
+ *  creating into a system, not inventing directory trees. */
 export interface CreateRequest {
-  name: string
+  name?: string
   dir?: string
   values: Record<string, unknown>
   force?: boolean
