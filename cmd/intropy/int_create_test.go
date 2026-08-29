@@ -91,3 +91,21 @@ func TestIntCreateOutputValidation(t *testing.T) {
 		}
 	})
 }
+
+func TestWorkspaceRootOf(t *testing.T) {
+	t.Run("bare name scans the working directory", func(t *testing.T) {
+		if got := workspaceRootOf("orders-api"); got != "." {
+			t.Errorf("workspaceRootOf = %q, want .", got)
+		}
+	})
+	t.Run("nested output scans its parent", func(t *testing.T) {
+		if got := workspaceRootOf("systems/acme/orders-api"); got != "systems/acme" {
+			t.Errorf("workspaceRootOf = %q, want systems/acme", got)
+		}
+	})
+	t.Run("empty scans the working directory", func(t *testing.T) {
+		if got := workspaceRootOf(""); got != "." {
+			t.Errorf("workspaceRootOf = %q, want .", got)
+		}
+	})
+}

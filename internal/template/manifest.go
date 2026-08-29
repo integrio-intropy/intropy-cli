@@ -188,6 +188,13 @@ type FieldSpec struct {
 	Default     any    `json:"default,omitempty"`
 	Pattern     string `json:"pattern,omitempty"`
 	Required    bool   `json:"required"`
+
+	// Suggestions carries prompt-time candidate values derived from the
+	// workspace the create runs in (see Suggest). It is populated by
+	// callers with workspace context — never by manifest loading, which
+	// leaves it nil — and it is prompt metadata only: it never enters the
+	// values map or the JSON Schema validation the schema fields above do.
+	Suggestions []string `json:"suggestions,omitempty"`
 }
 
 // Fields returns the JSON Schema properties as FieldSpecs in YAML declaration

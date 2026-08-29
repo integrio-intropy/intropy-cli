@@ -174,6 +174,8 @@ func newHandler(root, version string, p providers) (http.Handler, *apiServer, er
 	// show fetch the library release, create renders into the workspace.
 	mux.HandleFunc("GET /api/templates", api.listTemplates)
 	mux.HandleFunc("GET /api/templates/{name}", api.getTemplate)
+	// Registered before {name} so "suggestions" binds to the literal.
+	mux.HandleFunc("GET /api/templates/suggestions/{name}", api.getTemplateSuggestions)
 	mux.HandleFunc("POST /api/templates/{name}/create", api.createTemplate)
 	// Test-file seeding: GET lists one system's testdata/<port>/ library,
 	// POST copies a chosen file into the port's dev inbox. The GET's

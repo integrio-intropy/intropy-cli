@@ -273,3 +273,211 @@ func TestCreateReadsStdinValues(t *testing.T) {
 		t.Errorf("result JSON missing namespace value: %s", string(data))
 	}
 }
+
+func TestCreateFactsEnrichMissingParameterError(t *testing.T) {
+	srv := newTemplateServer(t, "v1")
+	defer srv.Close()
+
+	facts := BuildWorkspaceFacts([]WorkspaceFactEntry{
+		{BlockKind: BlockKindExtractor, Values: map[string]any{
+			"topic": "orders", "contract": "Order",
+		}},
+	})
+
+	err := Create(context.Background(), CreateOptions{
+		Template:      "test-template",
+		OutputDir:     filepath.Join(t.TempDir(), "out"),
+		Version:       "v1",
+		NoInput:       true,
+		Stderr:        &bytes.Buffer{},
+		HTTP:          srv.Client(),
+		Owner:         "o",
+		Repo:          "r",
+		GitHubBaseURL: srv.URL,
+		Facts:         facts,
+	})
+	if err == nil {
+		t.Fatal("expected missing parameter error")
+	}
+	if !strings.Contains(err.Error(), "missing required parameter(s): integrationName") {
+		t.Errorf("error = %v", err)
+	}
+	// The facts carry no convention for integrationName, so no hint line.
+	if strings.Contains(err.Error(), "known") {
+		t.Errorf("unrelated facts should not produce hints: %v", err)
+	}
+}
+
+func TestCreateWithoutFactsResolvesAsBefore(t *testing.T) {
+	srv := newTemplateServer(t, "v1")
+	defer srv.Close()
+
+	outDir := filepath.Join(t.TempDir(), "out")
+	err := Create(context.Background(), CreateOptions{
+		Template:      "test-template",
+		OutputDir:     outDir,
+		Version:       "v1",
+		SetValues:     map[string]any{"integrationName": "api"},
+		NoInput:       true,
+		Stderr:        &bytes.Buffer{},
+		HTTP:          srv.Client(),
+		Owner:         "o",
+		Repo:          "r",
+		GitHubBaseURL: srv.URL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := LoadScaffold(filepath.Join(outDir, ScaffoldRelPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Values["integrationName"] != "api" {
+		t.Errorf("recorded values = %v", record.Values)
+	}
+}
+
+// loaderTemplateYAML mirrors the library's loader shape: the wiring
+// parameters the workspace facts convention resolves.
+const loaderTemplateYAML = `apiVersion: intropy.dev/v1
+kind: Template
+metadata:
+  name: loader
+spec:
+  parameters:
+    type: object
+    required: [topic, contract]
+    properties:
+      topic:
+        type: string
+      contract:
+        type: string
+      pubsub:
+        type: string
+        default: pubsub
+`
+
+// TestCreatePrefillsWiringFromWorkspaceFacts is the loader-in-a-system
+// walkthrough end to end: the extractor's recorded wiring prefills the
+// loader's required parameters with no prompt (stdin is empty and stays
+// unread), the notes name each override hatch, and the scaffold record
+// persists the same wiring the developer confirmed by running.
+func TestCreatePrefillsWiringFromWorkspaceFacts(t *testing.T) {
+	tarball := buildTarGz(t, "owner-repo-abc123", map[string]string{
+		"loader/template.yaml":           loaderTemplateYAML,
+		"loader/skeleton/README.md.tmpl": "{{ .topic }} carries {{ .contract }} on {{ .pubsub }}\n",
+	})
+	mux := http.NewServeMux()
+	mux.HandleFunc("/repos/o/r/releases/latest", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"tag_name":"v1"}`))
+	})
+	mux.HandleFunc("/repos/o/r/tarball/v1", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(tarball)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	facts := BuildWorkspaceFacts([]WorkspaceFactEntry{
+		{BlockKind: BlockKindExtractor, Values: map[string]any{
+			"topic": "orders", "contract": "Order", "pubsub": "pubsub",
+		}},
+	})
+
+	var stderr bytes.Buffer
+	outDir := filepath.Join(t.TempDir(), "order-loader")
+	err := Create(context.Background(), CreateOptions{
+		Template:      "loader",
+		OutputDir:     outDir,
+		Version:       "v1",
+		NoInput:       true,
+		Stdin:         strings.NewReader(""),
+		Stderr:        &stderr,
+		HTTP:          srv.Client(),
+		Owner:         "o",
+		Repo:          "r",
+		GitHubBaseURL: srv.URL,
+		Facts:         facts,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	for _, want := range []string{
+		"topic: orders (from workspace; override with --set topic=<value>)",
+		"contract: Order (from workspace; override with --set contract=<value>)",
+	} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("stderr missing %q:\n%s", want, stderr.String())
+		}
+	}
+
+	rendered, err := os.ReadFile(filepath.Join(outDir, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(rendered) != "orders carries Order on pubsub\n" {
+		t.Errorf("rendered = %q", rendered)
+	}
+
+	record, err := LoadScaffold(filepath.Join(outDir, ScaffoldRelPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Values["topic"] != "orders" || record.Values["contract"] != "Order" {
+		t.Errorf("recorded values = %v", record.Values)
+	}
+}
+
+// TestCreateSetOverridesPrefill pins the override hatch: --set topic wins
+// over the workspace candidate, and a --set topic the facts do not know
+// leaves contract to be supplied explicitly (NoInput makes that the clean
+// missing-parameter error).
+func TestCreateSetOverridesPrefill(t *testing.T) {
+	tarball := buildTarGz(t, "owner-repo-abc123", map[string]string{
+		"loader/template.yaml":           loaderTemplateYAML,
+		"loader/skeleton/README.md.tmpl": "{{ .topic }} carries {{ .contract }}\n",
+	})
+	mux := http.NewServeMux()
+	mux.HandleFunc("/repos/o/r/releases/latest", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"tag_name":"v1"}`))
+	})
+	mux.HandleFunc("/repos/o/r/tarball/v1", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(tarball)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	facts := BuildWorkspaceFacts([]WorkspaceFactEntry{
+		{BlockKind: BlockKindExtractor, Values: map[string]any{
+			"topic": "orders", "contract": "Order",
+		}},
+	})
+
+	outDir := filepath.Join(t.TempDir(), "shipment-loader")
+	err := Create(context.Background(), CreateOptions{
+		Template:      "loader",
+		OutputDir:     outDir,
+		Version:       "v1",
+		SetValues:     map[string]any{"topic": "shipments", "contract": "Shipment"},
+		NoInput:       true,
+		Stdin:         strings.NewReader(""),
+		Stderr:        &bytes.Buffer{},
+		HTTP:          srv.Client(),
+		Owner:         "o",
+		Repo:          "r",
+		GitHubBaseURL: srv.URL,
+		Facts:         facts,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	rendered, err := os.ReadFile(filepath.Join(outDir, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(rendered) != "shipments carries Shipment\n" {
+		t.Errorf("rendered = %q", rendered)
+	}
+}

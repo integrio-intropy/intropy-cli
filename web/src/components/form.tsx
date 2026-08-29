@@ -41,6 +41,28 @@ export function FormField({
         ))}
       </select>
     )
+  } else if (field.suggestions && field.suggestions.length > 0) {
+    // Workspace candidates ride a datalist: the input stays free text
+    // (a scaffold may deliberately declare a new topic) while the known
+    // values are one arrow-key away. A select would close the list; the
+    // CLI prompt's pick-list-plus-freetext is the parity target.
+    const listId = `suggestions-${field.name}`
+    input = (
+      <>
+        <input
+          type="text"
+          value={value === undefined ? '' : String(value)}
+          pattern={field.pattern || undefined}
+          list={listId}
+          onChange={(e) => set(e.target.value === '' ? undefined : e.target.value)}
+        />
+        <datalist id={listId}>
+          {field.suggestions.map((s) => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
+      </>
+    )
   } else if (field.type === 'integer' || field.type === 'number') {
     input = (
       <input
@@ -107,4 +129,20 @@ export function Field({
 
 export function isEmpty(v: unknown): boolean {
   return v === undefined || v === null || v === ''
+}
+
+// isResolved reports whether a parameter needs no answer from the user:
+// the schema supplies a default, or the workspace supplies exactly one
+// candidate. Both mirror the CLI's resolution — defaults and
+// single-candidate prefill apply without prompting — so the create forms
+// can show only what a run would actually ask.
+export function isResolved(f: TemplateField): boolean {
+  return f.default !== undefined || f.suggestions?.length === 1
+}
+
+// resolvedValue is the value a bare run would use for a resolved field,
+// with the workspace candidate the fresher fact of the two.
+export function resolvedValue(f: TemplateField): unknown {
+  if (f.suggestions?.length === 1) return f.suggestions[0]
+  return f.default
 }

@@ -1,12 +1,13 @@
 package system
 
+import "github.com/integrio-intropy/intropy-cli/internal/template"
+
 // TopicKey identifies a topic within the system: the pub/sub component it
 // lives on plus the topic name. Two scaffolds naming the same key declare
-// the two halves of one contract.
-type TopicKey struct {
-	Pubsub string `json:"pubsub"`
-	Name   string `json:"topic"`
-}
+// the two halves of one contract. It aliases the canonical type in
+// internal/template — there is one "which topic" concept across the CLI,
+// shared by assembly and prompt-time facts.
+type TopicKey = template.TopicKey
 
 // Topic is one assembled topic: its key and the C# contract type its
 // messages carry. The identifier it gets in the generated Topics class is

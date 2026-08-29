@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/integrio-intropy/intropy-cli/internal/system"
 	"github.com/integrio-intropy/intropy-cli/internal/template"
 )
 
@@ -129,7 +130,11 @@ func (s *apiServer) listTemplates(w http.ResponseWriter, r *http.Request) {
 }
 
 // getTemplate mirrors `template show -o json` for one template, adding the
-// ordered field list the form renders from.
+// ordered field list the form renders from. The optional ?dir query names a
+// root-relative directory the way createRequest.Dir does; when present, each
+// field gains the parameter suggestions the workspace under it implies —
+// the same candidates `int create` would prompt with there. Without it the
+// response is context-free and suggestion-free.
 func (s *apiServer) getTemplate(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if err := template.ValidateTemplateName(name); err != nil {
@@ -149,7 +154,118 @@ func (s *apiServer) getTemplate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, templateFetchStatus(err), err.Error())
 		return
 	}
+
+	if dir := r.URL.Query().Get("dir"); dir != "" {
+		confirmed, err := parseConfirmedQuery(r.URL.Query())
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := s.suggestForDir(result, dir, confirmed); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+// getTemplateSuggestions serves only the suggestion lists of a dir-scoped
+// detail: the refresh a form issues when an answered parameter changes what
+// the workspace implies for the rest (a picked topic narrows the contract
+// candidates). It is the same computation getTemplate runs, without the
+// library fetch — a mid-form refresh must never swap the manifest the form
+// was filled against.
+func (s *apiServer) getTemplateSuggestions(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if err := template.ValidateTemplateName(name); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	lib, err := s.templates.fetchLibrary(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	defer lib.Close()
+
+	result, err := lib.Describe(name)
+	if err != nil {
+		writeError(w, templateFetchStatus(err), err.Error())
+		return
+	}
+
+	dir := r.URL.Query().Get("dir")
+	if dir == "" {
+		writeError(w, http.StatusBadRequest, "dir is required (suggestions derive from the workspace under it)")
+		return
+	}
+	confirmed, err := parseConfirmedQuery(r.URL.Query())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.suggestForDir(result, dir, confirmed); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	suggestions := make(map[string][]string, len(result.Fields))
+	for _, f := range result.Fields {
+		suggestions[f.Name] = f.Suggestions
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"suggestions": suggestions})
+}
+
+// suggestForDir populates each field's suggestions from the workspace under
+// dir, chained off the values the form has already confirmed — the same
+// inputs `int create` prompts with (workspace facts plus confirmed values).
+func (s *apiServer) suggestForDir(result *template.DescribeResult, dir string, confirmed map[string]any) error {
+	facts, err := s.factsForDir(dir)
+	if err != nil {
+		return err
+	}
+	suggestions := template.Suggest(result.Fields, facts, confirmed)
+	for i := range result.Fields {
+		result.Fields[i].Suggestions = suggestions[result.Fields[i].Name]
+	}
+	return nil
+}
+
+// parseConfirmedQuery decodes the repeated `set` query parameter
+// (?set=topic=orders&set=pubsub=events) into the confirmed-values map
+// Suggest chains from. Values stay strings — prompt values do, too. A
+// malformed pair is a 400: a silently dropped set would suggest candidates
+// for the wrong workspace state.
+func parseConfirmedQuery(q map[string][]string) (map[string]any, error) {
+	pairs := q["set"]
+	if len(pairs) == 0 {
+		return nil, nil
+	}
+	confirmed := make(map[string]any, len(pairs))
+	for _, pair := range pairs {
+		name, value, ok := strings.Cut(pair, "=")
+		if !ok || name == "" {
+			return nil, fmt.Errorf("invalid set %q (expected name=value)", pair)
+		}
+		confirmed[name] = value
+	}
+	return confirmed, nil
+}
+
+// factsForDir validates a root-relative dir with the create endpoint's
+// rules and indexes the scaffold records under it. The dir must exist —
+// suggesting from a system means the system directory is there.
+func (s *apiServer) factsForDir(dir string) (*template.WorkspaceFacts, error) {
+	segments, err := splitCreateDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	abs := filepath.Join(append([]string{s.root}, segments...)...)
+	if info, statErr := os.Stat(abs); statErr != nil || !info.IsDir() {
+		return nil, fmt.Errorf("directory %q does not exist under the workspace root", dir)
+	}
+	facts, _ := system.LoadWorkspaceFacts(abs)
+	return facts, nil
 }
 
 // createTemplate runs `int create` for one template: the form's values

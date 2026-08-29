@@ -7,7 +7,8 @@ import {
   type TemplateSummary,
 } from '../api'
 import { Combobox } from './Combobox'
-import { Field, FormField, isEmpty } from './form'
+import { Field, FormField } from './form'
+import { useTemplateFields } from './useTemplateFields'
 
 /** The three create placeholders on the flow canvas, one per archetype
  *  column: in → process → out. */
@@ -160,36 +161,21 @@ function DrawerForm({
 }) {
   const [detail, setDetail] = useState<TemplateDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [values, setValues] = useState<Record<string, unknown>>({})
+  const { values, setValue, visible, optional, missing } = useTemplateFields(
+    detail?.fields ?? [],
+    { template, dir: systemPath },
+  )
+  const [showAdvanced, setShowAdvanced] = useState(false)
   const [intName, setIntName] = useState('')
   const [force, setForce] = useState(false)
   const [create, setCreate] = useState<CreateState>({ phase: 'idle' })
 
   useEffect(() => {
     api
-      .getTemplate(template)
-      .then((d) => {
-        setDetail(d)
-        // Prefill declared defaults so the form shows what a bare run would use.
-        const seeded: Record<string, unknown> = {}
-        for (const f of d.fields) {
-          if (f.default !== undefined) seeded[f.name] = f.default
-        }
-        setValues(seeded)
-      })
+      .getTemplate(template, systemPath)
+      .then(setDetail)
       .catch((e: unknown) => setError(errText(e)))
-  }, [template])
-
-  const setValue = useCallback((key: string, v: unknown) => {
-    setValues((prev) => ({ ...prev, [key]: v }))
-  }, [])
-
-  const missing = useMemo(() => {
-    if (!detail) return []
-    return detail.fields
-      .filter((f) => f.required && isEmpty(values[f.name]))
-      .map((f) => f.name)
-  }, [detail, values])
+  }, [template, systemPath])
 
   const run = useCallback(() => {
     setCreate({ phase: 'running' })
@@ -244,12 +230,28 @@ function DrawerForm({
         </div>
       </Field>
 
-      {detail.fields.map((f) => (
+      {visible.map((f) => (
         <FormField key={f.name} field={f} value={values[f.name]} onChange={setValue} />
       ))}
 
       {missing.length > 0 && (
         <div className="form-hint">missing required: {missing.join(', ')}</div>
+      )}
+
+      {optional.length > 0 && (
+        <>
+          <button
+            type="button"
+            className="advanced-toggle"
+            onClick={() => setShowAdvanced((s) => !s)}
+          >
+            {showAdvanced ? '▾' : '▸'} advanced ({optional.length})
+          </button>
+          {showAdvanced &&
+            optional.map((f) => (
+              <FormField key={f.name} field={f} value={values[f.name]} onChange={setValue} />
+            ))}
+        </>
       )}
 
       {create.phase === 'error' && create.status === 409 && (

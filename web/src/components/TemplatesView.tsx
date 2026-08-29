@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   api,
   type CreateResponse,
   type TemplateDetail,
   type TemplateList,
 } from '../api'
-import { Field, FormField, isEmpty } from './form'
+import { Field, FormField } from './form'
+import { useTemplateFields } from './useTemplateFields'
 
 interface Props {
   /** Switch to the catalog with the newly created integration selected. */
@@ -94,36 +95,24 @@ export function TemplatesView({ onCreated }: Props) {
 function TemplatePanel({ name, onCreated }: { name: string; onCreated: Props['onCreated'] }) {
   const [detail, setDetail] = useState<TemplateDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [values, setValues] = useState<Record<string, unknown>>({})
+  // The templates view scaffolds into the workspace root, so it derives
+  // from the whole workspace — the same context `int create` run there
+  // prompts with.
+  const { values, setValue, visible, optional, missing } = useTemplateFields(
+    detail?.fields ?? [],
+    { template: name, dir: '.' },
+  )
+  const [showAdvanced, setShowAdvanced] = useState(false)
   const [intName, setIntName] = useState('')
   const [force, setForce] = useState(false)
   const [create, setCreate] = useState<CreateState>({ phase: 'idle' })
 
   useEffect(() => {
     api
-      .getTemplate(name)
-      .then((d) => {
-        setDetail(d)
-        // Prefill declared defaults so the form shows what a bare run would use.
-        const seeded: Record<string, unknown> = {}
-        for (const f of d.fields) {
-          if (f.default !== undefined) seeded[f.name] = f.default
-        }
-        setValues(seeded)
-      })
+      .getTemplate(name, '.')
+      .then(setDetail)
       .catch((e: unknown) => setError(errText(e)))
   }, [name])
-
-  const setValue = useCallback((key: string, v: unknown) => {
-    setValues((prev) => ({ ...prev, [key]: v }))
-  }, [])
-
-  const missing = useMemo(() => {
-    if (!detail) return []
-    return detail.fields
-      .filter((f) => f.required && isEmpty(values[f.name]))
-      .map((f) => f.name)
-  }, [detail, values])
 
   const run = useCallback(() => {
     setCreate({ phase: 'running' })
@@ -190,12 +179,28 @@ function TemplatePanel({ name, onCreated }: { name: string; onCreated: Props['on
           />
         </Field>
 
-        {detail.fields.map((f) => (
+        {visible.map((f) => (
           <FormField key={f.name} field={f} value={values[f.name]} onChange={setValue} />
         ))}
 
         {missing.length > 0 && (
           <div className="form-hint">missing required: {missing.join(', ')}</div>
+        )}
+
+        {optional.length > 0 && (
+          <>
+            <button
+              type="button"
+              className="advanced-toggle"
+              onClick={() => setShowAdvanced((s) => !s)}
+            >
+              {showAdvanced ? '▾' : '▸'} advanced ({optional.length})
+            </button>
+            {showAdvanced &&
+              optional.map((f) => (
+                <FormField key={f.name} field={f} value={values[f.name]} onChange={setValue} />
+              ))}
+          </>
         )}
 
         {create.phase === 'error' && create.status === 409 && (

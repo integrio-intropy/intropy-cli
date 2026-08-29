@@ -1,10 +1,14 @@
 package main
 
 import (
+	"fmt"
+	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
+	"github.com/integrio-intropy/intropy-cli/internal/system"
 	"github.com/integrio-intropy/intropy-cli/internal/template"
 	"github.com/spf13/cobra"
 )
@@ -48,6 +52,11 @@ var intCreateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		stderr := cmd.ErrOrStderr()
+		facts, warnings := system.LoadWorkspaceFacts(workspaceRootOf(outputDir))
+		for _, w := range warnings {
+			printWarning(stderr, w)
+		}
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 		if err := template.Create(ctx, template.CreateOptions{
@@ -61,15 +70,32 @@ var intCreateCmd = &cobra.Command{
 			OutputJSON: outputJSON,
 			Stdin:      cmd.InOrStdin(),
 			Stdout:     cmd.OutOrStdout(),
-			Stderr:     cmd.ErrOrStderr(),
+			Stderr:     stderr,
 			UserAgent:  "intropy-cli/" + version,
 			Owner:      owner,
 			Repo:       repo,
+			Facts:      facts,
 		}); err != nil {
 			return err
 		}
 		return nil
 	},
+}
+
+// workspaceRootOf derives the directory whose scaffold records feed
+// prompt-time suggestions: the parent of the output directory, which is
+// where a flat workspace keeps the new component's siblings.
+func workspaceRootOf(outputDir string) string {
+	if outputDir == "" {
+		return "."
+	}
+	return filepath.Dir(outputDir)
+}
+
+// printWarning reports a workspace-scan issue without failing the create —
+// a malformed sibling record must not block scaffolding a new component.
+func printWarning(stderr io.Writer, w error) {
+	fmt.Fprintf(stderr, "warning: %v\n", w)
 }
 
 // resolveCreateName folds the -n shorthand into the set map and derives the

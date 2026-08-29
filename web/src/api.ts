@@ -468,6 +468,18 @@ async function requestJSON<T>(url: string, init?: RequestInit): Promise<T> {
 
 const getJSON = <T,>(url: string) => requestJSON<T>(url)
 
+// setQuery encodes confirmed parameter values as the repeated `set` query
+// the suggestion endpoints chain off (?set=topic=orders&set=…). Booleans
+// and numbers encode in their YAML scalar spelling, as --set would carry
+// them; undefined entries (a cleared field) confirm nothing and drop out.
+function setQuery(confirmed?: Record<string, unknown>): string {
+  if (!confirmed) return ''
+  return Object.entries(confirmed)
+    .filter((e): e is [string, NonNullable<unknown>] => e[1] !== undefined && e[1] !== null)
+    .map(([k, v]) => `&set=${encodeURIComponent(`${k}=${String(v)}`)}`)
+    .join('')
+}
+
 export const api = {
   listIntegrations: () => getJSON<Integration[]>('/api/integrations'),
   getIntegration: (path: string) =>
@@ -514,7 +526,15 @@ export const api = {
   // `template` and `int create` commands: the library release the server
   // fetched is the release the form renders against and the run creates from.
   listTemplates: () => getJSON<TemplateList>('/api/templates'),
-  getTemplate: (name: string) => getJSON<TemplateDetail>(`/api/templates/${name}`),
+  getTemplate: (name: string, dir?: string) =>
+    getJSON<TemplateDetail>(`/api/templates/${name}${dir ? `?dir=${encodeURIComponent(dir)}` : ''}`),
+  /** Suggestion lists only, chained off the confirmed values — the form's
+   *  mid-edit refresh when a picked parameter (topic) narrows another's
+   *  candidates (contract). */
+  getTemplateSuggestions: (name: string, dir: string, confirmed?: Record<string, unknown>) =>
+    getJSON<TemplateSuggestions>(
+      `/api/templates/suggestions/${name}?dir=${encodeURIComponent(dir)}${setQuery(confirmed)}`,
+    ),
   /** Render a template into the workspace — the Run button's `int create`. */
   createTemplate: (name: string, req: CreateRequest) =>
     requestJSON<CreateResponse>(`/api/templates/${name}/create`, {
@@ -561,7 +581,11 @@ export interface TemplateList {
 }
 
 /** One parameter of a template's schema, in YAML declaration order. Mirrors
- *  template.FieldSpec — the form renders from these, never the raw schema. */
+ *  template.FieldSpec — the form renders from these, never the raw schema.
+ *  `suggestions` is present only when the request carried a `dir`:
+ *  workspace-derived candidates the field can offer, never values the form
+ *  may treat as chosen. Mid-form the hook replaces them from
+ *  /api/templates/suggestions, chained off the answers so far. */
 export interface TemplateField {
   name: string
   title?: string
@@ -571,6 +595,15 @@ export interface TemplateField {
   default?: unknown
   pattern?: string
   required: boolean
+  suggestions?: string[]
+}
+
+/** The /api/templates/suggestions/{name} payload: one entry per declared
+ *  parameter (absent or empty when the workspace offers nothing), chained
+ *  off the confirmed values the request carried. The form's refresh when an
+ *  answer changes what the workspace implies for the remaining fields. */
+export interface TemplateSuggestions {
+  suggestions: Record<string, string[] | undefined>
 }
 
 /** The /api/templates/{name} payload: the `template show -o json` document.
