@@ -1,0 +1,37 @@
+How messy would it be to have the output-dir default to the snake-case version of the pascal name, i.e. OrderSync -> order-sync? Ideally that rule would be implemented in the template
+
+---
+
+What I am looking at is that different users can have different naming policies and it would be prefered if they can just fork the template repo and the cli stays the same but perhaps this is fair to have as a convention in the cli
+
+---
+
+Ok lets go for option A. Implement on this branch. Do not push. I also want the developer to not be prompted for the output-dir by default in either the cli or the dashboard, see how we have implemented derived values previously
+
+---
+
+I am getting throttled by the github api. Can I avoid that somehow? Do not make any code changes
+
+---
+
+I am getting this error when trying to create a loader with only name and organization in the dashboard: name is required (template declares no spec.values.outDir default)
+
+---
+
+Hmm but there isnt any outDir parameter in the template. Is that something that only the cli uses?
+
+---
+
+ah yes, so we shouldnt change anything in the template?
+
+---
+
+but wouldnt it be better, since output dir is not a template parameter, to just implement this as a pure cli change?
+
+---
+
+but today we dont have spec.values.outDir so we'd be introducing a completely new parameter
+
+---
+
+I think it is fair that that is intropy convention and not changeable for  now
