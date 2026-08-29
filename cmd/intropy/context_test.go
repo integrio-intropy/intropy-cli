@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
@@ -184,6 +185,58 @@ func TestContextShowStaleCurrentContextFails(t *testing.T) {
 	if !strings.Contains(err.Error(), "ghost") || !strings.Contains(err.Error(), "acme") {
 		t.Errorf("error %q should name the bad pointer and the valid contexts", err)
 	}
+}
+
+func TestContextUse(t *testing.T) {
+	t.Run("switches and persists", func(t *testing.T) {
+		withConfig(t, "currentContext: integrio\ncontexts:\n  acme:\n    organization: acme\n  integrio: {}\n")
+		clearConfigEnv(t)
+		stdout, stderr, err := runContext(t, "use", "acme")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stdout != "" {
+			t.Errorf("stdout = %q, want empty (status goes to stderr)", stdout)
+		}
+		if !strings.Contains(stderr, "switched to context acme") {
+			t.Errorf("stderr %q should confirm the switch", stderr)
+		}
+		stdout, _, err = runContext(t, "show")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(stdout, "organization: acme (context)") {
+			t.Errorf("show after use = %q, want the new context resolved", stdout)
+		}
+	})
+
+	t.Run("unknown name is a usage error listing valid contexts", func(t *testing.T) {
+		withConfig(t, twoContextConfig)
+		clearConfigEnv(t)
+		_, _, err := runContext(t, "use", "acmee")
+		if err == nil {
+			t.Fatal("use with an unknown name should fail")
+		}
+		if !strings.Contains(err.Error(), "acmee") || !strings.Contains(err.Error(), "acme, integrio") {
+			t.Errorf("error %q should name the bad name and the valid contexts", err)
+		}
+		var usage *usageError
+		if !errors.As(err, &usage) {
+			t.Errorf("error should be a usageError (exit 2), got %T", err)
+		}
+	})
+
+	t.Run("no contexts configured", func(t *testing.T) {
+		withConfig(t, "gitopsRepo: git@gitlab.com:acme/gitops.git\n")
+		clearConfigEnv(t)
+		_, _, err := runContext(t, "use", "acme")
+		if err == nil {
+			t.Fatal("use with no contexts should fail")
+		}
+		if !strings.Contains(err.Error(), "no contexts configured") {
+			t.Errorf("error %q should say no contexts are configured", err)
+		}
+	})
 }
 
 func TestContextShowJSON(t *testing.T) {

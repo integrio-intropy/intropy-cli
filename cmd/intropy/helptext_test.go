@@ -76,7 +76,7 @@ func TestHelpTextCommandVerbsAreDocumented(t *testing.T) {
 	documentedVerbs := map[string]bool{
 		"list": true, "show": true, "status": true, "diff": true, "inspect": true, "render": true,
 		"create": true, "add": true, "update": true, "init": true,
-		"publish": true, "pin": true, "promote": true, "sync": true,
+		"publish": true, "pin": true, "promote": true, "sync": true, "use": true,
 	}
 	// Nouns, command groups, and standalone commands that are not verbs and
 	// so are not governed by the AGENTS.md verb table.

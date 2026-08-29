@@ -24,6 +24,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -175,14 +176,14 @@ func (c Config) validateCurrentContext(path string) error {
 	if _, ok := c.Contexts[c.CurrentContext]; ok {
 		return nil
 	}
-	return unknownContextError(path, c.CurrentContext, c.Contexts)
+	return UnknownContextError(path, c.CurrentContext, c.Contexts)
 }
 
-// unknownContextError builds the message shared by load-time validation and
+// UnknownContextError builds the message shared by load-time validation and
 // 'context use': one builder so the two texts cannot drift. The format
 // follows the house error voice — what failed on the first line, the valid
 // values on the second.
-func unknownContextError(path, name string, contexts map[string]Context) error {
+func UnknownContextError(path, name string, contexts map[string]Context) error {
 	if len(contexts) == 0 {
 		return fmt.Errorf("currentContext %q does not exist in %s\nno contexts configured in %s", name, path, path)
 	}
@@ -211,6 +212,84 @@ func (c Config) Resolve(flags Flags) Config {
 		CurrentContext: c.CurrentContext,
 		Contexts:       c.Contexts,
 	}
+}
+
+// SetCurrentContext points the file at path at the named context, changing
+// nothing else. The write is a line-level text edit rather than a YAML
+// round-trip because the file is the user's: comments and key order must
+// survive. The file is re-parsed before editing so a write never lands on
+// contents this package would refuse to read, and the replacement goes
+// through a temporary file plus rename so a crash cannot leave the file
+// half-written. The file must already exist and contain the named context —
+// switching to a context that is not there is a caller error, not something
+// to fix by creating files.
+func SetCurrentContext(path, name string) error {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("no contexts configured in %s", path)
+		}
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+	cfg, err := loadFile(path)
+	if err != nil {
+		return err
+	}
+	if _, ok := cfg.Contexts[name]; !ok {
+		return UnknownContextError(path, name, cfg.Contexts)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("stat %s: %w", path, err)
+	}
+
+	edited := replaceCurrentContextLine(string(raw), name)
+
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".config-*.tmp")
+	if err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if _, err := tmp.WriteString(edited); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err := tmp.Chmod(info.Mode()); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	return nil
+}
+
+// currentContextLine matches a top-level currentContext mapping. The
+// column-0 anchor is load-bearing: the key is only meaningful at top level,
+// so an indented look-alike nested under another key must not match.
+var currentContextLine = regexp.MustCompile(`(?m)^currentContext:[^\n]*`)
+
+// replaceCurrentContextLine swaps the value of the top-level currentContext
+// key, preserving any trailing comment, or appends the key when the file
+// lacks one. Appending is the only always-safe anchor: inserting before the
+// contexts key would detach any comment block written directly above it.
+func replaceCurrentContextLine(text, name string) string {
+	replacement := "currentContext: " + name
+	if loc := currentContextLine.FindStringIndex(text); loc != nil {
+		line := text[loc[0]:loc[1]]
+		if i := strings.Index(line, "#"); i >= 0 {
+			replacement += " " + strings.TrimLeft(line[i:], " \t")
+		}
+		return text[:loc[0]] + replacement + text[loc[1]:]
+	}
+	if text != "" && !strings.HasSuffix(text, "\n") {
+		text += "\n"
+	}
+	return text + replacement + "\n"
 }
 
 // RequireGitopsRepo returns the resolved GitOps repository URL, or an error

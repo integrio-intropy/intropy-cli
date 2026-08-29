@@ -256,9 +256,9 @@ func TestResolvePrecedence(t *testing.T) {
 
 func TestResolveContextRung(t *testing.T) {
 	file := Config{
-		GitopsRepo:   "top-level-repo",
-		TemplateRepo: "top-level/library",
-		Organization: "top-level-org",
+		GitopsRepo:     "top-level-repo",
+		TemplateRepo:   "top-level/library",
+		Organization:   "top-level-org",
 		CurrentContext: "acme",
 		Contexts: map[string]Context{
 			"acme": {GitopsRepo: "ctx-repo", Organization: "ctx-org"},
@@ -368,6 +368,164 @@ func TestParseTemplateRepo(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSetCurrentContext(t *testing.T) {
+	t.Run("switches the active context", func(t *testing.T) {
+		path := withConfigDir(t)
+		writeConfig(t, path, "currentContext: integrio\ncontexts:\n  acme:\n    gitopsRepo: ctx-repo\n  integrio: {}\n")
+		if err := SetCurrentContext(path, "acme"); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := cfg.Resolve(Flags{}).GitopsRepo; got != "ctx-repo" {
+			t.Errorf("resolved GitopsRepo = %q, want the acme context value", got)
+		}
+	})
+
+	t.Run("only the currentContext line changes", func(t *testing.T) {
+		path := withConfigDir(t)
+		original := "# my customer config\norganization: integrio # the default\ncurrentContext: integrio\ncontexts:\n  # the big customer\n  acme: {}\n  integrio: {}\n"
+		writeConfig(t, path, original)
+		if err := SetCurrentContext(path, "acme"); err != nil {
+			t.Fatal(err)
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := strings.Replace(original, "currentContext: integrio", "currentContext: acme", 1)
+		if string(raw) != want {
+			t.Errorf("file = %q, want %q", raw, want)
+		}
+	})
+
+	t.Run("appends when the key is absent", func(t *testing.T) {
+		path := withConfigDir(t)
+		writeConfig(t, path, "contexts:\n  acme: {}\n")
+		if err := SetCurrentContext(path, "acme"); err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := os.ReadFile(path)
+		if !strings.HasSuffix(string(raw), "currentContext: acme\n") {
+			t.Errorf("file = %q, want the key appended", raw)
+		}
+		if _, err := Load(); err != nil {
+			t.Errorf("result should parse, got %v", err)
+		}
+	})
+
+	t.Run("preserves a trailing comment", func(t *testing.T) {
+		path := withConfigDir(t)
+		writeConfig(t, path, "currentContext: integrio # the prod customer\ncontexts:\n  acme: {}\n  integrio: {}\n")
+		if err := SetCurrentContext(path, "acme"); err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := os.ReadFile(path)
+		if !strings.Contains(string(raw), "currentContext: acme # the prod customer") {
+			t.Errorf("file = %q, want the comment preserved", raw)
+		}
+	})
+
+	t.Run("a quoted value is replaced wholesale", func(t *testing.T) {
+		path := withConfigDir(t)
+		writeConfig(t, path, "currentContext: \"integrio\"\ncontexts:\n  acme: {}\n  integrio: {}\n")
+		if err := SetCurrentContext(path, "acme"); err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := os.ReadFile(path)
+		if !strings.Contains(string(raw), "currentContext: acme\n") || strings.Contains(string(raw), "\"") {
+			t.Errorf("file = %q, want a plain scalar and no leftover quotes", raw)
+		}
+	})
+
+	t.Run("a file without trailing newline is repaired first", func(t *testing.T) {
+		path := withConfigDir(t)
+		writeConfig(t, path, "contexts:\n  acme: {}")
+		if err := SetCurrentContext(path, "acme"); err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := os.ReadFile(path)
+		if !strings.Contains(string(raw), "acme: {}\ncurrentContext: acme\n") {
+			t.Errorf("file = %q, want the key on its own line", raw)
+		}
+	})
+
+	t.Run("an indented look-alike is not the top-level key", func(t *testing.T) {
+		path := withConfigDir(t)
+		writeConfig(t, path, "contexts:\n  acme:\n    organization: \"currentContext: nested\"\n")
+		if err := SetCurrentContext(path, "acme"); err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := os.ReadFile(path)
+		if !strings.Contains(string(raw), "    organization: \"currentContext: nested\"") {
+			t.Errorf("file = %q, want the nested line untouched", raw)
+		}
+		if !strings.HasSuffix(string(raw), "currentContext: acme\n") {
+			t.Errorf("file = %q, want a new top-level key appended", raw)
+		}
+	})
+
+	t.Run("unknown context fails without touching the file", func(t *testing.T) {
+		path := withConfigDir(t)
+		original := "contexts:\n  acme: {}\n"
+		writeConfig(t, path, original)
+		err := SetCurrentContext(path, "acmee")
+		if err == nil {
+			t.Fatal("SetCurrentContext should reject an unknown context")
+		}
+		if !strings.Contains(err.Error(), "acmee") || !strings.Contains(err.Error(), "acme") {
+			t.Errorf("error %q should name the bad name and the valid ones", err)
+		}
+		raw, _ := os.ReadFile(path)
+		if string(raw) != original {
+			t.Errorf("file changed despite the error: %q", raw)
+		}
+	})
+
+	t.Run("missing file is an error, nothing created", func(t *testing.T) {
+		path := withConfigDir(t)
+		if err := SetCurrentContext(path, "acme"); err == nil {
+			t.Fatal("SetCurrentContext on a missing file should fail")
+		}
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("the file should not have been created")
+		}
+	})
+
+	t.Run("a dangling currentContext blocks the write", func(t *testing.T) {
+		path := withConfigDir(t)
+		original := "currentContext: ghost\ncontexts:\n  acme: {}\n"
+		writeConfig(t, path, original)
+		if err := SetCurrentContext(path, "acme"); err == nil {
+			t.Fatal("SetCurrentContext should refuse a file that fails validation")
+		}
+		raw, _ := os.ReadFile(path)
+		if string(raw) != original {
+			t.Errorf("file changed despite the error: %q", raw)
+		}
+	})
+
+	t.Run("file mode is preserved", func(t *testing.T) {
+		path := withConfigDir(t)
+		writeConfig(t, path, "currentContext: integrio\ncontexts:\n  acme: {}\n  integrio: {}\n")
+		if err := os.Chmod(path, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := SetCurrentContext(path, "acme"); err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != 0o600 {
+			t.Errorf("mode = %o, want 600", info.Mode().Perm())
+		}
+	})
 }
 
 func TestRequireGitopsRepo(t *testing.T) {
