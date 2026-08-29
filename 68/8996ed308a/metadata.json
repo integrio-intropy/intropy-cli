@@ -1,0 +1,49 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "688996ed308a",
+  "strategy": "manual-commit",
+  "branch": "feature/flow-slot-create",
+  "checkpoints_count": 35,
+  "files_touched": [
+    "cmd/intropy/int_create.go",
+    "cmd/intropy/int_create_test.go",
+    "internal/dashboard/templates.go",
+    "internal/dashboard/templates_test.go",
+    "internal/system/facts.go",
+    "internal/system/facts_test.go",
+    "internal/system/model.go",
+    "internal/template/create.go",
+    "internal/template/create_test.go",
+    "internal/template/facts.go",
+    "internal/template/facts_test.go",
+    "internal/template/manifest.go",
+    "internal/template/prompt.go",
+    "internal/template/prompt_test.go",
+    "internal/template/suggest.go",
+    "internal/template/suggest_test.go",
+    "internal/template/values.go",
+    "internal/template/values_test.go",
+    "web/src/api.ts",
+    "web/src/components/CreateDrawer.tsx",
+    "web/src/components/TemplatesView.tsx",
+    "web/src/components/form.tsx",
+    "web/src/components/useTemplateFields.ts",
+    "web/src/index.css"
+  ],
+  "sessions": [
+    {
+      "metadata": "/68/8996ed308a/0/metadata.json",
+      "transcript": "/68/8996ed308a/0/full.jsonl",
+      "compact_transcript": "/68/8996ed308a/0/transcript.jsonl",
+      "content_hash": "/68/8996ed308a/0/content_hash.txt",
+      "prompt": "/68/8996ed308a/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 148303,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 18318848,
+    "output_tokens": 58590,
+    "api_call_count": 189
+  }
+}

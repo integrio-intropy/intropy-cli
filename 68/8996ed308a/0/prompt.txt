@@ -1,0 +1,45 @@
+do 1. on this branch but do not commit anything
+
+---
+
+can you continue?
+
+---
+
+Ok how is this supposed to work? If I start with a completely empty solution. I scaffold an extractor and a systme with the topic "orders". I then scaffold a loader. Will it suggest "orders" for topic?
+
+---
+
+Can we make it prefilled so that the developer isnt even queried about it (but can explicitly set it with -s so that it behaves like an optional parameter?
+
+---
+
+Is the implementation allright or did it become a mess?
+
+---
+
+I would say fix all 4 while it is cheap and we havent released anything
+
+---
+
+That broke something. 
+
+Mac domains/order-management/temp on  main [✘!?] ➜  i int create loader -n OrderLoader -n o order-loader                                                                                09:03
+error: accepts 1 arg(s), received 2
+
+---
+
+Can you fix the dashboard also so that it does not queries about information it can derive? Perhaps the dashboard also only should show required parameters
+
+---
+
+Where is the advanced toggle label?
+
+---
+
+I cant see it
+/Users/robinhultman/Library/Application\ Support/CleanShot/media/media_mlsBRaLJLK/CleanShot\ 2026-08-29\ at\ 09.12.32.png
+
+---
+
+Retry again?
