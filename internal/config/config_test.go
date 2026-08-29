@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -61,7 +62,7 @@ func TestLoadMissingFileIsNotAnError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() on a missing file should succeed, got %v", err)
 	}
-	if cfg != (Config{}) {
+	if !reflect.DeepEqual(cfg, Config{}) {
 		t.Errorf("Load() = %+v, want zero Config", cfg)
 	}
 }
@@ -73,7 +74,7 @@ func TestLoadEmptyFileIsNotAnError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() on an empty file should succeed, got %v", err)
 	}
-	if cfg != (Config{}) {
+	if !reflect.DeepEqual(cfg, Config{}) {
 		t.Errorf("Load() = %+v, want zero Config", cfg)
 	}
 }
@@ -113,6 +114,88 @@ func TestLoadRejectsMalformedYAML(t *testing.T) {
 	writeConfig(t, path, "gitopsRepo: [unclosed\n")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() should reject malformed YAML")
+	}
+}
+
+func TestLoadReadsContexts(t *testing.T) {
+	path := withConfigDir(t)
+	writeConfig(t, path, `organization: integrio
+currentContext: acme
+contexts:
+  acme:
+    organization: acme
+    gitopsRepo: git@gitlab.com:acme/gitops.git
+  staging-eu:
+    gitopsRepo: git@gitlab.com:staging-eu/gitops.git
+`)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Organization != "integrio" {
+		t.Errorf("Organization = %q", cfg.Organization)
+	}
+	if cfg.CurrentContext != "acme" {
+		t.Errorf("CurrentContext = %q", cfg.CurrentContext)
+	}
+	if len(cfg.Contexts) != 2 {
+		t.Fatalf("Contexts has %d entries, want 2", len(cfg.Contexts))
+	}
+	acme := cfg.Contexts["acme"]
+	if acme.Organization != "acme" || acme.GitopsRepo != "git@gitlab.com:acme/gitops.git" {
+		t.Errorf("Contexts[acme] = %+v", acme)
+	}
+	eu := cfg.Contexts["staging-eu"]
+	if eu.Organization != "" || eu.GitopsRepo != "git@gitlab.com:staging-eu/gitops.git" {
+		t.Errorf("Contexts[staging-eu] = %+v", eu)
+	}
+}
+
+// A currentContext pointing at nothing is the same class of error as a
+// typo'd key: the file's owner hears about it at load, from every command.
+func TestLoadRejectsUnknownCurrentContext(t *testing.T) {
+	path := withConfigDir(t)
+	writeConfig(t, path, "currentContext: acmee\ncontexts:\n  acme: {}\n  integrio: {}\n")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() should reject a dangling currentContext")
+	}
+	for _, want := range []string{"acmee", path, "acme, integrio"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should mention %q", err, want)
+		}
+	}
+}
+
+func TestLoadRejectsCurrentContextWithoutContexts(t *testing.T) {
+	path := withConfigDir(t)
+	writeConfig(t, path, "currentContext: acme\n")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() should reject currentContext with no contexts")
+	}
+	if !strings.Contains(err.Error(), "no contexts configured") {
+		t.Errorf("error %q should say no contexts are configured", err)
+	}
+}
+
+func TestLoadRejectsCurrentContextWithEmptyContexts(t *testing.T) {
+	path := withConfigDir(t)
+	writeConfig(t, path, "currentContext: acme\ncontexts: {}\n")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() should reject currentContext with empty contexts")
+	}
+	if !strings.Contains(err.Error(), "no contexts configured") {
+		t.Errorf("error %q should say no contexts are configured", err)
+	}
+}
+
+func TestLoadRejectsUnknownKeyInsideContext(t *testing.T) {
+	path := withConfigDir(t)
+	writeConfig(t, path, "contexts:\n  acme:\n    gitoopsRepo: git@gitlab.com:acme/gitops.git\n")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() should reject an unknown key inside a context")
 	}
 }
 
@@ -168,6 +251,66 @@ func TestResolvePrecedence(t *testing.T) {
 				t.Errorf("ArgocdServer = %q, want %q", got.ArgocdServer, tc.wantArgocd)
 			}
 		})
+	}
+}
+
+func TestResolveContextRung(t *testing.T) {
+	file := Config{
+		GitopsRepo:   "top-level-repo",
+		TemplateRepo: "top-level/library",
+		Organization: "top-level-org",
+		CurrentContext: "acme",
+		Contexts: map[string]Context{
+			"acme": {GitopsRepo: "ctx-repo", Organization: "ctx-org"},
+		},
+	}
+
+	// Clearing rather than unsetting: cmp.Or treats "" as absent, and CI
+	// environments may export the borrowed ARGOCD_SERVER.
+	t.Setenv(EnvGitopsRepo, "")
+	t.Setenv(EnvArgocdServer, "")
+	t.Setenv(EnvTemplateRepo, "")
+
+	got := file.Resolve(Flags{})
+	if got.GitopsRepo != "ctx-repo" {
+		t.Errorf("GitopsRepo = %q, want the context value", got.GitopsRepo)
+	}
+	if got.TemplateRepo != "top-level/library" {
+		t.Errorf("TemplateRepo = %q, want the top-level default to fall through", got.TemplateRepo)
+	}
+	if got.Organization != "ctx-org" {
+		t.Errorf("Organization = %q, want the context value", got.Organization)
+	}
+
+	t.Run("env beats context", func(t *testing.T) {
+		t.Setenv(EnvGitopsRepo, "env-repo")
+		if got := file.Resolve(Flags{}).GitopsRepo; got != "env-repo" {
+			t.Errorf("GitopsRepo = %q, want the env value", got)
+		}
+	})
+	t.Run("flag beats env", func(t *testing.T) {
+		t.Setenv(EnvGitopsRepo, "env-repo")
+		got := file.Resolve(Flags{GitopsRepo: "flag-repo"}).GitopsRepo
+		if got != "flag-repo" {
+			t.Errorf("GitopsRepo = %q, want the flag value", got)
+		}
+	})
+	t.Run("flag beats context for organization", func(t *testing.T) {
+		got := file.Resolve(Flags{Organization: "flag-org"}).Organization
+		if got != "flag-org" {
+			t.Errorf("Organization = %q, want the flag value", got)
+		}
+	})
+}
+
+// A config with no currentContext resolves exactly as before contexts
+// existed: flag > env > top-level.
+func TestResolveWithoutContextUnchanged(t *testing.T) {
+	file := Config{GitopsRepo: "top-level-repo", Organization: "top-level-org"}
+	t.Setenv(EnvGitopsRepo, "")
+	got := file.Resolve(Flags{})
+	if got.GitopsRepo != "top-level-repo" || got.Organization != "top-level-org" {
+		t.Errorf("Resolve() = %+v, want the top-level values", got)
 	}
 }
 
