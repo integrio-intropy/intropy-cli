@@ -84,6 +84,9 @@ func TestHelpTextCommandVerbsAreDocumented(t *testing.T) {
 		"intropy": true, "int": true, "template": true,
 		"deploy": true, "manifests": true, "release": true, "sys": true,
 		"version": true, "dashboard": true,
+		// Command group for customer contexts; its subcommands (use, list,
+		// show) are documented verbs.
+		"context": true,
 		// Hidden stubs kept so old muscle memory gets a pointer, not an
 		// unknown-command error; see int_describe.go and int_local.go.
 		"describe": true, "local": true,
