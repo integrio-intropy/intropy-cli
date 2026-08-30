@@ -40,13 +40,13 @@ func Suggest(fields []FieldSpec, facts *WorkspaceFacts, confirmed map[string]any
 // registry stays a flat name-to-rule table.
 func suggestField(f FieldSpec, facts *WorkspaceFacts, confirmed map[string]any) []string {
 	switch f.Name {
-	case "topic":
+	case KeyTopic:
 		topics := make([]string, 0, len(facts.TopicKeys))
 		for _, key := range facts.TopicKeys {
 			topics = append(topics, key.Name)
 		}
 		return topics
-	case "pubsub":
+	case KeyPubsub:
 		seen := map[string]bool{}
 		var pubs []string
 		for _, key := range facts.TopicKeys {
@@ -56,14 +56,14 @@ func suggestField(f FieldSpec, facts *WorkspaceFacts, confirmed map[string]any) 
 			}
 		}
 		return pubs
-	case "contract":
+	case KeyContract:
 		// With a confirmed topic, the contract is constrained to it; a
 		// conflicted or unknown key yields nothing rather than a guess.
 		// Without one, every known contract is a candidate.
-		if topic, ok := confirmedString(confirmed, "topic"); ok {
-			pubsub, _ := confirmedString(confirmed, "pubsub")
+		if topic, ok := confirmedString(confirmed, KeyTopic); ok {
+			pubsub, _ := confirmedString(confirmed, KeyPubsub)
 			if pubsub == "" {
-				pubsub = "pubsub"
+				pubsub = DefaultPubsub
 			}
 			if contract, ok := facts.ContractFor(TopicKey{Pubsub: pubsub, Name: topic}); ok {
 				return []string{contract}

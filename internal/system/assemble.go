@@ -3,7 +3,6 @@ package system
 import (
 	"errors"
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -33,7 +32,7 @@ func Assemble(entries []template.ScaffoldEntry, warnf func(format string, args .
 	for _, e := range entries {
 		switch {
 		case e.Role == template.RoleSharedLibrary:
-			name, err := stringValue(e, "name")
+			name, err := template.RecordValue(e, template.KeyName)
 			if err != nil {
 				return nil, err
 			}
@@ -53,7 +52,7 @@ func Assemble(entries []template.ScaffoldEntry, warnf func(format string, args .
 			continue
 		}
 
-		appID, err := stringValue(e, "appId")
+		appID, err := template.RecordValue(e, template.KeyAppID)
 		if err != nil {
 			return nil, err
 		}
@@ -131,29 +130,4 @@ func Assemble(entries []template.ScaffoldEntry, warnf func(format string, args .
 	return model, nil
 }
 
-// stringValue returns values[key] as a non-empty string, with errors that
-// name the record so the user knows which project to fix.
-func stringValue(e template.ScaffoldEntry, key string) (string, error) {
-	record := filepath.Join(e.Path, filepath.FromSlash(template.ScaffoldRelPath))
-	v, ok := e.Values[key]
-	if !ok {
-		return "", fmt.Errorf("%s: values.%s is missing", record, key)
-	}
-	s, ok := v.(string)
-	if !ok {
-		return "", fmt.Errorf("%s: values.%s has type %T, expected string", record, key, v)
-	}
-	if s == "" {
-		return "", fmt.Errorf("%s: values.%s is empty", record, key)
-	}
-	return s, nil
-}
 
-// stringValueDefault is stringValue with a fallback for records that
-// predate the value being recorded.
-func stringValueDefault(e template.ScaffoldEntry, key, fallback string) (string, error) {
-	if _, ok := e.Values[key]; !ok {
-		return fallback, nil
-	}
-	return stringValue(e, key)
-}

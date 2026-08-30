@@ -505,8 +505,9 @@ func selectHost(hosts []template.ScaffoldEntry, system, sourceDir string) (templ
 // directory itself — which is often a generic "system-host" and so the weakest.
 func matchesSystemName(h template.ScaffoldEntry, system string) bool {
 	want := normalizeSystemName(system)
+	recordName, _ := template.SoftValue(h.Values, template.KeyName)
 	keys := []string{
-		scaffoldString(h, "name"),
+		recordName,
 		filepath.Base(filepath.Dir(h.Path)),
 		filepath.Base(h.Path),
 	}
@@ -528,7 +529,7 @@ func normalizeSystemName(s string) string {
 func describeHosts(hosts []template.ScaffoldEntry) string {
 	lines := make([]string, 0, len(hosts))
 	for _, h := range hosts {
-		name := scaffoldString(h, "name")
+		name, _ := template.SoftValue(h.Values, template.KeyName)
 		if name == "" {
 			name = filepath.Base(filepath.Dir(h.Path))
 		}

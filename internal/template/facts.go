@@ -85,11 +85,14 @@ func BuildWorkspaceFacts(entries []WorkspaceFactEntry) *WorkspaceFacts {
 	for _, e := range entries {
 		switch e.BlockKind {
 		case BlockKindExtractor, BlockKindLoader:
-			topic, tok := stringValue(e.Values, "topic")
-			contract, cok := stringValue(e.Values, "contract")
-			pubsub, _ := stringValue(e.Values, "pubsub")
+			topic, tok := SoftValue(e.Values, KeyTopic)
+			contract, cok := SoftValue(e.Values, KeyContract)
+			// Default on the zero result, not on key absence: a present but
+			// mistyped pubsub degrades to the default, the same regime as
+			// before the accessors consolidated.
+			pubsub, _ := SoftValue(e.Values, KeyPubsub)
 			if pubsub == "" {
-				pubsub = "pubsub"
+				pubsub = DefaultPubsub
 			}
 			if tok && cok {
 				key := TopicKey{Pubsub: pubsub, Name: topic}
@@ -105,13 +108,13 @@ func BuildWorkspaceFacts(entries []WorkspaceFactEntry) *WorkspaceFacts {
 					sightings[key] = &contractSighting{contract: contract}
 				}
 			}
-			if port, ok := stringValue(e.Values, "port"); ok && !seenPort[port] {
+			if port, ok := SoftValue(e.Values, KeyPort); ok && !seenPort[port] {
 				seenPort[port] = true
 				facts.Ports = append(facts.Ports, port)
 			}
 		case BlockKindTransactional:
-			for _, name := range []string{"fromPort", "toPort"} {
-				if port, ok := stringValue(e.Values, name); ok && !seenPort[port] {
+			for _, key := range []string{KeyFromPort, KeyToPort} {
+				if port, ok := SoftValue(e.Values, key); ok && !seenPort[port] {
 					seenPort[port] = true
 					facts.Ports = append(facts.Ports, port)
 				}
@@ -132,15 +135,4 @@ func BuildWorkspaceFacts(entries []WorkspaceFactEntry) *WorkspaceFacts {
 	})
 	sort.Strings(facts.Ports)
 	return facts
-}
-
-// stringValue reads values[key] as a non-empty string, reporting false for
-// missing, mistyped, or empty values. Fact-building skips such entries
-// rather than failing — the records may predate the value.
-func stringValue(values map[string]any, key string) (string, bool) {
-	s, ok := values[key].(string)
-	if !ok || s == "" {
-		return "", false
-	}
-	return s, true
 }

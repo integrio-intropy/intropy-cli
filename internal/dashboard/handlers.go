@@ -268,7 +268,7 @@ func (s *apiServer) scan() (blocks []template.ScaffoldEntry, systems map[string]
 // (the template's `name` value, recorded at `sys create`), falling back to
 // the host's parent directory name.
 func systemName(host template.ScaffoldEntry) string {
-	if name, ok := host.Values["name"].(string); ok && name != "" {
+	if name, ok := template.SoftValue(host.Values, template.KeyName); ok {
 		return name
 	}
 	dir := filepath.Dir(host.Path)

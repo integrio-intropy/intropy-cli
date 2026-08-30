@@ -3,6 +3,8 @@ package system
 import (
 	"fmt"
 	"path/filepath"
+
+	"github.com/integrio-intropy/intropy-cli/internal/template"
 )
 
 // buildPayload assembles the value map passed as SetValues to the
@@ -37,32 +39,7 @@ func buildPayload(m *Model, outputDir, kebab string) (map[string]any, error) {
 
 	components := make([]any, len(m.Components))
 	for i, c := range m.Components {
-		// Kind is verbatim: Assemble already validated it against the
-		// parse registry. The wiring fields follow the component's shape,
-		// not its kind — a topic carries topic, one port port, two ports
-		// fromPort/toPort — and the template resolves each name to the
-		// field identifier it derived for the topic or port. The keys match
-		// the transactional scaffold record's: the template library's
-		// system-host reads fromPort/toPort (template release v0.4.0+).
-		entry := map[string]any{
-			"appId": c.AppID,
-			"kind":  c.Kind,
-		}
-		if c.Topic != nil {
-			entry["topic"] = map[string]any{
-				"pubsub": c.Topic.Pubsub,
-				"name":   c.Topic.Name,
-			}
-		}
-		switch len(c.Ports) {
-		case 0:
-		case 1:
-			entry["port"] = c.Ports[0]
-		default:
-			entry["fromPort"] = c.Ports[0]
-			entry["toPort"] = c.Ports[1]
-		}
-		components[i] = entry
+		components[i] = ComponentEntry(c)
 	}
 
 	payload := map[string]any{
@@ -82,6 +59,39 @@ func buildPayload(m *Model, outputDir, kebab string) (map[string]any, error) {
 		}
 	}
 	return payload, nil
+}
+
+// ComponentEntry is one component's wiring as the system-host template
+// consumes it — both in the sys create payload and in the component list
+// sys update stores in the host's scaffold record.
+//
+// Kind is verbatim: Assemble already validated it against the parse
+// registry. The wiring fields follow the component's shape, not its kind
+// — a topic carries topic, one port port, two ports fromPort/toPort —
+// and the template resolves each name to the field identifier it derived
+// for the topic or port. The keys match the transactional scaffold
+// record's: the template library's system-host reads fromPort/toPort
+// (template release v0.4.0+).
+func ComponentEntry(c Component) map[string]any {
+	entry := map[string]any{
+		template.KeyAppID: c.AppID,
+		"kind":           c.Kind,
+	}
+	if c.Topic != nil {
+		entry[template.KeyTopic] = map[string]any{
+			template.KeyPubsub: c.Topic.Pubsub,
+			template.KeyName:   c.Topic.Name,
+		}
+	}
+	switch len(c.Ports) {
+	case 0:
+	case 1:
+		entry[template.KeyPort] = c.Ports[0]
+	default:
+		entry[template.KeyFromPort] = c.Ports[0]
+		entry[template.KeyToPort] = c.Ports[1]
+	}
+	return entry
 }
 
 // contractsInclude computes the ProjectReference Include path from the
