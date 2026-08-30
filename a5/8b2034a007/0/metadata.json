@@ -1,0 +1,82 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "a58b2034a007",
+  "session_id": "01a05249-7fe1-74b9-a17b-f92f04b2a06c",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-30T15:05:35.912814Z",
+  "branch": "fix/cli-review-v1",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "README.md",
+    "cmd/intropy/context_use.go",
+    "cmd/intropy/dashboard.go",
+    "cmd/intropy/deploy_diff.go",
+    "cmd/intropy/deploy_pin.go",
+    "cmd/intropy/deploy_promote.go",
+    "cmd/intropy/deploy_status.go",
+    "cmd/intropy/deploy_sync.go",
+    "cmd/intropy/int_create.go",
+    "cmd/intropy/int_list.go",
+    "cmd/intropy/int_show.go",
+    "cmd/intropy/main.go",
+    "cmd/intropy/release_create.go",
+    "cmd/intropy/release_list.go",
+    "cmd/intropy/release_show.go",
+    "cmd/intropy/root.go",
+    "cmd/intropy/rune.go",
+    "cmd/intropy/template_show.go",
+    "internal/deploy/local_test.go",
+    "internal/deploy/manifests_engine.go",
+    "internal/system/assemble.go",
+    "internal/system/blocks.go",
+    "web/embed.go"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "960d1c0fe6b0",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 197523,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 4838272,
+    "output_tokens": 37765,
+    "api_call_count": 123
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-30T15:05:35.889656Z",
+    "agent_lines": 66,
+    "agent_removed": 58,
+    "human_added": 0,
+    "human_modified": 27,
+    "human_removed": 3,
+    "total_committed": 92,
+    "total_lines_changed": 154,
+    "agent_percentage": 80.51948051948052,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 61,
+      "user_lines_removed": 0,
+      "agent_lines_added": 402,
+      "agent_lines_removed": 106,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "cmd/intropy/rune.go": 1
+      }
+    }
+  ]
+}
