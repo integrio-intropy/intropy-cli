@@ -13,19 +13,13 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:           "intropy",
-	Short:         "Intropy CLI",
-	Long:          "intropy is the command-line interface for working with Intropy integrations.",
-	Version:       version,
-	SilenceUsage:  true,
-	SilenceErrors: true,
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		if err := chdirIfRequested(); err != nil {
-			return err
-		}
-		warnIfPreview(cmd)
-		return nil
-	},
+	Use:               "intropy",
+	Short:             "Intropy CLI",
+	Long:              "intropy is the command-line interface for working with Intropy integrations.",
+	Version:           version,
+	SilenceUsage:      true,
+	SilenceErrors:     true,
+	PersistentPreRunE: rootPreRun,
 }
 
 // chdirIfRequested applies -C before any preview warning, so the warning is
@@ -60,6 +54,7 @@ func validateOutputFlag(format string, allowed ...string) error {
 }
 
 func init() {
+	rootCmd.SetFlagErrorFunc(wrapFlagError)
 	rootCmd.PersistentFlags().BoolVar(&noColorFlag, "no-color", false, "disable colored output")
 	rootCmd.PersistentFlags().StringVarP(&changeDirFlag, "directory", "C", "", "change to directory before running the command")
 	_ = rootCmd.MarkPersistentFlagDirname("directory")

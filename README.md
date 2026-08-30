@@ -1146,6 +1146,8 @@ own; `deploy` holds the policy that combines them. Test fixtures live in
 
 ## Exit codes
 
+These codes are stable and safe to gate scripts and CI on.
+
 - `0` — success
 - `1` — runtime error
 - `2` — usage error (unknown command, missing required flag, bad argument)

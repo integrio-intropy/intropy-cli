@@ -26,7 +26,7 @@ var templateShowCmd = &cobra.Command{
 	Short: "Show a template's manifest and parameter schema",
 	Long: "Print the template manifest — metadata and parameter schema — for the requested release. " +
 		"Use --output json to emit a stable, machine-readable document (the same schema Backstage's frontend renders).",
-	Args: cobra.ExactArgs(1),
+	Args: usageArgs(cobra.ExactArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validateOutputFlag(templateShowOpts.output, "json", "plain"); err != nil {
 			return err

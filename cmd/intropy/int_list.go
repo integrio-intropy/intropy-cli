@@ -26,7 +26,7 @@ var intListCmd = &cobra.Command{
 		template.ScaffoldRelPath + " record written by `int create`. " +
 		"Matched projects are not descended into, and .git, .intropy, node_modules, bin and dist are skipped. " +
 		"Use --output json for a machine-readable document including the pinned source and scaffold values.",
-	Args: cobra.MaximumNArgs(1),
+	Args: usageArgs(cobra.MaximumNArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validateOutputFlag(intListOpts.output, "json", "plain"); err != nil {
 			return err

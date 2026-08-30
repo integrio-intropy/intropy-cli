@@ -244,7 +244,7 @@ function DrawerForm({
 
       <div className="form-actions">
         <button type="submit" className="run-btn" disabled={!canRun}>
-          {create.phase === 'running' ? 'creating…' : 'int create'}
+          {create.phase === 'running' ? 'scaffolding…' : 'Scaffold'}
         </button>
       </div>
 
