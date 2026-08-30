@@ -11,7 +11,7 @@ var contextUseCmd = &cobra.Command{
 	Use:   "use <name>",
 	Short: "Switch the active customer context",
 	Long:  "Switch the active customer context by writing currentContext to the user configuration file. The name must be one of the contexts defined in the file; 'intropy context list' shows them.",
-	Args:  cobra.ExactArgs(1),
+	Args:  usageArgs(cobra.ExactArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
 		cfg, err := config.Load()

@@ -275,21 +275,6 @@ func (f localFixture) options(stdout, stderr *bytes.Buffer) manifestRunOptions {
 	}
 }
 
-func (f localFixture) renderOptions(stderr *bytes.Buffer) RenderManifestOptions {
-	return RenderManifestOptions{
-		Environment:   localEnv,
-		System:        "distribution",
-		SourceDir:     f.sourceDir,
-		TopologyFile:  filepath.Join(f.sourceDir, "topology.json"),
-		Bindings:      []string{"erp=sftp", "price-master=http"},
-		Stderr:        stderr,
-		Owner:         "o",
-		Repo:          "r",
-		GitHubBaseURL: f.srv.URL,
-		HTTP:          f.srv.Client(),
-	}
-}
-
 type fakeBindingSelector struct {
 	choices  map[string]string
 	requests []interactive.SelectRequest

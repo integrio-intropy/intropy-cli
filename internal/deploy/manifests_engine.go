@@ -1017,7 +1017,7 @@ func publishScaffold(ctx context.Context, opts manifestRunOptions, repo *gitops.
 		return publishedScaffold{}, err
 	}
 	if err := repo.Git.Push(ctx, gitops.RemoteName, "HEAD:refs/heads/"+p.Branch); err != nil {
-		return publishedScaffold{}, fmt.Errorf("push %s: %w\n\nA rejection here usually means the branch already exists on the remote. Delete it, or merge the open review first.", p.Branch, err)
+		return publishedScaffold{}, fmt.Errorf("push %s: %w\n\nA rejection here usually means the branch already exists on the remote. Delete it, or merge the open review first", p.Branch, err)
 	}
 
 	revision, err := repo.Git.HEAD(ctx)

@@ -44,7 +44,7 @@ func parseTopicBlock(e template.ScaffoldEntry, c *Component) error {
 	}
 	contract, err := template.RecordValue(e, template.KeyContract)
 	if err != nil {
-		return fmt.Errorf("%w\nRe-scaffold this integration with a template release that records the contract type, or add \"contract\": \"<TypeName>\" to the record's values.", err)
+		return fmt.Errorf("%w\nRe-scaffold this integration with a template release that records the contract type, or add \"contract\": \"<TypeName>\" to the record's values", err)
 	}
 	pubsub, err := template.RecordValueDefault(e, template.KeyPubsub, template.DefaultPubsub)
 	if err != nil {

@@ -29,7 +29,7 @@ var dashboardCmd = &cobra.Command{
 		"system topology. The flow view can also start and stop a system's host locally (dotnet run); " +
 		"started hosts stop when the dashboard does. The dashboard is served from the CLI itself and " +
 		"opens in your browser. Press Ctrl+C to stop.",
-	Args: cobra.MaximumNArgs(1),
+	Args: usageArgs(cobra.MaximumNArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		root := "."
 		if len(args) == 1 {

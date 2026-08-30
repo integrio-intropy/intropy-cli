@@ -34,7 +34,7 @@ var intCreateCmd = &cobra.Command{
 	Use:   "create <template>",
 	Short: "Create a new integration",
 	Long:  "Scaffold a new integration from the official Intropy template library. The positional argument selects which template subdirectory to render (e.g. 'hello-world').",
-	Args:  cobra.ExactArgs(1),
+	Args:  usageArgs(cobra.ExactArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sets, err := template.ParseSets(intCreateFlags.sets)
 		if err != nil {

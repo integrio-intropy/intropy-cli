@@ -92,7 +92,7 @@ func Assemble(entries []template.ScaffoldEntry, warnf func(format string, args .
 	}
 
 	if len(components) == 0 {
-		return nil, fmt.Errorf("%w in this directory\nScaffold integrations first ('intropy int create <kind> -n <Name> ...'), then run 'intropy sys create' from the workspace root.", ErrNoComponents)
+		return nil, fmt.Errorf("%w in this directory\nScaffold integrations first ('intropy int create <kind> -n <Name> ...'), then run 'intropy sys create' from the workspace root", ErrNoComponents)
 	}
 	// Zero shared libraries is a valid workspace: a topic-free system never
 	// references contracts, and a topic-bearing one gets them from the host
@@ -129,5 +129,3 @@ func Assemble(entries []template.ScaffoldEntry, warnf func(format string, args .
 	}
 	return model, nil
 }
-
-
