@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "e6e07e4b972c",
+  "strategy": "manual-commit",
+  "branch": "refactor/wiring-vocabulary",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "cmd/intropy/dashboard.go",
+    "cmd/intropy/int_create.go",
+    "cmd/intropy/int_create_test.go",
+    "internal/dashboard/handlers.go",
+    "internal/dashboard/server.go",
+    "internal/dashboard/templates.go",
+    "internal/dashboard/templates_test.go",
+    "internal/template/facts.go",
+    "internal/template/facts_test.go",
+    "internal/template/suggest.go",
+    "internal/template/suggest_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/e6/e07e4b972c/0/metadata.json",
+      "transcript": "/e6/e07e4b972c/0/full.jsonl",
+      "compact_transcript": "/e6/e07e4b972c/0/transcript.jsonl",
+      "content_hash": "/e6/e07e4b972c/0/content_hash.txt",
+      "prompt": "/e6/e07e4b972c/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 53635,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1844992,
+    "output_tokens": 15549,
+    "api_call_count": 48
+  }
+}

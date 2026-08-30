@@ -1,0 +1,19 @@
+Do not make any changes. The context contains the organization name. Is there way that do not break any design rules that could make the int create command derive the organization parameter from that? That should also apply to the dashboard
+
+---
+
+I guess this is more of a template design question but would be benificial to the cli if there was some way to define global parameters, parameters that each template inherit so that you cant declare a parameter without it? You could then also if you fork the template repo hardcode for example organization at the template level so that the developers never need to care about it
+
+---
+
+It sounds like it might not be worth the effort?
+
+---
+
+Ok so back to can we derive the organization parameter when scaffolding? Is there an easy clean implementation of this or are we just introducing a ton of complexity to save the developer a few keystrokes? We could also treat it the same way as we treat topic name. If you have specified it for the current system it is reused, i.e. first component you scaffold you need to enter it but the second it is derived
+
+Most developer will work with a single organisation though, and atleast all developers will work with one organisation at a time so switching context makes sense also
+
+---
+
+yes implement it on the current branch. Do not push. One note though. A component can only belong to a single organization so I am not sure we need []string?
