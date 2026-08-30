@@ -1,0 +1,43 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "2cda6b6613ef",
+  "session_id": "5b2f21e6-3610-4346-8d05-6e35b3d2d7d9",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-30T06:42:01.91251Z",
+  "branch": "release/v1",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".goreleaser.yaml",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "README.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "d9972b980e3a",
+  "checkpoint_transcript_start": 121,
+  "transcript_lines_at_start": 121,
+  "compact_transcript_start": 16,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-30T06:42:01.898039Z",
+    "agent_lines": 107,
+    "agent_removed": 19,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 107,
+    "total_lines_changed": 126,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
