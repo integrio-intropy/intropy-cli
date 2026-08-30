@@ -2009,3 +2009,264 @@ body {
   flex: 1;
   min-width: 0;
 }
+
+/* Tracing tab — traces proxied from the running system's Aspire dashboard. */
+.tracing {
+  max-width: 1200px;
+}
+
+.tracing-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.tracing-toolbar-label {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.tracing-search {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 6px 10px;
+  min-width: 220px;
+}
+
+.tracing-errors-only {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.tracing-unavailable {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 18px 20px;
+  max-width: 640px;
+}
+
+.tracing-hint {
+  color: var(--text-muted);
+  margin-bottom: 0;
+}
+
+.tracing-list {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.tracing-list th,
+.tracing-list td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.tracing-list th {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.tracing-row {
+  cursor: pointer;
+}
+
+.tracing-row:hover td {
+  background: var(--surface-2);
+}
+
+.tracing-row.selected td {
+  background: var(--accent-soft);
+}
+
+.tracing-row.has-error .tracing-name {
+  color: var(--danger);
+}
+
+.tracing-name {
+  font-weight: 600;
+}
+
+.tracing-services {
+  color: var(--text-muted);
+}
+
+/* Trace detail: waterfall + span panel. */
+.trace-detail {
+  margin-top: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 16px 20px;
+}
+
+.trace-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.trace-detail-title {
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+.trace-detail-close {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.trace-waterfall {
+  display: flex;
+  flex-direction: column;
+}
+
+.trace-wf-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: none;
+  background: none;
+  color: var(--text);
+  padding: 3px 0;
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+}
+
+.trace-wf-row.selected {
+  background: var(--accent-soft);
+}
+
+.trace-wf-label {
+  flex: 0 0 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-wf-service {
+  color: var(--accent);
+  margin-right: 8px;
+  font-size: 12px;
+}
+
+.trace-wf-bar-track {
+  flex: 1 1 auto;
+  position: relative;
+  height: 14px;
+  background: var(--surface-2);
+  border-radius: 4px;
+}
+
+.trace-wf-bar {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  border-radius: 3px;
+  background: var(--accent);
+  min-width: 2px;
+}
+
+.trace-wf-bar.error {
+  background: var(--danger);
+}
+
+.trace-wf-duration {
+  flex: 0 0 72px;
+  text-align: right;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.span-panel {
+  margin-top: 14px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.span-panel-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.span-panel-facts {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 2px 10px;
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+
+.span-panel-facts dt {
+  color: var(--text-muted);
+}
+
+.span-panel-facts dd {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.span-error {
+  color: var(--danger);
+}
+
+.span-attrs {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.span-attrs td {
+  padding: 3px 8px 3px 0;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.span-attrs td:first-child {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.span-events-title {
+  font-weight: 600;
+  margin: 10px 0 6px;
+  font-size: 13px;
+}
+
+.span-event {
+  border-left: 2px solid var(--border);
+  padding: 4px 10px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.span-event-name {
+  font-weight: 600;
+}
+
+.span-event-attr {
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
