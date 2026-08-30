@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/huandu/xstrings"
+	"github.com/integrio-intropy/intropy-cli/internal/config"
 	"github.com/integrio-intropy/intropy-cli/internal/system"
 	"github.com/integrio-intropy/intropy-cli/internal/template"
 	"github.com/spf13/cobra"
@@ -82,6 +83,7 @@ var intCreateCmd = &cobra.Command{
 		for _, w := range warnings {
 			printWarning(stderr, w)
 		}
+		seedOrganization(facts)
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 		if err := template.Create(ctx, template.CreateOptions{
@@ -105,6 +107,20 @@ var intCreateCmd = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+// seedOrganization feeds the resolved config's organization into the
+// facts as the ambient default. A workspace whose records already agree
+// on an organization keeps its own — specific beats ambient. A config
+// that cannot be read contributes nothing rather than failing the
+// create: a missing config file is the common case, and the prompt is
+// the fallback the fact would have spared.
+func seedOrganization(facts *template.WorkspaceFacts) {
+	cfg, err := config.Load()
+	if err != nil {
+		return
+	}
+	facts.SetOrganization(cfg.Resolve(config.Flags{}).Organization)
 }
 
 // workspaceRootOf derives the directory whose scaffold records feed

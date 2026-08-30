@@ -7,8 +7,9 @@ package template
 //
 // The registry is CLI-owned convention, not manifest schema: it mirrors
 // the value names the block templates record (topic, pubsub, contract —
-// the same names internal/system's block parsers assemble from). A
-// template whose parameters use other names simply gets no suggestions.
+// the same names internal/system's block parsers assemble from — plus
+// organization, which the records carry without assembling). A template
+// whose parameters use other names simply gets no suggestions.
 //
 // Ports are deliberately absent: every block needs its own port (system
 // assembly rejects a shared one), so an already-taken port name is an
@@ -40,6 +41,14 @@ func Suggest(fields []FieldSpec, facts *WorkspaceFacts, confirmed map[string]any
 // registry stays a flat name-to-rule table.
 func suggestField(f FieldSpec, facts *WorkspaceFacts, confirmed map[string]any) []string {
 	switch f.Name {
+	case KeyOrganization:
+		// One organization or none: a component belongs to exactly one, so
+		// a conflicted workspace suggests nothing rather than listing
+		// candidates that cannot all be right.
+		if org, ok := facts.Organization(); ok {
+			return []string{org}
+		}
+		return nil
 	case KeyTopic:
 		topics := make([]string, 0, len(facts.TopicKeys))
 		for _, key := range facts.TopicKeys {

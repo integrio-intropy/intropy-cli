@@ -14,6 +14,37 @@ import (
 	"github.com/integrio-intropy/intropy-cli/internal/template"
 )
 
+func TestSeedOrganization(t *testing.T) {
+	t.Run("config organization seeds an empty fact index", func(t *testing.T) {
+		withConfig(t, "organization: integrio\n")
+		facts := template.BuildWorkspaceFacts(nil)
+		seedOrganization(facts)
+		if got, ok := facts.Organization(); !ok || got != "integrio" {
+			t.Fatalf("organization = %q, %v", got, ok)
+		}
+	})
+
+	t.Run("workspace records beat the config", func(t *testing.T) {
+		withConfig(t, "organization: integrio\n")
+		facts := template.BuildWorkspaceFacts([]template.WorkspaceFactEntry{
+			{BlockKind: template.BlockKindExtractor, Values: map[string]any{"organization": "acme"}},
+		})
+		seedOrganization(facts)
+		if got, ok := facts.Organization(); !ok || got != "acme" {
+			t.Fatalf("organization = %q, %v", got, ok)
+		}
+	})
+
+	t.Run("no config file leaves the fact unset", func(t *testing.T) {
+		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+		facts := template.BuildWorkspaceFacts(nil)
+		seedOrganization(facts)
+		if got, ok := facts.Organization(); ok || got != "" {
+			t.Fatalf("organization = %q, %v", got, ok)
+		}
+	})
+}
+
 func TestResolveCreateName(t *testing.T) {
 	t.Run("name only defaults output and sets name", func(t *testing.T) {
 		sets := map[string]any{}

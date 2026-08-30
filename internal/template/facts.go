@@ -19,7 +19,8 @@ type TopicKey struct {
 
 // WorkspaceFacts is the prompt-time view of what a workspace's scaffold
 // records already declare: the topics in use, the contract each carries,
-// and the external ports already named. Create flows derive parameter
+// and the external ports already named, plus the one organization the
+// records agree on. Create flows derive parameter
 // suggestions from it; it is built by callers that scan workspaces
 // (internal/system) and consumed read-only by value resolution.
 //
@@ -34,10 +35,35 @@ type WorkspaceFacts struct {
 	// lexicographically.
 	Ports []string
 
+	// organization is the single organization the workspace's block records
+	// declare. Records naming different organizations demote the fact — a
+	// component belongs to exactly one organization, so a workspace that
+	// disagrees with itself has nothing to suggest.
+	organization string
+
 	// contracts maps a topic key to its recorded contract type. A key whose
 	// records disagree on the contract is absent — a conflicted fact is no
 	// fact, and callers treat absence as "no suggestion".
 	contracts map[TopicKey]string
+}
+
+// Organization returns the organization the workspace's block records
+// agree on, or ("", false) when no record names one or they disagree.
+func (f *WorkspaceFacts) Organization() (string, bool) {
+	if f == nil || f.organization == "" {
+		return "", false
+	}
+	return f.organization, true
+}
+
+// SetOrganization seeds the organization fact when the workspace has none.
+// It is the caller's channel for context the records cannot carry — the
+// resolved config's customer — and it never overrides a workspace-derived
+// value: specific beats ambient. Call it before the facts feed Suggest.
+func (f *WorkspaceFacts) SetOrganization(org string) {
+	if f != nil && f.organization == "" {
+		f.organization = org
+	}
 }
 
 // ContractFor returns the contract type recorded for a topic key, or
@@ -69,9 +95,12 @@ type WorkspaceFactEntry struct {
 // deliberately lenient where Assemble is strict: entries with missing or
 // mistyped wiring values are skipped rather than reported, because a
 // suggestion aid must never fail an operation the records themselves would
-// still allow. The one cross-record rule it shares with Assemble is that
-// conflicting contracts on one topic key demote the contract — suggesting
-// either side of a conflict would bake a guess into the new record.
+// still allow. Organization is indexed from every entry with a block kind
+// — a component's organization is not wiring — under the same conflict
+// rule as contracts: one value wins, several demote the fact. The one
+// cross-record rule it shares with Assemble is that conflicting contracts
+// on one topic key demote the contract — suggesting either side of a
+// conflict would bake a guess into the new record.
 func BuildWorkspaceFacts(entries []WorkspaceFactEntry) *WorkspaceFacts {
 	facts := &WorkspaceFacts{contracts: map[TopicKey]string{}}
 	type contractSighting struct {
@@ -81,8 +110,22 @@ func BuildWorkspaceFacts(entries []WorkspaceFactEntry) *WorkspaceFacts {
 	sightings := map[TopicKey]*contractSighting{}
 	seenTopic := map[TopicKey]bool{}
 	seenPort := map[string]bool{}
+	orgSeen := false
+	orgConflicted := false
 
 	for _, e := range entries {
+		if e.BlockKind == "" {
+			continue
+		}
+		if org, ok := SoftValue(e.Values, KeyOrganization); ok {
+			switch {
+			case !orgSeen:
+				orgSeen = true
+				facts.organization = org
+			case facts.organization != org:
+				orgConflicted = true
+			}
+		}
 		switch e.BlockKind {
 		case BlockKindExtractor, BlockKindLoader:
 			topic, tok := SoftValue(e.Values, KeyTopic)
@@ -122,6 +165,9 @@ func BuildWorkspaceFacts(entries []WorkspaceFactEntry) *WorkspaceFacts {
 		}
 	}
 
+	if orgConflicted {
+		facts.organization = ""
+	}
 	for key, s := range sightings {
 		if !s.conflicted {
 			facts.contracts[key] = s.contract
@@ -136,3 +182,4 @@ func BuildWorkspaceFacts(entries []WorkspaceFactEntry) *WorkspaceFacts {
 	sort.Strings(facts.Ports)
 	return facts
 }
+

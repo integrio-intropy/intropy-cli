@@ -67,6 +67,60 @@ func TestSuggest(t *testing.T) {
 		}
 	})
 
+	t.Run("organization comes from the fact, one candidate or none", func(t *testing.T) {
+		withOrg := BuildWorkspaceFacts([]WorkspaceFactEntry{
+			{BlockKind: BlockKindExtractor, Values: map[string]any{"organization": "acme"}},
+		})
+		got := Suggest([]FieldSpec{reqField("organization")}, withOrg, nil)
+		if !reflect.DeepEqual(got["organization"], []string{"acme"}) {
+			t.Errorf("organization = %v", got["organization"])
+		}
+		got = Suggest([]FieldSpec{reqField("organization")}, facts, nil)
+		if len(got["organization"]) != 0 {
+			t.Errorf("facts with no organization should suggest nothing, got %v", got["organization"])
+		}
+	})
+
+	t.Run("a single organization prefills without prompting", func(t *testing.T) {
+		withOrg := BuildWorkspaceFacts([]WorkspaceFactEntry{
+			{BlockKind: BlockKindExtractor, Values: map[string]any{"organization": "acme"}},
+		})
+		tmpl := buildTemplate(map[string]any{
+			"type":     "object",
+			"required": []any{"organization"},
+			"properties": map[string]any{
+				"organization": map[string]any{"type": "string"},
+			},
+		}, []string{"organization"}, nil)
+		var notes bytes.Buffer
+		p := &fakePrompter{answers: map[string]any{}}
+		out, err := ResolveWith(tmpl, ResolveOptions{Facts: withOrg, Prompter: p, Notes: &notes})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if out["organization"] != "acme" {
+			t.Fatalf("organization = %v", out["organization"])
+		}
+		if len(p.seen) != 0 {
+			t.Fatalf("no prompts expected, got %v", p.seen)
+		}
+		want := "organization: acme (from workspace; override with --set organization=<value>)"
+		if !strings.Contains(notes.String(), want) {
+			t.Errorf("notes missing %q: %q", want, notes.String())
+		}
+	})
+
+	t.Run("a workspace default does not shadow the schema default", func(t *testing.T) {
+		withOrg := BuildWorkspaceFacts(nil)
+		withOrg.SetOrganization("acme")
+		f := reqField("organization")
+		f.Default = "acme"
+		got := Suggest([]FieldSpec{f}, withOrg, nil)
+		if len(got["organization"]) != 0 {
+			t.Errorf("candidate equal to the default should be dropped, got %v", got["organization"])
+		}
+	})
+
 	t.Run("unregistered parameter names get no suggestions", func(t *testing.T) {
 		got := Suggest([]FieldSpec{reqField("name"), reqField("appId")}, facts, nil)
 		if len(got) != 0 {
