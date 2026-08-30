@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/integrio-intropy/intropy-cli/internal/config"
 	"github.com/integrio-intropy/intropy-cli/internal/dashboard"
 	"github.com/spf13/cobra"
 )
@@ -50,10 +51,23 @@ var dashboardCmd = &cobra.Command{
 			OpenBrowser:     !dashboardOpts.noBrowser,
 			Version:         version,
 			TemplateVersion: dashboardOpts.templateVersion,
+			Organization:    resolvedOrganization(),
 			Stdout:          cmd.OutOrStdout(),
 			Stderr:          cmd.ErrOrStderr(),
 		})
 	},
+}
+
+// resolvedOrganization reads the config's organization for the
+// dashboard's template suggestions. A config that cannot be read yields
+// "": the dashboard serves workspaces without one, and template forms
+// simply offer no organization candidate.
+func resolvedOrganization() string {
+	cfg, err := config.Load()
+	if err != nil {
+		return ""
+	}
+	return cfg.Resolve(config.Flags{}).Organization
 }
 
 func init() {

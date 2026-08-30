@@ -150,10 +150,10 @@ func Create(ctx context.Context, opts CreateOptions) error {
 		return err
 	}
 	hostEntry := template.ScaffoldEntry{Path: opts.OutputDir, Scaffold: *record}
-	if model.ProjectName, err = stringValue(hostEntry, "projectName"); err != nil {
+	if model.ProjectName, err = template.RecordValue(hostEntry, template.KeyProjectName); err != nil {
 		return fmt.Errorf("template %s did not derive the host project name: %w", hostTemplate, err)
 	}
-	if model.SystemClass, err = stringValue(hostEntry, "systemClass"); err != nil {
+	if model.SystemClass, err = template.RecordValue(hostEntry, template.KeySystemClass); err != nil {
 		return fmt.Errorf("template %s did not derive the system class name: %w", hostTemplate, err)
 	}
 

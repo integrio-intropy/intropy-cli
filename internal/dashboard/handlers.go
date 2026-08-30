@@ -50,6 +50,11 @@ type apiServer struct {
 	dep       deployProvider
 	templates templatesProvider
 
+	// organization is the resolved config's customer, seeded into
+	// workspace facts as the ambient organization default when the
+	// workspace's own records name none.
+	organization string
+
 	// createMu serializes template create runs: two concurrent renders of the
 	// same name would race on the output directory, and each run downloads a
 	// library tarball. The same bargain depMu makes for the shared checkout.
@@ -268,7 +273,7 @@ func (s *apiServer) scan() (blocks []template.ScaffoldEntry, systems map[string]
 // (the template's `name` value, recorded at `sys create`), falling back to
 // the host's parent directory name.
 func systemName(host template.ScaffoldEntry) string {
-	if name, ok := host.Values["name"].(string); ok && name != "" {
+	if name, ok := template.SoftValue(host.Values, template.KeyName); ok {
 		return name
 	}
 	dir := filepath.Dir(host.Path)

@@ -581,6 +581,8 @@ spec:
       pubsub:
         type: string
         default: pubsub
+      organization:
+        type: string
 `
 
 func newTopicTemplateLibraryServer(t *testing.T, tag string) *httptest.Server {
@@ -659,6 +661,84 @@ func TestGetTemplateWithDirServesWorkspaceSuggestions(t *testing.T) {
 	if len(suggestions["pubsub"]) != 0 {
 		t.Errorf("pubsub suggestions = %v", suggestions["pubsub"])
 	}
+}
+
+func TestGetTemplateServesSeededOrganization(t *testing.T) {
+	srv := newTopicTemplateLibraryServer(t, "v1")
+	defer srv.Close()
+
+	root := t.TempDir()
+	systemDir := filepath.Join(root, "acme")
+	writeScaffoldRecord(t, filepath.Join(systemDir, "order-extractor"), extractorScaffoldRecord)
+	h := testHandlerWithOrg(t, root, templateProviders(srv.URL), "integrio")
+
+	rec := get(t, h, "/api/templates/topic-template?dir=acme")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	var got struct {
+		Fields []struct {
+			Name        string   `json:"name"`
+			Suggestions []string `json:"suggestions"`
+		} `json:"fields"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range got.Fields {
+		if f.Name == "organization" {
+			if len(f.Suggestions) != 1 || f.Suggestions[0] != "integrio" {
+				t.Fatalf("organization suggestions = %v", f.Suggestions)
+			}
+			return
+		}
+	}
+	t.Fatal("no organization field in response")
+}
+
+func TestGetTemplateWorkspaceOrganizationBeatsSeeded(t *testing.T) {
+	srv := newTopicTemplateLibraryServer(t, "v1")
+	defer srv.Close()
+
+	root := t.TempDir()
+	systemDir := filepath.Join(root, "acme")
+	record := strings.Replace(extractorScaffoldRecord,
+		`"contract": "Order"`, `"contract": "Order", "organization": "acme"`, 1)
+	writeScaffoldRecord(t, filepath.Join(systemDir, "order-extractor"), record)
+	h := testHandlerWithOrg(t, root, templateProviders(srv.URL), "integrio")
+
+	rec := get(t, h, "/api/templates/topic-template?dir=acme")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	var got struct {
+		Fields []struct {
+			Name        string   `json:"name"`
+			Suggestions []string `json:"suggestions"`
+		} `json:"fields"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range got.Fields {
+		if f.Name == "organization" {
+			if len(f.Suggestions) != 1 || f.Suggestions[0] != "acme" {
+				t.Fatalf("organization suggestions = %v", f.Suggestions)
+			}
+			return
+		}
+	}
+	t.Fatal("no organization field in response")
+}
+
+func testHandlerWithOrg(t *testing.T, root string, p providers, org string) http.Handler {
+	t.Helper()
+	h, api, err := newHandler(root, "test", p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	api.organization = org
+	return h
 }
 
 func TestGetTemplateWithDirConflictingContractsSuggestNoContract(t *testing.T) {

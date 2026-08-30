@@ -163,7 +163,7 @@ func matchScaffolds(components []topology.Component, scaffolds []template.Scaffo
 	byAppID := make(map[string]template.ScaffoldEntry, len(scaffolds))
 	for _, s := range scaffolds {
 		byDir[filepath.Base(s.Path)] = s
-		if id := scaffoldString(s, "appId"); id != "" {
+		if id, _ := template.SoftValue(s.Values, template.KeyAppID); id != "" {
 			byAppID[id] = s
 		}
 	}
@@ -191,16 +191,11 @@ func joinScaffolds(components []topology.Component, matched map[string]template.
 			continue
 		}
 		dirs[c.Name] = filepath.Base(match.Path)
-		if id := scaffoldString(match, "appId"); id != "" {
+		if id, _ := template.SoftValue(match.Values, template.KeyAppID); id != "" {
 			appIDs[c.Name] = id
 		}
 	}
 	return appIDs, dirs
-}
-
-func scaffoldString(s template.ScaffoldEntry, key string) string {
-	v, _ := s.Values[key].(string)
-	return v
 }
 
 // appIDOf resolves a component name to an app-id.

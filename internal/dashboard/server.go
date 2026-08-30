@@ -49,6 +49,10 @@ type Options struct {
 	// TemplateVersion pins the template library release the /api/templates
 	// endpoints fetch and render against. Empty resolves the latest release.
 	TemplateVersion string
+	// Organization is the resolved config's customer, offered as the
+	// ambient default for template organization parameters. A workspace
+	// whose records already agree on an organization keeps its own.
+	Organization string
 	// Stdout and Stderr receive program output and diagnostics; both default
 	// to the process streams when nil.
 	Stdout io.Writer
@@ -90,6 +94,7 @@ func Serve(ctx context.Context, opts Options) error {
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
+	api.organization = opts.Organization
 
 	addr := net.JoinHostPort(opts.Addr, fmt.Sprintf("%d", opts.Port))
 	ln, err := net.Listen("tcp", addr)

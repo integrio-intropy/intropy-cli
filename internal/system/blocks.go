@@ -38,15 +38,15 @@ func supportedKinds() []string {
 // port stays a valid component — it just gets no From/To in the generated
 // wiring.
 func parseTopicBlock(e template.ScaffoldEntry, c *Component) error {
-	topic, err := stringValue(e, "topic")
+	topic, err := template.RecordValue(e, template.KeyTopic)
 	if err != nil {
 		return err
 	}
-	contract, err := stringValue(e, "contract")
+	contract, err := template.RecordValue(e, template.KeyContract)
 	if err != nil {
 		return fmt.Errorf("%w\nRe-scaffold this integration with a template release that records the contract type, or add \"contract\": \"<TypeName>\" to the record's values.", err)
 	}
-	pubsub, err := stringValueDefault(e, "pubsub", "pubsub")
+	pubsub, err := template.RecordValueDefault(e, template.KeyPubsub, template.DefaultPubsub)
 	if err != nil {
 		return err
 	}
@@ -56,8 +56,8 @@ func parseTopicBlock(e template.ScaffoldEntry, c *Component) error {
 	// No fallback for the port: a default would describe a binding the
 	// rendered code doesn't use. A missing key is reported by the caller as
 	// a warning; a present one must be a non-empty string.
-	if _, ok := e.Values["port"]; ok {
-		port, err := stringValue(e, "port")
+	if _, ok := e.Values[template.KeyPort]; ok {
+		port, err := template.RecordValue(e, template.KeyPort)
 		if err != nil {
 			return err
 		}
@@ -73,11 +73,11 @@ func parseTopicBlock(e template.ScaffoldEntry, c *Component) error {
 // two ports, From before To, and no topic. Both ports are required — a
 // half-wired transactional block would render broken code.
 func parseTransactional(e template.ScaffoldEntry, c *Component) error {
-	from, err := stringValue(e, "fromPort")
+	from, err := template.RecordValue(e, template.KeyFromPort)
 	if err != nil {
 		return err
 	}
-	to, err := stringValue(e, "toPort")
+	to, err := template.RecordValue(e, template.KeyToPort)
 	if err != nil {
 		return err
 	}

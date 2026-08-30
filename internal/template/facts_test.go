@@ -136,6 +136,45 @@ func TestBuildWorkspaceFacts(t *testing.T) {
 		}
 	})
 
+	t.Run("agreeing records contribute one organization, whatever the block kind", func(t *testing.T) {
+		entries := []WorkspaceFactEntry{
+			factEntry(BlockKindExtractor, map[string]any{"topic": "orders", "contract": "Order", "organization": "acme"}),
+			factEntry(BlockKindLoader, map[string]any{"topic": "orders", "contract": "Order", "organization": "acme"}),
+			factEntry("system-host", map[string]any{"organization": "acme"}),
+		}
+		facts := BuildWorkspaceFacts(entries)
+		if got, ok := facts.Organization(); !ok || got != "acme" {
+			t.Fatalf("organization = %q, %v", got, ok)
+		}
+	})
+
+	t.Run("disagreeing records demote the organization", func(t *testing.T) {
+		entries := []WorkspaceFactEntry{
+			factEntry(BlockKindExtractor, map[string]any{"organization": "acme"}),
+			factEntry(BlockKindLoader, map[string]any{"organization": "globex"}),
+		}
+		facts := BuildWorkspaceFacts(entries)
+		if got, ok := facts.Organization(); ok || got != "" {
+			t.Fatalf("conflicted organization should demote, got %q, %v", got, ok)
+		}
+	})
+
+	t.Run("SetOrganization fills an unset fact and never overrides one", func(t *testing.T) {
+		facts := BuildWorkspaceFacts(nil)
+		facts.SetOrganization("acme")
+		facts.SetOrganization("globex")
+		if got, ok := facts.Organization(); !ok || got != "acme" {
+			t.Fatalf("organization = %q, %v", got, ok)
+		}
+		workspace := BuildWorkspaceFacts([]WorkspaceFactEntry{
+			factEntry(BlockKindExtractor, map[string]any{"organization": "globex"}),
+		})
+		workspace.SetOrganization("acme")
+		if got, ok := workspace.Organization(); !ok || got != "globex" {
+			t.Fatalf("workspace organization = %q, %v", got, ok)
+		}
+	})
+
 	t.Run("empty input yields an empty index", func(t *testing.T) {
 		facts := BuildWorkspaceFacts(nil)
 		if facts == nil || len(facts.TopicKeys) != 0 || len(facts.Ports) != 0 {
@@ -143,6 +182,9 @@ func TestBuildWorkspaceFacts(t *testing.T) {
 		}
 		if _, ok := facts.ContractFor(TopicKey{Pubsub: "p", Name: "t"}); ok {
 			t.Fatal("empty index should have no contracts")
+		}
+		if got, ok := facts.Organization(); ok || got != "" {
+			t.Fatalf("empty index should have no organization, got %q, %v", got, ok)
 		}
 	})
 }

@@ -266,6 +266,7 @@ func (s *apiServer) factsForDir(dir string) (*template.WorkspaceFacts, error) {
 		return nil, fmt.Errorf("directory %q does not exist under the workspace root", dir)
 	}
 	facts, _ := system.LoadWorkspaceFacts(abs)
+	facts.SetOrganization(s.organization)
 	return facts, nil
 }
 

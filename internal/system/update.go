@@ -244,7 +244,7 @@ func planUpdate(opts UpdateOptions) (*updatePlan, error) {
 		if !ok {
 			return nil, fmt.Errorf("%s: values.components entry has type %T, expected object", recordPath, c)
 		}
-		appID, _ := m["appId"].(string)
+		appID, _ := m[template.KeyAppID].(string)
 		if appID == "" {
 			return nil, fmt.Errorf("%s: values.components entry has no appId", recordPath)
 		}
@@ -307,31 +307,15 @@ func assembleCandidates(entries []template.ScaffoldEntry, warnf func(format stri
 // mergedComponentEntries appends each orphan's payload entry to the
 // record's stored component list. The stored entries pass through
 // untouched — that is what makes a vanished scaffold unable to remove its
-// component.
+// component. New entries come from ComponentEntry, the same builder the
+// sys create payload uses, so the stored shape and the payload shape can
+// never drift apart.
 func mergedComponentEntries(plan *updatePlan) ([]any, error) {
 	stored, _ := plan.baseline["components"].([]any)
 	merged := make([]any, 0, len(stored)+len(plan.orphans))
 	merged = append(merged, stored...)
 	for _, c := range plan.orphans {
-		entry := map[string]any{
-			"appId": c.AppID,
-			"kind":  c.Kind,
-		}
-		if c.Topic != nil {
-			entry["topic"] = map[string]any{
-				"pubsub": c.Topic.Pubsub,
-				"name":   c.Topic.Name,
-			}
-		}
-		switch len(c.Ports) {
-		case 0:
-		case 1:
-			entry["port"] = c.Ports[0]
-		default:
-			entry["fromPort"] = c.Ports[0]
-			entry["toPort"] = c.Ports[1]
-		}
-		merged = append(merged, entry)
+		merged = append(merged, ComponentEntry(c))
 	}
 	return merged, nil
 }
@@ -353,8 +337,8 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 		if !ok {
 			return fmt.Errorf("%s: values.topics entry has type %T, expected object", recordPath, t)
 		}
-		pubsub, _ := m["pubsub"].(string)
-		name, _ := m["name"].(string)
+		pubsub, _ := m[template.KeyPubsub].(string)
+		name, _ := m[template.KeyName].(string)
 		seenTopics[topicKey{pubsub, name}] = true
 		topics = append(topics, t)
 	}
@@ -367,30 +351,32 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 		if !ok {
 			return fmt.Errorf("%s: values.ports entry has type %T, expected object", recordPath, p)
 		}
-		name, _ := m["name"].(string)
+		name, _ := m[template.KeyName].(string)
 		seenPorts[name] = true
 		ports = append(ports, p)
 	}
 
 	// Each orphan contributes the wiring its scaffold record declared;
 	// Assemble already deduplicated and cross-checked these against every
-	// other scanned scaffold.
+	// other scanned scaffold. The map literals are the stored shape the
+	// system-host template ranges over; the key constants name the same
+	// vocabulary the records carry.
 	for _, c := range plan.orphans {
 		if c.Topic != nil {
 			key := topicKey{c.Topic.Pubsub, c.Topic.Name}
 			if !seenTopics[key] {
 				seenTopics[key] = true
 				topics = append(topics, map[string]any{
-					"pubsub":   c.Topic.Pubsub,
-					"name":     c.Topic.Name,
-					"contract": c.topicContract,
+					template.KeyPubsub:   c.Topic.Pubsub,
+					template.KeyName:     c.Topic.Name,
+					template.KeyContract: c.topicContract,
 				})
 			}
 		}
 		for _, p := range c.Ports {
 			if !seenPorts[p] {
 				seenPorts[p] = true
-				ports = append(ports, map[string]any{"name": p})
+				ports = append(ports, map[string]any{template.KeyName: p})
 			}
 		}
 	}
@@ -428,7 +414,7 @@ func warnTopologyDrift(ctx context.Context, opts UpdateOptions, plan *updatePlan
 	var missing []string
 	for _, c := range mergedComponents {
 		m := c.(map[string]any)
-		appID, _ := m["appId"].(string)
+		appID, _ := m[template.KeyAppID].(string)
 		if !graphed[appID] {
 			missing = append(missing, appID)
 		}
@@ -447,9 +433,12 @@ func maybeWriteUpdateResult(opts UpdateOptions, plan *updatePlan, added []string
 	if err != nil {
 		absHost = plan.hostDir
 	}
+	// System reads soft: writing the JSON result must never fail the
+	// command — by the time it runs, the host record is already rewritten.
+	systemName, _ := template.SoftValue(prep.Values, template.KeyName)
 	result := UpdateResult{
 		HostDir:  absHost,
-		System:   prep.Values["name"].(string),
+		System:   systemName,
 		Added:    added,
 		Kept:     plan.kept,
 		Files:    outcomes,
