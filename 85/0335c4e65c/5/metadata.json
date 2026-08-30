@@ -1,0 +1,70 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "850335c4e65c",
+  "session_id": "01a051df-bc7f-7486-940d-7a18b439d2a6",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-30T10:19:31.753728Z",
+  "branch": "refactor/wiring-vocabulary",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "internal/dashboard/handlers.go",
+    "internal/template/facts.go",
+    "internal/template/suggest.go"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "b3faed570778",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 31535,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 244096,
+    "output_tokens": 7482,
+    "api_call_count": 12
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-30T10:19:31.738983Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 145,
+    "human_modified": 97,
+    "human_removed": 0,
+    "total_committed": 145,
+    "total_lines_changed": 345,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 557,
+      "user_lines_removed": 6,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "cmd/intropy/dashboard.go": 14,
+        "cmd/intropy/int_create.go": 16,
+        "cmd/intropy/int_create_test.go": 31,
+        "docs/plans/wiring-vocabulary-consolidation.md": 188,
+        "internal/dashboard/handlers.go": 5,
+        "internal/dashboard/server.go": 5,
+        "internal/dashboard/templates.go": 1,
+        "internal/dashboard/templates_test.go": 80,
+        "internal/template/facts.go": 50,
+        "internal/template/facts_test.go": 42,
+        "internal/template/suggest.go": 11,
+        "internal/template/suggest_test.go": 54
+      },
+      "user_removed_per_file": {
+        "internal/template/facts.go": 4,
+        "internal/template/suggest.go": 2
+      }
+    }
+  ]
+}
