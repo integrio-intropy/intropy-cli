@@ -1,0 +1,54 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "5ef28eb621c6",
+  "session_id": "01a0516d-415a-79e2-8865-d07950313b91",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-30T07:12:41.210542Z",
+  "branch": "release/v1",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "cmd/intropy/preview.go",
+    "cmd/intropy/root.go",
+    "cmd/intropy/dashboard.go",
+    "cmd/intropy/preview_test.go"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "98e7e47fec91",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 23028,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 356992,
+    "output_tokens": 8485,
+    "api_call_count": 21
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-30T07:12:41.195104Z",
+    "agent_lines": 146,
+    "agent_removed": 5,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 146,
+    "total_lines_changed": 151,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    }
+  ]
+}
