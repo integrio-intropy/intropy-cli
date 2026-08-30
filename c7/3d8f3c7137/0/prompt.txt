@@ -1,11 +1,3 @@
-I want to create a new release branch for v1. The first thing I want to do is getting rid of all plans, brainstorms, playbooks and any other docs other than the README. Those things are nice and we should keep them in another branch off main but they should not be in this branch (which will be merged with main soon). Do not push anything
-
----
-
-I want to create a new release branch for v1. The first thing I want to do is getting rid of all plans, brainstorms, playbooks and any other docs other than the README. Those things are nice and we should keep them in another branch off main but they should not be in this branch (which will be merged with main soon). Do not push anything
-
----
-
 1. Ok fine!
 2. OK!
 3. OK!
