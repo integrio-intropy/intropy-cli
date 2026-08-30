@@ -3,7 +3,7 @@
   "checkpoint_id": "e6e07e4b972c",
   "strategy": "manual-commit",
   "branch": "refactor/wiring-vocabulary",
-  "checkpoints_count": 6,
+  "checkpoints_count": 7,
   "files_touched": [
     "cmd/intropy/dashboard.go",
     "cmd/intropy/int_create.go",
@@ -31,6 +31,13 @@
       "compact_transcript": "/e6/e07e4b972c/1/transcript.jsonl",
       "content_hash": "/e6/e07e4b972c/1/content_hash.txt",
       "prompt": "/e6/e07e4b972c/1/prompt.txt"
+    },
+    {
+      "metadata": "/e6/e07e4b972c/2/metadata.json",
+      "transcript": "/e6/e07e4b972c/2/full.jsonl",
+      "compact_transcript": "/e6/e07e4b972c/2/transcript.jsonl",
+      "content_hash": "/e6/e07e4b972c/2/content_hash.txt",
+      "prompt": "/e6/e07e4b972c/2/prompt.txt"
     }
   ],
   "token_usage": {
