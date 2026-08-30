@@ -1,0 +1,109 @@
+Do not make any changes. Looking at this cli tool and what it does do you have any suggestions on what the next feature we should build should be
+
+---
+
+<task-notification>
+<task-id>a625b9ee8ab8039c8</task-id>
+<tool-use-id>toolu_015NZgbTfNJbPooLDPS93uwG</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-tooling-intropy-cli/5b2f21e6-3610-4346-8d05-6e35b3d2d7d9/tasks/a625b9ee8ab8039c8.output</output-file>
+<status>completed</status>
+<summary>Agent "Map CLI command surface and gaps" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Findings below. Repo root: `/Users/robinhultman/dev/intropy/tooling/intropy-cli`.
+
+## 1. Cobra command tree (cmd/intropy)
+
+Root: `intropy` — "Intropy CLI". Persistent flags: `--no-color`, `-C/--directory`. `SilenceUsage`/`SilenceErrors` on; `Execute()` prints `error: …`.
+
+```
+intropy
+├── int                    Manage integrations                                   (int.go)
+│   ├── create &lt;template&gt;  Create a new integration                              (int_create.go)
+│   ├── show [dir]         Show the integration scaffolded at a directory        (int_show.go)
+│   ├── list [dir]         List scaffolded integrations under a directory        (int_list.go)
+│   ├── describe &lt;tmpl&gt;    Describe an Intropy template            [HIDDEN]      (int_describe.go)
+│   └── local &lt;system&gt;     Render a system's manifests for the local development cluster  [HIDDEN] (int_local.go)
+├── template               Inspect the Intropy template library                  (template.go)
+│   ├── list               List the templates in the Intropy template library    (template_list.go)
+│   └── show &lt;template&gt;    Show a template's manifest and parameter schema       (template_show.go)
+├── sys                    Manage integration systems                            (sys.go)
+│   ├── create             Assemble scaffolded integrations into a system host   (sys_create.go)
+│   └── update             Fold orphaned components into the system host         (sys_update.go)
+├── manifests              Inspect, render, and create Kubernetes manifests      (manifests.go)
+│   ├── inspect            Inspect the deployment model derived from a system topology (manifests_inspect.go)
+│   ├── render             Render a system's Kubernetes manifests as YAML        (manifests_render.go)
+│   └── create             Create missing manifests on a GitOps review branch    (manifests_create.go)
+├── deploy                 Move components between environments via the GitOps repository (deploy.go — pure parent)
+│   ├── pin &lt;component&gt; [version]  Pin a component's image digest into an environment   (deploy_pin.go)
+│   ├── promote &lt;component&gt;        Copy the digests one environment runs into another   (deploy_promote.go)
+│   ├── diff &lt;component&gt;           Show the rendered change a sync would apply          (deploy_diff.go)
+│   ├── status &lt;component&gt;         Show what every environment runs, side by side       (deploy_status.go)
+│   └── sync &lt;component&gt;           Apply an environment's pending change through ArgoCD (deploy_sync.go)
+├── release                Publish and inspect immutable release manifests       (release.go)
+│   ├── create &lt;component&gt;         Publish an immutable release manifest         (release_create.go)
+│   ├── list &lt;component&gt;           List the releases published for a component   (release_list.go)
+│   └── show &lt;component&gt; &lt;version&gt; Read a published release manifest             (release_show.go)
+├── dashboard [dir]        Launch the local integration dashboard                (dashboard.go; flags -p/--port 8730, --no-browser, --template-version)
+└── version                Print version information                             (version.go)
+```
+
+Notes:
+- Only two hidden commands: `int describe`, `int local`. No `Deprecated:` and no "experimental/preview/alpha" markers anywhere in cmd/.
+- **There is no `config` or `context` command** — it is planned only (see §2). `internal/config` exists as a library (config file load/resolve), consumed just by `cmd/intropy/template_repo.go` for `--template-repo` / `INTROPY_TEMPLATE_REPO` / `templateRepo`.
+- Doc drift: `README.md:142-172` "Command overview" lists `release view` (code has `release show`) and omits `sys update`.
+
+## 2. Recorded gaps, deferred work, follow-ups
+
+`/Users/robinhultman/dev/intropy/tooling/intropy-cli/docs/plans/2026-01-15-001-feat-config-contexts-plan.md` (+ its origin brainstorm `docs/brainstorms/2026-01-config-contexts-requirements.md`) — both **untracked** (`git status`: `?? docs/brainstorms/`, `?? docs/plans/2026-01-15-…`), i.e. the biggest unimplemented plan in the repo:
+- Whole feature unbuilt: `contexts:` map + `currentContext:` in `~/.config/intropy/config.yaml` and an `intropy context use|list|show` command group.
+- Deferred: wiring `organization` into `int create` / `sys create` scaffold defaults — "separate PR once the storage mechanism lands".
+- Deferred: `--context` flag / `INTROPY_CONTEXT` per-invocation override — "additive later if requested".
+- Out of scope: repo-level/project-level config file; CLI creation or editing of contexts (hand-authored only).
+- Deferred to implementation: helper names / line-scanning vs regexp in `SetCurrentContext`.
+
+`docs/plans/deploy-show-command.md` — plan for `intropy deploy show` ("describe the GitOps repository, and surface it on the dashboard"). **Not implemented**: no `cmd/intropy/deploy_show.go`, no `internal/deploy/show.go`. Explicitly out of scope in the plan: ArgoCD liveness enrichment (that stays `deploy status`'s job). Also specifies dashboard backend + `web/src/` frontend work.
+
+`docs/plans/2026-02-10-001-refactor-template-owned-contracts-decision-plan.md` (let the system-host template own the contracts decision):
+- Phase 2 (template-library side) lives in the *templates* repo; conditional-dependency (`when` on `spec.dependencies`) engine support may need to land here first as its own PR.
+- Deferred decision: field-collision detection after moving derivations into templates — template-side `fail` vs CLI keeping a raw-name uniqueness pre-check (fallback documented, risk table line 537).
+- Out of scope: no change to extractor/loader/transactional rendered C#; no change to `int create` scaffolding; `--output-json` schema changes additive only.
+
+`docs/plans/2026-08-15-001-feat-sys-update-orphaned-components-plan.md` (`sys update`, implemented):
+- **No deletion, ever** — removing a declared component is "a separate, future command's job"; reverse orphans only get a note.
+- Existing-component drift is surfaced as a conflict error, not reconciled; `--force` is the escape hatch.
+- Deferred to implementation: update-mode render option signature / `Outcome` type; how scan-root reads the host location; whether drift gets its own stderr note; advisory-check comparison granularity (component-name set vs deeper wiring).
+
+`PLAN-cli-consistency.md` (root, mostly ✅ DONE) — remaining/open items:
+- #8 `--from`/`--to` vs `--env` shorthand asymmetry in `deploy promote` — "No fix needed", intentional.
+- #9 `skills collection add` flags vs positional parity — optional.
+- Stale: this file inventories `skills …` and `deploy init` commands that no longer exist in the tree; treat it as a historical audit, not a live roadmap.
+
+`AGENTS.md` — policy: "No TODO, FIXME, HACK, or XXX in committed code. File an issue instead." Consistent with the grep: zero TODO/FIXME markers in Go source. So gaps live in docs/plans and in GitHub issues, not in code.
+
+`README.md` / `CONTRIBUTING.md` — no roadmap/known-issues section beyond the Troubleshooting table (`README.md:1117`, 3 rows: template-not-found, `deploy diff` revision render, Windows native unsupported → WSL 2 only). No ROADMAP.md / TODO.md in the repo. `internal/registry/registrytest/registrytest.go` notes pagination is deliberately not implemented (test double).
+
+## 3. What `feature/flow-slot-create` adds
+
+`git diff --stat main...HEAD`: 45 files, +6439/−342. Commits (all `Entire-Checkpoint` trailers): "New flow gui", "Sync host", "Start stop system", "Test seeding", "Fix dash", "Derived facts", "Derive outputdir".
+
+It turns the dashboard's flow view from read-only into a **build-and-run surface**, plus a suggestion engine shared with the CLI:
+- **Create from the flow view**: new `web/src/components/CreateDrawer.tsx`, `form.tsx`, `useTemplateFields.ts`; API `POST /api/templates/{name}/create` and `GET /api/templates/suggestions/{name}` (`internal/dashboard/templates.go`).
+- **Sync/assemble the host from the UI**: `internal/dashboard/systems.go` + `POST /api/systems/{path...}` running `sys create` / `sys update` (with `force` for diverged declarations).
+- **Start/stop the system locally**: `internal/dashboard/run.go` supervises `dotnet run` per host, with a log tail and process-group kill; `GET/POST/DELETE /api/run/{path...}`; children are parented to dashboard lifetime and shut down on drain.
+- **Test-file seeding**: `internal/dashboard/testdata.go` + `SeedDrawer.tsx`, `GET /api/testdata/{path...}` and `POST /api/seed`, copying committed `testdata/&lt;port&gt;/` samples into the localstorage dev inbox `test/&lt;port&gt;` derived from `graph --development`; documented in the new README section "Seeding test files from the dashboard".
+- **Prompt-time workspace facts / suggestions**: `internal/template/facts.go`, `suggest.go`, `internal/system/facts.go` — scaffold records across a workspace index topics/contracts/ports and feed both `int create` prompts and the dashboard drawer; plus `int create` now derives the output dir from the resolved kebab-cased `name` when neither `-n` nor `-o` is given (`cmd/intropy/int_create.go`, README lines ~206).
+
+## 4. Test-coverage picture
+
+Package-level: **every non-helper package has `_test.go` files.** The only Go packages with zero tests are deliberate test doubles/helpers: `internal/gittest`, `internal/gitops/gitopstest`, `internal/registry/registrytest`.
+
+Ratio of source files to test files per package: `cmd/intropy` 50/17, `internal/deploy` 50/26, `internal/template` 38/19, `internal/dashboard` 22/9, `internal/release` 15/6, `internal/registry` 14/5, `internal/system` 13/6, `internal/gitops` 10/6, `internal/argocd` 8/4, `internal/kustomize` 4/2, `internal/git` 4/3, `internal/source` 5/3, `internal/topology` 3/1, `internal/config` 2/1, `internal/command` 2/1, `internal/interactive` 2/1.
+
+Source files with **no sibling `_test.go`** (thinnest spots; some are covered by sibling-package tests):
+- `internal/registry`: `index.go`, `pull.go`, `push.go`, `resolve.go`, `types.go` — the largest untested-by-file cluster (5 of 14).
+- `internal/deploy`: `manifests.go`, `manifests_engine.go`, `manifests_local.go`, `ports.go`, `request.go`, `result.go`, `session.go`, `snapshot.go`.
+- `internal/dashboard`: `browser.go`, `handlers.go`, `server.go`, `static.go`, `topology.go` (covered indirectly via `dashboard_test.go`).
+- `internal/release`: `render.go`, `request.go`, `target.go`; `internal/argocd`: `client.go`, `session_token.go`; `internal/system`: `blocks.go`, `model.go`; `internal/template`: `prepare.go`, `doc.go`; `internal/topology`: `graph.go`.
+- `cmd/intropy`: no per-command test for `dashboard.go` (has `dashboard_cmd_test.go` actually), `deploy_pin.go`, `manifests_*` (covered by `manifests_test.go`), `release_create/list/show` (covered by `release_test.go`), `template_list.go`, `template_show.go`, `int_describe.go`, `int_local.go`, `version.go`, `errors.go`, `flagtext.go`. Genuinely untested commands: `int describe`, `int local` (both hidden), `template list`/`template show`, `version`, `deploy pin` (only via `deploy_test.go`).</result>
+<usage><subagent_tokens>47628</subagent_tokens><tool_uses>17</tool_uses><duration_ms>121631</duration_ms></usage>
+</task-notification>
