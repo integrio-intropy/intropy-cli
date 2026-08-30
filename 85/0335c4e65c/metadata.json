@@ -3,7 +3,7 @@
   "checkpoint_id": "850335c4e65c",
   "strategy": "manual-commit",
   "branch": "refactor/wiring-vocabulary",
-  "checkpoints_count": 14,
+  "checkpoints_count": 15,
   "files_touched": [
     "internal/dashboard/handlers.go",
     "internal/template/facts.go",
@@ -37,13 +37,20 @@
       "compact_transcript": "/85/0335c4e65c/3/transcript.jsonl",
       "content_hash": "/85/0335c4e65c/3/content_hash.txt",
       "prompt": "/85/0335c4e65c/3/prompt.txt"
+    },
+    {
+      "metadata": "/85/0335c4e65c/4/metadata.json",
+      "transcript": "/85/0335c4e65c/4/full.jsonl",
+      "compact_transcript": "/85/0335c4e65c/4/transcript.jsonl",
+      "content_hash": "/85/0335c4e65c/4/content_hash.txt",
+      "prompt": "/85/0335c4e65c/4/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 205723,
+    "input_tokens": 237676,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 7979008,
-    "output_tokens": 48771,
-    "api_call_count": 150
+    "cache_read_tokens": 8280960,
+    "output_tokens": 56990,
+    "api_call_count": 162
   }
 }
