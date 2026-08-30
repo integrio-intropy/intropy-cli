@@ -1,0 +1,10 @@
+can you remove the "templates" tab from the intropy dashboard? Since we are creating
+components from the flow view now we do not need the templates tab. Do not push anything
+
+---
+
+While we are at it we should change the text of the button used to run the scaffolding in the integration flow view. It is "int create" now but perhaps we should have something like Scaffold instead?
+
+---
+
+Can you merge the changes into the release/v1 branch?

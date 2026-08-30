@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "c4fb52b530c7",
+  "strategy": "manual-commit",
+  "branch": "fix/cli-review-v1",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "web/src/App.tsx",
+    "web/src/components/CreateDrawer.tsx",
+    "web/src/components/TemplatesView.tsx",
+    "web/src/components/form.tsx",
+    "web/src/index.css"
+  ],
+  "sessions": [
+    {
+      "metadata": "/c4/fb52b530c7/0/metadata.json",
+      "transcript": "/c4/fb52b530c7/0/full.jsonl",
+      "compact_transcript": "/c4/fb52b530c7/0/transcript.jsonl",
+      "content_hash": "/c4/fb52b530c7/0/content_hash.txt",
+      "prompt": "/c4/fb52b530c7/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 33181,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 546752,
+    "output_tokens": 5295,
+    "api_call_count": 30
+  }
+}
