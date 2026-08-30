@@ -1,8 +1,1 @@
-1. Ok fine!
-2. OK!
-3. OK!
-4. Yes
-
----
-
 Next thing I want to do is switch to a FSL license with Apache 2. Similar to ~/dev/intropy/integrio-intropy/intropy-framework/ on the v1 release branch. Still do not push anything
