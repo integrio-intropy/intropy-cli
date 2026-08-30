@@ -1094,3 +1094,7 @@ and the pull request workflow.
 - [`integrio-intropy/intropy-templates`](https://github.com/integrio-intropy/intropy-templates)
   — the template library `intropy int create` and `intropy template`
   download from by default.
+
+## License
+
+[FSL-1.1-ALv2](LICENSE) © Integrio — Functional Source License, converting to Apache 2.0 two years after each release.
