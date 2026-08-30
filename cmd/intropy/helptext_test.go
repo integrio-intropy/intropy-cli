@@ -76,7 +76,7 @@ func TestHelpTextCommandVerbsAreDocumented(t *testing.T) {
 	documentedVerbs := map[string]bool{
 		"list": true, "show": true, "status": true, "diff": true, "inspect": true, "render": true,
 		"create": true, "add": true, "update": true, "init": true,
-		"publish": true, "pin": true, "promote": true, "sync": true,
+		"publish": true, "pin": true, "promote": true, "sync": true, "use": true,
 	}
 	// Nouns, command groups, and standalone commands that are not verbs and
 	// so are not governed by the AGENTS.md verb table.
@@ -84,6 +84,9 @@ func TestHelpTextCommandVerbsAreDocumented(t *testing.T) {
 		"intropy": true, "int": true, "template": true,
 		"deploy": true, "manifests": true, "release": true, "sys": true,
 		"version": true, "dashboard": true,
+		// Command group for customer contexts; its subcommands (use, list,
+		// show) are documented verbs.
+		"context": true,
 		// Hidden stubs kept so old muscle memory gets a pointer, not an
 		// unknown-command error; see int_describe.go and int_local.go.
 		"describe": true, "local": true,

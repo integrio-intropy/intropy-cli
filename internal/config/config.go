@@ -6,11 +6,14 @@
 // working directory (.intropy/scaffold.json); this package is
 // only for the single per-user file.
 //
-// Precedence is flag > environment > file > zero. The file is optional: a
-// missing one yields the zero Config, because a user who passes every setting
-// on the command line should never be told to create a config file. A file
-// that exists but cannot be parsed is an error — silently ignoring it would
-// mean a typo'd key looks exactly like a setting that was never set.
+// Precedence is flag > environment > active context > top-level keys. The
+// top-level keys are defaults that the active context overrides; a file with
+// no contexts behaves exactly as one written before contexts existed. The
+// file is optional: a missing one yields the zero Config, because a user who
+// passes every setting on the command line should never be told to create a
+// config file. A file that exists but cannot be parsed is an error —
+// silently ignoring it would mean a typo'd key looks exactly like a setting
+// that was never set.
 package config
 
 import (
@@ -21,6 +24,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -49,6 +54,10 @@ const (
 // Config is the on-disk file. Fields are optional; every one of them can also
 // be supplied by flag or environment variable.
 type Config struct {
+	// Organization names the customer or organisation the settings belong to.
+	// It has no consumer in this package; commands read the resolved value.
+	Organization string `yaml:"organization"`
+
 	// GitopsRepo is the clone URL of the GitOps repository that holds the
 	// deployment overlays.
 	GitopsRepo string `yaml:"gitopsRepo"`
@@ -61,11 +70,31 @@ type Config struct {
 	// TemplateRepo is the template library to scaffold from, as owner/repo on
 	// GitHub. Empty targets the official library.
 	TemplateRepo string `yaml:"templateRepo"`
+
+	// CurrentContext selects which entry of Contexts is active. It must name
+	// a key of Contexts; a dangling pointer is a load error, because
+	// resolving against the wrong customer is worse than refusing to run.
+	CurrentContext string `yaml:"currentContext"`
+
+	// Contexts bundles the settings that change together when the user
+	// changes customer. A context overrides only the top-level keys it sets;
+	// the rest fall through to the file's defaults.
+	Contexts map[string]Context `yaml:"contexts"`
+}
+
+// Context is one named bundle of customer-scoped settings. Every field is
+// optional; an unset field falls through to the file's top-level default.
+type Context struct {
+	Organization string `yaml:"organization"`
+	GitopsRepo   string `yaml:"gitopsRepo"`
+	ArgocdServer string `yaml:"argocdServer"`
+	TemplateRepo string `yaml:"templateRepo"`
 }
 
 // Flags carries the command-line values that take precedence over everything
 // else. Empty fields fall through to the environment and then the file.
 type Flags struct {
+	Organization string
 	GitopsRepo   string
 	ArgocdServer string
 	TemplateRepo string
@@ -131,17 +160,136 @@ func loadFile(path string) (Config, error) {
 		}
 		return Config{}, fmt.Errorf("parse %s: %w", path, err)
 	}
+	if err := cfg.validateCurrentContext(path); err != nil {
+		return Config{}, err
+	}
 	return cfg, nil
 }
 
-// Resolve layers flag values over the environment and then the file. The
-// result is what the command should actually use.
-func (c Config) Resolve(flags Flags) Config {
-	return Config{
-		GitopsRepo:   cmp.Or(flags.GitopsRepo, os.Getenv(EnvGitopsRepo), c.GitopsRepo),
-		ArgocdServer: cmp.Or(flags.ArgocdServer, os.Getenv(EnvArgocdServer), c.ArgocdServer),
-		TemplateRepo: cmp.Or(flags.TemplateRepo, os.Getenv(EnvTemplateRepo), c.TemplateRepo),
+// validateCurrentContext rejects a currentContext that names no entry of
+// Contexts. The check runs at load so every command reports it, not just the
+// ones that happen to read a context-backed setting.
+func (c Config) validateCurrentContext(path string) error {
+	if c.CurrentContext == "" {
+		return nil
 	}
+	if _, ok := c.Contexts[c.CurrentContext]; ok {
+		return nil
+	}
+	return UnknownContextError(path, c.CurrentContext, c.Contexts)
+}
+
+// UnknownContextError builds the message shared by load-time validation and
+// 'context use': one builder so the two texts cannot drift. The format
+// follows the house error voice — what failed on the first line, the valid
+// values on the second.
+func UnknownContextError(path, name string, contexts map[string]Context) error {
+	if len(contexts) == 0 {
+		return fmt.Errorf("currentContext %q does not exist in %s\nno contexts configured in %s", name, path, path)
+	}
+	names := make([]string, 0, len(contexts))
+	for n := range contexts {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return fmt.Errorf("currentContext %q does not exist in %s\nvalid contexts: %s", name, path, strings.Join(names, ", "))
+}
+
+// Resolve layers flag values over the environment, the active context, and
+// then the file's top-level defaults. The result is what the command should
+// actually use.
+func (c Config) Resolve(flags Flags) Config {
+	ctx := c.Contexts[c.CurrentContext]
+	return Config{
+		// Organization has no environment variable: it travels with the
+		// customer, so it lives in contexts and flags only.
+		Organization: cmp.Or(flags.Organization, ctx.Organization, c.Organization),
+		GitopsRepo:   cmp.Or(flags.GitopsRepo, os.Getenv(EnvGitopsRepo), ctx.GitopsRepo, c.GitopsRepo),
+		ArgocdServer: cmp.Or(flags.ArgocdServer, os.Getenv(EnvArgocdServer), ctx.ArgocdServer, c.ArgocdServer),
+		TemplateRepo: cmp.Or(flags.TemplateRepo, os.Getenv(EnvTemplateRepo), ctx.TemplateRepo, c.TemplateRepo),
+		// The resolved config answers "what am I pointed at"; the selection
+		// itself is not re-layered, so both travel through unchanged.
+		CurrentContext: c.CurrentContext,
+		Contexts:       c.Contexts,
+	}
+}
+
+// SetCurrentContext points the file at path at the named context, changing
+// nothing else. The write is a line-level text edit rather than a YAML
+// round-trip because the file is the user's: comments and key order must
+// survive. The file is re-parsed before editing so a write never lands on
+// contents this package would refuse to read, and the replacement goes
+// through a temporary file plus rename so a crash cannot leave the file
+// half-written. The file must already exist and contain the named context —
+// switching to a context that is not there is a caller error, not something
+// to fix by creating files.
+func SetCurrentContext(path, name string) error {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("no contexts configured in %s", path)
+		}
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+	cfg, err := loadFile(path)
+	if err != nil {
+		return err
+	}
+	if _, ok := cfg.Contexts[name]; !ok {
+		return UnknownContextError(path, name, cfg.Contexts)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("stat %s: %w", path, err)
+	}
+
+	edited := replaceCurrentContextLine(string(raw), name)
+
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".config-*.tmp")
+	if err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if _, err := tmp.WriteString(edited); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err := tmp.Chmod(info.Mode()); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	return nil
+}
+
+// currentContextLine matches a top-level currentContext mapping. The
+// column-0 anchor is load-bearing: the key is only meaningful at top level,
+// so an indented look-alike nested under another key must not match.
+var currentContextLine = regexp.MustCompile(`(?m)^currentContext:[^\n]*`)
+
+// replaceCurrentContextLine swaps the value of the top-level currentContext
+// key, preserving any trailing comment, or appends the key when the file
+// lacks one. Appending is the only always-safe anchor: inserting before the
+// contexts key would detach any comment block written directly above it.
+func replaceCurrentContextLine(text, name string) string {
+	replacement := "currentContext: " + name
+	if loc := currentContextLine.FindStringIndex(text); loc != nil {
+		line := text[loc[0]:loc[1]]
+		if i := strings.Index(line, "#"); i >= 0 {
+			replacement += " " + strings.TrimLeft(line[i:], " \t")
+		}
+		return text[:loc[0]] + replacement + text[loc[1]:]
+	}
+	if text != "" && !strings.HasSuffix(text, "\n") {
+		text += "\n"
+	}
+	return text + replacement + "\n"
 }
 
 // RequireGitopsRepo returns the resolved GitOps repository URL, or an error
