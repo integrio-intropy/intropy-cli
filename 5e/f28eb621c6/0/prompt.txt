@@ -1,5 +1,5 @@
-I am looking for a way to flag beta commands. I do not mean beta version of the whole cli. More that we ship commands that are not yet part of our golden path and we should flag that those commands are under evaluation and can be removed or have breaking changes in the future. Is this an uncommon way to do it? And how should we do the flagging?
+yes, could you do it on the current branch but do not push anything?
 
 ---
 
-yes, could you do it on the current branch but do not push anything?
+Perhaps we should call them previews instead of beta to not inherit the semantics associated to what a beta is?
