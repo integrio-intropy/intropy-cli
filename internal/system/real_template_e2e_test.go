@@ -161,12 +161,16 @@ func TestRealSystemHostDependencyWhen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tmpl.Spec.Dependencies) != 1 {
+	if len(tmpl.Spec.Dependencies) != 2 {
 		t.Fatalf("dependencies = %+v", tmpl.Spec.Dependencies)
 	}
 	dep := tmpl.Spec.Dependencies[0]
 	if dep.Template != "shared-contracts" || dep.When == "" {
 		t.Fatalf("dependency = %+v", dep)
+	}
+	seedDep := tmpl.Spec.Dependencies[1]
+	if seedDep.Template != "testdata" || seedDep.When == "" {
+		t.Fatalf("testdata dependency = %+v", seedDep)
 	}
 
 	// Evaluate the when expression against resolved payloads with the same
@@ -230,5 +234,53 @@ func TestRealSystemHostDependencyWhen(t *testing.T) {
 	}
 	if _, err := template.LoadTemplate(filepath.Join(lib, dep.Template, "template.yaml")); err != nil {
 		t.Fatalf("dependency template: %v", err)
+	}
+
+	// The testdata dependency renders for a port-bearing system and skips a
+	// port-less one; its port value comes from the first declared port.
+	evalSeed := func(payload map[string]any) string {
+		values, err := template.Resolve(tmpl, nil, nil, payload, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tt, err := texttemplate.New("when").Funcs(sprig.TxtFuncMap()).Option("missingkey=error").Parse(seedDep.When)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var sb strings.Builder
+		if err := tt.Execute(&sb, values); err != nil {
+			t.Fatal(err)
+		}
+		return sb.String()
+	}
+	portsPayload := map[string]any{
+		"name":       "order-flow",
+		"topics":     []any{},
+		"ports":      []any{map[string]any{"name": "order-extractor-source"}},
+		"components": []any{},
+	}
+	if got := evalSeed(portsPayload); got == "false" || got == "" {
+		t.Errorf("port-bearing system should render the testdata dependency, when = %q", got)
+	}
+	if got := evalSeed(noTopics); got != "false" {
+		t.Errorf("port-less system should skip the testdata dependency, when = %q", got)
+	}
+	seedValues, err := template.Resolve(tmpl, nil, nil, portsPayload, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pt, err := texttemplate.New("p").Funcs(sprig.TxtFuncMap()).Option("missingkey=error").Parse(seedDep.Values["port"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ps strings.Builder
+	if err := pt.Execute(&ps, seedValues); err != nil {
+		t.Fatal(err)
+	}
+	if ps.String() != "order-extractor-source" {
+		t.Errorf("testdata port = %q, want order-extractor-source", ps.String())
+	}
+	if _, err := template.LoadTemplate(filepath.Join(lib, seedDep.Template, "template.yaml")); err != nil {
+		t.Fatalf("testdata dependency template: %v", err)
 	}
 }

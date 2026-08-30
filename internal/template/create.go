@@ -40,6 +40,12 @@ type CreateOptions struct {
 	// record write. A non-nil error aborts the create. Callers use it for
 	// gates that must run before any output is written.
 	OnManifest func(*Template) error
+
+	// Facts, when set, feeds prompt-time parameter suggestions: what the
+	// workspace's scaffold records already declare (topics, contracts,
+	// ports). Facts propose to the prompter; they never resolve a value on
+	// their own, and a nil index resolves exactly as before.
+	Facts *WorkspaceFacts
 }
 
 // CreateResult is the machine-readable summary written when --output-json is
@@ -161,7 +167,14 @@ func prepareCreateTemplate(templateRoot string, opts CreateOptions) (*Template, 
 	}
 
 	prompter := selectPrompter(&opts)
-	values, err := Resolve(tmpl, opts.Files, opts.Stdin, opts.SetValues, prompter)
+	values, err := ResolveWith(tmpl, ResolveOptions{
+		Facts:    opts.Facts,
+		Files:    opts.Files,
+		Stdin:    opts.Stdin,
+		Sets:     opts.SetValues,
+		Prompter: prompter,
+		Notes:    opts.Stderr,
+	})
 	if err != nil {
 		return nil, nil, err
 	}

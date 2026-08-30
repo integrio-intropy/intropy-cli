@@ -94,6 +94,39 @@ func TestDecodeValid(t *testing.T) {
 	}
 }
 
+// A record carrying a development section (graph --development) decodes its
+// file resolutions; one without it leaves Development nil. The compatibility
+// direction is one-way: an old host emitting no section decodes exactly as
+// before, and the new field is absent, not defaulted.
+func TestDecodeDevelopment(t *testing.T) {
+	withDev := strings.Replace(validRecord, `
+}`, `,
+  "development": {
+    "files": [
+      {"port": "price-master", "rootPath": "./test/price-master"}
+    ]
+  }
+}`, 1)
+	got, err := Decode(strings.NewReader(withDev))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if got.Development == nil || len(got.Development.Files) != 1 {
+		t.Fatalf("development = %+v, want one file resolution", got.Development)
+	}
+	if f := got.Development.Files[0]; f.Port != "price-master" || f.RootPath != "./test/price-master" {
+		t.Errorf("file resolution = %+v", f)
+	}
+
+	without, err := Decode(strings.NewReader(validRecord))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if without.Development != nil {
+		t.Errorf("development = %+v, want nil", without.Development)
+	}
+}
+
 // A record without contracts[] still decodes; the section is
 // simply absent.
 func TestDecodeWithoutContracts(t *testing.T) {

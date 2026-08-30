@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import {
   Background,
   Controls,
@@ -20,12 +20,17 @@ import {
   api,
   type DaprComponent,
   type IntegrationDetail,
+  type RunState,
+  type SystemInfo,
   type Topology,
   type TopologyReport,
 } from '../api'
+import { CreateDrawer, type SlotKind } from './CreateDrawer'
+import { SeedDrawer } from './SeedDrawer'
 import {
   CloudIcon,
   CycleIcon,
+  FileUploadIcon,
   HardDriveIcon,
   HubIcon,
   InputIcon,
@@ -98,6 +103,18 @@ interface IntNodeData extends Record<string, unknown> {
   selected: boolean
   /** Cron expression badge for schedule-triggered components (declared topology only). */
   trigger?: string
+  /** Scaffolded but not in the declared topology yet — rendered muted/dashed
+   *  until `sys create` re-assembles the host and the topology is refreshed. */
+  ghost?: boolean
+  /** The node offers test-file seeding. Set at graph build: 'ready' for a
+   *  declared extractor (the seed drawer resolves ports and dev folders),
+   *  'ghost' for a scaffolded one (identified as an extractor but without
+   *  declared wiring to seed against — a disabled, explained button). */
+  seed?: 'ready' | 'ghost'
+}
+
+interface SlotNodeData extends Record<string, unknown> {
+  kind: SlotKind
 }
 
 interface GroupNodeData extends Record<string, unknown> {
@@ -147,20 +164,54 @@ function topologyFor(key: string, topologies: Topology[]): Topology | undefined 
 
 export function FlowView({ selected, onSelect, theme }: Props) {
   const [graph, setGraph] = useState<IntegrationDetail[] | null>(null)
+  const [systemList, setSystemList] = useState<SystemInfo[] | null>(null)
   const [report, setReport] = useState<TopologyReport | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [system, setSystem] = useState<string | null>(null)
+  const [workspaceName, setWorkspaceName] = useState<string | null>(null)
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   // What the inspector panel shows: a clicked topic or port node.
   const [inspect, setInspect] = useState<FlowSelection | null>(null)
+  // A clicked placeholder slot: which block kind the create drawer offers.
+  const [draft, setDraft] = useState<SlotKind | null>(null)
+  // A clicked seed action: which component the seed drawer targets.
+  const [seeding, setSeeding] = useState<string | null>(null)
+  // The banner's host re-assembly (sys update / sys create) in flight, and
+  // the force checkbox a 409 offers, as the create and seed drawers do.
+  const [syncing, setSyncing] = useState(false)
+  const [syncError, setSyncError] = useState<string | null>(null)
+  const [syncErrorStatus, setSyncErrorStatus] = useState<number | null>(null)
+  const [syncForce, setSyncForce] = useState(false)
+  // The selected system's host process, as the dashboard last knew it, plus
+  // the start/stop click in flight and the run log panel's visibility.
+  const [run, setRun] = useState<RunState | null>(null)
+  const [runBusy, setRunBusy] = useState(false)
+  const [runError, setRunError] = useState<string | null>(null)
+  const [logsOpen, setLogsOpen] = useState(false)
 
-  // A different system means different topics/ports — drop the inspector.
-  useEffect(() => setInspect(null), [system])
+  // A different system means different topics/ports — drop the inspector,
+  // any half-open create drawer, and stale sync/run errors.
+  useEffect(() => {
+    setInspect(null)
+    setDraft(null)
+    setSeeding(null)
+    setSyncError(null)
+    setSyncErrorStatus(null)
+    setSyncForce(false)
+    setRunError(null)
+  }, [system])
 
   useEffect(() => {
     const fail = (e: unknown) => setError(e instanceof Error ? e.message : String(e))
     api.flow().then(setGraph).catch(fail)
+    api.systems().then(setSystemList).catch(fail)
+    // The workspace pseudo-system labels itself after the served folder;
+    // a miss keeps the generic fallback rather than failing the view.
+    api
+      .health()
+      .then((h) => setWorkspaceName(h.workspace || null))
+      .catch(() => {})
     // The first topology fetch runs each host's graph verb (a dotnet build),
     // so this request can take a while — the loading state covers it.
     api.topologies().then(setReport).catch(fail)
@@ -191,6 +242,22 @@ export function FlowView({ selected, onSelect, theme }: Props) {
       opt.count = (opt.count ?? 0) + 1
       opts.set(key, opt)
     }
+    // Declared systems with no blocks yet (a host-only scaffold) still get an
+    // option — they render as the empty slot skeleton, the create surface's
+    // best onboarding moment.
+    for (const s of systemList ?? []) {
+      if (!opts.has(s.path)) opts.set(s.path, { value: s.path, label: s.name, count: 0 })
+    }
+    // A workspace with nothing in it at all still offers the workspace
+    // pseudo-system, so the canvas opens as the fillable slot skeleton
+    // instead of a dead end — the first block scaffolds at the root.
+    if (opts.size === 0) {
+      opts.set(WORKSPACE_KEY, { value: WORKSPACE_KEY, label: 'Workspace', count: 0 })
+    }
+    // The pseudo-system labels itself after the served folder; a topology
+    // declared at the root (below) still overrides with its system name.
+    const ws = opts.get(WORKSPACE_KEY)
+    if (ws && workspaceName) ws.label = workspaceName
     for (const opt of opts.values()) {
       const t = topologyFor(opt.value, topologies)
       if (t) opt.label = t.system
@@ -203,7 +270,7 @@ export function FlowView({ selected, onSelect, theme }: Props) {
       if (dup.length > 1) for (const opt of dup) opt.label = `${opt.label} (${opt.value})`
     }
     return [...opts.values()].sort((a, b) => a.label.localeCompare(b.label))
-  }, [graph, topologies])
+  }, [graph, systemList, topologies, workspaceName])
 
   // Default to the first system once data lands.
   useEffect(() => {
@@ -215,17 +282,151 @@ export function FlowView({ selected, onSelect, theme }: Props) {
     [graph, system],
   )
 
-  // Only a declared topology is drawn — there is no inferred fallback. A
-  // system whose host produced no record renders the empty state below.
+  // Only a declared topology contributes wiring — there is no inferred
+  // fallback. A system without one still renders: a synthetic empty record
+  // makes every scaffolded block a ghost and shows the slot skeleton, so a
+  // brand-new system is a fillable shape instead of a dead end.
   const declared = useMemo(
     () => (system ? topologyFor(system, topologies) : undefined),
     [system, topologies],
   )
+  const effective = useMemo<Topology | undefined>(() => {
+    if (declared) return declared
+    if (!system) return undefined
+    const label = systems.find((o) => o.value === system)?.label ?? system
+    return {
+      path: system === WORKSPACE_KEY ? '.' : system,
+      apiVersion: 'topology.intropy.io/v1',
+      system: label,
+    }
+  }, [declared, system, systems])
   const built = useMemo(
-    () => (declared ? buildDeclaredGraph(declared, items) : { nodes: [], edges: [] }),
-    [declared, items],
+    () =>
+      effective
+        ? buildDeclaredGraph(effective, items)
+        : { nodes: [] as Node[], edges: [] as Edge[], ghosts: [] as IntegrationDetail[] },
+    [effective, items],
   )
-  useEffect(() => setNodes(built.nodes), [built, setNodes])
+
+  // Mark the nodes that offer seeding. A declared extractor (kind maps to
+  // data flow "in") is 'ready' — the drawer resolves its in-ports and dev
+  // folders. A ghost identified as an extractor is 'ghost' — a disabled,
+  // explained button: without declared wiring there is no port to seed.
+  // Ghosts of unknown kind get nothing: the data model cannot always tell
+  // "known extractor, undeclared" from "unknown kind", so it errs on
+  // absence rather than a misleading disabled button.
+  const seededNodes = useMemo(() => {
+    const ready = new Set(
+      (effective?.components ?? [])
+        .filter((c) => dataFlowFor(c.kind) === 'in')
+        .map((c) => c.name),
+    )
+    const ghostPaths = new Set(
+      built.ghosts
+        .filter(
+          (g) => (g.dataFlow ?? (g.blockKind ? dataFlowFor(g.blockKind) : undefined)) === 'in',
+        )
+        .map((g) => g.path),
+    )
+    return built.nodes.map((n) => {
+      if (n.type !== 'integration') return n
+      const d = n.data as IntNodeData
+      const seed = d.ghost
+        ? ghostPaths.has(n.id)
+          ? ('ghost' as const)
+          : undefined
+        : ready.has(d.name)
+          ? ('ready' as const)
+          : undefined
+      return seed === d.seed ? n : { ...n, data: { ...d, seed } }
+    })
+  }, [built, effective])
+  useEffect(() => setNodes(seededNodes), [seededNodes, setNodes])
+
+  // After a create, the new scaffold shows up as a ghost through the normal
+  // join — the placeholder→ghost transition is a data refresh, not UI state.
+  const handleCreated = () => {
+    setDraft(null)
+    api.flow().then(setGraph).catch((e: unknown) =>
+      setError(e instanceof Error ? e.message : String(e)),
+    )
+  }
+
+  const sysDir = system === WORKSPACE_KEY ? '.' : system
+  const hasHost = (systemList ?? []).some((s) => s.path === sysDir)
+
+  // Track the selected system's host process. Poll on a steady interval
+  // while a host is selected so a start, stop, or crash surfaces without the
+  // user clicking anything; start/stop clicks also set the state directly
+  // from their response, so the interval only ever reconciles.
+  useEffect(() => {
+    if (!sysDir || !hasHost) {
+      setRun(null)
+      return
+    }
+    let alive = true
+    const pull = () =>
+      api
+        .runState(sysDir)
+        .then((st) => {
+          if (alive) setRun(st)
+        })
+        .catch(() => {})
+    pull()
+    const tick = setInterval(pull, 2000)
+    return () => {
+      alive = false
+      clearInterval(tick)
+    }
+  }, [sysDir, hasHost])
+
+  const runClick = () => {
+    if (!sysDir || runBusy) return
+    setRunBusy(true)
+    setRunError(null)
+    const call = run?.running ? api.stopSystem(sysDir) : api.startSystem(sysDir)
+    call
+      .then(setRun)
+      .catch((e: unknown) => setRunError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setRunBusy(false))
+  }
+
+  // Re-assemble the host (sys update, or sys create when the system has no
+  // host yet), then refresh the topology so the ghosts turn into declared
+  // nodes — the banner's one click that closes the create loop.
+  const syncHost = (force = false) => {
+    if (!sysDir) return
+    setSyncing(true)
+    setSyncError(null)
+    setSyncErrorStatus(null)
+    api
+      .syncSystem(sysDir, force)
+      .then((resp) => {
+        setSyncing(false)
+        setSyncForce(false)
+        refresh()
+        // The create branch writes a new host scaffold: pick it up so the
+        // picker and the button label agree with the workspace again.
+        api.systems().then(setSystemList).catch(() => {})
+        if (resp.action === 'create' && resp.hostDir) {
+          // A new host changes every sibling's systemPath (the group key),
+          // so the stale flow data would leave a duplicate picker entry.
+          // Re-fetch and follow the selection onto the host's system dir.
+          api.flow().then(setGraph).catch(() => {})
+          const slash = resp.hostDir.lastIndexOf('/')
+          setSystem(slash >= 0 ? resp.hostDir.slice(0, slash) : '.')
+        }
+      })
+      .catch((e: unknown) => {
+        setSyncing(false)
+        setSyncError(e instanceof Error ? e.message : String(e))
+        setSyncErrorStatus(
+          e instanceof Error && 'status' in e && typeof e.status === 'number'
+            ? e.status
+            : null,
+        )
+      })
+  }
 
   // Reflect the shared selection without disturbing dragged positions.
   useEffect(() => {
@@ -244,9 +445,6 @@ export function FlowView({ selected, onSelect, theme }: Props) {
   if (!graph || report === null) {
     return <p className="empty">Loading… (building system hosts on first run)</p>
   }
-  if (graph.length === 0) {
-    return <p className="empty">No integrations to visualise.</p>
-  }
 
   return (
     <div className="flow-view">
@@ -258,6 +456,49 @@ export function FlowView({ selected, onSelect, theme }: Props) {
           onChange={setSystem}
           placeholder="Select a system…"
         />
+        {hasHost && (
+          <button
+            type="button"
+            className={`flow-run${run?.running ? ' running' : ''}`}
+            onClick={runClick}
+            disabled={runBusy}
+            title={
+              run?.running
+                ? 'Stop the system host (SIGTERM the dotnet run process group)'
+                : 'Start the system host locally (dotnet run --project <host>)'
+            }
+          >
+            {runBusy
+              ? run?.running
+                ? 'Stopping…'
+                : 'Starting…'
+              : run?.running
+                ? 'Stop'
+                : 'Start'}
+          </button>
+        )}
+        {hasHost && run?.running && (
+          <span className="flow-run-status" title={`pid ${run.pid} · started ${run.startedAt}`}>
+            <span className="flow-run-dot" />
+            running
+          </span>
+        )}
+        {hasHost && run && !run.running && run.exitError && (
+          <span className="flow-run-status crashed" title={run.exitError}>
+            <span className="flow-run-dot" />
+            exited
+          </span>
+        )}
+        {hasHost && run && run.logs.length > 0 && (
+          <button
+            type="button"
+            className="flow-logs-toggle"
+            onClick={() => setLogsOpen((o) => !o)}
+            title="Show the host's stdout/stderr tail"
+          >
+            {logsOpen ? 'Hide logs' : 'Logs'}
+          </button>
+        )}
         <button
           type="button"
           className="flow-refresh"
@@ -268,6 +509,12 @@ export function FlowView({ selected, onSelect, theme }: Props) {
           {refreshing ? 'Refreshing…' : 'Refresh topology'}
         </button>
       </div>
+      {runError && <div className="banner error">{runError}</div>}
+      {logsOpen && run && (
+        <pre className="flow-run-logs">
+          {run.logs.join('\n') || 'no output yet'}
+        </pre>
+      )}
       {report.errors?.length ? (
         <div className="banner error">
           {report.errors.map((e) => (
@@ -275,7 +522,66 @@ export function FlowView({ selected, onSelect, theme }: Props) {
           ))}
         </div>
       ) : null}
-      {declared ? (
+      {effective && !declared && (
+        <div className="banner hint">
+          No declared topology for this system yet — its components render
+          from their scaffold records until the host's graph verb declares
+          them.
+        </div>
+      )}
+      {built.ghosts.length > 0 && (
+        <div className="banner hint">
+          {built.ghosts.length === 1
+            ? '1 scaffolded component is'
+            : `${built.ghosts.length} scaffolded components are`}{' '}
+          not in the declared topology yet.
+          <button
+            type="button"
+            className="flow-refresh"
+            onClick={() => syncHost()}
+            disabled={syncing || refreshing}
+            title={
+              hasHost
+                ? 'Fold the new components into the system host (sys update), then refresh the topology'
+                : 'Assemble a system host from the scaffolds (sys create), then refresh the topology'
+            }
+          >
+            {syncing
+              ? hasHost
+                ? 'Updating host…'
+                : 'Creating host…'
+              : hasHost
+                ? 'Update host & refresh'
+                : 'Create host & refresh'}
+          </button>
+        </div>
+      )}
+      {syncError && (
+        <div className="banner error">
+          {syncError}
+          {syncErrorStatus === 409 && (
+            <div className="banner-actions">
+              <label className="force-row">
+                <input
+                  type="checkbox"
+                  checked={syncForce}
+                  onChange={(e) => setSyncForce(e.target.checked)}
+                />
+                overwrite the files listed above
+              </label>
+              <button
+                type="button"
+                className="flow-refresh"
+                onClick={() => syncHost(true)}
+                disabled={syncing || !syncForce}
+              >
+                {syncing ? 'Retrying…' : 'Retry with overwrite'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      {effective ? (
         <div className="flow-canvas">
           <ReactFlowProvider>
             <FlowCanvas
@@ -283,24 +589,51 @@ export function FlowView({ selected, onSelect, theme }: Props) {
               edges={built.edges}
               onNodesChange={onNodesChange}
               onSelect={onSelect}
-              onInspect={setInspect}
+              onInspect={(sel) => {
+                setInspect(sel)
+                if (sel) setDraft(null)
+              }}
+              onSlotClick={(kind) => {
+                setDraft(kind)
+                setInspect(null)
+                setSeeding(null)
+              }}
+              onSeed={(component) => {
+                setSeeding(component)
+                setDraft(null)
+                setInspect(null)
+              }}
               fitSignal={system ?? ''}
               theme={theme}
             />
           </ReactFlowProvider>
-          {inspect && (
+          {inspect && declared && (
             <FlowDetail
               selection={inspect}
               topology={declared}
               onClose={() => setInspect(null)}
             />
           )}
+          {seeding && declared && (
+            <SeedDrawer
+              target={{ component: seeding }}
+              topology={declared}
+              onClose={() => setSeeding(null)}
+              onRefreshTopology={refresh}
+            />
+          )}
+          {draft && system && (
+            <CreateDrawer
+              kind={draft}
+              systemPath={system === WORKSPACE_KEY ? '.' : system}
+              systemLabel={systems.find((o) => o.value === system)?.label ?? system}
+              onClose={() => setDraft(null)}
+              onCreated={handleCreated}
+            />
+          )}
         </div>
       ) : (
-        <p className="empty">
-          No declared topology for this system. Make sure its system host
-          supports the graph verb, then refresh.
-        </p>
+        <p className="empty">Select a system.</p>
       )}
     </div>
   )
@@ -315,6 +648,8 @@ function FlowCanvas({
   onNodesChange,
   onSelect,
   onInspect,
+  onSlotClick,
+  onSeed,
   fitSignal,
   theme,
 }: {
@@ -323,6 +658,8 @@ function FlowCanvas({
   onNodesChange: Parameters<typeof ReactFlow>[0]['onNodesChange']
   onSelect: (path: string) => void
   onInspect: (selection: FlowSelection | null) => void
+  onSlotClick: (kind: SlotKind) => void
+  onSeed: (component: string) => void
   fitSignal: string
   theme: 'light' | 'dark'
 }) {
@@ -333,34 +670,46 @@ function FlowCanvas({
     if (initialized) rf.fitView({ padding: 0.2 })
   }, [initialized, fitSignal, rf])
 
+  // The seed action is one callback for every integration node, handed down
+  // through React context: node data is serialized state, so the callback
+  // travels the provider the NODE_TYPES renderers read.
   return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      onNodesChange={onNodesChange}
-      nodeTypes={NODE_TYPES}
-      colorMode={theme}
-      minZoom={0.3}
-      proOptions={{ hideAttribution: true }}
-      onNodeClick={(_, node) => {
-        if (node.type === 'integration') onSelect(node.id)
-        if (node.type === 'topic') {
-          const d = node.data as TopicNodeData
-          if (d.pubsub) onInspect({ kind: 'topic', pubsub: d.pubsub, topic: d.name })
-        }
-        if (node.type === 'external') {
-          const d = node.data as ExtNodeData
-          if (d.port) onInspect({ kind: 'port', name: d.port })
-        }
-      }}
-      onPaneClick={() => onInspect(null)}
-    >
-      <Background gap={20} />
-      <Controls showInteractive={false} />
-      <MiniMap pannable zoomable />
-    </ReactFlow>
+    <SeedContext.Provider value={onSeed}>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        nodeTypes={NODE_TYPES}
+        colorMode={theme}
+        minZoom={0.3}
+        proOptions={{ hideAttribution: true }}
+        onNodeClick={(_, node) => {
+          if (node.type === 'integration') onSelect(node.id)
+          if (node.type === 'topic') {
+            const d = node.data as TopicNodeData
+            if (d.pubsub) onInspect({ kind: 'topic', pubsub: d.pubsub, topic: d.name })
+          }
+          if (node.type === 'external') {
+            const d = node.data as ExtNodeData
+            if (d.port) onInspect({ kind: 'port', name: d.port })
+          }
+          if (node.type === 'slot') {
+            onSlotClick((node.data as SlotNodeData).kind)
+          }
+        }}
+        onPaneClick={() => onInspect(null)}
+      >
+        <Background gap={20} />
+        <Controls showInteractive={false} />
+        <MiniMap pannable zoomable />
+      </ReactFlow>
+    </SeedContext.Provider>
   )
 }
+
+// SeedContext carries the canvas's seed callback to the node renderers —
+// the one channel node data (serialized state) cannot provide.
+const SeedContext = createContext<(component: string) => void>(() => {})
 
 
 // refName extracts the display name from an entity ref: "component:pim-extractor"
@@ -379,7 +728,7 @@ function refName(ref: string): string {
 function buildDeclaredGraph(
   topo: Topology,
   items: IntegrationDetail[],
-): { nodes: Node[]; edges: Edge[] } {
+): { nodes: Node[]; edges: Edge[]; ghosts: IntegrationDetail[] } {
   const comps = topo.components ?? []
 
   // Metadata lookups: topics carry the contract, ports the external
@@ -392,18 +741,29 @@ function buildDeclaredGraph(
   // A topic node is identified by its (pubsub, topic) pair; a component by ref.
   const topicId = (pubsub: string, topic: string): string => `topic:${pubsub}/${topic}`
 
-  // Map component refs to integration paths (a component's directory is its
-  // name relative to the system root) so clicking a declared node selects the
-  // scaffolded integration when one exists.
+  // Map component refs to integration paths so clicking a declared node
+  // selects the scaffolded integration when one exists. The declared name is
+  // the component's appId, and the scaffold record's appId is the same value
+  // — the directory name is not, since a scaffold can be rendered under a
+  // folder that differs from its --name. The path-shaped fallback keeps
+  // matching scaffolds whose record predates the appId value.
   const joinProject = (base: string, project: string): string => {
     if (project === '.' || project === '') return base
     return base === '.' ? project : `${base}/${project}`
   }
+  const byAppId = new Map<string, string>()
+  for (const it of items) {
+    const appId = it.values?.appId
+    if (typeof appId === 'string' && appId !== '') byAppId.set(appId, it.path)
+  }
+  const scaffoldPath = (name: string): string | undefined =>
+    byAppId.get(name) ??
+    (items.some((it) => it.path === joinProject(topo.path, name))
+      ? joinProject(topo.path, name)
+      : undefined)
   const nodeId = new Map<string, string>()
   for (const c of comps) {
-    const path = joinProject(topo.path, c.name)
-    const matched = items.some((it) => it.path === path) ? path : undefined
-    nodeId.set(`component:${c.name}`, matched ?? `component:${c.name}`)
+    nodeId.set(`component:${c.name}`, scaffoldPath(c.name) ?? `component:${c.name}`)
   }
 
   // Collect the unique topics the components reference, and the internal flow
@@ -457,14 +817,21 @@ function buildDeclaredGraph(
   for (const r of internal) if (!depth.has(r)) depth.set(r, 0)
 
   const cols = Math.max(1, Math.max(...[...depth.values()], 0) + 1)
+  // At least three columns, so the create slots always sit in their archetype
+  // positions (in → process → out) even when the declared graph is narrower —
+  // an empty system renders as the fillable three-slot skeleton.
+  const effCols = Math.max(cols, 3)
+  const extractorCol = 0
+  const loaderCol = Math.max(2, cols - 1)
+  const transactionalCol = Math.min(loaderCol - 1, Math.max(1, Math.round(loaderCol / 2)))
   const contentTop = GROUP_HEADER
-  const groupWidth = GROUP_PAD * 2 + cols * NODE_W + (cols - 1) * COL_GAP
+  const groupWidth = GROUP_PAD * 2 + effCols * NODE_W + (effCols - 1) * COL_GAP
   const colX = (d: number) => GROUP_PAD + d * (NODE_W + COL_GAP)
 
   const nodes: Node[] = []
   const edges: Edge[] = []
   const groupId = 'system'
-  const rowsInCol: number[] = new Array<number>(cols).fill(0)
+  const rowsInCol: number[] = new Array<number>(effCols).fill(0)
   const place = (d: number): { x: number; y: number; row: number } => {
     const row = rowsInCol[d]++
     return { x: colX(d), y: contentTop + row * (NODE_H + ROW_GAP), row }
@@ -512,13 +879,64 @@ function buildDeclaredGraph(
     })
   }
 
+  // Scaffolded-but-undeclared components: blocks whose scaffold record lives
+  // in this system but whose name the declared topology does not carry —
+  // brand new (pre `sys create`) or renamed. They render as ghosts in their
+  // block kind's column, wireless, until the host declares them.
+  const declaredPaths = new Set(
+    comps.map((c) => scaffoldPath(c.name) ?? joinProject(topo.path, c.name)),
+  )
+  const ghosts = items.filter((it) => !declaredPaths.has(it.path))
+  for (const g of ghosts) {
+    const flow = g.dataFlow ?? (g.blockKind ? dataFlowFor(g.blockKind) : undefined)
+    const col = flow === 'in' ? extractorCol : flow === 'out' ? loaderCol : transactionalCol
+    const pos = place(col)
+    nodes.push({
+      id: g.path,
+      type: 'integration',
+      parentId: groupId,
+      extent: 'parent',
+      position: { x: pos.x, y: pos.y },
+      data: {
+        name: g.name,
+        template: g.blockKind || g.template,
+        dataFlow: flow,
+        selected: false,
+        ghost: true,
+      } satisfies IntNodeData,
+    })
+  }
+
+  // Placeholder slots — one per kind column, always last in their column.
+  // Clicking one opens the create drawer pre-filtered to that block kind;
+  // the slots are affordances, never part of the declared graph.
+  const slotDefs: Array<{ kind: SlotKind; col: number }> = [
+    { kind: 'extractor', col: extractorCol },
+    { kind: 'transactional', col: transactionalCol },
+    { kind: 'loader', col: loaderCol },
+  ]
+  for (const s of slotDefs) {
+    const pos = place(s.col)
+    nodes.push({
+      id: `slot:${s.kind}`,
+      type: 'slot',
+      parentId: groupId,
+      extent: 'parent',
+      position: { x: pos.x, y: pos.y },
+      style: { width: NODE_W, height: NODE_H },
+      draggable: false,
+      selectable: false,
+      data: { kind: s.kind } satisfies SlotNodeData,
+    })
+  }
+
   const maxRows = Math.max(1, ...rowsInCol)
   const groupHeight = contentTop + maxRows * (NODE_H + ROW_GAP) - ROW_GAP + GROUP_PAD
   nodes.unshift({
     id: groupId,
     type: 'group',
     position: { x: 0, y: 0 },
-    data: { title: topo.system, count: comps.length } satisfies GroupNodeData,
+    data: { title: topo.system, count: comps.length + ghosts.length } satisfies GroupNodeData,
     style: { width: groupWidth, height: groupHeight },
     draggable: false,
     selectable: false,
@@ -558,16 +976,20 @@ function buildDeclaredGraph(
     }
   }
 
-  // Externals sit outside the boundary, anchored to the component they touch
-  // so edges stay short: an input port directly left of its component, an
-  // output port dropped below the component's column (stacked when
-  // several share one). This avoids the whole-diagram crossings that a fixed
-  // left/right screen edge produces in a multi-column pipeline.
-  const belowCount = new Map<number, number>()
-  const belowY = (col: number): number => {
-    const n = belowCount.get(col) ?? 0
-    belowCount.set(col, n + 1)
-    return groupHeight + EXT_VGAP + n * (EXT_H + EXT_VGAP)
+  // Externals sit outside the boundary: a source (input port) directly left
+  // of its component, a destination (output port) on a rail off the
+  // boundary's right edge, aligned with its component's row and bumped down
+  // when rows collide. Sources flow in on the left, destinations out on the
+  // right — the same in → process → out reading as the columns inside.
+  const railX = groupWidth + EXT_GAP
+  const railYs: number[] = []
+  const railY = (want: number): number => {
+    let y = want
+    while (railYs.some((used) => Math.abs(used - y) < EXT_H + EXT_VGAP)) {
+      y += EXT_H + EXT_VGAP
+    }
+    railYs.push(y)
+    return y
   }
   const pushExternal = (id: string, data: ExtNodeData, x: number, y: number): void => {
     if (nodes.some((n) => n.id === id)) return
@@ -580,7 +1002,6 @@ function buildDeclaredGraph(
       draggable: true,
     })
   }
-  const centerUnder = (x: number) => x + (NODE_W - EXT_W) / 2
 
   for (const c of comps) {
     const cref = `component:${c.name}`
@@ -608,13 +1029,13 @@ function buildDeclaredGraph(
           className: 'rf-edge-ext',
         })
       } else {
-        pushExternal(extId, data, centerUnder(anchor.x), belowY(anchor.col))
+        pushExternal(extId, data, railX, railY(anchor.y))
         edges.push({
           id: `e:port:${c.name}:${use.port}`,
           source: comp,
-          sourceHandle: 'infra',
+          sourceHandle: 'ext',
           target: extId,
-          targetHandle: 'top',
+          targetHandle: 'in',
           markerEnd: { type: MarkerType.ArrowClosed },
           className: 'rf-edge-ext',
         })
@@ -622,7 +1043,7 @@ function buildDeclaredGraph(
     }
   }
 
-  return { nodes, edges }
+  return { nodes, edges, ghosts }
 }
 
 function GroupNode({ data }: NodeProps) {
@@ -638,10 +1059,11 @@ function GroupNode({ data }: NodeProps) {
 }
 
 function IntegrationNode({ data }: NodeProps) {
-  const { name, template, dataFlow, selected, trigger } = data as IntNodeData
+  const { name, template, dataFlow, selected, trigger, ghost, seed } = data as IntNodeData
+  const onSeed = useContext(SeedContext)
   const Icon = dataFlow ? DATA_FLOW_ICONS[dataFlow] : MemoryIcon
   return (
-    <div className={`rf-int${selected ? ' selected' : ''}`}>
+    <div className={`rf-int${selected ? ' selected' : ''}${ghost ? ' ghost' : ''}`}>
       <div className="rf-int-head">
         <Icon className="rf-int-icon" aria-hidden />
         <span className="rf-int-name">{name}</span>
@@ -650,6 +1072,41 @@ function IntegrationNode({ data }: NodeProps) {
           <span className="rf-int-tag" title="schedule trigger">
             {trigger}
           </span>
+        )}
+        {ghost && (
+          <span
+            className="rf-int-tag ghost-tag"
+            title="scaffolded, not in the declared topology yet"
+          >
+            scaffolded
+          </span>
+        )}
+        {/* The seed action sits last: the first tag's auto margin pushes the
+            whole trailing cluster right, and the button hangs off its end. */}
+        {seed === 'ready' && (
+          <button
+            type="button"
+            className="rf-int-seed nodrag"
+            title="Seed a test file into this extractor's dev folder"
+            onClick={(e) => {
+              // The card click selects the integration; the action is not a
+              // selection.
+              e.stopPropagation()
+              onSeed(name)
+            }}
+          >
+            <FileUploadIcon aria-hidden />
+          </button>
+        )}
+        {seed === 'ghost' && (
+          <button
+            type="button"
+            className="rf-int-seed"
+            disabled
+            title="Seeding needs the declared topology — update the host and refresh first"
+          >
+            <FileUploadIcon aria-hidden />
+          </button>
         )}
       </div>
 
@@ -660,9 +1117,35 @@ function IntegrationNode({ data }: NodeProps) {
   )
 }
 
+// SlotNode is a create placeholder: one per block-kind column, low-contrast
+// until hovered. Clicking it opens the create drawer for that kind. It has no
+// handles — a slot carries no wiring.
+const SLOT_LABELS: Record<SlotKind, string> = {
+  extractor: 'Extractor',
+  transactional: 'Core block',
+  loader: 'Loader',
+}
+
+function SlotNode({ data }: NodeProps) {
+  const { kind } = data as SlotNodeData
+  return (
+    <div className="rf-slot">
+      <span className="rf-slot-plus" aria-hidden>
+        +
+      </span>
+      <div className="rf-slot-text">
+        <span className="rf-slot-name">{SLOT_LABELS[kind]}</span>
+        <span className="rf-slot-hint">scaffold a new block</span>
+      </div>
+    </div>
+  )
+}
+
 // TopicNode is a declared pub/sub topic: the first-class hop between
 // components a declared topology makes visible. Contract topics show their
-// contract ref; internal ones their data entity.
+// contract ref; internal ones their data entity. The node draws as a
+// horizontal cylinder — the message-channel glyph — so a topic reads as
+// infrastructure between components, never as another component card.
 function TopicNode({ data }: NodeProps) {
   const { name, entity, contract } = data as TopicNodeData
   // Topic names share a long common prefix, so lead with the short entity and
@@ -672,7 +1155,14 @@ function TopicNode({ data }: NodeProps) {
   const secondary = contract ?? name
   const tip = contract ? `${name}\n${contract}` : name
   return (
-    <div className="rf-infra pubsub" title={tip}>
+    <div className="rf-infra pubsub rf-topic-cyl" title={tip}>
+      {/* Silhouette: a rectangle with both ends bulging as elliptical arcs;
+          the extra arc is the near cap's seam, making the left end read as
+          the visible face of the cylinder. */}
+      <svg className="rf-cyl" viewBox="0 0 200 76" aria-hidden focusable="false">
+        <path className="rf-cyl-body" d="M 12 3 H 188 A 9 35 0 0 1 188 73 H 12 A 9 35 0 0 1 12 3 Z" />
+        <path className="rf-cyl-seam" d="M 12 3 A 9 35 0 0 1 12 73" />
+      </svg>
       <Handle type="target" position={Position.Left} id="in" />
       <HubIcon className="rf-infra-icon" aria-hidden />
       <div className="rf-infra-text">
@@ -710,4 +1200,5 @@ const NODE_TYPES = {
   integration: IntegrationNode,
   external: ExternalNode,
   topic: TopicNode,
+  slot: SlotNode,
 }

@@ -13,6 +13,7 @@ export { default as ExpandMoreIcon } from '@material-symbols/svg-400/outlined/ke
 export { default as ExtensionIcon } from '@material-symbols/svg-400/outlined/extension.svg?react'
 export { default as HardDriveIcon } from '@material-symbols/svg-400/outlined/hard_drive.svg?react'
 export { default as HubIcon } from '@material-symbols/svg-400/outlined/hub.svg?react'
+export { default as FileUploadIcon } from '@material-symbols/svg-400/outlined/upload_file.svg?react'
 export { default as InputIcon } from '@material-symbols/svg-400/outlined/input.svg?react'
 export { default as LightModeIcon } from '@material-symbols/svg-400/outlined/light_mode.svg?react'
 export { default as SystemThemeIcon } from '@material-symbols/svg-400/outlined/brightness_auto.svg?react'

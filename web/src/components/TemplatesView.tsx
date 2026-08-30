@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   api,
   type CreateResponse,
   type TemplateDetail,
-  type TemplateField,
   type TemplateList,
 } from '../api'
+import { FormField } from './form'
+import { useTemplateFields } from './useTemplateFields'
 
 interface Props {
   /** Switch to the catalog with the newly created integration selected. */
@@ -94,49 +95,36 @@ export function TemplatesView({ onCreated }: Props) {
 function TemplatePanel({ name, onCreated }: { name: string; onCreated: Props['onCreated'] }) {
   const [detail, setDetail] = useState<TemplateDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [values, setValues] = useState<Record<string, unknown>>({})
-  const [intName, setIntName] = useState('')
+  // The templates view scaffolds into the workspace root, so it derives
+  // from the whole workspace — the same context `int create` run there
+  // prompts with.
+  const { values, setValue, visible, optional, missing } = useTemplateFields(
+    detail?.fields ?? [],
+    { template: name, dir: '.' },
+  )
+  const [showAdvanced, setShowAdvanced] = useState(false)
   const [force, setForce] = useState(false)
   const [create, setCreate] = useState<CreateState>({ phase: 'idle' })
 
   useEffect(() => {
     api
-      .getTemplate(name)
-      .then((d) => {
-        setDetail(d)
-        // Prefill declared defaults so the form shows what a bare run would use.
-        const seeded: Record<string, unknown> = {}
-        for (const f of d.fields) {
-          if (f.default !== undefined) seeded[f.name] = f.default
-        }
-        setValues(seeded)
-      })
+      .getTemplate(name, '.')
+      .then(setDetail)
       .catch((e: unknown) => setError(errText(e)))
   }, [name])
 
-  const setValue = useCallback((key: string, v: unknown) => {
-    setValues((prev) => ({ ...prev, [key]: v }))
-  }, [])
-
-  const missing = useMemo(() => {
-    if (!detail) return []
-    return detail.fields
-      .filter((f) => f.required && isEmpty(values[f.name]))
-      .map((f) => f.name)
-  }, [detail, values])
-
   const run = useCallback(() => {
     setCreate({ phase: 'running' })
-    // name is the output directory (the CLI's --out-dir); values carries the
-    // schema parameters, including the template's own `name` when declared.
+    // No name: the resolved "name" parameter kebab-cases into the
+    // directory, the CLI's no-flag convention.
     api
-      .createTemplate(name, { name: intName, values, force })
+      .createTemplate(name, { values, force })
       .then((result) => setCreate({ phase: 'done', result }))
       .catch((e: unknown) => {
         const err = e as { message?: string; status?: number }
         setCreate({ phase: 'error', message: errText(e), status: err.status ?? 0 })
       })
-  }, [name, intName, values, force])
+  }, [name, values, force])
 
   if (error) {
     return <div className="banner error">{error}</div>
@@ -145,7 +133,7 @@ function TemplatePanel({ name, onCreated }: { name: string; onCreated: Props['on
     return <div className="empty">loading {name}…</div>
   }
 
-  const canRun = intName.trim() !== '' && missing.length === 0 && create.phase !== 'running'
+  const canRun = missing.length === 0 && create.phase !== 'running'
 
   return (
     <div className="template-panel">
@@ -175,27 +163,28 @@ function TemplatePanel({ name, onCreated }: { name: string; onCreated: Props['on
           if (canRun) run()
         }}
       >
-        <Field
-          label="out-dir"
-          title="Output directory"
-          description="Where the integration is scaffolded, under the workspace root"
-          required
-        >
-          <input
-            type="text"
-            value={intName}
-            onChange={(e) => setIntName(e.target.value)}
-            placeholder="my-integration"
-            autoFocus
-          />
-        </Field>
-
-        {detail.fields.map((f) => (
+        {visible.map((f) => (
           <FormField key={f.name} field={f} value={values[f.name]} onChange={setValue} />
         ))}
 
         {missing.length > 0 && (
           <div className="form-hint">missing required: {missing.join(', ')}</div>
+        )}
+
+        {optional.length > 0 && (
+          <>
+            <button
+              type="button"
+              className="advanced-toggle"
+              onClick={() => setShowAdvanced((s) => !s)}
+            >
+              {showAdvanced ? '▾' : '▸'} advanced ({optional.length})
+            </button>
+            {showAdvanced &&
+              optional.map((f) => (
+                <FormField key={f.name} field={f} value={values[f.name]} onChange={setValue} />
+              ))}
+          </>
         )}
 
         {create.phase === 'error' && create.status === 409 && (
@@ -237,111 +226,6 @@ function TemplatePanel({ name, onCreated }: { name: string; onCreated: Props['on
       )}
     </div>
   )
-}
-
-// FormField renders one schema parameter as the matching input: a combobox
-// for an enum, a checkbox for a boolean, a number input for integer/number,
-// a text input otherwise. Pattern and required come straight from the schema.
-function FormField({
-  field,
-  value,
-  onChange,
-}: {
-  field: TemplateField
-  value: unknown
-  onChange: (key: string, v: unknown) => void
-}) {
-  const set = (v: unknown) => onChange(field.name, v)
-
-  let input: React.ReactNode
-  if (field.type === 'boolean') {
-    input = (
-      <input
-        type="checkbox"
-        checked={Boolean(value)}
-        onChange={(e) => set(e.target.checked)}
-      />
-    )
-  } else if (field.enum && field.enum.length > 0) {
-    input = (
-      <select
-        value={value === undefined ? '' : String(value)}
-        onChange={(e) => set(e.target.value || undefined)}
-      >
-        <option value="">—</option>
-        {field.enum.map((opt) => (
-          <option key={String(opt)} value={String(opt)}>
-            {String(opt)}
-          </option>
-        ))}
-      </select>
-    )
-  } else if (field.type === 'integer' || field.type === 'number') {
-    input = (
-      <input
-        type="number"
-        value={value === undefined ? '' : String(value)}
-        step={field.type === 'integer' ? 1 : 'any'}
-        onChange={(e) => set(e.target.value === '' ? undefined : Number(e.target.value))}
-      />
-    )
-  } else {
-    input = (
-      <input
-        type="text"
-        value={value === undefined ? '' : String(value)}
-        pattern={field.pattern || undefined}
-        onChange={(e) => set(e.target.value === '' ? undefined : e.target.value)}
-      />
-    )
-  }
-
-  return (
-    <Field
-      label={field.name}
-      title={field.title}
-      description={field.description}
-      required={field.required}
-      type={field.type}
-    >
-      {input}
-    </Field>
-  )
-}
-
-// Field is the label + control row every parameter renders through, with the
-// same required marker `template show` prints.
-function Field({
-  label,
-  title,
-  description,
-  required,
-  type,
-  children,
-}: {
-  label: string
-  title?: string
-  description?: string
-  required?: boolean
-  type?: string
-  children: React.ReactNode
-}) {
-  return (
-    <label className="form-field">
-      <span className="form-label">
-        {required && <span className="req" aria-hidden>*</span>}
-        {label}
-        {title && <span className="form-label-title"> — {title}</span>}
-        {type && <span className="form-type">[{type}]</span>}
-      </span>
-      {children}
-      {description && <span className="form-desc">{description}</span>}
-    </label>
-  )
-}
-
-function isEmpty(v: unknown): boolean {
-  return v === undefined || v === null || v === ''
 }
 
 function errText(e: unknown): string {

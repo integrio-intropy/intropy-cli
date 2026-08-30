@@ -62,7 +62,7 @@ func testHandlerWithDeploy(t *testing.T, root string, dep deployProvider) http.H
 
 func testHandlerWith(t *testing.T, root string, p providers) http.Handler {
 	t.Helper()
-	h, err := newHandler(root, "test", p)
+	h, _, err := newHandler(root, "test", p) // apiServer unused: these tests swap nothing
 	if err != nil {
 		t.Fatalf("newHandler: %v", err)
 	}
@@ -84,7 +84,8 @@ func post(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder 
 }
 
 func TestHealth(t *testing.T) {
-	rec := get(t, testHandler(t, t.TempDir()), "/api/health")
+	root := t.TempDir()
+	rec := get(t, testHandler(t, root), "/api/health")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
@@ -94,6 +95,10 @@ func TestHealth(t *testing.T) {
 	}
 	if body["status"] != "ok" || body["version"] != "test" {
 		t.Errorf("unexpected health body: %v", body)
+	}
+	// The served root's folder name, which labels the workspace pseudo-system.
+	if body["workspace"] != filepath.Base(root) {
+		t.Errorf("workspace = %q, want %q", body["workspace"], filepath.Base(root))
 	}
 }
 
@@ -676,5 +681,36 @@ func TestEmbeddedIndexAssetsExist(t *testing.T) {
 		if _, err := fs.Stat(web.Assets, name); err != nil {
 			t.Errorf("index.html references %s but it is not embedded", ref[1])
 		}
+	}
+}
+
+func TestListSystems(t *testing.T) {
+	tmp := t.TempDir()
+	writeScaffoldRole(t, filepath.Join(tmp, "acme", "erp", "erp-host"), "system-host", "v1", "system-host")
+	h := testHandler(t, tmp)
+
+	rec := get(t, h, "/api/systems")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	var got []systemInfo
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	// A host-only system — no blocks scaffolded yet — is still listed, which
+	// is the point: /api/flow only carries systems through their blocks.
+	if len(got) != 1 || got[0].Path != "acme/erp" || got[0].Name != "erp" {
+		t.Errorf("systems = %+v", got)
+	}
+}
+
+func TestListSystemsEmpty(t *testing.T) {
+	h := testHandler(t, t.TempDir())
+	rec := get(t, h, "/api/systems")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	if strings.TrimSpace(rec.Body.String()) != "[]" {
+		t.Errorf("body = %q, want an empty array (never null)", rec.Body.String())
 	}
 }

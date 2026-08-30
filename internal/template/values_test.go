@@ -11,13 +11,15 @@ import (
 
 type fakePrompter struct {
 	answers map[string]any
+	seen    []FieldSpec
 }
 
-func (p *fakePrompter) Prompt(f FieldSpec) (any, error) {
+func (p *fakePrompter) Prompt(f FieldSpec) (any, bool, error) {
+	p.seen = append(p.seen, f)
 	if ans, ok := p.answers[f.Name]; ok {
-		return ans, nil
+		return ans, false, nil
 	}
-	return nil, errors.New("unexpected prompt for " + f.Name)
+	return nil, false, errors.New("unexpected prompt for " + f.Name)
 }
 
 // buildTemplate constructs a *Template with the supplied parameters block,

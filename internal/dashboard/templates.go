@@ -8,9 +8,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/huandu/xstrings"
+	"github.com/integrio-intropy/intropy-cli/internal/system"
 	"github.com/integrio-intropy/intropy-cli/internal/template"
 )
 
@@ -44,12 +47,18 @@ func (p templatesProvider) fetchLibrary(ctx context.Context) (*template.Library,
 
 // createRequest is the POST /api/templates/{name}/create body.
 type createRequest struct {
-	// Name picks the output directory under the workspace root — the CLI's
-	// --out-dir. It is deliberately decoupled from values.name, the schema
-	// parameter: a template can want a PascalCase project name next to a
-	// kebab-case directory, and the CLI separates the two the same way
-	// (--set name=X --out-dir y). Required.
+	// Name folds into values.name when the caller did not set it directly
+	// (the CLI's --name sugar) and defaults the output directory:
+	// kebab-cased, under Dir. Empty means the resolved "name" parameter
+	// decides the directory instead — the no-prompt default both surfaces
+	// prefer.
 	Name string `json:"name"`
+
+	// Dir is the root-relative, slash-separated directory the output renders
+	// under; "" or "." is the workspace root — the pre-Dir behavior. It must
+	// already exist: the endpoint scaffolds into systems, it does not invent
+	// directory trees.
+	Dir string `json:"dir,omitempty"`
 
 	// Values are the template parameters, as --set would supply them.
 	Values map[string]any `json:"values"`
@@ -72,8 +81,20 @@ type createResponse struct {
 // streaming unbounded input into memory.
 const maxCreateBodyBytes = 1 << 20
 
+// templateSummary is one list entry with the manifest metadata the create
+// surfaces filter on — notably the intropy.dev/* labels a flow-view slot
+// selects templates by. Additive beside the bare names `templates` keeps.
+type templateSummary struct {
+	Name        string            `json:"name"`
+	Title       string            `json:"title,omitempty"`
+	Description string            `json:"description,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
+}
+
 // listTemplates mirrors `template list -o json` against the server's library
-// release.
+// release, adding per-template metadata (`entries`) on top of the names. The
+// describes are local reads on the already-extracted tarball; one malformed
+// manifest drops that entry rather than hiding the rest of the library.
 func (s *apiServer) listTemplates(w http.ResponseWriter, r *http.Request) {
 	lib, err := s.templates.fetchLibrary(r.Context())
 	if err != nil {
@@ -87,16 +108,34 @@ func (s *apiServer) listTemplates(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	entries := make([]templateSummary, 0, len(names))
+	for _, name := range names {
+		desc, err := lib.Describe(name)
+		if err != nil {
+			continue
+		}
+		entries = append(entries, templateSummary{
+			Name:        name,
+			Title:       desc.Title,
+			Description: desc.Description,
+			Labels:      desc.Labels,
+		})
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"owner":     lib.Owner,
 		"repo":      lib.Repo,
 		"version":   lib.Version,
 		"templates": names,
+		"entries":   entries,
 	})
 }
 
 // getTemplate mirrors `template show -o json` for one template, adding the
-// ordered field list the form renders from.
+// ordered field list the form renders from. The optional ?dir query names a
+// root-relative directory the way createRequest.Dir does; when present, each
+// field gains the parameter suggestions the workspace under it implies —
+// the same candidates `int create` would prompt with there. Without it the
+// response is context-free and suggestion-free.
 func (s *apiServer) getTemplate(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if err := template.ValidateTemplateName(name); err != nil {
@@ -116,7 +155,118 @@ func (s *apiServer) getTemplate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, templateFetchStatus(err), err.Error())
 		return
 	}
+
+	if dir := r.URL.Query().Get("dir"); dir != "" {
+		confirmed, err := parseConfirmedQuery(r.URL.Query())
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := s.suggestForDir(result, dir, confirmed); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+// getTemplateSuggestions serves only the suggestion lists of a dir-scoped
+// detail: the refresh a form issues when an answered parameter changes what
+// the workspace implies for the rest (a picked topic narrows the contract
+// candidates). It is the same computation getTemplate runs, without the
+// library fetch — a mid-form refresh must never swap the manifest the form
+// was filled against.
+func (s *apiServer) getTemplateSuggestions(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if err := template.ValidateTemplateName(name); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	lib, err := s.templates.fetchLibrary(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	defer lib.Close()
+
+	result, err := lib.Describe(name)
+	if err != nil {
+		writeError(w, templateFetchStatus(err), err.Error())
+		return
+	}
+
+	dir := r.URL.Query().Get("dir")
+	if dir == "" {
+		writeError(w, http.StatusBadRequest, "dir is required (suggestions derive from the workspace under it)")
+		return
+	}
+	confirmed, err := parseConfirmedQuery(r.URL.Query())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.suggestForDir(result, dir, confirmed); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	suggestions := make(map[string][]string, len(result.Fields))
+	for _, f := range result.Fields {
+		suggestions[f.Name] = f.Suggestions
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"suggestions": suggestions})
+}
+
+// suggestForDir populates each field's suggestions from the workspace under
+// dir, chained off the values the form has already confirmed — the same
+// inputs `int create` prompts with (workspace facts plus confirmed values).
+func (s *apiServer) suggestForDir(result *template.DescribeResult, dir string, confirmed map[string]any) error {
+	facts, err := s.factsForDir(dir)
+	if err != nil {
+		return err
+	}
+	suggestions := template.Suggest(result.Fields, facts, confirmed)
+	for i := range result.Fields {
+		result.Fields[i].Suggestions = suggestions[result.Fields[i].Name]
+	}
+	return nil
+}
+
+// parseConfirmedQuery decodes the repeated `set` query parameter
+// (?set=topic=orders&set=pubsub=events) into the confirmed-values map
+// Suggest chains from. Values stay strings — prompt values do, too. A
+// malformed pair is a 400: a silently dropped set would suggest candidates
+// for the wrong workspace state.
+func parseConfirmedQuery(q map[string][]string) (map[string]any, error) {
+	pairs := q["set"]
+	if len(pairs) == 0 {
+		return nil, nil
+	}
+	confirmed := make(map[string]any, len(pairs))
+	for _, pair := range pairs {
+		name, value, ok := strings.Cut(pair, "=")
+		if !ok || name == "" {
+			return nil, fmt.Errorf("invalid set %q (expected name=value)", pair)
+		}
+		confirmed[name] = value
+	}
+	return confirmed, nil
+}
+
+// factsForDir validates a root-relative dir with the create endpoint's
+// rules and indexes the scaffold records under it. The dir must exist —
+// suggesting from a system means the system directory is there.
+func (s *apiServer) factsForDir(dir string) (*template.WorkspaceFacts, error) {
+	segments, err := splitCreateDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	abs := filepath.Join(append([]string{s.root}, segments...)...)
+	if info, statErr := os.Stat(abs); statErr != nil || !info.IsDir() {
+		return nil, fmt.Errorf("directory %q does not exist under the workspace root", dir)
+	}
+	facts, _ := system.LoadWorkspaceFacts(abs)
+	return facts, nil
 }
 
 // createTemplate runs `int create` for one template: the form's values
@@ -138,7 +288,7 @@ func (s *apiServer) createTemplate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	outputDir, values, err := s.resolveCreate(req)
+	values, err := createValues(req)
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
@@ -162,6 +312,12 @@ func (s *apiServer) createTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 	defer prep.Cleanup()
 
+	outputDir, err := s.resolveCreateDir(req, prep)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+
 	var logs bytes.Buffer
 	result, err := template.RunCreate(prep, outputDir, req.Force, &logs)
 	if err != nil {
@@ -175,47 +331,93 @@ func (s *apiServer) createTemplate(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// resolveCreate folds the request into the output directory and value set
-// `int create --name` would produce: name doubles as values.name and as the
-// output directory under the workspace root, confined there so the endpoint
-// can never write outside the tree the dashboard serves.
-func (s *apiServer) resolveCreate(req createRequest) (string, map[string]any, error) {
-	if req.Name == "" {
-		return "", nil, errors.New("name is required")
-	}
-	if strings.ContainsAny(req.Name, `/\`) || req.Name == "." || req.Name == ".." {
-		return "", nil, fmt.Errorf("invalid name %q (must be a single path segment)", req.Name)
-	}
-
+// createValues folds the request's name into the value set `int create
+// --name` would produce: name doubles as values.name when the caller did
+// not set it directly. When the template does not declare `name`, the
+// value still lands there — the CLI's sugar does the same.
+func createValues(req createRequest) (map[string]any, error) {
 	values := req.Values
 	if values == nil {
 		values = map[string]any{}
 	}
-	// A template that does not declare `name` still gets the directory as
-	// values.name — the CLI's --name sugar. When the template does declare
-	// it, the form's value wins; the two are separate concerns.
-	if _, ok := values["name"]; !ok {
+	if _, ok := values["name"]; !ok && req.Name != "" {
 		values["name"] = req.Name
 	}
 	for key := range values {
 		if isReservedValueKey(key) {
-			return "", nil, fmt.Errorf("value %q is reserved and cannot be supplied", key)
+			return nil, fmt.Errorf("value %q is reserved and cannot be supplied", key)
+		}
+	}
+	return values, nil
+}
+
+// resolveCreateDir picks the output directory, confined to the tree the
+// dashboard serves so the endpoint can never write outside it. An explicit
+// name kebab-cases under Dir (the workspace root when empty), as
+// `int create --name` does; without a name the resolved "name" parameter
+// kebab-cases the same way, and a template without one is the error
+// --out-dir would have spared.
+func (s *apiServer) resolveCreateDir(req createRequest, prep *template.PreparedCreate) (string, error) {
+	segments, err := splitCreateDir(req.Dir)
+	if err != nil {
+		return "", err
+	}
+	parentDir := filepath.Join(append([]string{s.root}, segments...)...)
+	if len(segments) > 0 {
+		// The dir must already exist: creating into a system means the system
+		// directory is there; anything else is a client mistake, not a mkdir.
+		if info, statErr := os.Stat(parentDir); statErr != nil || !info.IsDir() {
+			return "", fmt.Errorf("directory %q does not exist under the workspace root", req.Dir)
 		}
 	}
 
-	outputDir := filepath.Join(s.root, req.Name)
+	name := req.Name
+	if name == "" {
+		v, ok := prep.Values["name"].(string)
+		if !ok || v == "" {
+			return "", errors.New("name is required (template declares no 'name' parameter to derive the directory from)")
+		}
+		name = v
+	}
+	leaf := xstrings.ToKebabCase(name)
+	if strings.ContainsAny(leaf, `/\`) || leaf == "." || leaf == ".." {
+		return "", fmt.Errorf("invalid output directory %q (must be a single path segment)", leaf)
+	}
+
 	rootAbs, err := filepath.Abs(s.root)
 	if err != nil {
-		return "", nil, err
+		return "", err
 	}
+	outputDir := filepath.Join(parentDir, leaf)
 	outAbs, err := filepath.Abs(outputDir)
 	if err != nil {
-		return "", nil, err
+		return "", err
 	}
-	if outAbs != filepath.Join(rootAbs, req.Name) {
-		return "", nil, fmt.Errorf("invalid name %q (output would escape the workspace root)", req.Name)
+	want := filepath.Join(append(append([]string{rootAbs}, segments...), leaf)...)
+	if outAbs != want {
+		return "", fmt.Errorf("invalid output directory %q (output would escape the workspace root)", leaf)
 	}
-	return outputDir, values, nil
+	return outputDir, nil
+}
+
+// splitCreateDir validates a create request's dir and returns its segments.
+// "" and "." mean the workspace root (no segments). Each segment must be a
+// plain directory name — no separators besides "/", no dot entries, nothing
+// hidden — so the joined path can only descend from the root.
+func splitCreateDir(dir string) ([]string, error) {
+	if dir == "" || dir == "." {
+		return nil, nil
+	}
+	if strings.Contains(dir, `\`) {
+		return nil, fmt.Errorf("invalid dir %q (must be slash-separated)", dir)
+	}
+	segments := strings.Split(dir, "/")
+	for _, seg := range segments {
+		if seg == "" || seg == ".." || strings.HasPrefix(seg, ".") {
+			return nil, fmt.Errorf("invalid dir %q (each segment must be a plain directory name)", dir)
+		}
+	}
+	return segments, nil
 }
 
 // isReservedValueKey reports whether key is one of the reserved value keys a

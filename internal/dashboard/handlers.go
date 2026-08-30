@@ -71,6 +71,13 @@ type apiServer struct {
 	// the ones actually asked about.
 	depMu     sync.Mutex
 	depStates map[string]deployState
+
+	// runMu guards the supervised system hosts, keyed by root-relative system
+	// dir. start launches through the start function value (dotnet run in
+	// production, a fake in tests — the same seam providers uses).
+	runMu sync.Mutex
+	runs  map[string]*systemRun
+	start starter
 }
 
 // topologyReport is the /api/topology payload: every declared topology plus
@@ -127,17 +134,24 @@ type integrationDetail struct {
 	PipelineSteps []string        `json:"pipelineSteps,omitempty"`
 }
 
-// newHandler wires the API routes and the SPA static handler onto a mux.
-func newHandler(root, version string, p providers) (http.Handler, error) {
-	api := &apiServer{root: root, version: version, topo: p.topology, dep: p.deploy, templates: p.templates}
+// newHandler wires the API routes and the SPA static handler onto a mux and
+// returns the apiServer alongside: Serve needs its shutdownRuns (stopping the
+// supervised system hosts after the HTTP server drains) and tests need its
+// start seam.
+func newHandler(root, version string, p providers) (http.Handler, *apiServer, error) {
+	api := &apiServer{root: root, version: version, topo: p.topology, dep: p.deploy, templates: p.templates, start: dotnetStart}
 	static, err := staticHandler()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", api.health)
 	mux.HandleFunc("GET /api/integrations", api.listIntegrations)
+	mux.HandleFunc("GET /api/systems", api.listSystems)
+	// GET lists what is declared; POST re-assembles one system's host
+	// (sys update, or sys create when the directory has none).
+	mux.HandleFunc("POST /api/systems/{path...}", api.syncSystem)
 	mux.HandleFunc("GET /api/integrations/{path...}", api.getIntegration)
 	mux.HandleFunc("GET /api/catalog/{path...}", api.catalog)
 	mux.HandleFunc("GET /api/flow", api.flow)
@@ -148,20 +162,49 @@ func newHandler(root, version string, p providers) (http.Handler, error) {
 	// already been read, POST runs the command again.
 	mux.HandleFunc("GET /api/deploy/{path...}", api.getDeployState)
 	mux.HandleFunc("POST /api/deploy/{path...}", api.refreshDeployState)
+	// Run supervision: the flow view's start/stop for a system's host. A
+	// dedicated prefix — ServeMux forbids a {path...} wildcard mid-pattern, so
+	// /api/systems/{path...}/run cannot exist. The workspace-root system
+	// arrives as "" (ServeMux redirects /api/run/. to /api/run/) and the
+	// handlers normalize it to ".", the same rule byPath applies.
+	mux.HandleFunc("GET /api/run/{path...}", api.getRun)
+	mux.HandleFunc("POST /api/run/{path...}", api.startRun)
+	mux.HandleFunc("DELETE /api/run/{path...}", api.stopRun)
 	// Template endpoints follow the same GET-read / POST-act split: list and
 	// show fetch the library release, create renders into the workspace.
 	mux.HandleFunc("GET /api/templates", api.listTemplates)
 	mux.HandleFunc("GET /api/templates/{name}", api.getTemplate)
+	// Registered before {name} so "suggestions" binds to the literal.
+	mux.HandleFunc("GET /api/templates/suggestions/{name}", api.getTemplateSuggestions)
 	mux.HandleFunc("POST /api/templates/{name}/create", api.createTemplate)
+	// Test-file seeding: GET lists one system's testdata/<port>/ library,
+	// POST copies a chosen file into the port's dev inbox. The GET's
+	// {path...} wildcard is the root-relative system path.
+	mux.HandleFunc("GET /api/testdata/{path...}", api.listTestData)
+	mux.HandleFunc("POST /api/seed", api.seedTestFile)
 	mux.Handle("/", static)
-	return mux, nil
+	return mux, api, nil
 }
 
 func (s *apiServer) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{
-		"status":  "ok",
-		"version": s.version,
+		"status":    "ok",
+		"version":   s.version,
+		"workspace": s.workspaceName(),
 	})
+}
+
+// workspaceName is the served root's directory name — the label the flow
+// view gives the workspace pseudo-system, so a dashboard on ~/dev/acme says
+// "acme" rather than a generic "Workspace". Serve hands the handler an
+// absolute root; the extra Abs covers callers (tests) that pass a relative
+// one, where Base would otherwise answer ".".
+func (s *apiServer) workspaceName() string {
+	root := s.root
+	if abs, err := filepath.Abs(root); err == nil {
+		root = abs
+	}
+	return filepath.Base(root)
 }
 
 // listIntegrations mirrors `int list -o json` — the same scaffold entries in
@@ -175,6 +218,27 @@ func (s *apiServer) listIntegrations(w http.ResponseWriter, _ *http.Request) {
 		summaries = append(summaries, s.summarize(e, systems))
 	}
 	writeJSON(w, http.StatusOK, summaries)
+}
+
+// systemInfo is one declared system: the directory holding a system-host
+// scaffold, root-relative, plus the name the host declares.
+type systemInfo struct {
+	Path string `json:"path"`
+	Name string `json:"name"`
+}
+
+// listSystems reports every declared system, so the flow view can offer a
+// system that has a host but no blocks yet — /api/flow only carries systems
+// through the blocks that belong to them. The response is always an array
+// (never null) even when empty.
+func (s *apiServer) listSystems(w http.ResponseWriter, _ *http.Request) {
+	_, systems := s.scan()
+	out := make([]systemInfo, 0, len(systems))
+	for dir, name := range systems {
+		out = append(out, systemInfo{Path: s.relPath(dir), Name: name})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	writeJSON(w, http.StatusOK, out)
 }
 
 // scan splits the workspace's scaffold entries for the API: the integration
