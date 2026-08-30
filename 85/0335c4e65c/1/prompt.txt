@@ -1,0 +1,21 @@
+Do not make any changes. I am a bit scared of that we are giving the cli to much knowledge about templates. Can you find all scaffolding parameters that the cli has knowledge of?
+
+---
+
+Should we do anything about it?
+
+---
+
+can you make a plan and start a review agent with pi --print?
+
+---
+
+You shouldnt run it on the codex provider run it on (berget) moonshotai/Kimi-K3
+
+---
+
+ok so it is still running
+
+---
+
+yes please
