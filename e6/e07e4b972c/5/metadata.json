@@ -1,0 +1,50 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "e6e07e4b972c",
+  "session_id": "01a051df-bc7f-7486-940d-7a18b439d2a6",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-30T10:44:33.114461Z",
+  "branch": "refactor/wiring-vocabulary",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "cmd/intropy/dashboard.go",
+    "cmd/intropy/int_create.go",
+    "cmd/intropy/int_create_test.go",
+    "internal/dashboard/handlers.go",
+    "internal/dashboard/server.go",
+    "internal/dashboard/templates.go",
+    "internal/dashboard/templates_test.go",
+    "internal/template/facts.go",
+    "internal/template/facts_test.go",
+    "internal/template/suggest.go",
+    "internal/template/suggest_test.go"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "b3faed570778",
+  "checkpoint_transcript_start": 32,
+  "transcript_lines_at_start": 32,
+  "compact_transcript_start": 13,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-30T10:44:33.096775Z",
+    "agent_lines": 310,
+    "agent_removed": 6,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 310,
+    "total_lines_changed": 316,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
