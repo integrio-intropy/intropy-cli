@@ -20,14 +20,24 @@ var rootCmd = &cobra.Command{
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		if changeDirFlag == "" {
-			return nil
+		if err := chdirIfRequested(); err != nil {
+			return err
 		}
-		if err := os.Chdir(changeDirFlag); err != nil {
-			return fmt.Errorf("cannot change to directory %q: %w", changeDirFlag, err)
-		}
+		warnIfPreview(cmd)
 		return nil
 	},
+}
+
+// chdirIfRequested applies -C before any preview warning, so the warning is
+// never printed for a command that then fails to start.
+func chdirIfRequested() error {
+	if changeDirFlag == "" {
+		return nil
+	}
+	if err := os.Chdir(changeDirFlag); err != nil {
+		return fmt.Errorf("cannot change to directory %q: %w", changeDirFlag, err)
+	}
+	return nil
 }
 
 func Execute() error {
