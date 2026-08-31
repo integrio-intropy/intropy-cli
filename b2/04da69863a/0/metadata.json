@@ -1,0 +1,64 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "b204da69863a",
+  "session_id": "01a0537c-fef6-750a-8432-53b80995898d",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-31T04:17:30.063777Z",
+  "branch": "feat/dashboard-tracing",
+  "checkpoints_count": 2,
+  "save_step_count": 1,
+  "files_touched": [
+    "web/src/components/Tracing.tsx",
+    "web/src/index.css"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "ed28f780de56",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 501461,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 21233856,
+    "output_tokens": 65237,
+    "api_call_count": 238
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-31T04:17:30.005203Z",
+    "agent_lines": 525,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 227,
+    "human_removed": 26,
+    "total_committed": 752,
+    "total_lines_changed": 778,
+    "agent_percentage": 67.48071979434447,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    }
+  ]
+}
