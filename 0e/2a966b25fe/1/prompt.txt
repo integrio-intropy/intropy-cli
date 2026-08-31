@@ -1,0 +1,9 @@
+This is just brainstorming so do not make any changes. We have previously used a concept called a blueprint. What it is is basically a named composition of blocks, for example a distribution is a system with an extractor and many loaders. I was thinking of re-introducing that into the dashboard. It would appear as a dropdown on the integration flow page and selecting a blueprint there would render different layouts with the slot place holders. Selecting a distribution would render placeholders for extractor, a topuc and loaders. Selecting a transactional blueprint would render a placeholder for a transactional integration etc
+
+---
+
+I agree on option 3. We must have a general blueprint where you can basically build the system as you desire without being restricted to some pre-existing blueprint
+
+---
+
+Perhaps we should try option 3 and work backwards? We should do it on a new branch off release/v1 and do not push anything

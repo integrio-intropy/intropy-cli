@@ -3,7 +3,7 @@
   "checkpoint_id": "0e2a966b25fe",
   "strategy": "manual-commit",
   "branch": "release/v1",
-  "checkpoints_count": 3,
+  "checkpoints_count": 6,
   "files_touched": [
     "web/src/components/FlowView.tsx"
   ],
@@ -14,13 +14,20 @@
       "compact_transcript": "/0e/2a966b25fe/0/transcript.jsonl",
       "content_hash": "/0e/2a966b25fe/0/content_hash.txt",
       "prompt": "/0e/2a966b25fe/0/prompt.txt"
+    },
+    {
+      "metadata": "/0e/2a966b25fe/1/metadata.json",
+      "transcript": "/0e/2a966b25fe/1/full.jsonl",
+      "compact_transcript": "/0e/2a966b25fe/1/transcript.jsonl",
+      "content_hash": "/0e/2a966b25fe/1/content_hash.txt",
+      "prompt": "/0e/2a966b25fe/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 31308,
+    "input_tokens": 59765,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 522624,
-    "output_tokens": 19089,
-    "api_call_count": 25
+    "cache_read_tokens": 711808,
+    "output_tokens": 23704,
+    "api_call_count": 39
   }
 }
