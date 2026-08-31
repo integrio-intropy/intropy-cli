@@ -831,10 +831,47 @@ function buildDeclaredGraph(
   const nodes: Node[] = []
   const edges: Edge[] = []
   const groupId = 'system'
+
+  // Scaffolded-but-undeclared components: blocks whose scaffold record lives
+  // in this system but whose name the declared topology does not carry —
+  // brand new (pre `sys create`) or renamed. They render as ghosts in their
+  // block kind's column, wireless, until the host declares them.
+  const declaredPaths = new Set(
+    comps.map((c) => scaffoldPath(c.name) ?? joinProject(topo.path, c.name)),
+  )
+  const ghosts = items.filter((it) => !declaredPaths.has(it.path))
+  const ghostCol = (g: IntegrationDetail): number => {
+    const flow = g.dataFlow ?? (g.blockKind ? dataFlowFor(g.blockKind) : undefined)
+    return flow === 'in' ? extractorCol : flow === 'out' ? loaderCol : transactionalCol
+  }
+
+  // Placeholder slots — one per kind column, pinned to a shared bottom rail
+  // below the flow. Clicking one opens the create drawer pre-filtered to
+  // that block kind; the slots are affordances, never part of the graph.
+  const slotDefs: Array<{ kind: SlotKind; col: number }> = [
+    { kind: 'extractor', col: extractorCol },
+    { kind: 'transactional', col: transactionalCol },
+    { kind: 'loader', col: loaderCol },
+  ]
+
+  // Column stacks center vertically against the tallest column: a lone
+  // extractor sits level with the middle of the loader stack (and the topic
+  // centered between them) instead of hugging the top, and the stack grows
+  // out from the middle as blocks are added. Centering needs each column's
+  // row count up front — the stack's height decides its starting offset.
+  // Slots never count: they pin to the bottom rail (below), so they must not
+  // push their column's stack off centre.
+  const colRows: number[] = new Array<number>(effCols).fill(0)
+  for (const c of comps) colRows[depth.get(`component:${c.name}`) ?? 0]++
+  for (const [tid] of topicRefs) colRows[depth.get(tid) ?? 0]++
+  for (const g of ghosts) colRows[ghostCol(g)]++
+  const maxRows = Math.max(1, ...colRows)
+
   const rowsInCol: number[] = new Array<number>(effCols).fill(0)
   const place = (d: number): { x: number; y: number; row: number } => {
     const row = rowsInCol[d]++
-    return { x: colX(d), y: contentTop + row * (NODE_H + ROW_GAP), row }
+    const offset = ((maxRows - colRows[d]) * (NODE_H + ROW_GAP)) / 2
+    return { x: colX(d), y: contentTop + offset + row * (NODE_H + ROW_GAP), row }
   }
 
   // Component positions, keyed by ref, so externals can anchor to the
@@ -860,6 +897,25 @@ function buildDeclaredGraph(
     })
   }
 
+  // Vertical centering per topic: the average card-centre y of the
+  // components wired to it, minus the topic's own half height. A topic's
+  // place is between its publisher and subscribers, not on a row of its own.
+  const topicY = new Map<string, number>()
+  for (const [tid] of topicRefs) {
+    const neighbours = comps
+      .filter(
+        (c) =>
+          (c.publishes ?? []).some((p) => topicId(p.pubsub, p.topic) === tid) ||
+          (c.subscribes ?? []).some((s) => topicId(s.pubsub, s.topic) === tid),
+      )
+      .map((c) => compPos.get(`component:${c.name}`))
+      .filter((p): p is { x: number; y: number; col: number } => p !== undefined)
+    if (neighbours.length === 0) continue
+    const centre =
+      neighbours.reduce((sum, p) => sum + p.y + NODE_H / 2, 0) / neighbours.length
+    topicY.set(tid, centre - INFRA_H / 2)
+  }
+
   for (const [tid, ref] of topicRefs) {
     const pos = place(depth.get(tid) ?? 0)
     const meta = topicMeta.get(`${ref.pubsub}/${ref.topic}`)
@@ -869,7 +925,9 @@ function buildDeclaredGraph(
       parentId: groupId,
       extent: 'parent',
       // Topics are narrower than component cards; center them in the column.
-      position: { x: pos.x + (NODE_W - INFRA_W) / 2, y: pos.y },
+      // Rows share them across the topic's neighbours, so centre vertically
+      // on the average of the wired components rather than taking the row.
+      position: { x: pos.x + (NODE_W - INFRA_W) / 2, y: topicY.get(tid) ?? pos.y },
       style: { width: INFRA_W, height: INFRA_H },
       data: {
         name: ref.topic,
@@ -879,18 +937,9 @@ function buildDeclaredGraph(
     })
   }
 
-  // Scaffolded-but-undeclared components: blocks whose scaffold record lives
-  // in this system but whose name the declared topology does not carry —
-  // brand new (pre `sys create`) or renamed. They render as ghosts in their
-  // block kind's column, wireless, until the host declares them.
-  const declaredPaths = new Set(
-    comps.map((c) => scaffoldPath(c.name) ?? joinProject(topo.path, c.name)),
-  )
-  const ghosts = items.filter((it) => !declaredPaths.has(it.path))
   for (const g of ghosts) {
     const flow = g.dataFlow ?? (g.blockKind ? dataFlowFor(g.blockKind) : undefined)
-    const col = flow === 'in' ? extractorCol : flow === 'out' ? loaderCol : transactionalCol
-    const pos = place(col)
+    const pos = place(ghostCol(g))
     nodes.push({
       id: g.path,
       type: 'integration',
@@ -907,22 +956,28 @@ function buildDeclaredGraph(
     })
   }
 
-  // Placeholder slots — one per kind column, always last in their column.
-  // Clicking one opens the create drawer pre-filtered to that block kind;
-  // the slots are affordances, never part of the declared graph.
-  const slotDefs: Array<{ kind: SlotKind; col: number }> = [
-    { kind: 'extractor', col: extractorCol },
-    { kind: 'transactional', col: transactionalCol },
-    { kind: 'loader', col: loaderCol },
-  ]
+  // The slot rail: one shared baseline below the deepest node, so the slots
+  // align across columns instead of drifting with each column's stack. An
+  // empty system has no node bottom — the rail is the content top.
+  const nodeBottom = Math.max(
+    0,
+    ...colRows.map((rows) =>
+      rows === 0
+        ? 0
+        : contentTop +
+          ((maxRows - rows) * (NODE_H + ROW_GAP)) / 2 +
+          (rows - 1) * (NODE_H + ROW_GAP) +
+          NODE_H,
+    ),
+  )
+  const slotY = nodeBottom === 0 ? contentTop : nodeBottom + ROW_GAP
   for (const s of slotDefs) {
-    const pos = place(s.col)
     nodes.push({
       id: `slot:${s.kind}`,
       type: 'slot',
       parentId: groupId,
       extent: 'parent',
-      position: { x: pos.x, y: pos.y },
+      position: { x: colX(s.col), y: slotY },
       style: { width: NODE_W, height: NODE_H },
       draggable: false,
       selectable: false,
@@ -930,8 +985,7 @@ function buildDeclaredGraph(
     })
   }
 
-  const maxRows = Math.max(1, ...rowsInCol)
-  const groupHeight = contentTop + maxRows * (NODE_H + ROW_GAP) - ROW_GAP + GROUP_PAD
+  const groupHeight = slotY + NODE_H + GROUP_PAD
   nodes.unshift({
     id: groupId,
     type: 'group',
