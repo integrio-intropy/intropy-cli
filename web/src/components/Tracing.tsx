@@ -9,6 +9,7 @@ import {
   type TelemetryResource,
 } from '../api'
 import { Combobox } from './Combobox'
+import { ChevronRightIcon, ExpandMoreIcon } from '../icons'
 
 // Tracing renders the running system's distributed traces straight from the
 // Aspire dashboard's telemetry API (proxied at /api/telemetry/{system}/…),
@@ -17,8 +18,13 @@ import { Combobox } from './Combobox'
 // system host is running (the flow view's start button), because the Aspire
 // dashboard — the OTLP collector the traces live in — is a child of that
 // host.
+//
+// The list is the waterfall: each trace is one row, and expanding it nests
+// its spans underneath on the same timeline, indented by depth. There is no
+// separate detail view — a trace is its spans, so they share the row.
 
-/** One trace: its spans plus the summary fields the list row shows. */
+/** One trace row: the summary the collapsed row shows, plus the span rows
+ *  an expanded row nests. Spans are fetched lazily on first expand. */
 interface TraceSummary {
   id: string
   /** Root span name — the operation the trace represents. */
@@ -32,10 +38,11 @@ interface TraceSummary {
   hasError: boolean
 }
 
-interface SpanNode {
+/** One span row of the waterfall: the span, its service, and its depth in
+ *  the trace's parent/child tree (the row's indent). */
+interface SpanRow {
   span: OtlpSpan
   service: string
-  children: SpanNode[]
   depth: number
 }
 
@@ -67,10 +74,6 @@ function serviceName(rs: OtlpResourceSpans): string {
 
 function nano(ts: string | undefined): number {
   return ts ? Number(ts) : 0
-}
-
-function spanDurationMs(s: OtlpSpan): number {
-  return (nano(s.endTimeUnixNano) - nano(s.startTimeUnixNano)) / 1e6
 }
 
 function spanHasError(s: OtlpSpan): boolean {
@@ -120,37 +123,38 @@ function summarizeTraces(data: OtlpResourceSpans[] | undefined): TraceSummary[] 
   return traces
 }
 
-/** Build the span tree for the waterfall: roots first, children nested by
- *  parentSpanId, siblings in start order. A parent the payload does not
- *  carry attaches the span as a root — better a flat row than a lost span. */
-function buildSpanTree(pairs: { span: OtlpSpan; service: string }[]): SpanNode[] {
-  const nodes = new Map<string, SpanNode>()
+/** Order a trace's spans as waterfall rows: depth-first over the
+ *  parent/child tree, siblings in start order. A span whose parent the
+ *  payload does not carry hangs at the top level — better a flat row than
+ *  a lost span. */
+function spanRows(data: OtlpResourceSpans[] | undefined): SpanRow[] {
+  const pairs = flattenSpans(data)
+  const byId = new Map<string, { span: OtlpSpan; service: string }>()
+  for (const p of pairs) byId.set(p.span.spanId ?? '', p)
+  const children = new Map<string, { span: OtlpSpan; service: string }[]>()
+  const roots: { span: OtlpSpan; service: string }[] = []
   for (const p of pairs) {
-    nodes.set(p.span.spanId ?? '', { span: p.span, service: p.service, children: [], depth: 0 })
+    const parentId = p.span.parentSpanId ?? ''
+    if (parentId && byId.has(parentId)) {
+      const list = children.get(parentId) ?? []
+      list.push(p)
+      children.set(parentId, list)
+    } else {
+      roots.push(p)
+    }
   }
-  const roots: SpanNode[] = []
-  for (const node of nodes.values()) {
-    const parent = node.span.parentSpanId ? nodes.get(node.span.parentSpanId) : undefined
-    if (parent) parent.children.push(node)
-    else roots.push(node)
+  const byStart = (a: { span: OtlpSpan }, b: { span: OtlpSpan }) =>
+    nano(a.span.startTimeUnixNano) - nano(b.span.startTimeUnixNano)
+  const rows: SpanRow[] = []
+  const walk = (list: { span: OtlpSpan; service: string }[], depth: number) => {
+    list.sort(byStart)
+    for (const p of list) {
+      rows.push({ span: p.span, service: p.service, depth })
+      walk(children.get(p.span.spanId ?? '') ?? [], depth + 1)
+    }
   }
-  const sortRec = (list: SpanNode[]) => {
-    list.sort(
-      (a, b) => nano(a.span.startTimeUnixNano) - nano(b.span.startTimeUnixNano),
-    )
-    for (const n of list) sortRec(n.children)
-  }
-  sortRec(roots)
-  return roots
-}
-
-function flattenTree(roots: SpanNode[], depth = 0): SpanNode[] {
-  const out: SpanNode[] = []
-  for (const n of roots) {
-    out.push({ ...n, depth })
-    out.push(...flattenTree(n.children, depth + 1))
-  }
-  return out
+  walk(roots, 0)
+  return rows
 }
 
 function fmtDuration(ms: number): string {
@@ -160,9 +164,11 @@ function fmtDuration(ms: number): string {
 }
 
 function fmtTime(startNano: number): string {
-  return new Date(startNano / 1e6).toLocaleTimeString(undefined, { hour12: false }) +
+  return (
+    new Date(startNano / 1e6).toLocaleTimeString(undefined, { hour12: false }) +
     '.' +
     String(Math.floor((startNano / 1e6) % 1000)).padStart(3, '0')
+  )
 }
 
 function errText(e: unknown): string {
@@ -187,9 +193,10 @@ export function Tracing() {
   const [traces, setTraces] = useState<TraceSummary[] | null>(null)
   const [unavailable, setUnavailable] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [selectedTrace, setSelectedTrace] = useState<string | null>(null)
-  const [detailSpans, setDetailSpans] = useState<OtlpResourceSpans[] | null>(null)
-  const [detailError, setDetailError] = useState<string | null>(null)
+  // Expanded traces: the waterfall rows per trace id, fetched on first
+  // expand and reused after. A null entry means the fetch is in flight.
+  const [expanded, setExpanded] = useState<Record<string, SpanRow[] | null>>({})
+  const [expandErrors, setExpandErrors] = useState<Record<string, string>>({})
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -213,7 +220,7 @@ export function Tracing() {
       .telemetryResources(sysPath)
       .then(setResources)
       .catch(() => setResources(null))
-  }, [system])
+  }, [system, sysPath])
 
   const loadTraces = useCallback(
     (q: { resource: string; search: string; hasError?: boolean }) => {
@@ -258,14 +265,29 @@ export function Tracing() {
     }
   }, [system, resource, search, errorsOnly, loadTraces])
 
-  const openTrace = (id: string) => {
-    setSelectedTrace(id)
-    setDetailSpans(null)
-    setDetailError(null)
+  const toggleTrace = (id: string) => {
+    if (id in expanded) {
+      setExpanded((prev) => {
+        const next = { ...prev }
+        delete next[id]
+        return next
+      })
+      return
+    }
+    setExpanded((prev) => ({ ...prev, [id]: null }))
     api
       .telemetryTrace(sysPath, id)
-      .then((resp) => setDetailSpans(resp.data?.resourceSpans ?? []))
-      .catch((e: unknown) => setDetailError(errText(e)))
+      .then((resp) =>
+        setExpanded((prev) => ({ ...prev, [id]: spanRows(resp.data?.resourceSpans) })),
+      )
+      .catch((e: unknown) => {
+        setExpanded((prev) => {
+          const next = { ...prev }
+          delete next[id]
+          return next
+        })
+        setExpandErrors((prev) => ({ ...prev, [id]: errText(e) }))
+      })
   }
 
   const systemOptions = useMemo(
@@ -337,67 +359,55 @@ export function Tracing() {
           No traces yet — they appear once the running system handles requests.
         </p>
       ) : (
-        <table className="tracing-list">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Time</th>
-              <th>Duration</th>
-              <th>Spans</th>
-              <th>Services</th>
-            </tr>
-          </thead>
-          <tbody>
-            {traces.map((t) => (
-              <tr
-                key={t.id}
-                className={`tracing-row${t.hasError ? ' has-error' : ''}${
-                  selectedTrace === t.id ? ' selected' : ''
-                }`}
-                onClick={() => openTrace(t.id)}
-              >
-                <td className="tracing-name">{t.name}</td>
-                <td>{fmtTime(t.startNano)}</td>
-                <td>{fmtDuration(t.durationMs)}</td>
-                <td>{t.spanCount}</td>
-                <td className="tracing-services">{t.services.join(', ')}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      {selectedTrace && (
-        <TraceDetail
-          traceId={selectedTrace}
-          spans={detailSpans}
-          error={detailError}
-          onClose={() => setSelectedTrace(null)}
-        />
+        <div className="tracing-wf" role="tree" aria-label="Traces">
+          {traces.map((t) => {
+            const isOpen = t.id in expanded
+            const rows = expanded[t.id]
+            return (
+              <div key={t.id} className="trace-group" role="treeitem" aria-expanded={isOpen}>
+                <button
+                  type="button"
+                  className={`trace-row${t.hasError ? ' has-error' : ''}${isOpen ? ' open' : ''}`}
+                  onClick={() => toggleTrace(t.id)}
+                >
+                  <span className="trace-caret" aria-hidden>
+                    {isOpen ? <ExpandMoreIcon className="icon" /> : <ChevronRightIcon className="icon" />}
+                  </span>
+                  <span className="trace-name" title={t.name}>
+                    {t.name}
+                  </span>
+                  <span className="trace-time">{fmtTime(t.startNano)}</span>
+                  <span className="trace-spans">{t.spanCount} spans</span>
+                  <span className="trace-services" title={t.services.join(', ')}>
+                    {t.services.join(', ')}
+                  </span>
+                  <span className="trace-bar-track">
+                    <span className={`trace-bar${t.hasError ? ' error' : ''}`} style={{ left: 0, width: '100%' }} />
+                  </span>
+                  <span className="trace-duration">{fmtDuration(t.durationMs)}</span>
+                </button>
+                {isOpen &&
+                  (rows === null ? (
+                    <p className="trace-loading">Loading spans…</p>
+                  ) : (
+                    <TraceSpans
+                      rows={rows}
+                      error={expandErrors[t.id]}
+                    />
+                  ))}
+              </div>
+            )
+          })}
+        </div>
       )}
     </div>
   )
 }
 
-// ---- Trace detail: waterfall + span panel -------------------------------
+// ---- One expanded trace's waterfall -------------------------------------
 
-function TraceDetail({
-  traceId,
-  spans,
-  error,
-  onClose,
-}: {
-  traceId: string
-  spans: OtlpResourceSpans[] | null
-  error: string | null
-  onClose: () => void
-}) {
-  const [selectedSpan, setSelectedSpan] = useState<SpanNode | null>(null)
-
-  const rows = useMemo(() => {
-    const pairs = flattenSpans(spans ?? undefined)
-    return flattenTree(buildSpanTree(pairs))
-  }, [spans])
+function TraceSpans({ rows, error }: { rows: SpanRow[]; error?: string }) {
+  const [selected, setSelected] = useState<SpanRow | null>(null)
 
   const bounds = useMemo(() => {
     if (rows.length === 0) return { start: 0, duration: 1 }
@@ -406,81 +416,67 @@ function TraceDetail({
     return { start, duration: Math.max(end - start, 1) }
   }, [rows])
 
+  if (error) return <div className="banner error">{error}</div>
+  if (rows.length === 0) return <p className="trace-loading">No spans in this trace.</p>
+
   return (
-    <div className="trace-detail">
-      <div className="trace-detail-header">
-        <span className="trace-detail-title">Trace {traceId.slice(0, 16)}…</span>
-        <button type="button" className="trace-detail-close" onClick={onClose}>
-          Close
-        </button>
-      </div>
-      {error && <div className="banner error">{error}</div>}
-      {spans === null ? (
-        <p className="empty">Loading trace…</p>
-      ) : (
-        <div className="trace-waterfall" role="list">
-          {rows.map((row) => {
-            const offset =
-              ((nano(row.span.startTimeUnixNano) - bounds.start) / bounds.duration) * 100
-            const width = Math.max(
-              ((nano(row.span.endTimeUnixNano) - nano(row.span.startTimeUnixNano)) /
-                bounds.duration) *
-                100,
-              0.5,
-            )
-            const isError = spanHasError(row.span)
-            const isSelected =
-              selectedSpan?.span.spanId === row.span.spanId &&
-              selectedSpan?.span.traceId === row.span.traceId
-            return (
-              <button
-                type="button"
-                role="listitem"
-                key={`${row.span.traceId}-${row.span.spanId}`}
-                className={`trace-wf-row${isSelected ? ' selected' : ''}`}
-                onClick={() => setSelectedSpan(isSelected ? null : row)}
-              >
-                <span
-                  className="trace-wf-label"
-                  style={{ paddingLeft: `${row.depth * 16}px` }}
-                  title={`${row.service} · ${row.span.name ?? ''}`}
-                >
-                  <span className="trace-wf-service">{row.service}</span>
-                  {row.span.name}
-                </span>
-                <span className="trace-wf-bar-track">
-                  <span
-                    className={`trace-wf-bar${isError ? ' error' : ''}`}
-                    style={{ left: `${offset}%`, width: `${width}%` }}
-                  />
-                </span>
-                <span className="trace-wf-duration">{fmtDuration(spanDurationMs(row.span))}</span>
-              </button>
-            )
-          })}
-        </div>
-      )}
-      {selectedSpan && <SpanPanel node={selectedSpan} />}
+    <div className="trace-spans" role="group">
+      {rows.map((row) => {
+        const start = nano(row.span.startTimeUnixNano)
+        const end = nano(row.span.endTimeUnixNano)
+        const offset = ((start - bounds.start) / bounds.duration) * 100
+        const width = Math.max(((end - start) / bounds.duration) * 100, 0.5)
+        const isError = spanHasError(row.span)
+        const isSelected =
+          selected?.span.spanId === row.span.spanId && selected?.span.traceId === row.span.traceId
+        return (
+          <button
+            type="button"
+            key={`${row.span.traceId}-${row.span.spanId}`}
+            className={`trace-row span-row${isError ? ' has-error' : ''}${isSelected ? ' selected' : ''}`}
+            onClick={() => setSelected(isSelected ? null : row)}
+          >
+            <span className="trace-caret" aria-hidden />
+            <span className="trace-name" style={{ paddingLeft: `${row.depth * 16}px` }} title={row.span.name}>
+              <span className="trace-span-service">{row.service}</span>
+              {row.span.name}
+            </span>
+            <span className="trace-bar-track">
+              <span
+                className={`trace-bar${isError ? ' error' : ''}`}
+                style={{ left: `${offset}%`, width: `${width}%` }}
+              />
+            </span>
+            <span className="trace-duration">{fmtDuration((end - start) / 1e6)}</span>
+          </button>
+        )
+      })}
+      {selected && <SpanFacts row={selected} />}
     </div>
   )
 }
 
-function SpanPanel({ node }: { node: SpanNode }) {
-  const { span, service } = node
+// The clicked span's facts, inline under the waterfall: identity, status,
+// attributes, and events. It stays inline rather than a drawer because the
+// waterfall above is the context the facts belong to.
+function SpanFacts({ row }: { row: SpanRow }) {
+  const { span, service } = row
   return (
-    <div className="span-panel">
-      <div className="span-panel-title">
+    <div className="span-facts">
+      <div className="span-facts-title">
         {service} · {span.name}
       </div>
-      <dl className="span-panel-facts">
+      <dl className="span-facts-grid">
         <dt>span id</dt>
         <dd>{span.spanId}</dd>
         <dt>duration</dt>
-        <dd>{fmtDuration(spanDurationMs(span))}</dd>
+        <dd>{fmtDuration((nano(span.endTimeUnixNano) - nano(span.startTimeUnixNano)) / 1e6)}</dd>
         {span.status?.code === 2 && (
           <>
             <dt>status</dt>
-            <dd className="span-error">error{span.status.message ? `: ${span.status.message}` : ''}</dd>
+            <dd className="span-error">
+              error{span.status.message ? `: ${span.status.message}` : ''}
+            </dd>
           </>
         )}
       </dl>

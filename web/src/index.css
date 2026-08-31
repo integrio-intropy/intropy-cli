@@ -2010,7 +2010,9 @@ body {
   min-width: 0;
 }
 
-/* Tracing tab — traces proxied from the running system's Aspire dashboard. */
+/* Tracing tab — traces proxied from the running system's Aspire dashboard.
+ * The list is the waterfall: trace rows expand to nest their spans on one
+ * shared timeline, indented by depth. */
 .tracing {
   max-width: 1200px;
 }
@@ -2058,119 +2060,88 @@ body {
   margin-bottom: 0;
 }
 
-.tracing-list {
-  width: 100%;
-  border-collapse: collapse;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
-.tracing-list th,
-.tracing-list td {
-  text-align: left;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  font-size: 13px;
-}
-
-.tracing-list th {
-  color: var(--text-muted);
-  font-weight: 600;
-}
-
-.tracing-row {
-  cursor: pointer;
-}
-
-.tracing-row:hover td {
-  background: var(--surface-2);
-}
-
-.tracing-row.selected td {
-  background: var(--accent-soft);
-}
-
-.tracing-row.has-error .tracing-name {
-  color: var(--danger);
-}
-
-.tracing-name {
-  font-weight: 600;
-}
-
-.tracing-services {
-  color: var(--text-muted);
-}
-
-/* Trace detail: waterfall + span panel. */
-.trace-detail {
-  margin-top: 20px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  padding: 16px 20px;
-}
-
-.trace-detail-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-.trace-detail-title {
-  font-weight: 700;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13px;
-}
-
-.trace-detail-close {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--text);
-  padding: 4px 10px;
-  cursor: pointer;
-}
-
-.trace-waterfall {
+.tracing-wf {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 
-.trace-wf-row {
+.trace-row {
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
   border: none;
-  background: none;
+  border-radius: 6px;
+  background: var(--surface);
   color: var(--text);
-  padding: 3px 0;
+  padding: 7px 12px 7px 6px;
   cursor: pointer;
   text-align: left;
   font-size: 13px;
 }
 
-.trace-wf-row.selected {
+.trace-row:hover {
+  background: var(--surface-2);
+}
+
+.trace-row.open,
+.trace-row.selected {
   background: var(--accent-soft);
 }
 
-.trace-wf-label {
+.trace-row.has-error .trace-name {
+  color: var(--danger);
+}
+
+.trace-caret {
+  flex: 0 0 20px;
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+}
+
+.trace-name {
   flex: 0 0 340px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 600;
 }
 
-.trace-wf-service {
+.span-row .trace-name {
+  font-weight: 400;
+}
+
+.trace-span-service {
   color: var(--accent);
   margin-right: 8px;
   font-size: 12px;
 }
 
-.trace-wf-bar-track {
+.trace-time {
+  flex: 0 0 96px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.trace-spans {
+  flex: 0 0 64px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.trace-services {
+  flex: 0 0 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.trace-bar-track {
   flex: 1 1 auto;
   position: relative;
   height: 14px;
@@ -2178,7 +2149,7 @@ body {
   border-radius: 4px;
 }
 
-.trace-wf-bar {
+.trace-bar {
   position: absolute;
   top: 2px;
   bottom: 2px;
@@ -2187,11 +2158,11 @@ body {
   min-width: 2px;
 }
 
-.trace-wf-bar.error {
+.trace-bar.error {
   background: var(--danger);
 }
 
-.trace-wf-duration {
+.trace-duration {
   flex: 0 0 72px;
   text-align: right;
   color: var(--text-muted);
@@ -2199,18 +2170,25 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.span-panel {
-  margin-top: 14px;
-  border-top: 1px solid var(--border);
-  padding-top: 12px;
+.trace-loading {
+  color: var(--text-muted);
+  margin: 4px 0 8px 30px;
+  font-size: 13px;
 }
 
-.span-panel-title {
+/* The clicked span's facts, inline under the waterfall. */
+.span-facts {
+  margin: 6px 0 10px 30px;
+  border-left: 2px solid var(--border);
+  padding: 8px 14px;
+}
+
+.span-facts-title {
   font-weight: 600;
   margin-bottom: 8px;
 }
 
-.span-panel-facts {
+.span-facts-grid {
   display: grid;
   grid-template-columns: 90px 1fr;
   gap: 2px 10px;
@@ -2218,11 +2196,11 @@ body {
   font-size: 13px;
 }
 
-.span-panel-facts dt {
+.span-facts-grid dt {
   color: var(--text-muted);
 }
 
-.span-panel-facts dd {
+.span-facts-grid dd {
   margin: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
@@ -2270,3 +2248,4 @@ body {
   color: var(--text-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+
