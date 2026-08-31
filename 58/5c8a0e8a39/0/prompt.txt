@@ -1,0 +1,287 @@
+Do not change anything. Just analyze. In the Integration Flow I would like to render services (dependencies. They should appear outside of a system boundry
+
+---
+
+in the topology json there is a services array:
+ "services": [
+    {
+      "appId": "business-incident-service",
+      "consumers": [
+        "erp-loader",
+        "my-extractor",
+        "my-integration",
+        "my-loader",
+        "new-loader",
+        "order-loader"
+      ]
+    },
+    {
+      "appId": "idempotency-service",
+      "consumers": [
+        "erp-loader",
+        "my-extractor",
+        "my-integration",
+        "my-loader",
+        "new-loader",
+        "order-loader"
+      ]
+    }
+  ]
+
+---
+
+yeah maybe we have some drifts between the json and the cli. I am not sure if we should clean up the json but we do not seem to have any dependsOn in it and the service dependencies are two way. On the component itself we have a "usedBy"
+
+{
+  "apiVersion": "topology.intropy.io/v1",
+  "kind": "SystemTopology",
+  "system": "temp",
+  "components": [
+    {
+      "name": "my-extractor",
+      "kind": "extractor",
+      "publishes": [
+        {
+          "pubsub": "pubsub",
+          "topic": "orders"
+        }
+      ],
+      "ports": [
+        {
+          "port": "my-extractor-source",
+          "direction": "in"
+        }
+      ],
+      "uses": [
+        "idempotency-service",
+        "business-incident-service"
+      ]
+    },
+    {
+      "name": "my-loader",
+      "kind": "loader",
+      "subscribes": [
+        {
+          "pubsub": "pubsub",
+          "topic": "orders"
+        }
+      ],
+      "ports": [
+        {
+          "port": "my-loader-destination",
+          "direction": "out"
+        }
+      ],
+      "uses": [
+        "idempotency-service",
+        "business-incident-service"
+      ]
+    },
+    {
+      "name": "order-loader",
+      "kind": "loader",
+      "subscribes": [
+        {
+          "pubsub": "pubsub",
+          "topic": "orders"
+        }
+      ],
+      "ports": [
+        {
+          "port": "order-loader-destination",
+          "direction": "out"
+        }
+      ],
+      "uses": [
+        "idempotency-service",
+        "business-incident-service"
+      ]
+    },
+    {
+      "name": "my-integration",
+      "kind": "loader",
+      "subscribes": [
+        {
+          "pubsub": "pubsub",
+          "topic": "orders"
+        }
+      ],
+      "ports": [
+        {
+          "port": "my-integration-destination",
+          "direction": "out"
+        }
+      ],
+      "uses": [
+        "idempotency-service",
+        "business-incident-service"
+      ]
+    },
+    {
+      "name": "erp-loader",
+      "kind": "loader",
+      "subscribes": [
+        {
+          "pubsub": "pubsub",
+          "topic": "orders"
+        }
+      ],
+      "ports": [
+        {
+          "port": "erp-loader-destination",
+          "direction": "out"
+        }
+      ],
+      "uses": [
+        "idempotency-service",
+        "business-incident-service"
+      ]
+    },
+    {
+      "name": "new-loader",
+      "kind": "loader",
+      "subscribes": [
+        {
+          "pubsub": "pubsub",
+          "topic": "orders"
+        }
+      ],
+      "ports": [
+        {
+          "port": "new-loader-destination",
+          "direction": "out"
+        }
+      ],
+      "uses": [
+        "idempotency-service",
+        "business-incident-service"
+      ]
+    }
+  ],
+  "topics": [
+    {
+      "pubsub": "pubsub",
+      "topic": "orders",
+      "contract": "Contracts.Order",
+      "publishers": [
+        "my-extractor"
+      ],
+      "subscribers": [
+        "erp-loader",
+        "my-integration",
+        "my-loader",
+        "new-loader",
+        "order-loader"
+      ]
+    }
+  ],
+  "ports": [
+    {
+      "name": "erp-loader-destination",
+      "directions": [
+        "out"
+      ],
+      "usedBy": [
+        "erp-loader"
+      ]
+    },
+    {
+      "name": "my-extractor-source",
+      "directions": [
+        "in"
+      ],
+      "usedBy": [
+        "my-extractor"
+      ]
+    },
+    {
+      "name": "my-integration-destination",
+      "directions": [
+        "out"
+      ],
+      "usedBy": [
+        "my-integration"
+      ]
+    },
+    {
+      "name": "my-loader-destination",
+      "directions": [
+        "out"
+      ],
+      "usedBy": [
+        "my-loader"
+      ]
+    },
+    {
+      "name": "new-loader-destination",
+      "directions": [
+        "out"
+      ],
+      "usedBy": [
+        "new-loader"
+      ]
+    },
+    {
+      "name": "order-loader-destination",
+      "directions": [
+        "out"
+      ],
+      "usedBy": [
+        "order-loader"
+      ]
+    }
+  ],
+  "services": [
+    {
+      "appId": "business-incident-service",
+      "consumers": [
+        "erp-loader",
+        "my-extractor",
+        "my-integration",
+        "my-loader",
+        "new-loader",
+        "order-loader"
+      ]
+    },
+    {
+      "appId": "idempotency-service",
+      "consumers": [
+        "erp-loader",
+        "my-extractor",
+        "my-integration",
+        "my-loader",
+        "new-loader",
+        "order-loader"
+      ]
+    }
+  ]
+}
+
+---
+
+Can you make a plan of it? If the topology structure is poor we should improve it rather than bandaiding the cli. I want the implementation to be as clean as possible
+
+---
+
+One important difference between a port and a service. A port is the transfer between an external service that we do not control that is part of the requirements for this specific system. A service is a technical dependency to a shared service that we controls
+
+---
+
+ok should we try it? Do it in a branch off the current one. Do not push anything
+
+---
+
+I am testing the dashboard with /Users/robinhultman/dev/intropy/customers/fluxia/integrations/domains/order-management/temp
+but I am not seeing any services in the dashboard
+
+---
+
+Ok the services are there but the diagram is basically unreadable when there are so many arrows. Perhaps we should only render the services but not the relations to the components? Or draw the arrow to the system boundry and not the components? Or do you have another suggestion?
+
+---
+
+Now it looks better. Can you re-apply these changes on a branch off feature/v1 instead of depending on the tracing branch?
+
+---
+
+It seems that the branch is pointed to the release/v1 remote branch so if I push anything here I would push to v1?
