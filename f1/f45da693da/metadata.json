@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "f1f45da693da",
+  "strategy": "manual-commit",
+  "branch": "feat/flow-blueprints",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "internal/dashboard/blueprints.go",
+    "internal/dashboard/handlers.go",
+    "web/src/api.ts",
+    "web/src/blueprints.ts",
+    "web/src/components/CreateDrawer.tsx",
+    "web/src/components/FlowView.tsx",
+    "web/src/components/useTemplateFields.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/f1/f45da693da/0/metadata.json",
+      "transcript": "/f1/f45da693da/0/full.jsonl",
+      "compact_transcript": "/f1/f45da693da/0/transcript.jsonl",
+      "content_hash": "/f1/f45da693da/0/content_hash.txt",
+      "prompt": "/f1/f45da693da/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 32369,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2666688,
+    "output_tokens": 16483,
+    "api_call_count": 58
+  }
+}

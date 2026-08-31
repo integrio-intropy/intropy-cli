@@ -1,0 +1,67 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "f1f45da693da",
+  "session_id": "01a056cf-52a3-743c-aefc-9959d8c735c0",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-31T08:42:18.150913Z",
+  "branch": "feat/flow-blueprints",
+  "checkpoints_count": 2,
+  "save_step_count": 2,
+  "files_touched": [
+    "internal/dashboard/blueprints.go",
+    "internal/dashboard/handlers.go",
+    "web/src/api.ts",
+    "web/src/blueprints.ts",
+    "web/src/components/CreateDrawer.tsx",
+    "web/src/components/FlowView.tsx",
+    "web/src/components/useTemplateFields.ts"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "6d0c8027fc5a",
+  "checkpoint_transcript_start": 34,
+  "transcript_lines_at_start": 34,
+  "compact_transcript_start": 17,
+  "token_usage": {
+    "input_tokens": 32369,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2666688,
+    "output_tokens": 16483,
+    "api_call_count": 58
+  },
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-31T08:42:18.121385Z",
+    "agent_lines": 262,
+    "agent_removed": 12,
+    "human_added": 180,
+    "human_modified": 38,
+    "human_removed": 0,
+    "total_committed": 480,
+    "total_lines_changed": 492,
+    "agent_percentage": 55.6910569105691,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
