@@ -111,7 +111,9 @@ function summarizeTraces(data: OtlpResourceSpans[] | undefined): TraceSummary[] 
     const root = pairs.find((p) => !p.span.parentSpanId) ?? pairs[0]
     traces.push({
       id,
-      name: root.span.name ?? id.slice(0, 12),
+      // The Aspire traces view labels a trace <service.name>:<span name>;
+      // matching it keeps the two dashboards reading the same.
+      name: `${root.service}:${root.span.name ?? id.slice(0, 12)}`,
       services: [...new Set(pairs.map((p) => p.service))],
       startNano: start,
       durationMs: (end - start) / 1e6,
