@@ -1,0 +1,11 @@
+Do this on a branch off release/v1, do not push anything.
+
+I want to see if we can remove the need to open the aspire dashboard to view tracing data. Can you try to create a tab in the intropy dashboard that uses the aspire tracing backend to retrieve tracing data and render it directory on the intropy dashboard?
+
+---
+
+I think we should only list the traces and not all spans
+
+---
+
+Can we include service.name in the trace label? I think aspire displays <service.name>:<span name>
