@@ -1,0 +1,10 @@
+In the intropy dashboard can we try to make the topic appear in the middle? If we look at the example here: /Users/robinhultman/dev/intropy/customers/fluxia/integrations/domains/order-management/temp
+i would like the orders topic to appear sort of vertically aligned with the my-integration component
+
+---
+
+That looks better. Can we also align with extractor? So that extractors start from the middle and expand to the borders as more are added? Like loaders
+
+---
+
+That looks good. I think we need to have the placeholder slots aligned at the bottom. What do you think=
