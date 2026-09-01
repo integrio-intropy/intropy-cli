@@ -10,13 +10,13 @@ import (
 	"testing"
 )
 
-const depComponentYAML = `apiVersion: intropy.dev/v1
+const depComponentYAML = `apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: component
   labels:
-    intropy.dev/block-kind: extractor
-    intropy.dev/data-flow: "in"
+    intropy.io/block-kind: extractor
+    intropy.io/data-flow: "in"
 spec:
   parameters:
     type: object
@@ -34,12 +34,12 @@ spec:
         name: '{{ .org }}.Models'
 `
 
-const depSharedYAML = `apiVersion: intropy.dev/v1
+const depSharedYAML = `apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: shared
   labels:
-    intropy.dev/template-role: shared-library
+    intropy.io/template-role: shared-library
 spec:
   parameters:
     type: object
@@ -381,12 +381,12 @@ func TestCreateFailsWhenDependencyMissesRequiredParams(t *testing.T) {
 }
 
 func TestCreateRendersTransitiveDependencies(t *testing.T) {
-	sharedWithDep := `apiVersion: intropy.dev/v1
+	sharedWithDep := `apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: shared
   labels:
-    intropy.dev/template-role: shared-library
+    intropy.io/template-role: shared-library
 spec:
   parameters:
     type: object

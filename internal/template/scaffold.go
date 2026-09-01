@@ -21,7 +21,7 @@ const (
 	// template's output plays in a system. Its value is copied into the
 	// scaffold record so later commands can tell support projects apart
 	// from system blocks.
-	TemplateRoleLabel = "intropy.dev/template-role"
+	TemplateRoleLabel = "intropy.io/template-role"
 
 	// RoleSharedLibrary marks a scaffolded project that exists to be
 	// referenced by sibling components (e.g. shared models). System
@@ -36,12 +36,12 @@ const (
 	// Intropy block a template scaffolds (e.g. "extractor"). Its value is
 	// copied into the scaffold record so `sys create` can assemble the
 	// system declaration from what each scaffold recorded.
-	TemplateBlockKindLabel = "intropy.dev/block-kind"
+	TemplateBlockKindLabel = "intropy.io/block-kind"
 
 	// TemplateDataFlowLabel names the manifest label that declares the
 	// block's data flow direction relative to the system ("in", "out",
 	// or "both"). Recorded alongside the block kind.
-	TemplateDataFlowLabel = "intropy.dev/data-flow"
+	TemplateDataFlowLabel = "intropy.io/data-flow"
 
 	// TemplateMessageParamsLabel names the manifest label that declares
 	// which parameters carry message wiring, as a comma-separated list of
@@ -81,15 +81,15 @@ type Scaffold struct {
 	Version       string         `json:"version"`
 	Values        map[string]any `json:"values"`
 
-	// Role is the value of the template's intropy.dev/template-role label,
+	// Role is the value of the template's intropy.io/template-role label,
 	// if any (e.g. "shared-library").
 	Role string `json:"role,omitempty"`
 
-	// BlockKind is the value of the template's intropy.dev/block-kind
+	// BlockKind is the value of the template's intropy.io/block-kind
 	// label, if any (e.g. "extractor").
 	BlockKind string `json:"blockKind,omitempty"`
 
-	// DataFlow is the value of the template's intropy.dev/data-flow label,
+	// DataFlow is the value of the template's intropy.io/data-flow label,
 	// if any ("in" or "out").
 	DataFlow string `json:"dataFlow,omitempty"`
 

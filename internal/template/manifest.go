@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	APIVersionV1 = "intropy.dev/v1"
+	APIVersionV1 = "intropy.io/v1"
 	KindTemplate = "Template"
 )
 

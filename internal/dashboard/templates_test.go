@@ -16,14 +16,14 @@ import (
 
 // testTemplateYAML declares two parameters in a known order so the detail
 // endpoint's `fields` can be asserted against declaration order.
-const testTemplateYAML = `apiVersion: intropy.dev/v1
+const testTemplateYAML = `apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: test-template
   title: Test
   labels:
-    intropy.dev/block-kind: extractor
-    intropy.dev/data-flow: in
+    intropy.io/block-kind: extractor
+    intropy.io/data-flow: in
 spec:
   parameters:
     type: object
@@ -231,7 +231,7 @@ func TestCreateTemplatePascalNameKebabDir(t *testing.T) {
 func TestCreateTemplateDerivesDirFromNameValue(t *testing.T) {
 	// The form sends no name; the resolved "name" parameter kebab-cases
 	// into the directory, the same convention the CLI's --name defaults by.
-	lib := newTemplateLibraryWith(t, "v1", `apiVersion: intropy.dev/v1
+	lib := newTemplateLibraryWith(t, "v1", `apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: test-template
@@ -403,7 +403,7 @@ func TestListTemplatesIncludesLabels(t *testing.T) {
 		t.Errorf("title = %q", got.Entries[0].Title)
 	}
 	// The labels are what a flow-view slot filters the palette by.
-	if got.Entries[0].Labels["intropy.dev/block-kind"] != "extractor" {
+	if got.Entries[0].Labels["intropy.io/block-kind"] != "extractor" {
 		t.Errorf("labels = %v", got.Entries[0].Labels)
 	}
 }
@@ -512,7 +512,7 @@ type scaffoldEntry struct {
 // topicTemplateYAML declares the wiring parameters a topic block prompts
 // for, so the dir-scoped detail response can be asserted against workspace
 // suggestions.
-const topicTemplateYAML = `apiVersion: intropy.dev/v1
+const topicTemplateYAML = `apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: topic-template

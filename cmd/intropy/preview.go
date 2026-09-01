@@ -7,7 +7,7 @@ import (
 )
 
 // previewAnnotation marks a command as a preview in cmd.Annotations.
-const previewAnnotation = "intropy.dev/preview"
+const previewAnnotation = "intropy.io/preview"
 
 // markPreview flags cmd as a preview command: it is shown with "(preview)" in
 // help listings, its Long text carries the stability note, and running it

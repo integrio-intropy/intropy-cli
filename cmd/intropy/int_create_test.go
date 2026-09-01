@@ -129,7 +129,7 @@ func TestResolveCreateName(t *testing.T) {
 // manifest declares the given extra parameter block, for deriveOutDir's fetch.
 func outDirLibrary(t *testing.T, extraParams string) *templatetest.Library {
 	t.Helper()
-	manifest := `apiVersion: intropy.dev/v1
+	manifest := `apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: hello-world

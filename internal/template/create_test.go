@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-const testTemplateYAML = `apiVersion: intropy.dev/v1
+const testTemplateYAML = `apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: test-template
@@ -296,7 +296,7 @@ func TestCreateWithoutFactsResolvesAsBefore(t *testing.T) {
 
 // loaderTemplateYAML mirrors the library's loader shape: the wiring
 // parameters the workspace facts convention resolves.
-const loaderTemplateYAML = `apiVersion: intropy.dev/v1
+const loaderTemplateYAML = `apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: loader

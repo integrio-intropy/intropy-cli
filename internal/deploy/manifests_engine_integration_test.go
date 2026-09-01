@@ -24,7 +24,7 @@ import (
 // by spec.files and scopes taken from the injected model. Deliberately mirrors
 // the real template's shape so the test exercises the whole contract.
 const initHostTemplateYAML = `
-apiVersion: intropy.dev/v1
+apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: deploy-host
@@ -98,7 +98,7 @@ resources:
 // The component template: the workload is chosen by spec.files from the block
 // kind the topology reported.
 const initComponentTemplateYAML = `
-apiVersion: intropy.dev/v1
+apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: deploy-component

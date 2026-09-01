@@ -22,13 +22,13 @@ import (
 // and the host scaffolds the contracts project itself for a topic-bearing
 // system whose workspace lacks one. The projectName/systemClass derivations
 // match the real template.
-const systemHostTemplateYAML = `apiVersion: intropy.dev/v1
+const systemHostTemplateYAML = `apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: system-host
   title: System Host
   labels:
-    intropy.dev/template-role: system-host
+    intropy.io/template-role: system-host
 spec:
   parameters:
     type: object
@@ -72,13 +72,13 @@ spec:
 // sharedContractsTemplateYAML is the dependency the host scaffolds for a
 // topic-bearing system without a contracts sibling. Trimmed like the host
 // fixture: one file, one required parameter.
-const sharedContractsTemplateYAML = `apiVersion: intropy.dev/v1
+const sharedContractsTemplateYAML = `apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: shared-contracts
   title: Shared Contracts
   labels:
-    intropy.dev/template-role: shared-library
+    intropy.io/template-role: shared-library
 spec:
   parameters:
     type: object
@@ -91,13 +91,13 @@ spec:
 // systemHostTemplateLegacyYAML is the pre-facts manifest shape: requiring
 // sharedContracts marks a release that consumes the CLI-joined payload this
 // CLI no longer produces.
-const systemHostTemplateLegacyYAML = `apiVersion: intropy.dev/v1
+const systemHostTemplateLegacyYAML = `apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: system-host
   title: System Host
   labels:
-    intropy.dev/template-role: system-host
+    intropy.io/template-role: system-host
 spec:
   parameters:
     type: object

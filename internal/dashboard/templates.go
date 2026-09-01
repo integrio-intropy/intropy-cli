@@ -135,7 +135,7 @@ type createResponse struct {
 const maxCreateBodyBytes = 1 << 20
 
 // templateSummary is one list entry with the manifest metadata the create
-// surfaces filter on — notably the intropy.dev/* labels a flow-view slot
+// surfaces filter on — notably the intropy.io/* labels a flow-view slot
 // selects templates by. Additive beside the bare names `templates` keeps.
 type templateSummary struct {
 	Name        string            `json:"name"`

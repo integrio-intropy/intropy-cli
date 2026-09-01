@@ -17,12 +17,12 @@ export interface Integration {
   repo: string
   version: string
   /** Which way data crosses the system boundary, declared by the template
-   *  (intropy.dev/data-flow label) and recorded in scaffold.json. */
+   *  (intropy.io/data-flow label) and recorded in scaffold.json. */
   dataFlow?: 'in' | 'out' | 'both' | 'internal'
-  /** Topology block kind the template scaffolds (intropy.dev/block-kind
+  /** Topology block kind the template scaffolds (intropy.io/block-kind
    *  label), e.g. "extractor" or "loader". */
   blockKind?: string
-  /** Support-project role (intropy.dev/template-role label). Projects with a
+  /** Support-project role (intropy.io/template-role label). Projects with a
    *  role (system-host, shared-library) are filtered out of the catalog by
    *  the server; the field only appears on records read elsewhere. */
   role?: string
@@ -573,7 +573,7 @@ export const api = {
 // and template.CreateResult.
 
 /** One list entry with the manifest metadata create surfaces filter on —
- *  notably the intropy.dev/* labels a flow-view slot selects templates by. */
+ *  notably the intropy.io/* labels a flow-view slot selects templates by. */
 export interface TemplateSummary {
   name: string
   title?: string

@@ -9,7 +9,7 @@ import (
 )
 
 const libraryHostYAML = `
-apiVersion: intropy.dev/v1
+apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: deploy-host
@@ -21,7 +21,7 @@ spec:
 `
 
 const libraryComponentYAML = `
-apiVersion: intropy.dev/v1
+apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: deploy-component

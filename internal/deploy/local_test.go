@@ -22,7 +22,7 @@ import (
 // local/<name> with no tag, an overlay directory per environment, and
 // component.yaml behind a spec.files rule so the local filter can exclude it.
 const localHostTemplateYAML = `
-apiVersion: intropy.dev/v1
+apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: deploy-host
@@ -59,7 +59,7 @@ resources:
 `
 
 const localComponentTemplateYAML = `
-apiVersion: intropy.dev/v1
+apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: deploy-component

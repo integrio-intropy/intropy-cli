@@ -14,7 +14,7 @@ import { useTemplateFields } from './useTemplateFields'
  *  column: in → process → out. */
 export type SlotKind = 'extractor' | 'transactional' | 'loader'
 
-// The intropy.dev/block-kind label value each slot filters templates by.
+// The intropy.io/block-kind label value each slot filters templates by.
 const KIND_BLOCK_LABEL: Record<SlotKind, string> = {
   extractor: 'extractor',
   transactional: 'transactional-integration',
@@ -72,7 +72,7 @@ export function CreateDrawer({ kind, systemPath, systemLabel, onClose, onCreated
       list.entries ?? list.templates.map((name) => ({ name }))
     if (showAll) return entries
     const want = norm(KIND_BLOCK_LABEL[kind])
-    return entries.filter((e) => norm(e.labels?.['intropy.dev/block-kind'] ?? '') === want)
+    return entries.filter((e) => norm(e.labels?.['intropy.io/block-kind'] ?? '') === want)
   }, [list, showAll, kind])
 
   // Keep the selection valid as the candidate list settles (load, show-all).
@@ -100,7 +100,7 @@ export function CreateDrawer({ kind, systemPath, systemLabel, onClose, onCreated
       {list && candidates.length === 0 && (
         <div className="empty">
           no template in {list.owner}/{list.repo}@{list.version} carries{' '}
-          <code>intropy.dev/block-kind: {KIND_BLOCK_LABEL[kind]}</code>
+          <code>intropy.io/block-kind: {KIND_BLOCK_LABEL[kind]}</code>
           <div>
             <button type="button" className="flow-refresh" onClick={() => setShowAll(true)}>
               show all templates

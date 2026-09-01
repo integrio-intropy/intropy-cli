@@ -190,7 +190,7 @@ func TestSkeletonFilterCachesRuleEvaluation(t *testing.T) {
 
 func TestLoadTemplatePreservesFiles(t *testing.T) {
 	tmpl := loadTemplateBody(t, `
-apiVersion: intropy.dev/v1
+apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: deploy-host
@@ -228,7 +228,7 @@ func TestLoadTemplateRejectsBadFileRules(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			body := `
-apiVersion: intropy.dev/v1
+apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: x
