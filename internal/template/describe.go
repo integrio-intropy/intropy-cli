@@ -17,19 +17,14 @@ type DescribeOptions struct {
 	UserAgent string
 
 	// Owner and Repo select the template library; zero values target the
-	// official library. GitHubBaseURL is a test-only seam.
-	Owner         string
-	Repo          string
-	GitHubBaseURL string
+	// official library. Source carries the fetch seams (GitHubBaseURL
+	// redirects the latest-release API call in tests).
+	Owner  string
+	Repo   string
+	Source SourceOptions
 }
 
 func (o *DescribeOptions) applyDefaults() {
-	if o.Owner == "" {
-		o.Owner = defaultTemplateOwner
-	}
-	if o.Repo == "" {
-		o.Repo = defaultTemplateRepo
-	}
 	if o.UserAgent == "" {
 		o.UserAgent = "intropy-cli"
 	}
@@ -60,31 +55,35 @@ type DescribeResult struct {
 	Fields []FieldSpec `json:"fields"`
 }
 
-// Describe fetches the template tarball at the requested version (or latest)
-// and returns its parsed template manifest. It performs the same fetch+extract
-// path as Create but stops short of value resolution or rendering.
+// Describe ensures the cached checkout at the requested version (or latest)
+// and returns the template's parsed manifest. It performs the same fetch path
+// as Create but stops short of value resolution or rendering.
 func Describe(ctx context.Context, opts DescribeOptions) (*DescribeResult, error) {
 	opts.applyDefaults()
 	if err := validateTemplateName(opts.Template); err != nil {
 		return nil, err
 	}
 
-	gh := newConfiguredGitHub(opts.HTTP, opts.UserAgent, opts.GitHubBaseURL)
-	tag, err := resolveReleaseTag(ctx, gh, opts.Owner, opts.Repo, opts.Version)
+	s := opts.Source
+	s.Version, s.UserAgent = opts.Version, opts.UserAgent
+	if s.Owner == "" && s.Repo == "" {
+		s.Owner, s.Repo = libraryIdentity(opts.Owner, opts.Repo)
+	}
+	src, err := FetchSource(ctx, s)
 	if err != nil {
 		return nil, err
 	}
 
-	templateRoot, cleanup, err := downloadTemplate(ctx, gh, opts.Owner, opts.Repo, tag, opts.Template, "intropy-describe-*")
+	templateRoot, err := templateDir(src, src.Owner, src.Repo, opts.Template)
 	if err != nil {
 		return nil, err
 	}
-	defer cleanup()
 
 	tmpl, err := LoadTemplate(filepath.Join(templateRoot, templateManifestName))
 	if err != nil {
 		return nil, err
 	}
+	tag := src.Version
 
 	return &DescribeResult{
 		Template:     tmpl.Metadata.Name,
@@ -92,8 +91,8 @@ func Describe(ctx context.Context, opts DescribeOptions) (*DescribeResult, error
 		Description:  tmpl.Metadata.Description,
 		Tags:         tmpl.Metadata.Tags,
 		Labels:       tmpl.Metadata.Labels,
-		Owner:        opts.Owner,
-		Repo:         opts.Repo,
+		Owner:        src.Owner,
+		Repo:         src.Repo,
 		Version:      tag,
 		Parameters:   tmpl.Spec.Parameters,
 		Dependencies: tmpl.Spec.Dependencies,

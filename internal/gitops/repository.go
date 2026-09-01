@@ -6,18 +6,15 @@ package gitops
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
-	"syscall"
 
 	"github.com/integrio-intropy/intropy-cli/internal/command"
 	"github.com/integrio-intropy/intropy-cli/internal/git"
+	"github.com/integrio-intropy/intropy-cli/internal/gitclone"
 )
 
 // Repository is a local clone of a GitOps repository, cached between runs and
@@ -45,7 +42,7 @@ type Repository struct {
 }
 
 // RemoteName is the remote deploys read from and push to.
-const RemoteName = "origin"
+const RemoteName = gitclone.RemoteName
 
 // Options configures Open.
 type Options struct {
@@ -93,7 +90,7 @@ func Open(ctx context.Context, opts Options) (*Repository, error) {
 	cacheRoot := opts.CacheRoot
 	if cacheRoot == "" {
 		var err error
-		if cacheRoot, err = defaultCacheRoot(); err != nil {
+		if cacheRoot, err = gitclone.CacheRoot("gitops"); err != nil {
 			return nil, err
 		}
 	}
@@ -102,7 +99,7 @@ func Open(ctx context.Context, opts Options) (*Repository, error) {
 		return nil, fmt.Errorf("create cache directory: %w", err)
 	}
 
-	lock, err := acquireLock(dir + ".lock")
+	lock, err := gitclone.Lock(dir+".lock", "deploy", "GitOps checkout")
 	if err != nil {
 		return nil, err
 	}
@@ -147,56 +144,11 @@ func (w *Repository) refresh(ctx context.Context, r command.Runner, stderr io.Wr
 }
 
 // ensureCheckout leaves w.Root holding a clone of w.URL and nothing else.
-//
-// The cache directory is named after a hash of the URL, which records what it was
-// created for — not what its git config points at now. Nothing stops that config
-// from being stale, half-written by an interrupted run, or edited, and every later
-// step trusts "origin": the fetch that decides what is deployed and the push that
-// publishes it. So the origin is read back and checked, every time.
-//
-// A mismatch re-clones rather than failing. This directory is a cache and holds
-// nothing worth keeping — the refresh below resets and cleans it on every open
-// anyway — so recovering is both safe and the only outcome the user wanted.
+// The mechanics — origin verification, re-clone self-healing — live in
+// gitclone.EnsureVerified; this wrapper exists so refresh reads as one
+// sequence of steps on the repository.
 func (w *Repository) ensureCheckout(ctx context.Context, r command.Runner, stderr io.Writer) error {
-	_, err := os.Stat(filepath.Join(w.Root, ".git"))
-	switch {
-	case err == nil:
-		have, ok, err := w.Git.RemoteURL(ctx, RemoteName)
-		if err != nil {
-			return err
-		}
-		if ok && SameRepository(have, w.URL) {
-			return nil
-		}
-		if ok {
-			fmt.Fprintf(stderr, "the cached checkout in %s has %s as %s, not %s; re-cloning\n", w.Root, have, RemoteName, w.URL)
-		} else {
-			fmt.Fprintf(stderr, "the cached checkout in %s has no %s remote; re-cloning\n", w.Root, RemoteName)
-		}
-	case errors.Is(err, fs.ErrNotExist):
-		// A directory without .git is the debris of an interrupted clone;
-		// git clone refuses to write into it, so clear it first.
-	default:
-		return fmt.Errorf("inspect %s: %w", w.Root, err)
-	}
-
-	if err := os.RemoveAll(w.Root); err != nil {
-		return fmt.Errorf("clear %s: %w", w.Root, err)
-	}
-	if err := git.CloneManaged(ctx, r, w.URL, w.Root); err != nil {
-		return err
-	}
-
-	// Read back what the clone recorded. A clone that did not end up pointing at
-	// the requested repository must not go on to fetch or push.
-	have, ok, err := w.Git.RemoteURL(ctx, RemoteName)
-	if err != nil {
-		return err
-	}
-	if !ok || !SameRepository(have, w.URL) {
-		return fmt.Errorf("cloned %s into %s but its %s is %q", w.URL, w.Root, RemoteName, have)
-	}
-	return nil
+	return gitclone.EnsureVerified(ctx, w.Git, r, w.Root, w.URL, stderr)
 }
 
 // ensurePushDestination makes the address a push will actually reach be the
@@ -243,49 +195,14 @@ func (w *Repository) ensurePushDestination(ctx context.Context, stderr io.Writer
 
 // Close releases the lock. The checkout itself is deliberately kept.
 func (w *Repository) Close() error {
-	if w.lock == nil {
-		return nil
-	}
-	err := syscall.Flock(int(w.lock.Fd()), syscall.LOCK_UN)
-	if cerr := w.lock.Close(); err == nil {
-		err = cerr
-	}
+	lock := w.lock
 	w.lock = nil
-	return err
+	return gitclone.Unlock(lock)
 }
 
-func defaultCacheRoot() (string, error) {
-	base, err := os.UserCacheDir()
-	if err != nil {
-		return "", fmt.Errorf("locate cache directory: %w", err)
-	}
-	return filepath.Join(base, "intropy", "gitops"), nil
-}
-
-// CheckoutDir derives a stable cache path from the remote URL. The URL is
-// hashed rather than sanitised because the same repository can be named several
-// ways (SSH, HTTPS, with or without .git) and because URLs contain characters
-// that are awkward in paths.
+// CheckoutDir derives a stable cache path from the remote URL. It is an
+// alias for gitclone.CheckoutDir; the implementation lives there because the
+// derivation is a property of cached clones generally, not of this consumer.
 func CheckoutDir(cacheRoot, url string) string {
-	sum := sha256.Sum256([]byte(url))
-	return filepath.Join(cacheRoot, hex.EncodeToString(sum[:])[:16])
-}
-
-// acquireLock takes an exclusive, non-blocking lock. Non-blocking on purpose:
-// two concurrent deploys sharing one checkout would interleave edits, and
-// telling the user to wait is far better than silently queueing behind a run
-// that may itself be stuck on a network operation.
-func acquireLock(path string) (*os.File, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
-	if err != nil {
-		return nil, fmt.Errorf("open lock file %s: %w", path, err)
-	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		f.Close()
-		if errors.Is(err, syscall.EWOULDBLOCK) {
-			return nil, fmt.Errorf("another intropy deploy is already using the cached GitOps checkout (%s); wait for it to finish", filepath.Dir(path))
-		}
-		return nil, fmt.Errorf("lock %s: %w", path, err)
-	}
-	return f, nil
+	return gitclone.CheckoutDir(cacheRoot, url)
 }

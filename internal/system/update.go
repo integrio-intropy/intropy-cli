@@ -36,12 +36,13 @@ type UpdateOptions struct {
 
 	// Template, Owner, Repo and Version override the pin the host's
 	// scaffold record carries. Zero values render with exactly what
-	// sys create pinned. GitHubBaseURL is a test-only seam.
-	Template      string
-	Owner         string
-	Repo          string
-	Version       string
-	GitHubBaseURL string
+	// sys create pinned. Source carries the fetch seams (GitHubBaseURL
+	// redirects the latest-release API call in tests).
+	Template string
+	Owner    string
+	Repo     string
+	Version  string
+	Source   template.SourceOptions
 }
 
 // UpdateResult is the machine-readable summary --output json writes.
@@ -132,19 +133,19 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 	// template override fetches what it renders and one download serves
 	// all three resolutions.
 	prep, err := template.PrepareCreate(ctx, template.CreateOptions{
-		Template:      orDefault(opts.Template, plan.hostRec.Template),
-		Version:       orDefault(opts.Version, plan.hostRec.Version),
-		SetValues:     merged,
-		NoInput:       true,
-		OnManifest:    requireFactsPayload,
-		Stdin:         strings.NewReader(""),
-		Stdout:        opts.Stdout,
-		Stderr:        opts.Stderr,
-		HTTP:          opts.HTTP,
-		UserAgent:     opts.UserAgent,
-		Owner:         orDefault(opts.Owner, plan.hostRec.Owner),
-		Repo:          orDefault(opts.Repo, plan.hostRec.Repo),
-		GitHubBaseURL: opts.GitHubBaseURL,
+		Template:   orDefault(opts.Template, plan.hostRec.Template),
+		Version:    orDefault(opts.Version, plan.hostRec.Version),
+		SetValues:  merged,
+		NoInput:    true,
+		OnManifest: requireFactsPayload,
+		Stdin:      strings.NewReader(""),
+		Stdout:     opts.Stdout,
+		Stderr:     opts.Stderr,
+		HTTP:       opts.HTTP,
+		UserAgent:  opts.UserAgent,
+		Owner:      orDefault(opts.Owner, plan.hostRec.Owner),
+		Repo:       orDefault(opts.Repo, plan.hostRec.Repo),
+		Source:     opts.Source,
 	})
 	if err != nil {
 		return err
@@ -154,9 +155,17 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 	// The baseline is what the host was last rendered from; the render
 	// decides per file whether a difference is the update itself (safe to
 	// write) or a genuine divergence (a conflict). A template override
-	// invalidates the baseline, so the strict comparison applies instead.
+	// invalidates the baseline, so the strict comparison applies instead —
+	// but an override naming exactly what the record already pins renders
+	// from the same template and keeps it. The dashboard's sync always
+	// passes its held release explicitly; without the equality check every
+	// dashboard-driven update would conflict on the files it must write.
+	matchesPin := (opts.Template == "" || opts.Template == plan.hostRec.Template) &&
+		(opts.Version == "" || opts.Version == plan.hostRec.Version) &&
+		(opts.Owner == "" || opts.Owner == plan.hostRec.Owner) &&
+		(opts.Repo == "" || opts.Repo == plan.hostRec.Repo)
 	var baseline map[string]any
-	if opts.Template == "" && opts.Version == "" && (opts.Owner == "" || opts.Owner == plan.hostRec.Owner) && (opts.Repo == "" || opts.Repo == plan.hostRec.Repo) {
+	if matchesPin {
 		baseline, err = template.Resolve(prep.Manifest, nil, strings.NewReader(""), plan.baseline, nil)
 		if err != nil {
 			fmt.Fprintf(opts.Stderr, "note: stored values do not re-resolve against %s@%s (%v) — treating every differing file as a conflict\n", prep.Template, prep.Version, err)

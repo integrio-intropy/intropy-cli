@@ -5,8 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,46 +28,32 @@ spec:
         default: default
 `
 
-// newTemplateServer serves a tarball containing a single template named
-// "test-template" laid out as the v1 model expects: <template>/template.yaml
-// plus <template>/skeleton/<files>.
-func newTemplateServer(t *testing.T, tag string) *httptest.Server {
+// newTemplateLibrary builds a single-template library laid out as the v1
+// model expects: <template>/template.yaml plus <template>/skeleton/<files>.
+func newTemplateLibrary(t *testing.T, tag string) *testLibrary {
 	t.Helper()
-	tarball := buildTarGz(t, "owner-repo-abc123", map[string]string{
+	return newTestLibrary(t, tag, map[string]string{
 		"test-template/template.yaml":           testTemplateYAML,
 		"test-template/skeleton/README.md.tmpl": "{{ .integrationName }} in {{ .namespace }}\n",
 	})
-	mux := http.NewServeMux()
-	mux.HandleFunc("/repos/o/r/releases/latest", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"tag_name":"` + tag + `"}`))
-	})
-	mux.HandleFunc("/repos/o/r/tarball/"+tag, func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write(tarball)
-	})
-	return httptest.NewServer(mux)
 }
 
 func TestCreateWritesOutputJSON(t *testing.T) {
-	srv := newTemplateServer(t, "v9.9.9")
-	defer srv.Close()
+	lib := newTemplateLibrary(t, "v9.9.9")
 
 	outDir := filepath.Join(t.TempDir(), "out")
 	jsonPath := filepath.Join(t.TempDir(), "result.json")
 	var stderr bytes.Buffer
 
 	err := Create(context.Background(), CreateOptions{
-		Template:      "test-template",
-		OutputDir:     outDir,
-		Version:       "v9.9.9",
-		SetValues:     map[string]any{"integrationName": "orders"},
-		NoInput:       true,
-		OutputJSON:    jsonPath,
-		Stderr:        &stderr,
-		HTTP:          srv.Client(),
-		Owner:         "o",
-		Repo:          "r",
-		GitHubBaseURL: srv.URL,
+		Template:   "test-template",
+		OutputDir:  outDir,
+		Version:    "v9.9.9",
+		SetValues:  map[string]any{"integrationName": "orders"},
+		NoInput:    true,
+		OutputJSON: jsonPath,
+		Stderr:     &stderr,
+		Source:     lib.sourceOpts(t.TempDir(), nil),
 	})
 	if err != nil {
 		t.Fatalf("Create: %v\nstderr: %s", err, stderr.String())
@@ -86,8 +70,8 @@ func TestCreateWritesOutputJSON(t *testing.T) {
 	if got.Template != "test-template" {
 		t.Errorf("Template = %q", got.Template)
 	}
-	if got.Owner != "o" || got.Repo != "r" {
-		t.Errorf("Owner/Repo = %q/%q", got.Owner, got.Repo)
+	if got.Owner != defaultTemplateOwner || got.Repo != defaultTemplateRepo {
+		t.Errorf("Owner/Repo = %q/%q, want the resolved defaults", got.Owner, got.Repo)
 	}
 	if got.Version != "v9.9.9" {
 		t.Errorf("Version = %q", got.Version)
@@ -104,8 +88,7 @@ func TestCreateWritesOutputJSON(t *testing.T) {
 }
 
 func TestCreateOnManifestAbortsBeforeOutput(t *testing.T) {
-	srv := newTemplateServer(t, "v9.9.9")
-	defer srv.Close()
+	lib := newTemplateLibrary(t, "v9.9.9")
 
 	outDir := filepath.Join(t.TempDir(), "out")
 	var stderr bytes.Buffer
@@ -113,16 +96,13 @@ func TestCreateOnManifestAbortsBeforeOutput(t *testing.T) {
 	called := false
 
 	err := Create(context.Background(), CreateOptions{
-		Template:      "test-template",
-		OutputDir:     outDir,
-		Version:       "v9.9.9",
-		SetValues:     map[string]any{"integrationName": "orders"},
-		NoInput:       true,
-		Stderr:        &stderr,
-		HTTP:          srv.Client(),
-		Owner:         "o",
-		Repo:          "r",
-		GitHubBaseURL: srv.URL,
+		Template:  "test-template",
+		OutputDir: outDir,
+		Version:   "v9.9.9",
+		SetValues: map[string]any{"integrationName": "orders"},
+		NoInput:   true,
+		Stderr:    &stderr,
+		Source:    lib.sourceOpts(t.TempDir(), nil),
 		OnManifest: func(tmpl *Template) error {
 			called = true
 			if tmpl.Metadata.Name != "test-template" {
@@ -143,21 +123,17 @@ func TestCreateOnManifestAbortsBeforeOutput(t *testing.T) {
 }
 
 func TestCreateWritesScaffoldFile(t *testing.T) {
-	srv := newTemplateServer(t, "v2.0.0")
-	defer srv.Close()
+	lib := newTemplateLibrary(t, "v2.0.0")
 
 	outDir := filepath.Join(t.TempDir(), "out")
 	err := Create(context.Background(), CreateOptions{
-		Template:      "test-template",
-		OutputDir:     outDir,
-		Version:       "v2.0.0",
-		SetValues:     map[string]any{"integrationName": "orders"},
-		NoInput:       true,
-		Stderr:        &bytes.Buffer{},
-		HTTP:          srv.Client(),
-		Owner:         "o",
-		Repo:          "r",
-		GitHubBaseURL: srv.URL,
+		Template:  "test-template",
+		OutputDir: outDir,
+		Version:   "v2.0.0",
+		SetValues: map[string]any{"integrationName": "orders"},
+		NoInput:   true,
+		Stderr:    &bytes.Buffer{},
+		Source:    lib.sourceOpts(t.TempDir(), nil),
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -170,8 +146,8 @@ func TestCreateWritesScaffoldFile(t *testing.T) {
 	if got.SchemaVersion != ScaffoldSchemaVersion {
 		t.Errorf("SchemaVersion = %d", got.SchemaVersion)
 	}
-	if got.Template != "test-template" || got.Owner != "o" || got.Repo != "r" || got.Version != "v2.0.0" {
-		t.Errorf("scaffold identity = %q %q/%q@%q", got.Template, got.Owner, got.Repo, got.Version)
+	if got.Template != "test-template" || got.Owner != defaultTemplateOwner || got.Repo != defaultTemplateRepo || got.Version != "v2.0.0" {
+		t.Errorf("scaffold identity = %q %q/%q@%q, want the resolved defaults", got.Template, got.Owner, got.Repo, got.Version)
 	}
 	if got.Values["integrationName"] != "orders" || got.Values["namespace"] != "default" {
 		t.Errorf("Values = %v", got.Values)
@@ -179,25 +155,21 @@ func TestCreateWritesScaffoldFile(t *testing.T) {
 }
 
 func TestCreateOutputJSONStdout(t *testing.T) {
-	srv := newTemplateServer(t, "v1")
-	defer srv.Close()
+	lib := newTemplateLibrary(t, "v1")
 
 	outDir := filepath.Join(t.TempDir(), "out")
 	var stdout, stderr bytes.Buffer
 
 	err := Create(context.Background(), CreateOptions{
-		Template:      "test-template",
-		OutputDir:     outDir,
-		Version:       "v1",
-		SetValues:     map[string]any{"integrationName": "x"},
-		NoInput:       true,
-		OutputJSON:    "-",
-		Stdout:        &stdout,
-		Stderr:        &stderr,
-		HTTP:          srv.Client(),
-		Owner:         "o",
-		Repo:          "r",
-		GitHubBaseURL: srv.URL,
+		Template:   "test-template",
+		OutputDir:  outDir,
+		Version:    "v1",
+		SetValues:  map[string]any{"integrationName": "x"},
+		NoInput:    true,
+		OutputJSON: "-",
+		Stdout:     &stdout,
+		Stderr:     &stderr,
+		Source:     lib.sourceOpts(t.TempDir(), nil),
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -212,20 +184,16 @@ func TestCreateOutputJSONStdout(t *testing.T) {
 }
 
 func TestCreateDoesNotCreateOutputDirWhenValidationFails(t *testing.T) {
-	srv := newTemplateServer(t, "v1")
-	defer srv.Close()
+	lib := newTemplateLibrary(t, "v1")
 
 	outDir := filepath.Join(t.TempDir(), "out")
 	err := Create(context.Background(), CreateOptions{
-		Template:      "test-template",
-		OutputDir:     outDir,
-		Version:       "v1",
-		NoInput:       true,
-		Stderr:        &bytes.Buffer{},
-		HTTP:          srv.Client(),
-		Owner:         "o",
-		Repo:          "r",
-		GitHubBaseURL: srv.URL,
+		Template:  "test-template",
+		OutputDir: outDir,
+		Version:   "v1",
+		NoInput:   true,
+		Stderr:    &bytes.Buffer{},
+		Source:    lib.sourceOpts(t.TempDir(), nil),
 	})
 	if err == nil || !strings.Contains(err.Error(), "missing required parameter") {
 		t.Fatalf("expected missing required parameter error, got %v", err)
@@ -236,25 +204,21 @@ func TestCreateDoesNotCreateOutputDirWhenValidationFails(t *testing.T) {
 }
 
 func TestCreateReadsStdinValues(t *testing.T) {
-	srv := newTemplateServer(t, "v1")
-	defer srv.Close()
+	lib := newTemplateLibrary(t, "v1")
 
 	outDir := filepath.Join(t.TempDir(), "out")
 	jsonPath := filepath.Join(t.TempDir(), "result.json")
 
 	err := Create(context.Background(), CreateOptions{
-		Template:      "test-template",
-		OutputDir:     outDir,
-		Version:       "v1",
-		Files:         []string{StdinValuesPath},
-		NoInput:       true,
-		OutputJSON:    jsonPath,
-		Stdin:         bytes.NewBufferString(`{"integrationName": "from-stdin", "namespace": "ns2"}`),
-		Stderr:        &bytes.Buffer{},
-		HTTP:          srv.Client(),
-		Owner:         "o",
-		Repo:          "r",
-		GitHubBaseURL: srv.URL,
+		Template:   "test-template",
+		OutputDir:  outDir,
+		Version:    "v1",
+		Files:      []string{StdinValuesPath},
+		NoInput:    true,
+		OutputJSON: jsonPath,
+		Stdin:      bytes.NewBufferString(`{"integrationName": "from-stdin", "namespace": "ns2"}`),
+		Stderr:     &bytes.Buffer{},
+		Source:     lib.sourceOpts(t.TempDir(), nil),
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -275,8 +239,7 @@ func TestCreateReadsStdinValues(t *testing.T) {
 }
 
 func TestCreateFactsEnrichMissingParameterError(t *testing.T) {
-	srv := newTemplateServer(t, "v1")
-	defer srv.Close()
+	lib := newTemplateLibrary(t, "v1")
 
 	facts := BuildWorkspaceFacts([]WorkspaceFactEntry{
 		{BlockKind: BlockKindExtractor, Values: map[string]any{
@@ -285,16 +248,13 @@ func TestCreateFactsEnrichMissingParameterError(t *testing.T) {
 	})
 
 	err := Create(context.Background(), CreateOptions{
-		Template:      "test-template",
-		OutputDir:     filepath.Join(t.TempDir(), "out"),
-		Version:       "v1",
-		NoInput:       true,
-		Stderr:        &bytes.Buffer{},
-		HTTP:          srv.Client(),
-		Owner:         "o",
-		Repo:          "r",
-		GitHubBaseURL: srv.URL,
-		Facts:         facts,
+		Template:  "test-template",
+		OutputDir: filepath.Join(t.TempDir(), "out"),
+		Version:   "v1",
+		NoInput:   true,
+		Stderr:    &bytes.Buffer{},
+		Source:    lib.sourceOpts(t.TempDir(), nil),
+		Facts:     facts,
 	})
 	if err == nil {
 		t.Fatal("expected missing parameter error")
@@ -309,21 +269,17 @@ func TestCreateFactsEnrichMissingParameterError(t *testing.T) {
 }
 
 func TestCreateWithoutFactsResolvesAsBefore(t *testing.T) {
-	srv := newTemplateServer(t, "v1")
-	defer srv.Close()
+	lib := newTemplateLibrary(t, "v1")
 
 	outDir := filepath.Join(t.TempDir(), "out")
 	err := Create(context.Background(), CreateOptions{
-		Template:      "test-template",
-		OutputDir:     outDir,
-		Version:       "v1",
-		SetValues:     map[string]any{"integrationName": "api"},
-		NoInput:       true,
-		Stderr:        &bytes.Buffer{},
-		HTTP:          srv.Client(),
-		Owner:         "o",
-		Repo:          "r",
-		GitHubBaseURL: srv.URL,
+		Template:  "test-template",
+		OutputDir: outDir,
+		Version:   "v1",
+		SetValues: map[string]any{"integrationName": "api"},
+		NoInput:   true,
+		Stderr:    &bytes.Buffer{},
+		Source:    lib.sourceOpts(t.TempDir(), nil),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -363,20 +319,10 @@ spec:
 // unread), the notes name each override hatch, and the scaffold record
 // persists the same wiring the developer confirmed by running.
 func TestCreatePrefillsWiringFromWorkspaceFacts(t *testing.T) {
-	tarball := buildTarGz(t, "owner-repo-abc123", map[string]string{
+	lib := newTestLibrary(t, "v1", map[string]string{
 		"loader/template.yaml":           loaderTemplateYAML,
 		"loader/skeleton/README.md.tmpl": "{{ .topic }} carries {{ .contract }} on {{ .pubsub }}\n",
 	})
-	mux := http.NewServeMux()
-	mux.HandleFunc("/repos/o/r/releases/latest", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"tag_name":"v1"}`))
-	})
-	mux.HandleFunc("/repos/o/r/tarball/v1", func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write(tarball)
-	})
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
 
 	facts := BuildWorkspaceFacts([]WorkspaceFactEntry{
 		{BlockKind: BlockKindExtractor, Values: map[string]any{
@@ -387,17 +333,14 @@ func TestCreatePrefillsWiringFromWorkspaceFacts(t *testing.T) {
 	var stderr bytes.Buffer
 	outDir := filepath.Join(t.TempDir(), "order-loader")
 	err := Create(context.Background(), CreateOptions{
-		Template:      "loader",
-		OutputDir:     outDir,
-		Version:       "v1",
-		NoInput:       true,
-		Stdin:         strings.NewReader(""),
-		Stderr:        &stderr,
-		HTTP:          srv.Client(),
-		Owner:         "o",
-		Repo:          "r",
-		GitHubBaseURL: srv.URL,
-		Facts:         facts,
+		Template:  "loader",
+		OutputDir: outDir,
+		Version:   "v1",
+		NoInput:   true,
+		Stdin:     strings.NewReader(""),
+		Stderr:    &stderr,
+		Source:    lib.sourceOpts(t.TempDir(), nil),
+		Facts:     facts,
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -434,20 +377,10 @@ func TestCreatePrefillsWiringFromWorkspaceFacts(t *testing.T) {
 // leaves contract to be supplied explicitly (NoInput makes that the clean
 // missing-parameter error).
 func TestCreateSetOverridesPrefill(t *testing.T) {
-	tarball := buildTarGz(t, "owner-repo-abc123", map[string]string{
+	lib := newTestLibrary(t, "v1", map[string]string{
 		"loader/template.yaml":           loaderTemplateYAML,
 		"loader/skeleton/README.md.tmpl": "{{ .topic }} carries {{ .contract }}\n",
 	})
-	mux := http.NewServeMux()
-	mux.HandleFunc("/repos/o/r/releases/latest", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"tag_name":"v1"}`))
-	})
-	mux.HandleFunc("/repos/o/r/tarball/v1", func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write(tarball)
-	})
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
 
 	facts := BuildWorkspaceFacts([]WorkspaceFactEntry{
 		{BlockKind: BlockKindExtractor, Values: map[string]any{
@@ -457,18 +390,15 @@ func TestCreateSetOverridesPrefill(t *testing.T) {
 
 	outDir := filepath.Join(t.TempDir(), "shipment-loader")
 	err := Create(context.Background(), CreateOptions{
-		Template:      "loader",
-		OutputDir:     outDir,
-		Version:       "v1",
-		SetValues:     map[string]any{"topic": "shipments", "contract": "Shipment"},
-		NoInput:       true,
-		Stdin:         strings.NewReader(""),
-		Stderr:        &bytes.Buffer{},
-		HTTP:          srv.Client(),
-		Owner:         "o",
-		Repo:          "r",
-		GitHubBaseURL: srv.URL,
-		Facts:         facts,
+		Template:  "loader",
+		OutputDir: outDir,
+		Version:   "v1",
+		SetValues: map[string]any{"topic": "shipments", "contract": "Shipment"},
+		NoInput:   true,
+		Stdin:     strings.NewReader(""),
+		Stderr:    &bytes.Buffer{},
+		Source:    lib.sourceOpts(t.TempDir(), nil),
+		Facts:     facts,
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)

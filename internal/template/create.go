@@ -30,10 +30,13 @@ type CreateOptions struct {
 	// Owner and Repo select the template library. Zero values target the
 	// official library at integrio-intropy/intropy-templates; the CLI sets
 	// them from --template-repo, INTROPY_TEMPLATE_REPO, or templateRepo in
-	// the config file. GitHubBaseURL remains a test-only seam.
-	Owner         string
-	Repo          string
-	GitHubBaseURL string
+	// the config file.
+	Owner string
+	Repo  string
+
+	// Source carries the fetch seams shared by every template-fetch path.
+	// GitHubBaseURL redirects the latest-release API call in tests.
+	Source SourceOptions
 
 	// OnManifest, when set, runs after the manifest loads and before
 	// values resolve, render, dependency processing, or the scaffold
@@ -66,21 +69,25 @@ type CreateResult struct {
 }
 
 func (o *CreateOptions) applyDefaults() {
-	if o.Owner == "" {
-		o.Owner = defaultTemplateOwner
-	}
-	if o.Repo == "" {
-		o.Repo = defaultTemplateRepo
-	}
 	if o.Stdin == nil {
 		o.Stdin = os.Stdin
 	}
-	if o.UserAgent == "" {
-		o.UserAgent = "intropy-cli"
-	}
 }
 
-// Create runs the full scaffold: resolve release, download tarball, extract,
+// sourceOpts projects the create options onto the shared fetch options. A
+// Source that names its own Owner/Repo wins — it is the test seam.
+func (o CreateOptions) sourceOpts() SourceOptions {
+	s := o.Source
+	s.Version = o.Version
+	s.Stderr = o.Stderr
+	s.UserAgent = o.UserAgent
+	if s.Owner == "" && s.Repo == "" {
+		s.Owner, s.Repo = libraryIdentity(o.Owner, o.Repo)
+	}
+	return s
+}
+
+// Create runs the full scaffold: resolve release, ensure the cached checkout,
 // load manifest, resolve values (with optional interactive prompting), render.
 func Create(ctx context.Context, opts CreateOptions) error {
 	opts.applyDefaults()
@@ -88,18 +95,16 @@ func Create(ctx context.Context, opts CreateOptions) error {
 		return err
 	}
 
-	gh := newConfiguredGitHub(opts.HTTP, opts.UserAgent, opts.GitHubBaseURL)
-	tag, err := resolveReleaseTag(ctx, gh, opts.Owner, opts.Repo, opts.Version)
+	src, err := FetchSource(ctx, opts.sourceOpts())
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(opts.Stderr, "fetching %s/%s@%s\n", opts.Owner, opts.Repo, tag)
+	tag := src.Version
 
-	templateRoot, cleanup, err := downloadTemplate(ctx, gh, opts.Owner, opts.Repo, tag, opts.Template, "intropy-template-*")
+	templateRoot, err := templateDir(src, src.Owner, src.Repo, opts.Template)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
 
 	tmpl, values, err := prepareCreateTemplate(templateRoot, opts)
 	if err != nil {
@@ -109,14 +114,14 @@ func Create(ctx context.Context, opts CreateOptions) error {
 	if err := renderCreateOutput(filepath.Join(templateRoot, templateSkeletonDir), tmpl, opts.Template, opts.OutputDir, opts.Force, values); err != nil {
 		return err
 	}
-	fmt.Fprintf(opts.Stderr, "created %s from %s/%s@%s (template %s)\n", opts.OutputDir, opts.Owner, opts.Repo, tag, opts.Template)
+	fmt.Fprintf(opts.Stderr, "created %s from %s/%s@%s (template %s)\n", opts.OutputDir, src.Owner, src.Repo, tag, opts.Template)
 
-	// Dependencies come from the same extracted tarball, so they are always
+	// Dependencies come from the same library checkout, so they are always
 	// version-locked to the component that declared them.
 	depRecords, depResults, err := processDependencies(tmpl, values, opts.OutputDir, &depContext{
 		repoRoot: filepath.Dir(templateRoot),
-		owner:    opts.Owner,
-		repo:     opts.Repo,
+		owner:    src.Owner,
+		repo:     src.Repo,
 		version:  tag,
 		stderr:   opts.Stderr,
 		visited:  map[string]bool{},
@@ -130,8 +135,8 @@ func Create(ctx context.Context, opts CreateOptions) error {
 	if err := WriteScaffold(opts.OutputDir, Scaffold{
 		SchemaVersion: ScaffoldSchemaVersion,
 		Template:      opts.Template,
-		Owner:         opts.Owner,
-		Repo:          opts.Repo,
+		Owner:         src.Owner,
+		Repo:          src.Repo,
 		Version:       tag,
 		Values:        values,
 		Role:          roleFromLabels(tmpl.Metadata.Labels),
@@ -142,7 +147,7 @@ func Create(ctx context.Context, opts CreateOptions) error {
 		return err
 	}
 
-	return maybeWriteCreateResult(opts, tmpl, values, tag, depResults)
+	return maybeWriteCreateResult(opts, tmpl, values, src, depResults)
 }
 
 func validateCreateOptions(opts CreateOptions) error {
@@ -195,7 +200,7 @@ func renderCreateOutput(skelRoot string, tmpl *Template, templateName, outputDir
 	return RenderFiltered(skelRoot, outputDir, values, tmpl.Spec.Files)
 }
 
-func maybeWriteCreateResult(opts CreateOptions, tmpl *Template, values map[string]any, tag string, deps []DependencyResult) error {
+func maybeWriteCreateResult(opts CreateOptions, tmpl *Template, values map[string]any, src *Source, deps []DependencyResult) error {
 	if opts.OutputJSON == "" {
 		return nil
 	}
@@ -206,9 +211,9 @@ func maybeWriteCreateResult(opts CreateOptions, tmpl *Template, values map[strin
 	}
 	result := CreateResult{
 		Template:     tmpl.Metadata.Name,
-		Owner:        opts.Owner,
-		Repo:         opts.Repo,
-		Version:      tag,
+		Owner:        src.Owner,
+		Repo:         src.Repo,
+		Version:      src.Version,
 		OutputDir:    absOut,
 		Values:       values,
 		Dependencies: deps,
@@ -261,7 +266,7 @@ func ValidateTemplateName(name string) error {
 }
 
 // validateTemplateName rejects empty names and anything that could escape the
-// extracted tarball root via filepath.Join (separators, parent refs, hidden
+// library checkout root via filepath.Join (separators, parent refs, hidden
 // directories). The template argument is user input that we turn directly into
 // a path segment, so it has to be sanitized.
 func validateTemplateName(name string) error {

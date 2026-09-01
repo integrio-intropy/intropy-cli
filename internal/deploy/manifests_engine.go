@@ -136,11 +136,12 @@ type manifestRunOptions struct {
 	Stderr     io.Writer
 
 	// Owner and Repo select the template library; zero values target the
-	// official library. GitHubBaseURL is a test-only seam.
-	Owner         string
-	Repo          string
-	GitHubBaseURL string
-	HTTP          *http.Client
+	// official library. Source carries the fetch seams (GitHubBaseURL
+	// redirects the latest-release API call in tests).
+	Owner  string
+	Repo   string
+	Source template.SourceOptions
+	HTTP   *http.Client
 
 	// The manifests create command sets these internal policy fields. Keeping
 	// them private prevents another deploy operation from enabling create-only

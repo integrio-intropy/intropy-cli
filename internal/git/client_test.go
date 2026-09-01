@@ -696,3 +696,69 @@ func TestRemotePushURLAndClear(t *testing.T) {
 		t.Errorf("PushURL = %q, %v", got, err)
 	}
 }
+
+// A managed tag clone is hardened like any managed clone — the tag checks out
+// a worktree too — and asks git for exactly the one tag's tip, nothing more.
+func TestCloneTagManagedIsShallowAndDisablesHooks(t *testing.T) {
+	r := &recordingRunner{}
+	dir := filepath.Join(t.TempDir(), "cache")
+	if err := CloneTagManaged(context.Background(), r, "https://example.test/acme/templates.git", dir, "v1.2.3"); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.calls) != 1 {
+		t.Fatalf("calls = %v", r.calls)
+	}
+	args := r.calls[0]
+	if !slices.Contains(args, "core.hooksPath="+os.DevNull) {
+		t.Errorf("clone did not disable hooks: %v", args)
+	}
+	if args[0] != "-c" {
+		t.Errorf("hardening must come before the subcommand: %v", args)
+	}
+	for _, want := range []string{"--depth", "1", "--branch", "v1.2.3"} {
+		if !slices.Contains(args, want) {
+			t.Errorf("clone is missing %q: %v", want, args)
+		}
+	}
+}
+
+// A local path remote ignores --depth ("warning: --depth is ignored in local
+// clones"), so shallowness is only observable through file:// — the fixture
+// below would pass either way against a plain path.
+func TestCloneTagManagedChecksOutTheTagShallowly(t *testing.T) {
+	origin := gittest.NewRepo(t, "main")
+	gittest.Run(t, origin, "tag", "v1.0.0")
+	gittest.Commit(t, origin, "later.txt", "after the tag\n", "later work")
+	gittest.Run(t, origin, "tag", "v1.1.0")
+
+	dir := filepath.Join(t.TempDir(), "cache")
+	if err := CloneTagManaged(context.Background(), command.ExecRunner{}, "file://"+origin, dir, "v1.0.0"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "later.txt")); !os.IsNotExist(err) {
+		t.Error("the worktree holds commits past the requested tag")
+	}
+	if got := gittest.Run(t, dir, "rev-parse", "HEAD"); got != gittest.Run(t, origin, "rev-parse", "v1.0.0") {
+		t.Errorf("HEAD = %s, want the v1.0.0 commit", got)
+	}
+	if got := gittest.Run(t, dir, "rev-parse", "--is-shallow-repository"); got != "true" {
+		t.Errorf("clone is not shallow: %s", got)
+	}
+}
+
+func TestCloneTagManagedFailsForAnUnknownTag(t *testing.T) {
+	origin := gittest.NewRepo(t, "main")
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "cache")
+
+	err := CloneTagManaged(context.Background(), command.ExecRunner{}, "file://"+origin, dir, "v9.9.9")
+	if err == nil {
+		t.Fatal("expected an error for a nonexistent tag")
+	}
+	if !strings.Contains(err.Error(), "v9.9.9") && !strings.Contains(err.Error(), origin) {
+		t.Errorf("error should name what was asked for: %v", err)
+	}
+	if _, statErr := os.Stat(dir); !os.IsNotExist(statErr) {
+		t.Error("a failed clone left a checkout behind")
+	}
+}

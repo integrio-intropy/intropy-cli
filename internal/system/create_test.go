@@ -1,13 +1,10 @@
 package system
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/integrio-intropy/intropy-cli/internal/template"
+	"github.com/integrio-intropy/intropy-cli/internal/template/templatetest"
 )
 
 // systemHostTemplateYAML is a trimmed but faithful copy of the
@@ -232,50 +230,22 @@ func systemHostFiles() map[string]string {
 	}
 }
 
-func buildTarGz(t *testing.T, prefix string, entries map[string]string) []byte {
+// newSystemHostLibrary builds the system-host fixture as a git-backed
+// library and counts requests to the API stub so tests can assert validation
+// happens before network I/O.
+func newSystemHostLibrary(t *testing.T, tag string, files map[string]string) (*templatetest.Library, *atomic.Int32) {
 	t.Helper()
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	tw := tar.NewWriter(gz)
-	for name, content := range entries {
-		full := name
-		if prefix != "" {
-			full = prefix + "/" + name
-		}
-		h := &tar.Header{Name: full, Mode: 0o644, Size: int64(len(content)), Typeflag: tar.TypeReg}
-		if err := tw.WriteHeader(h); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := tw.Write([]byte(content)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := tw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := gz.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return buf.Bytes()
+	lib := templatetest.NewLibrary(t, tag, files)
+	var hits atomic.Int32
+	lib.Server.Config.Handler = countHits(lib.Server.Config.Handler, &hits)
+	return lib, &hits
 }
 
-// newSystemHostServer serves the system-host fixture tarball and counts
-// every request so tests can assert validation happens before network I/O.
-func newSystemHostServer(t *testing.T, tag string, files map[string]string) (*httptest.Server, *atomic.Int32) {
-	t.Helper()
-	tarball := buildTarGz(t, "owner-repo-abc123", files)
-	var hits atomic.Int32
-	mux := http.NewServeMux()
-	mux.HandleFunc("/repos/o/r/releases/latest", func(w http.ResponseWriter, r *http.Request) {
+func countHits(next http.Handler, hits *atomic.Int32) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"tag_name":"` + tag + `"}`))
+		next.ServeHTTP(w, r)
 	})
-	mux.HandleFunc("/repos/o/r/tarball/"+tag, func(w http.ResponseWriter, r *http.Request) {
-		hits.Add(1)
-		_, _ = w.Write(tarball)
-	})
-	return httptest.NewServer(mux), &hits
 }
 
 // writeWorkspace lays out the tutorial's order-flow workspace: an
@@ -328,25 +298,21 @@ func writeShared(t *testing.T, dir, name string) {
 	}
 }
 
-func runCreate(t *testing.T, srv *httptest.Server, opts CreateOptions) (stdout, stderr bytes.Buffer, err error) {
+func runCreate(t *testing.T, lib *templatetest.Library, opts CreateOptions) (stdout, stderr bytes.Buffer, err error) {
 	t.Helper()
 	opts.Stdout = &stdout
 	opts.Stderr = &stderr
-	opts.HTTP = srv.Client()
-	opts.Owner = "o"
-	opts.Repo = "r"
-	opts.GitHubBaseURL = srv.URL
+	opts.Source = lib.Source(t)
 	err = Create(context.Background(), opts)
 	return stdout, stderr, err
 }
 
 func TestCreateAssemblesSystem(t *testing.T) {
-	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
-	defer srv.Close()
+	lib, _ := newSystemHostLibrary(t, "v1", systemHostFiles())
 
 	ws := writeWorkspace(t)
 	outDir := filepath.Join(ws, "system-host")
-	stdout, stderr, err := runCreate(t, srv, CreateOptions{
+	stdout, stderr, err := runCreate(t, lib, CreateOptions{
 		Name:       "OrderFlow",
 		StartDir:   ws,
 		OutputDir:  outDir,
@@ -456,8 +422,7 @@ func TestCreateAssemblesSystem(t *testing.T) {
 }
 
 func TestCreateWithRecordMissingPortOmitsItsFromTo(t *testing.T) {
-	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
-	defer srv.Close()
+	lib, _ := newSystemHostLibrary(t, "v1", systemHostFiles())
 
 	// The loader's record predates the port value; the extractor's has it.
 	ws := t.TempDir()
@@ -479,7 +444,7 @@ func TestCreateWithRecordMissingPortOmitsItsFromTo(t *testing.T) {
 	}
 
 	outDir := filepath.Join(ws, "system-host")
-	_, stderr, err := runCreate(t, srv, CreateOptions{Name: "OrderFlow", StartDir: ws, OutputDir: outDir, Version: "v1"})
+	_, stderr, err := runCreate(t, lib, CreateOptions{Name: "OrderFlow", StartDir: ws, OutputDir: outDir, Version: "v1"})
 	if err != nil {
 		t.Fatalf("Create: %v\nstderr: %s", err, stderr.String())
 	}
@@ -531,14 +496,13 @@ func writeTransactional(t *testing.T, dir, appID, from, to string) {
 }
 
 func TestCreateAssemblesTransactionalIntegration(t *testing.T) {
-	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
-	defer srv.Close()
+	lib, _ := newSystemHostLibrary(t, "v1", systemHostFiles())
 
 	ws := writeWorkspace(t)
 	writeTransactional(t, filepath.Join(ws, "erp-sync"), "erp-sync", "erp-source", "erp-destination")
 
 	outDir := filepath.Join(ws, "system-host")
-	stdout, stderr, err := runCreate(t, srv, CreateOptions{
+	stdout, stderr, err := runCreate(t, lib, CreateOptions{
 		Name:       "OrderFlow",
 		StartDir:   ws,
 		OutputDir:  outDir,
@@ -616,8 +580,7 @@ func TestCreateAssemblesTransactionalIntegration(t *testing.T) {
 }
 
 func TestCreateAssemblesTransactionalOnlySystem(t *testing.T) {
-	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
-	defer srv.Close()
+	lib, _ := newSystemHostLibrary(t, "v1", systemHostFiles())
 
 	// A transactional-only workspace: no topics, no shared-library
 	// scaffold — the host renders contracts-free.
@@ -625,7 +588,7 @@ func TestCreateAssemblesTransactionalOnlySystem(t *testing.T) {
 	writeTransactional(t, filepath.Join(ws, "erp-sync"), "erp-sync", "erp-source", "erp-destination")
 
 	outDir := filepath.Join(ws, "system-host")
-	stdout, stderr, err := runCreate(t, srv, CreateOptions{
+	stdout, stderr, err := runCreate(t, lib, CreateOptions{
 		Name:       "Trans",
 		StartDir:   ws,
 		OutputDir:  outDir,
@@ -684,8 +647,7 @@ func TestCreateAssemblesTransactionalOnlySystem(t *testing.T) {
 }
 
 func TestCreateScaffoldsContractsForTopicSystemWithoutOne(t *testing.T) {
-	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
-	defer srv.Close()
+	lib, _ := newSystemHostLibrary(t, "v1", systemHostFiles())
 
 	// A topic-bearing workspace whose extractor lost (or never had) its
 	// contracts sibling: the host template's dependency supplies it.
@@ -693,7 +655,7 @@ func TestCreateScaffoldsContractsForTopicSystemWithoutOne(t *testing.T) {
 	writeBlock(t, filepath.Join(ws, "order-extractor"), template.BlockKindExtractor, "order-extractor")
 
 	outDir := filepath.Join(ws, "system-host")
-	_, stderr, err := runCreate(t, srv, CreateOptions{Name: "OrderFlow", StartDir: ws, OutputDir: outDir, Version: "v1"})
+	_, stderr, err := runCreate(t, lib, CreateOptions{Name: "OrderFlow", StartDir: ws, OutputDir: outDir, Version: "v1"})
 	if err != nil {
 		t.Fatalf("Create: %v\nstderr: %s", err, stderr.String())
 	}
@@ -721,12 +683,11 @@ func TestCreateScaffoldsContractsForTopicSystemWithoutOne(t *testing.T) {
 func TestCreateRejectsPreFactsTemplateRelease(t *testing.T) {
 	files := systemHostFiles()
 	files["system-host/template.yaml"] = systemHostTemplateLegacyYAML
-	srv, _ := newSystemHostServer(t, "v1", files)
-	defer srv.Close()
+	lib, _ := newSystemHostLibrary(t, "v1", files)
 
 	ws := writeWorkspace(t)
 	outDir := filepath.Join(ws, "system-host")
-	_, _, err := runCreate(t, srv, CreateOptions{Name: "OrderFlow", StartDir: ws, OutputDir: outDir, Version: "v1"})
+	_, _, err := runCreate(t, lib, CreateOptions{Name: "OrderFlow", StartDir: ws, OutputDir: outDir, Version: "v1"})
 	if err == nil || !strings.Contains(err.Error(), "predates facts-only payloads") {
 		t.Fatalf("err = %v, want the version gate's guidance", err)
 	}
@@ -736,12 +697,11 @@ func TestCreateRejectsPreFactsTemplateRelease(t *testing.T) {
 }
 
 func TestCreateDefaultsOutputDirToKebabName(t *testing.T) {
-	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
-	defer srv.Close()
+	lib, _ := newSystemHostLibrary(t, "v1", systemHostFiles())
 
 	ws := writeWorkspace(t)
 	t.Chdir(ws)
-	_, stderr, err := runCreate(t, srv, CreateOptions{Name: "OrderFlow", Version: "v1"})
+	_, stderr, err := runCreate(t, lib, CreateOptions{Name: "OrderFlow", Version: "v1"})
 	if err != nil {
 		t.Fatalf("Create: %v\nstderr: %s", err, stderr.String())
 	}
@@ -751,8 +711,7 @@ func TestCreateDefaultsOutputDirToKebabName(t *testing.T) {
 }
 
 func TestCreateRefusesNonEmptyOutputDir(t *testing.T) {
-	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
-	defer srv.Close()
+	lib, _ := newSystemHostLibrary(t, "v1", systemHostFiles())
 
 	ws := writeWorkspace(t)
 	outDir := filepath.Join(ws, "system-host")
@@ -763,23 +722,22 @@ func TestCreateRefusesNonEmptyOutputDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, _, err := runCreate(t, srv, CreateOptions{Name: "OrderFlow", StartDir: ws, OutputDir: outDir, Version: "v1"})
+	_, _, err := runCreate(t, lib, CreateOptions{Name: "OrderFlow", StartDir: ws, OutputDir: outDir, Version: "v1"})
 	if err == nil || !strings.Contains(err.Error(), "--force") {
 		t.Errorf("err = %v, want --force guidance", err)
 	}
 }
 
 func TestCreateForceRerunSkipsOldHost(t *testing.T) {
-	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
-	defer srv.Close()
+	lib, _ := newSystemHostLibrary(t, "v1", systemHostFiles())
 
 	ws := writeWorkspace(t)
 	outDir := filepath.Join(ws, "system-host")
-	if _, stderr, err := runCreate(t, srv, CreateOptions{Name: "OrderFlow", StartDir: ws, OutputDir: outDir, Version: "v1"}); err != nil {
+	if _, stderr, err := runCreate(t, lib, CreateOptions{Name: "OrderFlow", StartDir: ws, OutputDir: outDir, Version: "v1"}); err != nil {
 		t.Fatalf("first Create: %v\nstderr: %s", err, stderr.String())
 	}
 
-	_, stderr, err := runCreate(t, srv, CreateOptions{Name: "OrderFlow", StartDir: ws, OutputDir: outDir, Version: "v1", Force: true})
+	_, stderr, err := runCreate(t, lib, CreateOptions{Name: "OrderFlow", StartDir: ws, OutputDir: outDir, Version: "v1", Force: true})
 	if err != nil {
 		t.Fatalf("re-run with --force: %v\nstderr: %s", err, stderr.String())
 	}
@@ -789,8 +747,7 @@ func TestCreateForceRerunSkipsOldHost(t *testing.T) {
 }
 
 func TestCreateValidatesBeforeNetwork(t *testing.T) {
-	srv, hits := newSystemHostServer(t, "v1", systemHostFiles())
-	defer srv.Close()
+	lib, hits := newSystemHostLibrary(t, "v1", systemHostFiles())
 
 	ws := t.TempDir()
 	dir := filepath.Join(ws, "order-extractor")
@@ -804,7 +761,7 @@ func TestCreateValidatesBeforeNetwork(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, _, err = runCreate(t, srv, CreateOptions{Name: "OrderFlow", StartDir: ws, Version: "v1"})
+	_, _, err = runCreate(t, lib, CreateOptions{Name: "OrderFlow", StartDir: ws, Version: "v1"})
 	if err == nil || !strings.Contains(err.Error(), "values.contract is missing") {
 		t.Fatalf("err = %v", err)
 	}

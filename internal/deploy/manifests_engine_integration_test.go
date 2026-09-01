@@ -3,17 +3,12 @@
 package deploy
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"testing"
 
 	"github.com/integrio-intropy/intropy-cli/internal/command"
@@ -22,6 +17,7 @@ import (
 	"github.com/integrio-intropy/intropy-cli/internal/gitops/gitopstest"
 	"github.com/integrio-intropy/intropy-cli/internal/gittest"
 	"github.com/integrio-intropy/intropy-cli/internal/template"
+	"github.com/integrio-intropy/intropy-cli/internal/template/templatetest"
 )
 
 // The host template: everything in base/, rendered once, with the broker chosen
@@ -184,66 +180,22 @@ func initLibraryEntries() map[string]string {
 	}
 }
 
-func buildLibraryTarball(t *testing.T, entries map[string]string) []byte {
-	t.Helper()
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	tw := tar.NewWriter(gz)
-	for name, content := range entries {
-		h := &tar.Header{Name: "owner-repo-abc123/" + name, Mode: 0o644, Size: int64(len(content)), Typeflag: tar.TypeReg}
-		if err := tw.WriteHeader(h); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := tw.Write([]byte(content)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := tw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := gz.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return buf.Bytes()
-}
-
-// libraryCalls records which endpoints a run actually hit, so a test can prove
-// that pinning a version skips the latest-release lookup entirely.
-type libraryCalls struct {
-	latest  atomic.Int32
-	tarball atomic.Int32
-}
-
-func newInitLibraryServer(t *testing.T, entries map[string]string, calls *libraryCalls) *httptest.Server {
-	t.Helper()
-	tarball := buildLibraryTarball(t, entries)
-	mux := http.NewServeMux()
-	mux.HandleFunc("/repos/o/r/releases/latest", func(w http.ResponseWriter, r *http.Request) {
-		calls.latest.Add(1)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"tag_name":"v1.0.0"}`))
-	})
-	// Two tags, same content: v1.0.0 is what "latest" resolves to, v0.9.0 exists
-	// only to be asked for explicitly.
-	for _, tag := range []string{"v1.0.0", "v0.9.0"} {
-		mux.HandleFunc("/repos/o/r/tarball/"+tag, func(w http.ResponseWriter, r *http.Request) {
-			calls.tarball.Add(1)
-			_, _ = w.Write(tarball)
-		})
-	}
-	return httptest.NewServer(mux)
-}
+// initLibraryRef is the identity manifests record for the fixture library:
+// the run resolves the defaults, and the fixture serves their API path.
+var initLibraryRef = func() string {
+	owner, repo := template.DefaultLibrary()
+	return owner + "/" + repo
+}()
 
 // initFixture is everything Init needs: an empty-but-deployable GitOps origin, a
-// topology file so no dotnet runs, a template library over httptest, and a config
+// topology file so no dotnet runs, a template library over git, and a config
 // file pointing at the origin.
 type initFixture struct {
 	gitopsOrigin string
 	cacheRoot    string
 	topologyFile string
 	sourceDir    string
-	srv          *httptest.Server
-	calls        *libraryCalls
+	lib          *templatetest.Library
 }
 
 func newInitFixture(t *testing.T) initFixture {
@@ -272,10 +224,6 @@ func newInitFixtureWith(t *testing.T, entries map[string]string) initFixture {
 	t.Setenv("INTROPY_GITOPS_REPO", "")
 	gittest.WriteFile(t, filepath.Join(cfgHome, "intropy", "config.yaml"), "gitopsRepo: "+origin+"\n")
 
-	calls := &libraryCalls{}
-	srv := newInitLibraryServer(t, entries, calls)
-	t.Cleanup(srv.Close)
-
 	return initFixture{
 		gitopsOrigin: origin,
 		cacheRoot:    t.TempDir(),
@@ -283,25 +231,22 @@ func newInitFixtureWith(t *testing.T, entries map[string]string) initFixture {
 		// Empty on purpose: the topology file supplies everything, and a component
 		// with no scaffold record must only warn.
 		sourceDir: t.TempDir(),
-		srv:       srv,
-		calls:     calls,
+		lib:       templatetest.NewLibrary(t, "v1.0.0", entries),
 	}
 }
 
-func (f initFixture) options(stdout, stderr *bytes.Buffer) manifestRunOptions {
+func (f initFixture) options(t *testing.T, stdout, stderr *bytes.Buffer) manifestRunOptions {
+	t.Helper()
 	return manifestRunOptions{
-		Domain:        "sales",
-		TopologyFile:  f.topologyFile,
-		SourceDir:     f.sourceDir,
-		Bindings:      []string{"erp=sftp", "price-master=http"},
-		CacheRoot:     f.cacheRoot,
-		Stdin:         strings.NewReader(""),
-		Stdout:        stdout,
-		Stderr:        stderr,
-		Owner:         "o",
-		Repo:          "r",
-		GitHubBaseURL: f.srv.URL,
-		HTTP:          f.srv.Client(),
+		Domain:       "sales",
+		TopologyFile: f.topologyFile,
+		SourceDir:    f.sourceDir,
+		Bindings:     []string{"erp=sftp", "price-master=http"},
+		CacheRoot:    f.cacheRoot,
+		Stdin:        strings.NewReader(""),
+		Stdout:       stdout,
+		Stderr:       stderr,
+		Source:       f.lib.Source(t),
 	}
 }
 
@@ -352,7 +297,7 @@ func TestInitScaffoldsTheWholeSystem(t *testing.T) {
 	f := newInitFixture(t)
 	var stdout, stderr bytes.Buffer
 
-	if err := runManifestPipeline(context.Background(), f.options(&stdout, &stderr)); err != nil {
+	if err := runManifestPipeline(context.Background(), f.options(t, &stdout, &stderr)); err != nil {
 		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
 	}
 
@@ -385,7 +330,7 @@ func TestInitScaffoldsTheWholeSystem(t *testing.T) {
 func TestInitWorkloadFollowsTheBlockKind(t *testing.T) {
 	f := newInitFixture(t)
 	var stdout, stderr bytes.Buffer
-	if err := runManifestPipeline(context.Background(), f.options(&stdout, &stderr)); err != nil {
+	if err := runManifestPipeline(context.Background(), f.options(t, &stdout, &stderr)); err != nil {
 		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
 	}
 
@@ -407,7 +352,7 @@ func TestInitWorkloadFollowsTheBlockKind(t *testing.T) {
 func TestInitScopesComeFromTheTopology(t *testing.T) {
 	f := newInitFixture(t)
 	var stdout, stderr bytes.Buffer
-	if err := runManifestPipeline(context.Background(), f.options(&stdout, &stderr)); err != nil {
+	if err := runManifestPipeline(context.Background(), f.options(t, &stdout, &stderr)); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 
@@ -425,7 +370,7 @@ func TestInitScopesComeFromTheTopology(t *testing.T) {
 func TestInitLeavesImagesUnpinned(t *testing.T) {
 	f := newInitFixture(t)
 	var stdout, stderr bytes.Buffer
-	if err := runManifestPipeline(context.Background(), f.options(&stdout, &stderr)); err != nil {
+	if err := runManifestPipeline(context.Background(), f.options(t, &stdout, &stderr)); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 
@@ -442,7 +387,7 @@ func TestInitLeavesImagesUnpinned(t *testing.T) {
 func TestInitPlanWritesNothingAndTouchesNoGit(t *testing.T) {
 	f := newInitFixture(t)
 	var stdout, stderr bytes.Buffer
-	opts := f.options(&stdout, &stderr)
+	opts := f.options(t, &stdout, &stderr)
 	opts.PlanOnly = true
 
 	if err := runManifestPipeline(context.Background(), opts); err != nil {
@@ -469,7 +414,7 @@ func TestInitPlanWritesNothingAndTouchesNoGit(t *testing.T) {
 func TestInitIsANoOpOnReRun(t *testing.T) {
 	f := newInitFixture(t)
 	var stdout, stderr bytes.Buffer
-	if err := runManifestPipeline(context.Background(), f.options(&stdout, &stderr)); err != nil {
+	if err := runManifestPipeline(context.Background(), f.options(t, &stdout, &stderr)); err != nil {
 		t.Fatalf("first Init: %v", err)
 	}
 
@@ -477,7 +422,7 @@ func TestInitIsANoOpOnReRun(t *testing.T) {
 	// the default branch the way a reviewer would.
 	gittest.Run(t, f.gitopsOrigin, "merge", "--ff-only", "manifests-create/sales-distribution-all")
 
-	out, stderr2, err := runInit(t, f.options(&bytes.Buffer{}, &bytes.Buffer{}))
+	out, stderr2, err := runInit(t, f.options(t, &bytes.Buffer{}, &bytes.Buffer{}))
 	if err != nil {
 		t.Fatalf("second Init: %v\nstderr: %s", err, stderr2)
 	}
@@ -494,7 +439,7 @@ func TestInitIsANoOpOnReRun(t *testing.T) {
 func TestInitRestoresTheDefaultBranchInTheCache(t *testing.T) {
 	f := newInitFixture(t)
 	var stdout, stderr bytes.Buffer
-	if err := runManifestPipeline(context.Background(), f.options(&stdout, &stderr)); err != nil {
+	if err := runManifestPipeline(context.Background(), f.options(t, &stdout, &stderr)); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 
@@ -508,7 +453,7 @@ func TestInitRestoresTheDefaultBranchInTheCache(t *testing.T) {
 func TestInitJSONResult(t *testing.T) {
 	f := newInitFixture(t)
 	var stdout, stderr bytes.Buffer
-	opts := f.options(&stdout, &stderr)
+	opts := f.options(t, &stdout, &stderr)
 	opts.OutputFormat = OutputJSON
 
 	if err := runManifestPipeline(context.Background(), opts); err != nil {
@@ -525,7 +470,7 @@ func TestInitJSONResult(t *testing.T) {
 	if res.Host != HostDirName {
 		t.Errorf("Host = %q", res.Host)
 	}
-	if res.Template != "o/r@v1.0.0" {
+	if res.Template != initLibraryRef+"@v1.0.0" {
 		t.Errorf("Template = %q", res.Template)
 	}
 	if !res.Applied || res.Branch != "manifests-create/sales-distribution-all" || res.Revision == "" {
@@ -546,7 +491,7 @@ func TestInitRendersServiceBusOnAzure(t *testing.T) {
 	setPlatform(t, f, "provider: azure\n  pubsub: servicebus\n")
 
 	var stdout, stderr bytes.Buffer
-	if err := runManifestPipeline(context.Background(), f.options(&stdout, &stderr)); err != nil {
+	if err := runManifestPipeline(context.Background(), f.options(t, &stdout, &stderr)); err != nil {
 		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
 	}
 
@@ -565,13 +510,13 @@ func TestInitRendersServiceBusOnAzure(t *testing.T) {
 func TestInitUsesTheLatestReleaseByDefault(t *testing.T) {
 	f := newInitFixture(t)
 	var stdout, stderr bytes.Buffer
-	opts := f.options(&stdout, &stderr)
+	opts := f.options(t, &stdout, &stderr)
 	opts.OutputFormat = OutputJSON
 
 	if err := runManifestPipeline(context.Background(), opts); err != nil {
 		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
 	}
-	if got := f.calls.latest.Load(); got != 1 {
+	if got := f.lib.LatestRequests.Load(); got != 1 {
 		t.Errorf("latest-release endpoint hit %d times, want 1", got)
 	}
 
@@ -579,7 +524,7 @@ func TestInitUsesTheLatestReleaseByDefault(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
 		t.Fatal(err)
 	}
-	if res.Template != "o/r@v1.0.0" {
+	if res.Template != initLibraryRef+"@v1.0.0" {
 		t.Errorf("Template = %q, want the resolved latest release", res.Template)
 	}
 }
@@ -589,38 +534,36 @@ func TestInitUsesTheLatestReleaseByDefault(t *testing.T) {
 func TestInitVersionPinsTheTemplateRelease(t *testing.T) {
 	f := newInitFixture(t)
 	var stdout, stderr bytes.Buffer
-	opts := f.options(&stdout, &stderr)
+	opts := f.options(t, &stdout, &stderr)
 	opts.TemplateVersion = "v0.9.0"
+	opts.Source = f.lib.SourceWithTag(t, "v0.9.0")
 	opts.OutputFormat = OutputJSON
 
 	if err := runManifestPipeline(context.Background(), opts); err != nil {
 		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
 	}
 
-	if got := f.calls.latest.Load(); got != 0 {
+	if got := f.lib.LatestRequests.Load(); got != 0 {
 		t.Errorf("latest-release endpoint hit %d times with --version set, want 0", got)
-	}
-	if got := f.calls.tarball.Load(); got != 1 {
-		t.Errorf("tarball fetched %d times, want 1 for both templates", got)
 	}
 
 	var res ManifestCreateResult
 	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
 		t.Fatal(err)
 	}
-	if res.Template != "o/r@v0.9.0" {
+	if res.Template != initLibraryRef+"@v0.9.0" {
 		t.Errorf("Template = %q, want the pinned tag", res.Template)
 	}
 	// The reviewer of the pushed branch has to be able to tell which release
 	// produced it, so the tag is announced too.
-	if !strings.Contains(stderr.String(), "o/r@v0.9.0") {
+	if !strings.Contains(stderr.String(), "@v0.9.0") {
 		t.Errorf("stderr does not name the pinned release:\n%s", stderr.String())
 	}
 }
 
 func TestInitRejectsAVersionThatDoesNotExist(t *testing.T) {
 	f := newInitFixture(t)
-	opts := f.options(&bytes.Buffer{}, &bytes.Buffer{})
+	opts := f.options(t, &bytes.Buffer{}, &bytes.Buffer{})
 	opts.TemplateVersion = "v9.9.9"
 
 	_, _, err := runInit(t, opts)
@@ -631,7 +574,7 @@ func TestInitRejectsAVersionThatDoesNotExist(t *testing.T) {
 
 func TestInitRequiresDomainOnAFirstRun(t *testing.T) {
 	f := newInitFixture(t)
-	opts := f.options(&bytes.Buffer{}, &bytes.Buffer{})
+	opts := f.options(t, &bytes.Buffer{}, &bytes.Buffer{})
 	opts.Domain = ""
 
 	_, _, err := runInit(t, opts)
@@ -658,7 +601,7 @@ func TestInitIsUnaffectedByAPreCommitHookInTheCache(t *testing.T) {
 	proveHookFires := installPreCommitHook(t, cache, "pwned.txt")
 	proveHookFires(t)
 
-	if _, stderr, err := runInit(t, f.options(&bytes.Buffer{}, &bytes.Buffer{})); err != nil {
+	if _, stderr, err := runInit(t, f.options(t, &bytes.Buffer{}, &bytes.Buffer{})); err != nil {
 		t.Fatalf("Init: %v\nstderr: %s", err, stderr)
 	}
 
@@ -692,7 +635,7 @@ func TestInitRefusesToWriteThroughASymlinkInTheGitopsRepository(t *testing.T) {
 	gittest.Run(t, f.gitopsOrigin, "add", "--", "domains")
 	gittest.Run(t, f.gitopsOrigin, "commit", "--quiet", "-m", "plant a symlink")
 
-	_, _, err := runInit(t, f.options(&bytes.Buffer{}, &bytes.Buffer{}))
+	_, _, err := runInit(t, f.options(t, &bytes.Buffer{}, &bytes.Buffer{}))
 	if err == nil {
 		t.Fatal("expected Init to refuse the symlinked destination")
 	}
@@ -710,7 +653,7 @@ func TestInitRefusesToWriteThroughASymlinkInTheGitopsRepository(t *testing.T) {
 func TestInitRejectsADomainThatIsNotOneSegment(t *testing.T) {
 	for _, domain := range []string{"../../etc", "sales/orders", "."} {
 		f := newInitFixture(t)
-		opts := f.options(&bytes.Buffer{}, &bytes.Buffer{})
+		opts := f.options(t, &bytes.Buffer{}, &bytes.Buffer{})
 		opts.Domain = domain
 
 		_, _, err := runInit(t, opts)
@@ -728,12 +671,12 @@ func TestInitRejectsADomainThatIsNotOneSegment(t *testing.T) {
 func TestInitInfersDomainOnARerun(t *testing.T) {
 	f := newInitFixture(t)
 	var stdout, stderr bytes.Buffer
-	if err := runManifestPipeline(context.Background(), f.options(&stdout, &stderr)); err != nil {
+	if err := runManifestPipeline(context.Background(), f.options(t, &stdout, &stderr)); err != nil {
 		t.Fatalf("first Init: %v", err)
 	}
 	gittest.Run(t, f.gitopsOrigin, "merge", "--ff-only", "manifests-create/sales-distribution-all")
 
-	opts := f.options(&bytes.Buffer{}, &bytes.Buffer{})
+	opts := f.options(t, &bytes.Buffer{}, &bytes.Buffer{})
 	opts.Domain = ""
 	if _, stderr2, err := runInit(t, opts); err != nil {
 		t.Fatalf("second Init without --domain: %v\nstderr: %s", err, stderr2)
@@ -742,7 +685,7 @@ func TestInitInfersDomainOnARerun(t *testing.T) {
 
 func TestInitRejectsAnUnknownEnvironment(t *testing.T) {
 	f := newInitFixture(t)
-	opts := f.options(&bytes.Buffer{}, &bytes.Buffer{})
+	opts := f.options(t, &bytes.Buffer{}, &bytes.Buffer{})
 	opts.Environments = []string{"nope"}
 
 	_, _, err := runInit(t, opts)
@@ -757,7 +700,7 @@ func TestInitRejectsAMalformedTopologyFile(t *testing.T) {
 	if err := os.WriteFile(bad, []byte(`{"apiVersion":"topology.intropy.io/v0"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	opts := f.options(&bytes.Buffer{}, &bytes.Buffer{})
+	opts := f.options(t, &bytes.Buffer{}, &bytes.Buffer{})
 	opts.TopologyFile = bad
 
 	if _, _, err := runInit(t, opts); err == nil {
@@ -770,7 +713,7 @@ func TestInitRejectsAMalformedTopologyFile(t *testing.T) {
 func TestInitProducesLoadableComponentConfigs(t *testing.T) {
 	f := newInitFixture(t)
 	var stdout, stderr bytes.Buffer
-	if err := runManifestPipeline(context.Background(), f.options(&stdout, &stderr)); err != nil {
+	if err := runManifestPipeline(context.Background(), f.options(t, &stdout, &stderr)); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 
@@ -822,7 +765,7 @@ func TestInitInfersDomainFromWorkspaceLayout(t *testing.T) {
 	stubRunGraph(t, initTopologyRecord)
 
 	var stdout, stderr bytes.Buffer
-	opts := f.options(&stdout, &stderr)
+	opts := f.options(t, &stdout, &stderr)
 	opts.Domain = "" // the whole point
 	opts.TopologyFile = ""
 	opts.SourceDir = workspace
@@ -854,7 +797,7 @@ func TestInitSelectsTheNamedSystemInAMultiSystemWorkspace(t *testing.T) {
 	called := stubRunGraph(t, initTopologyRecord)
 
 	var stdout, stderr bytes.Buffer
-	opts := f.options(&stdout, &stderr)
+	opts := f.options(t, &stdout, &stderr)
 	opts.TopologyFile = "" // force host discovery
 	opts.SourceDir = workspace
 	opts.System = "distribution"
@@ -878,7 +821,7 @@ func TestInitWithoutSystemInAMultiSystemWorkspaceIsAnError(t *testing.T) {
 	writeHostWorkspace(t, workspace, "order-flow", "distribution")
 	called := stubRunGraph(t, initTopologyRecord)
 
-	opts := f.options(&bytes.Buffer{}, &bytes.Buffer{})
+	opts := f.options(t, &bytes.Buffer{}, &bytes.Buffer{})
 	opts.TopologyFile = ""
 	opts.SourceDir = workspace
 
@@ -904,7 +847,7 @@ func TestInitWarnsWhenSystemRenamesTheTreeSegment(t *testing.T) {
 	stubRunGraph(t, initTopologyRecord) // declares system "distribution"
 
 	var stdout, stderr bytes.Buffer
-	opts := f.options(&stdout, &stderr)
+	opts := f.options(t, &stdout, &stderr)
 	opts.TopologyFile = ""
 	opts.SourceDir = workspace
 	opts.System = "product-distribution"
