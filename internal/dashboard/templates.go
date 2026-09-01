@@ -73,6 +73,20 @@ func (s *apiServer) fetchLibrary(ctx context.Context) (*template.Library, error)
 	return lib, nil
 }
 
+// libraryTag returns the release every template render pins to, resolving it
+// on first use like fetchLibrary does. Handlers that hand a version to another
+// package need the tag itself rather than a Library — without it those renders
+// would resolve their own, which is the per-request lookup this cache exists
+// to remove.
+func (s *apiServer) libraryTag(ctx context.Context) (string, error) {
+	lib, err := s.fetchLibrary(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer lib.Close()
+	return lib.Version, nil
+}
+
 // refreshTemplates drops the resolved release so the next fetch resolves the
 // latest one again, then serves the fresh listing. It is how a template
 // release cut while the dashboard runs is picked up without a restart —
@@ -337,9 +351,18 @@ func (s *apiServer) createTemplate(w http.ResponseWriter, r *http.Request) {
 	s.createMu.Lock()
 	defer s.createMu.Unlock()
 
+	// The render pins the release the form was filled against, which is the
+	// whole point of holding one: a create that resolved its own could render
+	// from a release the user never saw.
+	tag, err := s.libraryTag(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
 	prep, err := template.PrepareCreate(r.Context(), template.CreateOptions{
 		Template:  name,
-		Version:   s.templates.version,
+		Version:   tag,
 		SetValues: values,
 		UserAgent: s.templates.userAgent,
 		Owner:     s.templates.owner,

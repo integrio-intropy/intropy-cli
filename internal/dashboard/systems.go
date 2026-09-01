@@ -61,23 +61,31 @@ func (s *apiServer) syncSystem(w http.ResponseWriter, r *http.Request) {
 	s.createMu.Lock()
 	defer s.createMu.Unlock()
 
-	hosts, _ := template.ListSystemHosts(dir)
-	if len(hosts) == 0 {
-		s.createHost(w, r, dir, req.Force)
+	// The host renders from the release the dashboard holds, so assembling a
+	// system and scaffolding into it can never pin different ones.
+	tag, err := s.libraryTag(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	s.updateHost(w, r, dir, req.Force)
+
+	hosts, _ := template.ListSystemHosts(dir)
+	if len(hosts) == 0 {
+		s.createHost(w, r, dir, tag, req.Force)
+		return
+	}
+	s.updateHost(w, r, dir, tag, req.Force)
 }
 
 // updateHost runs `sys update` against the system directory: fold every
 // scaffolded-but-undeclared component into the existing host. No orphans is
 // a successful no-op (action "none"), matching the command's own contract.
-func (s *apiServer) updateHost(w http.ResponseWriter, r *http.Request, dir string, force bool) {
+func (s *apiServer) updateHost(w http.ResponseWriter, r *http.Request, dir, tag string, force bool) {
 	var out, logs bytes.Buffer
 	err := system.Update(r.Context(), system.UpdateOptions{
 		StartDir:   dir,
 		Force:      force,
-		Version:    s.templates.version,
+		Version:    tag,
 		OutputJSON: "-",
 		Stdout:     &out,
 		Stderr:     &logs,
@@ -109,14 +117,14 @@ func (s *apiServer) updateHost(w http.ResponseWriter, r *http.Request, dir strin
 // the system is named after its directory (the same rule that labels the
 // workspace pseudo-system) and the host renders inside it as <name>-host,
 // a sibling of the components and the contracts project.
-func (s *apiServer) createHost(w http.ResponseWriter, r *http.Request, dir string, force bool) {
+func (s *apiServer) createHost(w http.ResponseWriter, r *http.Request, dir, tag string, force bool) {
 	name := hostSystemName(dir)
 	var out, logs bytes.Buffer
 	err := system.Create(r.Context(), system.CreateOptions{
 		Name:       name,
 		StartDir:   dir,
 		OutputDir:  filepath.Join(dir, xstrings.ToKebabCase(name)+"-host"),
-		Version:    s.templates.version,
+		Version:    tag,
 		Force:      force,
 		OutputJSON: "-",
 		Stdout:     &out,

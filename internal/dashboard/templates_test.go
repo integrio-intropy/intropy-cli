@@ -857,7 +857,11 @@ func TestGetTemplateSuggestions(t *testing.T) {
 // shares the release the first of them resolved.
 func TestTemplateEndpointsResolveReleaseOnce(t *testing.T) {
 	lib := newTemplateLibrary(t, "v1")
-	h := testHandlerWith(t, t.TempDir(), templateProviders(lib.Source(t)))
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "acme"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	h := testHandlerWith(t, root, templateProviders(lib.Source(t)))
 
 	if rec := get(t, h, "/api/templates"); rec.Code != http.StatusOK {
 		t.Fatalf("list: status = %d: %s", rec.Code, rec.Body)
@@ -871,6 +875,13 @@ func TestTemplateEndpointsResolveReleaseOnce(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("suggestions: status = %d: %s", rec.Code, rec.Body)
 		}
+	}
+	// The create that closes the session hands a version to another package;
+	// it must hand it the held one rather than resolve its own.
+	rec := postJSON(t, h, "/api/templates/test-template/create",
+		`{"dir":"acme","name":"OrderSync","values":{"integrationName":"Order Sync"}}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: status = %d: %s", rec.Code, rec.Body)
 	}
 
 	if n := lib.LatestRequests.Load(); n != 1 {
