@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "b1b06beb6ece",
+  "strategy": "manual-commit",
+  "branch": "fix/github-api-rate-limit",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "internal/system/update.go",
+    "internal/system/update_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/b1/b06beb6ece/0/metadata.json",
+      "transcript": "/b1/b06beb6ece/0/full.jsonl",
+      "compact_transcript": "/b1/b06beb6ece/0/transcript.jsonl",
+      "content_hash": "/b1/b06beb6ece/0/content_hash.txt",
+      "prompt": "/b1/b06beb6ece/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 33739,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1152064,
+    "output_tokens": 16782,
+    "api_call_count": 42
+  }
+}

@@ -1,0 +1,11 @@
+I have scaffolded this system, /Users/robinhultman/dev/intropy/customers/fluxia/integrations/domains/order-management/newextra
+but when I try to update the system with the new loader I get this error:
+declaration files differ from what the update would render: Ports.cs, NewextraDevelopment.cs, NewextraSystem.cs reconcile them by hand, or re-run with --force to overwrite
+
+---
+
+I thought I built the binary from fix/github-api-rate-limit branch. That branch should be based on release/v1, right?
+
+---
+
+So this problem was introduced with the fixes in fix/github-api-rate-limit
