@@ -1,0 +1,24 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "c5d4a62d5f2f",
+  "strategy": "manual-commit",
+  "branch": "fix/github-api-rate-limit",
+  "checkpoints_count": 4,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/c5/d4a62d5f2f/0/metadata.json",
+      "transcript": "/c5/d4a62d5f2f/0/full.jsonl",
+      "compact_transcript": "/c5/d4a62d5f2f/0/transcript.jsonl",
+      "content_hash": "/c5/d4a62d5f2f/0/content_hash.txt",
+      "prompt": "/c5/d4a62d5f2f/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 280,
+    "cache_creation_tokens": 189616,
+    "cache_read_tokens": 19840238,
+    "output_tokens": 79238,
+    "api_call_count": 140
+  }
+}
