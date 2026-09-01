@@ -1,0 +1,59 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "7b6880e0f5e9",
+  "session_id": "0aa9731c-ed08-412e-b44a-a17891dd381c",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-01T12:48:47.649171Z",
+  "branch": "fix/github-api-rate-limit",
+  "checkpoints_count": 4,
+  "save_step_count": 1,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "0ad8c2608426",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 260,
+    "cache_creation_tokens": 179948,
+    "cache_read_tokens": 17691183,
+    "output_tokens": 73153,
+    "api_call_count": 130
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01AXCLQE9aSFk2k95nG97yQp",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "pdd"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "0ad8c2608426",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 300,
+        "end": 301,
+        "entry_ids": [
+          "b019a0f5-62b8-4ca6-a36e-c65e4441d97b"
+        ],
+        "tool_use_id": "toolu_01AXCLQE9aSFk2k95nG97yQp"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01AXCLQE9aSFk2k95nG97yQp"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: pdd",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 4
+  }
+}
