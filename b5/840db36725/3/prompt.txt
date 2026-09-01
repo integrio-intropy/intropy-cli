@@ -1,0 +1,13 @@
+When running the intropy dashboard I very often get an error that the github api interpreted my requests as abuse. Can you look for any places where we potentially hammer the github api?
+
+---
+
+Is this what we partly tried to implement in the feat/template-git-clone-cache branch?
+
+---
+
+Is it worth creating a plan to build that feature from scratch a long with other fixes?
+
+---
+
+yes

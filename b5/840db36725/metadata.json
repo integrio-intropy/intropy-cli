@@ -2,8 +2,8 @@
   "cli_version": "0.8.42",
   "checkpoint_id": "b5840db36725",
   "strategy": "manual-commit",
-  "branch": "feat/template-git-clone-cache",
-  "checkpoints_count": 15,
+  "branch": "fix/github-api-rate-limit",
+  "checkpoints_count": 19,
   "files_touched": [
     "internal/deploy/local_test.go",
     "internal/deploy/localtemplates_test.go",
@@ -39,14 +39,21 @@
       "compact_transcript": "/b5/840db36725/2/transcript.jsonl",
       "content_hash": "/b5/840db36725/2/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/b5/840db36725/3/metadata.json",
+      "transcript": "/b5/840db36725/3/full.jsonl",
+      "compact_transcript": "/b5/840db36725/3/transcript.jsonl",
+      "content_hash": "/b5/840db36725/3/content_hash.txt",
+      "prompt": "/b5/840db36725/3/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 472544,
-    "cache_creation_tokens": 0,
-    "cache_read_tokens": 42869248,
-    "output_tokens": 134929,
-    "api_call_count": 444
+    "input_tokens": 472760,
+    "cache_creation_tokens": 157459,
+    "cache_read_tokens": 56137518,
+    "output_tokens": 195029,
+    "api_call_count": 552
   },
   "combined_attribution": {
     "calculated_at": "2026-08-17T14:44:57.91499Z",
