@@ -849,3 +849,66 @@ func TestGetTemplateSuggestions(t *testing.T) {
 		t.Errorf("unknown template: status = %d, want 404: %s", rec.Code, rec.Body)
 	}
 }
+
+// TestTemplateEndpointsResolveReleaseOnce is the regression test for the
+// dashboard's GitHub traffic. The create form refreshes its suggestions as the
+// user types, so a latest-release lookup per request is what tripped GitHub's
+// secondary rate limits: one form could issue dozens. Every template endpoint
+// shares the release the first of them resolved.
+func TestTemplateEndpointsResolveReleaseOnce(t *testing.T) {
+	lib := newTemplateLibrary(t, "v1")
+	h := testHandlerWith(t, t.TempDir(), templateProviders(lib.Source(t)))
+
+	if rec := get(t, h, "/api/templates"); rec.Code != http.StatusOK {
+		t.Fatalf("list: status = %d: %s", rec.Code, rec.Body)
+	}
+	if rec := get(t, h, "/api/templates/test-template"); rec.Code != http.StatusOK {
+		t.Fatalf("show: status = %d: %s", rec.Code, rec.Body)
+	}
+	// A twenty-character name, typed one character at a time.
+	for range 20 {
+		rec := get(t, h, "/api/templates/suggestions/test-template?dir=.")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("suggestions: status = %d: %s", rec.Code, rec.Body)
+		}
+	}
+
+	if n := lib.LatestRequests.Load(); n != 1 {
+		t.Errorf("latest-release lookups = %d, want 1 for the life of the server", n)
+	}
+}
+
+// TestRefreshTemplatesResolvesAgain pins the escape hatch: a release cut while
+// the dashboard runs is picked up by a refresh, not by a restart.
+func TestRefreshTemplatesResolvesAgain(t *testing.T) {
+	lib := newTemplateLibrary(t, "v1")
+	h := testHandlerWith(t, t.TempDir(), templateProviders(lib.Source(t)))
+
+	get(t, h, "/api/templates")
+	if rec := postJSON(t, h, "/api/templates/refresh", ""); rec.Code != http.StatusOK {
+		t.Fatalf("refresh: status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	get(t, h, "/api/templates")
+
+	if n := lib.LatestRequests.Load(); n != 2 {
+		t.Errorf("latest-release lookups = %d, want 2 (first use and the refresh)", n)
+	}
+}
+
+// TestPinnedVersionResolvesNothing pins the strongest guarantee: a dashboard
+// started against an explicit release never asks GitHub which one is latest.
+func TestPinnedVersionResolvesNothing(t *testing.T) {
+	lib := newTemplateLibrary(t, "v1")
+	p := templateProviders(lib.Source(t))
+	p.templates.version = "v1"
+	h := testHandlerWith(t, t.TempDir(), p)
+
+	if rec := get(t, h, "/api/templates"); rec.Code != http.StatusOK {
+		t.Fatalf("list: status = %d: %s", rec.Code, rec.Body)
+	}
+	get(t, h, "/api/templates/test-template")
+
+	if n := lib.LatestRequests.Load(); n != 0 {
+		t.Errorf("latest-release lookups = %d, want 0 for a pinned version", n)
+	}
+}

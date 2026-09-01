@@ -526,6 +526,11 @@ export const api = {
   // `template` and `int create` commands: the library release the server
   // fetched is the release the form renders against and the run creates from.
   listTemplates: () => getJSON<TemplateList>('/api/templates'),
+  /** Re-resolve the library release and return the fresh listing. The server
+   *  holds one release for its lifetime so a form and the run it starts can
+   *  never disagree; this is how a release cut meanwhile is picked up. */
+  refreshTemplates: () =>
+    requestJSON<TemplateList>('/api/templates/refresh', { method: 'POST' }),
   getTemplate: (name: string, dir?: string) =>
     getJSON<TemplateDetail>(`/api/templates/${name}${dir ? `?dir=${encodeURIComponent(dir)}` : ''}`),
   /** Suggestion lists only, chained off the confirmed values — the form's

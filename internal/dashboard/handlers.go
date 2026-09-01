@@ -60,6 +60,14 @@ type apiServer struct {
 	// both cloning the library. The same bargain depMu makes for its checkout.
 	createMu sync.Mutex
 
+	// tagMu guards the resolved template library release. Resolving it costs a
+	// GitHub API call, so it is resolved on the first template request and held
+	// for the life of the process: the form and the run it starts then render
+	// from one release by construction, and a form's per-keystroke suggestion
+	// refreshes cost nothing. An explicit refresh re-resolves.
+	tagMu sync.Mutex
+	tag   string
+
 	// topoMu guards the cached provider result. Fetching runs the hosts'
 	// graph verbs (a dotnet build on first run), so the result is computed
 	// once — on the first /api/topology request — and reused until an
@@ -178,6 +186,7 @@ func newHandler(root, version string, p providers) (http.Handler, *apiServer, er
 	// Template endpoints follow the same GET-read / POST-act split: list and
 	// show fetch the library release, create renders into the workspace.
 	mux.HandleFunc("GET /api/templates", api.listTemplates)
+	mux.HandleFunc("POST /api/templates/refresh", api.refreshTemplates)
 	mux.HandleFunc("GET /api/templates/{name}", api.getTemplate)
 	// Registered before {name} so "suggestions" binds to the literal.
 	mux.HandleFunc("GET /api/templates/suggestions/{name}", api.getTemplateSuggestions)

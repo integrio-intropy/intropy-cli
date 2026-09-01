@@ -33,16 +33,55 @@ type templatesProvider struct {
 	source template.SourceOptions
 }
 
-// fetchLibrary resolves and downloads the provider's library release. The
-// caller owns the returned Library and must Close it.
-func (p templatesProvider) fetchLibrary(ctx context.Context) (*template.Library, error) {
+// fetchLibrary resolves and checks out the provider's library release. tag
+// pins the release the server has already resolved, so only the first fetch
+// of a process pays a latest-release lookup; an explicitly configured version
+// still wins, because pinning is the caller's decision, not the cache's.
+func (p templatesProvider) fetchLibrary(ctx context.Context, tag string) (*template.Library, error) {
+	version := p.version
+	if version == "" {
+		version = tag
+	}
 	return template.FetchLibrary(ctx, template.LibraryOptions{
-		Version:   p.version,
+		Version:   version,
 		UserAgent: p.userAgent,
 		Owner:     p.owner,
 		Repo:      p.repo,
 		Source:    p.source,
 	})
+}
+
+// fetchLibrary serves every template endpoint, resolving the library release
+// once per process and reusing it after: the release a form is filled against
+// and the release its run renders from can then never differ, and a form's
+// suggestion refreshes cost no GitHub requests at all.
+//
+// The lock spans the fetch rather than just the tag read. A cold cache means
+// a clone, and letting concurrent requests each start one would be the
+// thundering herd the cache exists to prevent — the same bargain topoMu makes
+// for the hosts' graph verbs. Once warm, every fetch is a local read.
+func (s *apiServer) fetchLibrary(ctx context.Context) (*template.Library, error) {
+	s.tagMu.Lock()
+	defer s.tagMu.Unlock()
+	lib, err := s.templates.fetchLibrary(ctx, s.tag)
+	if err != nil {
+		return nil, err
+	}
+	// Whatever release the fetch settled on is the one the process holds,
+	// including a tag the offline fallback chose rather than the latest.
+	s.tag = lib.Version
+	return lib, nil
+}
+
+// refreshTemplates drops the resolved release so the next fetch resolves the
+// latest one again, then serves the fresh listing. It is how a template
+// release cut while the dashboard runs is picked up without a restart —
+// the same escape hatch POST /api/topology/refresh offers.
+func (s *apiServer) refreshTemplates(w http.ResponseWriter, r *http.Request) {
+	s.tagMu.Lock()
+	s.tag = ""
+	s.tagMu.Unlock()
+	s.listTemplates(w, r)
 }
 
 // createRequest is the POST /api/templates/{name}/create body.
@@ -96,7 +135,7 @@ type templateSummary struct {
 // describes are local reads on the library checkout; one malformed manifest
 // drops that entry rather than hiding the rest of the library.
 func (s *apiServer) listTemplates(w http.ResponseWriter, r *http.Request) {
-	lib, err := s.templates.fetchLibrary(r.Context())
+	lib, err := s.fetchLibrary(r.Context())
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -143,7 +182,7 @@ func (s *apiServer) getTemplate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	lib, err := s.templates.fetchLibrary(r.Context())
+	lib, err := s.fetchLibrary(r.Context())
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -183,7 +222,7 @@ func (s *apiServer) getTemplateSuggestions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	lib, err := s.templates.fetchLibrary(r.Context())
+	lib, err := s.fetchLibrary(r.Context())
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
