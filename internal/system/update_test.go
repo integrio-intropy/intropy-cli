@@ -292,6 +292,26 @@ func TestUpdateRendersWithRecordPin(t *testing.T) {
 	}
 }
 
+func TestUpdateExplicitPinKeepsBaseline(t *testing.T) {
+	// The dashboard's sync always passes its held release explicitly.
+	// Naming the same version the record pins must not invalidate the
+	// baseline — the render comes from the same template, so the update
+	// folds the orphan in instead of conflicting on every changed file.
+	lib, _ := newSystemHostLibrary(t, "v1", systemHostFiles())
+
+	ws, hostDir := updateWorkspace(t)
+	writeBlock(t, filepath.Join(ws, "returns-extractor"), template.BlockKindExtractor, "returns-extractor")
+
+	_, stderr, err := runUpdate(t, lib, UpdateOptions{StartDir: ws, Version: "v1"})
+	if err != nil {
+		t.Fatalf("Update with the record's pin passed explicitly: %v\nstderr: %s", err, stderr.String())
+	}
+	systemClass := readFile(t, filepath.Join(hostDir, "OrderFlowSystem.cs"))
+	if !strings.Contains(systemClass, `builder.AddExtractor("returns-extractor")`) {
+		t.Errorf("OrderFlowSystem.cs does not declare returns-extractor:\n%s", systemClass)
+	}
+}
+
 func TestUpdateDryRunWritesNothing(t *testing.T) {
 	lib, _ := newSystemHostLibrary(t, "v1", systemHostFiles())
 

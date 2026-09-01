@@ -155,9 +155,17 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 	// The baseline is what the host was last rendered from; the render
 	// decides per file whether a difference is the update itself (safe to
 	// write) or a genuine divergence (a conflict). A template override
-	// invalidates the baseline, so the strict comparison applies instead.
+	// invalidates the baseline, so the strict comparison applies instead —
+	// but an override naming exactly what the record already pins renders
+	// from the same template and keeps it. The dashboard's sync always
+	// passes its held release explicitly; without the equality check every
+	// dashboard-driven update would conflict on the files it must write.
+	matchesPin := (opts.Template == "" || opts.Template == plan.hostRec.Template) &&
+		(opts.Version == "" || opts.Version == plan.hostRec.Version) &&
+		(opts.Owner == "" || opts.Owner == plan.hostRec.Owner) &&
+		(opts.Repo == "" || opts.Repo == plan.hostRec.Repo)
 	var baseline map[string]any
-	if opts.Template == "" && opts.Version == "" && (opts.Owner == "" || opts.Owner == plan.hostRec.Owner) && (opts.Repo == "" || opts.Repo == plan.hostRec.Repo) {
+	if matchesPin {
 		baseline, err = template.Resolve(prep.Manifest, nil, strings.NewReader(""), plan.baseline, nil)
 		if err != nil {
 			fmt.Fprintf(opts.Stderr, "note: stored values do not re-resolve against %s@%s (%v) — treating every differing file as a conflict\n", prep.Template, prep.Version, err)
