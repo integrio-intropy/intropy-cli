@@ -466,7 +466,7 @@ async function requestJSON<T>(url: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T
 }
 
-const getJSON = <T,>(url: string) => requestJSON<T>(url)
+const getJSON = <T,>(url: string, signal?: AbortSignal) => requestJSON<T>(url, { signal })
 
 // setQuery encodes confirmed parameter values as the repeated `set` query
 // the suggestion endpoints chain off (?set=topic=orders&set=…). Booleans
@@ -536,9 +536,15 @@ export const api = {
   /** Suggestion lists only, chained off the confirmed values — the form's
    *  mid-edit refresh when a picked parameter (topic) narrows another's
    *  candidates (contract). */
-  getTemplateSuggestions: (name: string, dir: string, confirmed?: Record<string, unknown>) =>
+  getTemplateSuggestions: (
+    name: string,
+    dir: string,
+    confirmed?: Record<string, unknown>,
+    signal?: AbortSignal,
+  ) =>
     getJSON<TemplateSuggestions>(
       `/api/templates/suggestions/${name}?dir=${encodeURIComponent(dir)}${setQuery(confirmed)}`,
+      signal,
     ),
   /** Render a template into the workspace — the Run button's `int create`. */
   createTemplate: (name: string, req: CreateRequest) =>

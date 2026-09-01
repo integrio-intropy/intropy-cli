@@ -20,6 +20,11 @@ import { isEmpty, isResolved, resolvedValue } from './form'
 // against the workspace (a picked topic narrows the contract candidates),
 // so the fields re-partition as the form fills in. The server computes the
 // candidates — the SPA never reimplements the convention rules.
+// How long the form waits after the last edit before asking the server to
+// re-derive suggestions. Long enough that typing a word is one request, short
+// enough that a pick list feels like it follows the field it depends on.
+const SUGGESTION_DEBOUNCE_MS = 250
+
 export function useTemplateFields(
   fields: TemplateField[],
   suggestionScope?: { template: string; dir: string },
@@ -46,19 +51,39 @@ export function useTemplateFields(
   // Suggestion refreshes race (one keystroke after another), so only the
   // latest request may land — a stale response would re-partition the form
   // against values the user has already moved past.
+  //
+  // The effect reruns per keystroke, so the request is debounced and aborted
+  // rather than issued per character: a name typed at speed asked the server
+  // to re-derive the whole workspace twenty times over, and each of those
+  // used to resolve and download the template library too. The sequence guard
+  // stays alongside the abort — aborting stops a request from landing, but two
+  // that both land must still resolve in order.
   const refreshSeq = useRef(0)
   useEffect(() => {
     if (!suggestionScope) return
-    const seq = ++refreshSeq.current
-    api
-      .getTemplateSuggestions(suggestionScope.template, suggestionScope.dir, values)
-      .then((r) => {
-        if (seq === refreshSeq.current) setLiveSuggestions(r.suggestions)
-      })
-      .catch(() => {
-        // A refresh failure keeps the current lists: the worst case is a
-        // stale pick list, and the submit path re-validates regardless.
-      })
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      const seq = ++refreshSeq.current
+      api
+        .getTemplateSuggestions(
+          suggestionScope.template,
+          suggestionScope.dir,
+          values,
+          controller.signal,
+        )
+        .then((r) => {
+          if (seq === refreshSeq.current) setLiveSuggestions(r.suggestions)
+        })
+        .catch(() => {
+          // A refresh failure keeps the current lists: the worst case is a
+          // stale pick list, and the submit path re-validates regardless. An
+          // abort arrives here too, which is exactly the no-op it should be.
+        })
+    }, SUGGESTION_DEBOUNCE_MS)
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
     // The scope's members, not the object: forms rebuild it inline per
     // render, and dir/template changing is exactly a remount there.
   }, [suggestionScope?.template, suggestionScope?.dir, values])
