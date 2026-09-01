@@ -11,3 +11,7 @@ Is it worth creating a plan to build that feature from scratch a long with other
 ---
 
 yes
+
+---
+
+Can you implement the plan on a new branch off release/v1? I do not want to commit any plans. It should be removed after implementation
