@@ -1,0 +1,21 @@
+yes please. And still do not push anything
+
+---
+
+But the cli supports querying the registry for messages aswell? Shouldnt we be able to list available messages?
+
+---
+
+retry
+
+---
+
+Continue
+
+---
+
+what is my ratelimit?
+
+---
+
+what is my ratelimit?
