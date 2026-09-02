@@ -1,0 +1,18 @@
+I was sort of in a middle of a change in this repo. Can you see if you can pick up where it was cut off? It was about using message list to list available options to subscribe on for a loader in the dashboard
+
+---
+
+I rebuilt the cli tool and launched the dashboard but I do not see any combox or similar for selecting the message to subscribe to?
+
+---
+
+I am running i dashboard --template-version v0.9.0-beta.1 in /Users/robinhultman/dev/intropy/customers/fluxia/integrations/domains/order-management/empty
+i is my alias to the locally built version. I cant see it working in the dashboard. Can you run the dashboard and inspect with chrome mcp?
+
+---
+
+ok this was a bit weird experience. I think we should drop the toggle "enter topic and contract manually". Is it possible to have a dropdown where you either select an item or write a name manually if there is no match?
+
+---
+
+Hmm I launched the dashboard and topic is a dropdown with a pre-selected value but I cant see any dropdown to select the message from?
