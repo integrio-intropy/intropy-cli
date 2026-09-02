@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "71a94b5a216d",
+  "session_id": "01a060b4-367b-71b3-89dd-9f122976e6fd",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-02T11:18:07.996067Z",
+  "branch": "feat/xregistry-message-subscriptions",
+  "checkpoints_count": 5,
+  "save_step_count": 1,
+  "files_touched": [
+    "web/src/components/useTemplateFields.ts",
+    "web/src/api.ts",
+    "web/src/components/form.tsx",
+    "web/src/components/CreateDrawer.tsx",
+    "web/src/index.css",
+    "docs/plans/2026-09-02-001-feat-xregistry-message-subscriptions-plan.md"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "2227d25588ad",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 975186,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 44066368,
+    "output_tokens": 161025,
+    "api_call_count": 350
+  },
+  "session_metrics": {
+    "turn_count": 14
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-02T11:18:07.891784Z",
+    "agent_lines": 126,
+    "agent_removed": 11,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 126,
+    "total_lines_changed": 137,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
