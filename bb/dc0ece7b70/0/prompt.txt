@@ -1,18 +1,1 @@
-in the dashboard the subscription should be a filterable dropdown of messages
-
----
-
-Hmm the subscription — Message subscription[string] is still a freetext field in the dashboard?
-
----
-
-Can you try it yourself? I am testing adding a loader to an empty solution at /Users/robinhultman/dev/intropy/customers/fluxia/integrations/domains/order-management/empty
-I use the "i" alias to get the locally built go binary
-
----
-
-I think it would make more sense to subscribe to messages rather than topics (even though the topic information needs to be preserved aswell)
-
----
-
 yes please. And still do not push anything
