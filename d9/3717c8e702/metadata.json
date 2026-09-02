@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "d93717c8e702",
+  "strategy": "manual-commit",
+  "branch": "feat/xregistry-message-subscriptions",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "cmd/intropy/flagtext.go",
+    "cmd/intropy/helptext_test.go",
+    "cmd/intropy/message.go",
+    "cmd/intropy/message_list.go",
+    "cmd/intropy/message_show.go",
+    "cmd/intropy/message_test.go",
+    "internal/xregistry/client.go",
+    "internal/xregistry/client_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/d9/3717c8e702/0/metadata.json",
+      "transcript": "/d9/3717c8e702/0/full.jsonl",
+      "compact_transcript": "/d9/3717c8e702/0/transcript.jsonl",
+      "content_hash": "/d9/3717c8e702/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 9969,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2184256,
+    "output_tokens": 12347,
+    "api_call_count": 25
+  }
+}
