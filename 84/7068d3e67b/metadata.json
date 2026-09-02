@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "847068d3e67b",
+  "strategy": "manual-commit",
+  "branch": "feat/xregistry-message-subscriptions",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "internal/template/create.go",
+    "internal/template/messageref.go",
+    "internal/template/messageref_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/84/7068d3e67b/0/metadata.json",
+      "transcript": "/84/7068d3e67b/0/full.jsonl",
+      "compact_transcript": "/84/7068d3e67b/0/transcript.jsonl",
+      "content_hash": "/84/7068d3e67b/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 4756,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2892608,
+    "output_tokens": 8407,
+    "api_call_count": 19
+  }
+}
