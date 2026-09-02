@@ -1,0 +1,1 @@
+We have now implemented a way to select a way to select a message from our registry to subscribe to. In what way should we extend the scaffolding to take advantage of this?
