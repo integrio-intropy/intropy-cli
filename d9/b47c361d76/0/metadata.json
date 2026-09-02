@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "d9b47c361d76",
+  "session_id": "01a060b4-367b-71b3-89dd-9f122976e6fd",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-02T06:39:58.860508Z",
+  "branch": "feat/xregistry-message-subscriptions",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "internal/xregistry/types.go",
+    "internal/xregistry/client.go",
+    "cmd/intropy/message_show.go"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "c702e8a2d040",
+  "checkpoint_transcript_start": 255,
+  "transcript_lines_at_start": 255,
+  "compact_transcript_start": 118,
+  "token_usage": {
+    "input_tokens": 2774,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1436416,
+    "output_tokens": 3572,
+    "api_call_count": 10
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-02T06:39:58.803412Z",
+    "agent_lines": 33,
+    "agent_removed": 7,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 33,
+    "total_lines_changed": 40,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
