@@ -1,0 +1,5 @@
+I think there are more reference problems: no template in integrio-intropy/intropy-templates@v0.9.0 carries intropy.dev/block-kind: loader
+
+---
+
+in the dashboard the subscription should be a filterable dropdown of messages

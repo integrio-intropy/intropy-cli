@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "3f6f38cac35d",
+  "strategy": "manual-commit",
+  "branch": "feat/xregistry-message-subscriptions",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "web/src/api.ts",
+    "web/src/components/Combobox.tsx",
+    "web/src/components/form.tsx"
+  ],
+  "sessions": [
+    {
+      "metadata": "/3f/6f38cac35d/0/metadata.json",
+      "transcript": "/3f/6f38cac35d/0/full.jsonl",
+      "compact_transcript": "/3f/6f38cac35d/0/transcript.jsonl",
+      "content_hash": "/3f/6f38cac35d/0/content_hash.txt",
+      "prompt": "/3f/6f38cac35d/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 3400,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1659392,
+    "output_tokens": 2938,
+    "api_call_count": 8
+  }
+}
