@@ -1,0 +1,2 @@
+I ran into problem that is due to us moving to intropy.io from intropy.dev. Is this the cli that produces this error?
+error: invalid template: unsupported apiVersion "intropy.io/v1" (want "intropy.dev/v1")
