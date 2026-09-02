@@ -1,0 +1,10 @@
+Can we add this to the dashboard scaffolding?
+
+---
+
+Can you guide me on how I do this in the dashboard?
+
+---
+
+I ran into problem that is due to us moving to intropy.io from intropy.dev. Is this the cli that produces this error?
+error: invalid template: unsupported apiVersion "intropy.io/v1" (want "intropy.dev/v1")
