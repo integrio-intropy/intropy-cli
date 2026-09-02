@@ -1,0 +1,24 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "b497839526ed",
+  "strategy": "manual-commit",
+  "branch": "feat/xregistry-message-subscriptions",
+  "checkpoints_count": 3,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/b4/97839526ed/0/metadata.json",
+      "transcript": "/b4/97839526ed/0/full.jsonl",
+      "compact_transcript": "/b4/97839526ed/0/transcript.jsonl",
+      "content_hash": "/b4/97839526ed/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 91418,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 14956672,
+    "output_tokens": 89467,
+    "api_call_count": 150
+  }
+}
