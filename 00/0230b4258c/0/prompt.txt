@@ -1,10 +1,1 @@
-Do not make any changes. In ~/dev/intropy/intropy-registry/ I have implemented an xregistry for storing information on messages and endpoints. I would like the cli to be able to list messages and how to subscribe to them. I would then like to somehow as part of scaffolding have a typed way to say that this component should subscribe to a message from the registry and the scaffolder should be able to set everything up. Do you think that would be possible. What would be required? The registry is just a quick test so we can change things in that aswell but we should follow the xregistry spec
-
----
-
-Do not make any changes. In ~/dev/intropy/intropy-registry/ I have implemented an xregistry for storing information on messages and endpoints. I would like the cli to be able to list messages and how to subscribe to them. I would then like to somehow as part of scaffolding have a typed way to say that this component should subscribe to a message from the registry and the
- scaffolder should be able to set everything up. Do you think that would be possible. What would be required? The registry is just a quick test so we can change things in that aswell but we should follow the xregistry spec
-
----
-
-yes please. Make a plan and pass it to a review agent with pi --print
+Ok start execution. New branch off release/v1. Do not push or merge
