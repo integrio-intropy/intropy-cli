@@ -1,0 +1,1 @@
+Can you implement the plan at docs/plans/2026-09-04-001-feat-xregistry-message-integration-plan.md on a new branch off release/v1?
