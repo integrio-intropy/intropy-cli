@@ -202,11 +202,13 @@ func resolveSubscriptionChannels(components []Component) error {
 // aggregateMessages builds the internal messagegroup from the components'
 // publish declarations, first seen wins, sorted by name. Subscribers name
 // the same message; the subscription is visible through ComponentEntry.
+// External publications are excluded: the registry serves their
+// definition, and duplicating it here would fork the source of truth.
 func aggregateMessages(components []Component) []Message {
 	seen := map[string]bool{}
 	var out []Message
 	for _, c := range components {
-		if c.Message == nil || c.Message.Kind != MessagePublish {
+		if c.Message == nil || c.Message.Kind != MessagePublish || c.Message.External {
 			continue
 		}
 		m := Message{

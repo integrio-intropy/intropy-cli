@@ -267,7 +267,7 @@ func missingRequiredError(missing []FieldSpec, suggestions map[string][]string, 
 	err := fmt.Sprintf("missing required parameter(s): %s", strings.Join(names, ", "))
 	for _, f := range missing {
 		if facts.IsMessageParameter(f.Name) {
-			err += fmt.Sprintf("\npass --subscribe <message-ref> to wire the %s parameter to a registry message", f.Name)
+			err += fmt.Sprintf("\npass %s <message-ref> to wire the %s parameter to a registry message", wiringFlagName(facts), f.Name)
 			continue
 		}
 		if c := suggestions[f.Name]; len(c) > 0 {
@@ -275,6 +275,16 @@ func missingRequiredError(missing []FieldSpec, suggestions map[string][]string, 
 		}
 	}
 	return fmt.Errorf("%s", err)
+}
+
+// wiringFlagName picks the message flag the hint names: the direction the
+// template's kind declares, or --subscribe when no direction is known —
+// the flag every template accepted before the gate existed.
+func wiringFlagName(facts *WorkspaceFacts) string {
+	if facts.WiringDirection() == MessageDirectionPublish {
+		return "--publishes"
+	}
+	return "--subscribe"
 }
 
 func renderDerivedValues(derived map[string]string, values map[string]any, byName map[string]FieldSpec) error {

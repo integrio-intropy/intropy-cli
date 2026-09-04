@@ -34,21 +34,10 @@ type MessageGroup struct {
 
 // Message is one message definition in the doc view. Definition attributes
 // (envelope metadata, dataschemaxid) live on the single implicit version
-// under Versions, not here — this is the doc view, which does not repeat
-// the default version's attributes on the resource.
+// under Versions.
 type Message struct {
 	ID       string                     `json:"messageid"`
 	Versions map[string]*MessageVersion `json:"versions"`
-
-	// Definition fields are set only on per-entity (API view) reads, where
-	// the default version's attributes ARE repeated on the resource. Code
-	// reading a message goes through defaultMessage() so the two views
-	// resolve identically.
-	Envelope         string                 `json:"envelope,omitempty"`
-	EnvelopeMetadata map[string]CEAttribute `json:"envelopemetadata,omitempty"`
-	DataSchemaFormat string                 `json:"dataschemaformat,omitempty"`
-	DataSchemaXID    string                 `json:"dataschemaxid,omitempty"`
-	DataContentType  string                 `json:"datacontenttype,omitempty"`
 }
 
 // MessageVersion is one version of a message definition. Messages have

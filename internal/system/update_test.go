@@ -535,7 +535,7 @@ func TestMergeWiringMessageBlocks(t *testing.T) {
 			}},
 			"ports": []any{},
 			"messages": []any{map[string]any{
-				"message": "product-exported", "type": "product-exported", "contract": "ProductExported",
+				"name": "product-exported", "type": "product-exported", "contract": "ProductExported",
 			}},
 		},
 		orphans: []Component{
@@ -567,7 +567,7 @@ func TestMergeWiringMessageBlocks(t *testing.T) {
 		t.Fatalf("messages = %#v, want stored + the new message", messages)
 	}
 	newMsg, _ := messages[1].(map[string]any)
-	if newMsg["message"] != "another-exported" || newMsg["type"] != "another-exported" || newMsg["contract"] != "AnotherExported" {
+	if newMsg["name"] != "another-exported" || newMsg["type"] != "another-exported" || newMsg["contract"] != "AnotherExported" || newMsg["publisher"] != "new-sink" {
 		t.Errorf("new message entry = %#v", newMsg)
 	}
 	if _, ok := merged["ports"].([]any); !ok {
@@ -585,5 +585,40 @@ func TestMergeWiringRejectsMalformedMessages(t *testing.T) {
 	err := mergeWiring(plan, map[string]any{})
 	if err == nil || !strings.Contains(err.Error(), "messages entry has type string") {
 		t.Errorf("err = %v, want a typed error naming the messages list", err)
+	}
+}
+
+// An external publication joins the update's topics list (the transport is
+// real) but never values.messages — sys update stores the same internal
+// messagegroup exclusion sys create renders.
+func TestMergeWiringExternalPublishKeptOutOfMessages(t *testing.T) {
+	plan := &updatePlan{
+		baseline: map[string]any{
+			"components": []any{},
+			"topics":     []any{},
+			"ports":      []any{},
+			"messages":   []any{},
+		},
+		orphans: []Component{{
+			AppID: "erp-extractor",
+			Topic: &TopicKey{Pubsub: "product-distribution-pubsub", Name: "sbt-test-erp-extractor-001"},
+			Message: &MessageWiring{
+				Kind:       MessagePublish,
+				Name:       "io.intropy.maxbo.product.export",
+				Dataschema: "/schemagroups/g/schemas/product-export.v1",
+				External:   true,
+			},
+		}},
+	}
+	merged := map[string]any{}
+	if err := mergeWiring(plan, merged); err != nil {
+		t.Fatal(err)
+	}
+	topics := merged["topics"].([]any)
+	if len(topics) != 1 {
+		t.Errorf("topics = %+v, want the publication's channel", topics)
+	}
+	if messages := merged["messages"].([]any); len(messages) != 0 {
+		t.Errorf("messages = %+v, want none for an externally-published message", messages)
 	}
 }

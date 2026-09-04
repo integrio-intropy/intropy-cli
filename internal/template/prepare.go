@@ -67,7 +67,7 @@ func PrepareCreate(ctx context.Context, opts CreateOptions) (*PreparedCreate, er
 		return nil, err
 	}
 
-	tmpl, values, err := prepareCreateTemplate(templateRoot, opts)
+	tmpl, values, err := prepareCreateTemplate(ctx, templateRoot, opts)
 	if err != nil {
 		return nil, err
 	}

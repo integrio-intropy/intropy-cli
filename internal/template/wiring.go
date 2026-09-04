@@ -90,9 +90,9 @@ func SoftValue(values map[string]any, key string) (string, bool) {
 // snapshot fields it is an external subscription — the registry is never
 // contacted again for it.
 //
-// PublishesBlock declares what a component produces. Contract is the .NET
-// shared-project type name, carried during the transition while host
-// templates render Topics.cs from it; it is not the CloudEvents type.
+// A publishes block declares what its component produces; internal and
+// registry-resolved publications differ only in which fields they carry,
+// and PublishesBlock's doc comment owns that split.
 type SubscribeBlock struct {
 	Message       string
 	Pubsub        string
@@ -101,11 +101,29 @@ type SubscribeBlock struct {
 	DataschemaURL string
 }
 
-// PublishesBlock is a producer's message declaration.
+// PublishesBlock is a producer's message declaration. A registry-resolved
+// publish carries the full channel snapshot (pubsub, topic) and the schema
+// pin; a producer-declared internal publish carries only the message.
+// Contract is the .NET shared-project type name, carried during the
+// transition while host templates render Topics.cs from it; it is not the
+// CloudEvents type.
+// Contract is the .NET shared-project type name, carried during the
+// transition while host templates render Topics.cs from it; it is not the
+// CloudEvents type.
 type PublishesBlock struct {
-	Message  string
-	Contract string
+	Message       string
+	Contract      string
+	Dataschema    string
+	DataschemaURL string
+	Pubsub        string
+	Topic         string
 }
+
+// External reports whether the declaration carries its own channel
+// snapshot. External publications assemble their channel from the record
+// alone; internal publications default to the system pubsub on a topic
+// named after the message.
+func (b *PublishesBlock) External() bool { return b.Topic != "" }
 
 // External reports whether the subscription carries its own channel
 // snapshot. External subscriptions assemble without a producer and without
@@ -209,8 +227,10 @@ func ReadSubscribeBlock(e ScaffoldEntry) (*SubscribeBlock, error) {
 }
 
 // ReadPublishesBlock strictly reads the publishes block. The message name
-// is required; the contract is the transitional .NET type and stays
-// optional for templates that no longer record it.
+// is required; contract, dataschema, and the channel snapshot stay optional
+// for internal declarations. The pubsub/topic pair is validated by system
+// assembly, not here — the block reader stays a shape reader, matching how
+// the subscribe branch splits concerns.
 func ReadPublishesBlock(e ScaffoldEntry) (*PublishesBlock, error) {
 	if !HasPublishesValue(e.Values) {
 		return nil, nil
@@ -222,11 +242,24 @@ func ReadPublishesBlock(e ScaffoldEntry) (*PublishesBlock, error) {
 	if message == "" {
 		return nil, fmt.Errorf("%s: values.%s.%s is missing", recordPath(e), KeyPublishes, KeyMessage)
 	}
-	contract, err := blockString(e, KeyPublishes, KeyContract)
-	if err != nil {
-		return nil, err
+	b := &PublishesBlock{Message: message}
+	for _, f := range []struct {
+		key string
+		dst *string
+	}{
+		{KeyContract, &b.Contract},
+		{KeyDataschema, &b.Dataschema},
+		{KeyDataschemaURL, &b.DataschemaURL},
+		{KeyPubsub, &b.Pubsub},
+		{KeyTopic, &b.Topic},
+	} {
+		s, err := blockString(e, KeyPublishes, f.key)
+		if err != nil {
+			return nil, err
+		}
+		*f.dst = s
 	}
-	return &PublishesBlock{Message: message, Contract: contract}, nil
+	return b, nil
 }
 
 // SubscribeBlockValue renders the block as the values-map entry writers
@@ -252,8 +285,19 @@ func SubscribeBlockValue(b *SubscribeBlock) map[string]any {
 // entry writers emit.
 func PublishesBlockValue(b *PublishesBlock) map[string]any {
 	m := map[string]any{KeyMessage: b.Message}
-	if b.Contract != "" {
-		m[KeyContract] = b.Contract
+	for _, f := range []struct {
+		key   string
+		value string
+	}{
+		{KeyContract, b.Contract},
+		{KeyDataschema, b.Dataschema},
+		{KeyDataschemaURL, b.DataschemaURL},
+		{KeyPubsub, b.Pubsub},
+		{KeyTopic, b.Topic},
+	} {
+		if f.value != "" {
+			m[f.key] = f.value
+		}
 	}
 	return m
 }

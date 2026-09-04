@@ -48,7 +48,7 @@ var messageListCmd = &cobra.Command{
 				fmt.Fprintln(stderr, "warning:", w)
 			})...)
 		}
-		client, err := registryClient(cmd.Context(), messageListOpts.registryURL)
+		client, err := registryClient(messageListOpts.registryURL)
 		if err != nil {
 			return err
 		}

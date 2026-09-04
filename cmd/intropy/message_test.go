@@ -263,6 +263,22 @@ func TestMessageShowWorkspaceMessage(t *testing.T) {
 	}
 }
 
+func TestMessageShowWorkspaceDir(t *testing.T) {
+	withRegistryURL(t, "http://127.0.0.1:1") // unreachable: the explicit dir should resolve locally
+	tmp := t.TempDir()
+	dir := filepath.Join(tmp, "workspace")
+	if err := os.MkdirAll(filepath.Join(dir, ".intropy"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFileT(t, filepath.Join(dir, ".intropy", "scaffold.json"), `{"schemaVersion":1,"template":"product-sink","owner":"o","repo":"r","version":"v1","blockKind":"extractor","values":{"appId":"product-sink","publishes":{"message":"product-exported","contract":"ProductExported"}}}`+"\n")
+	t.Chdir(tmp)
+
+	stdout, _ := runMessage(t, "show", "product-exported", dir, "--output", "plain")
+	if !strings.Contains(stdout.String(), "product-exported") || !strings.Contains(stdout.String(), dir) {
+		t.Errorf("show = %q", stdout.String())
+	}
+}
+
 func TestMessageShowUnknownRef(t *testing.T) {
 	withRegistryURL(t, messageRegistryURLFixture(t))
 	t.Chdir(t.TempDir())

@@ -7,6 +7,7 @@ BINARY      := intropy
 CMD_DIR     := ./cmd/intropy
 BUILD_DIR   := ./bin
 WEB_DIR     := ./web
+WEB_DEPS    := $(WEB_DIR)/node_modules/.package-lock.json
 
 VERSION     := $(shell git describe --tags --always 2>/dev/null || echo dev)
 COMMIT      := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
@@ -45,9 +46,12 @@ clean: ## Remove build artifacts
 # something at compile time, so dist/ carries a marker when unbuilt; `make web`
 # replaces it with the real SPA and `make web-clean` puts the marker back.
 
+$(WEB_DEPS): $(WEB_DIR)/package.json $(WEB_DIR)/package-lock.json
+	cd $(WEB_DIR) && npm ci
+
 .PHONY: web
-web: ## Build the dashboard SPA into web/dist
-	cd $(WEB_DIR) && npm ci && npm run build
+web: $(WEB_DEPS) ## Build the dashboard SPA into web/dist
+	cd $(WEB_DIR) && npm run build
 
 .PHONY: web-dev
 web-dev: ## Run the dashboard SPA dev server (proxies /api to a running `intropy dashboard`)

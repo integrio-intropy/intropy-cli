@@ -28,16 +28,14 @@ const (
 
 // Message is one message declaration in the system's internal messagegroup.
 // Name doubles as the CloudEvents type for internal messages; Contract is
-// the transitional .NET shared-project type; Dataschema is the logical
-// schema reference for registry-subscribed messages, empty for internal
-// ones.
+// the transitional .NET shared-project type; Dataschema is the optional
+// logical schema reference a producing record declares.
 type Message struct {
 	Name       string `json:"name"`
 	Type       string `json:"type,omitempty"`
 	Contract   string `json:"contract,omitempty"`
 	Dataschema string `json:"dataschema,omitempty"`
 	Publisher  string `json:"publisher,omitempty"`
-	Subscriber string `json:"subscriber,omitempty"`
 }
 
 // Component is one assembled system block. Its wiring is shape-driven:
@@ -90,9 +88,10 @@ type MessageWiring struct {
 	// subscription's snapshot; internal declarations have none.
 	Dataschema string
 
-	// External marks a subscription whose record carries its own channel
-	// snapshot: it assembles without a producer and never contacts the
-	// registry (assembly stays offline by construction).
+	// External marks a record whose block carries its own channel
+	// snapshot — a subscription that assembles without a producer, or a
+	// publication that assembles from its recorded channel instead of the
+	// system-default convention. Assembly stays offline by construction.
 	External bool
 }
 

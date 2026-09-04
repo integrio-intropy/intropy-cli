@@ -62,6 +62,15 @@ type WorkspaceFacts struct {
 	// wiring, identified from the fetched manifest's label. Parameters
 	// outside this set get no message suggestions whatever their name.
 	messageParams map[string]bool
+
+	// wiringDirection is the template's message direction, seeded by the
+	// create flow from the template's block kind. It shades the candidate
+	// pool and the wiring hint: a publishing template's pool carries only
+	// registry refs, since workspace-internal messages already have
+	// producers (offering them would invite scaffolding a second
+	// producer). The zero value — unknown direction — keeps the full pool
+	// and the subscribe hint, matching direction-neutral behavior.
+	wiringDirection string
 }
 
 // Organization returns the organization the workspace's block records
@@ -106,17 +115,22 @@ func (f *WorkspaceFacts) AddMessageCandidates(refs []string) {
 
 // MessageCandidates returns the deduplicated suggestion pool for message
 // parameters: internal messages declared by the workspace's publishes
-// blocks plus the seeded registry refs, merged and sorted.
+// blocks plus the seeded registry refs, merged and sorted. A publishing
+// template's pool drops the internal messages — every one of them already
+// has a producer, and a new producer is exactly what a publishing
+// scaffold must not become.
 func (f *WorkspaceFacts) MessageCandidates() []string {
 	if f == nil {
 		return nil
 	}
 	seen := map[string]bool{}
 	var out []string
-	for name := range f.messages {
-		if !seen[name] {
-			seen[name] = true
-			out = append(out, name)
+	if f.wiringDirection != MessageDirectionPublish {
+		for name := range f.messages {
+			if !seen[name] {
+				seen[name] = true
+				out = append(out, name)
+			}
 		}
 	}
 	for _, ref := range f.messageCandidates {
@@ -127,6 +141,24 @@ func (f *WorkspaceFacts) MessageCandidates() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// SetWiringDirection seeds the template's message direction. Ambient like
+// SetOrganization and SetMessageParameters: it describes the template
+// being scaffolded, not anything the workspace records declare.
+func (f *WorkspaceFacts) SetWiringDirection(dir string) {
+	if f != nil {
+		f.wiringDirection = dir
+	}
+}
+
+// WiringDirection returns the seeded message direction, empty when the
+// template's kind gives no direction to derive.
+func (f *WorkspaceFacts) WiringDirection() string {
+	if f == nil {
+		return ""
+	}
+	return f.wiringDirection
 }
 
 // SetMessageParameters names the template's message parameters. It is

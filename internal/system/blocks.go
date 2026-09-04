@@ -109,14 +109,39 @@ func parseMessageBlocks(e template.ScaffoldEntry, c *Component) error {
 	if sub != nil && pub != nil {
 		return fmt.Errorf("%s carries both a subscribe and a publishes block; one component is one direction — keep the publish in its producing record and the subscribe in its consuming record", recordRef(e))
 	}
+	// A half-wired snapshot is a broken record in either direction: topic
+	// without pubsub and pubsub without topic both name a channel the
+	// system cannot assemble, and silently dropping the recorded half
+	// would fabricate a different one.
+	if pub != nil && pub.Pubsub != "" && pub.Topic == "" {
+		_, err := blockRequiredField(e, template.KeyPublishes, template.KeyTopic, template.KeyPubsub, pub.Topic)
+		return err
+	}
 	switch {
 	case pub != nil:
-		c.Message = &MessageWiring{Kind: MessagePublish, Name: pub.Message, Contract: pub.Contract}
+		c.Message = &MessageWiring{Kind: MessagePublish, Name: pub.Message, Contract: pub.Contract, Dataschema: pub.Dataschema, External: pub.External()}
+		// A registry-resolved publication carries its channel snapshot: the
+		// recorded channel wins exactly as a legacy record's does, and the
+		// message stays out of the internal messagegroup (the registry
+		// already serves its definition). An internal publication defaults
+		// to the system pubsub on a topic named after the message.
+		if pub.External() {
+			pubsub, err := blockRequiredField(e, template.KeyPublishes, template.KeyPubsub, template.KeyTopic, pub.Pubsub)
+			if err != nil {
+				return err
+			}
+			c.Topic = &TopicKey{Pubsub: pubsub, Name: pub.Topic}
+		}
+		// The topic entry carries this contract whether the channel was
+		// recorded or defaulted — without it, two producers on one channel
+		// could disagree on the contract and dress the disagreement up as
+		// two unrelated topic entries.
+		c.topicContract = pub.Contract
 	case sub != nil:
 		c.Message = &MessageWiring{Kind: MessageSubscribe, Name: sub.Message, Dataschema: sub.Dataschema}
 		c.Message.External = sub.External()
 		if sub.External() {
-			pubsub, err := blockRequiredField(e, template.KeySubscribe, template.KeyPubsub, sub.Pubsub)
+			pubsub, err := blockRequiredField(e, template.KeySubscribe, template.KeyPubsub, template.KeyTopic, sub.Pubsub)
 			if err != nil {
 				return err
 			}
@@ -141,11 +166,11 @@ func parseMessageBlocks(e template.ScaffoldEntry, c *Component) error {
 
 // blockRequiredField re-reports an empty required snapshot half as the
 // paired-field error, naming both keys so the fix is one edit away.
-func blockRequiredField(e template.ScaffoldEntry, block, key, value string) (string, error) {
+func blockRequiredField(e template.ScaffoldEntry, block, key, triggerKey, value string) (string, error) {
 	if value != "" {
 		return value, nil
 	}
-	return "", fmt.Errorf("%s: values.%s.%s is required when values.%s.%s is set", recordRef(e), block, key, block, template.KeyTopic)
+	return "", fmt.Errorf("%s: values.%s.%s is required when values.%s.%s is set", recordRef(e), block, key, block, triggerKey)
 }
 
 // recordRef names the record the way parse errors across assembly do.

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"sort"
 
 	"github.com/integrio-intropy/intropy-cli/internal/config"
@@ -35,18 +34,17 @@ func resolveRegistryURL(flagURL string) (string, error) {
 }
 
 // registryClient builds the xRegistry client from the resolved
-// --registry-url — flag over config, the same precedence every other
-// setting uses. An unconfigured registry is a usage error naming every way
-// to set it; there is no guessed default.
-func registryClient(_ context.Context, flagURL string) (*xregistry.Client, error) {
-	cfg, err := config.Load()
+// --registry-url. An unconfigured registry is a usage error naming every
+// way to set it; there is no guessed default.
+func registryClient(flagURL string) (*xregistry.Client, error) {
+	url, err := resolveRegistryURL(flagURL)
 	if err != nil {
 		return nil, err
 	}
-	url, err := cfg.Resolve(config.Flags{RegistryURL: flagURL}).RequireRegistryURL()
-	if err != nil {
-		return nil, newUsageErrorf("%v", err)
-	}
+	return newXRegistryClient(url)
+}
+
+func newXRegistryClient(url string) (*xregistry.Client, error) {
 	return xregistry.New(url, xregistry.WithUserAgent("intropy-cli/"+version))
 }
 
@@ -72,11 +70,12 @@ func workspaceMessages(dir string, warnf func(error)) []MessageEntry {
 		}
 		seen[pub.Message] = true
 		out = append(out, MessageEntry{
-			Message:  pub.Message,
-			Source:   messageSourceWorkspace,
-			Type:     pub.Message,
-			Contract: pub.Contract,
-			Path:     e.Path,
+			Message:    pub.Message,
+			Source:     messageSourceWorkspace,
+			Type:       pub.Message,
+			DataSchema: pub.Dataschema,
+			Contract:   pub.Contract,
+			Path:       e.Path,
 		})
 	}
 	sortMessageEntries(out)

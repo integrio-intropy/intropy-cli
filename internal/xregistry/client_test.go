@@ -85,28 +85,12 @@ func exportFixture() map[string]any {
 }
 
 // serveExport builds a client against an httptest server answering /export
-// with the fixture and /messagegroups/... with the API-view entity.
+// with the fixture.
 func serveExport(t *testing.T, doc map[string]any) (*Client, *http.ServeMux) {
 	t.Helper()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /export", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(t, w, doc)
-	})
-	mux.HandleFunc("GET /messagegroups/io.intropy.maxbo.product/messages/io.intropy.maxbo.product.export", func(w http.ResponseWriter, r *http.Request) {
-		// API view: the default version's attributes are repeated on the
-		// resource; versionsurl/count present, no versions map needed.
-		writeJSON(t, w, map[string]any{
-			"messageid": "io.intropy.maxbo.product.export",
-			"envelope":  "CloudEvents/1.0",
-			"envelopemetadata": map[string]any{
-				"type": map[string]any{"value": "io.intropy.maxbo.product.export"},
-			},
-			"dataschemaxid": "/schemagroups/io.intropy.maxbo.product/schemas/product-export.v1",
-		})
-	})
-	mux.HandleFunc("GET /messagegroups/missing/messages/nope", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-		writeJSON(t, w, map[string]any{"code": "not_found", "detail": "no such entity", "status": 404})
 	})
 	tsvc := httptest.NewServer(mux)
 	t.Cleanup(tsvc.Close)
@@ -284,12 +268,22 @@ func TestResolveSchemaNotFound(t *testing.T) {
 }
 
 func TestRegistryErrorBodySurfaced(t *testing.T) {
-	c, _ := serveExport(t, exportFixture())
-	_, err := c.Message(context.Background(), "missing", "nope")
-	if err == nil {
-		t.Fatal("expected an error for the 404")
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /export", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		writeJSON(t, w, map[string]any{"code": "unavailable", "detail": "registry warming up", "status": 503})
+	})
+	tsvc := httptest.NewServer(mux)
+	t.Cleanup(tsvc.Close)
+	c, err := New(tsvc.URL, WithUserAgent("test"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, want := range []string{"not_found", "no such entity"} {
+	_, err = c.Export(context.Background())
+	if err == nil {
+		t.Fatal("expected an error for the registry response")
+	}
+	for _, want := range []string{"unavailable", "registry warming up"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q should surface the registry body's %q", err, want)
 		}
@@ -310,21 +304,22 @@ func TestUnreachableHostIsWrappedNotPanicked(t *testing.T) {
 	}
 }
 
-func TestMessageEntityPathCarriesDefinition(t *testing.T) {
-	c, _ := serveExport(t, exportFixture())
-	m, err := c.Message(context.Background(), "io.intropy.maxbo.product", "io.intropy.maxbo.product.export")
+func TestNewDefaultHTTPClientHasTimeout(t *testing.T) {
+	c, err := New("https://registry.example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
-	dflt := m.DefaultMessage()
-	if dflt == nil {
-		t.Fatal("defaultMessage = nil, want the resource-level attributes")
+	if c.httpClient.Timeout != defaultHTTPTimeout {
+		t.Errorf("timeout = %v, want %v", c.httpClient.Timeout, defaultHTTPTimeout)
 	}
-	if dflt.DataSchemaXID != "/schemagroups/io.intropy.maxbo.product/schemas/product-export.v1" {
-		t.Errorf("DataSchemaXID = %q", dflt.DataSchemaXID)
+
+	custom := &http.Client{}
+	c, err = New("https://registry.example.com", WithHTTPClient(custom))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := dflt.EnvelopeMetadata["type"].Value; got != "io.intropy.maxbo.product.export" {
-		t.Errorf("type value = %v", got)
+	if c.httpClient != custom {
+		t.Error("WithHTTPClient should keep the caller-provided client")
 	}
 }
 

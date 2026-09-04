@@ -11,9 +11,9 @@
 // xRegistry has no message-to-channel field: the association is
 // Endpoint.messagegroups (the groups allowed on an endpoint) plus
 // Endpoint.channel, and the resolution join in resolve.go walks it. The
-// registry declares filtering, inlining, and pagination out of scope, so
-// the client sends only GET /export and the plain entity paths — no query
-// params it did not see advertised.
+// registry declares filtering, inlining, entity-path lookups, and pagination
+// out of scope, so the client sends only GET /export — no query params it
+// did not see advertised.
 package xregistry
 
 import (
@@ -25,16 +25,20 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Client speaks to one read-only xRegistry service. Construct with New;
-// methods take a context first and never retry internally — the caller
-// owns timeouts and the retry policy.
+// methods take a context first and never retry internally. The default
+// HTTP client has a timeout — tighter or looser policies (and tests)
+// pass WithHTTPClient.
 type Client struct {
 	base       *url.URL
 	httpClient *http.Client
 	userAgent  string
 }
+
+const defaultHTTPTimeout = 15 * time.Second
 
 type options struct {
 	httpClient *http.Client
@@ -65,7 +69,7 @@ func New(baseURL string, opts ...Option) (*Client, error) {
 	if !u.IsAbs() {
 		return nil, fmt.Errorf("xRegistry base URL %q is not absolute", baseURL)
 	}
-	o := options{httpClient: http.DefaultClient}
+	o := options{httpClient: &http.Client{Timeout: defaultHTTPTimeout}}
 	for _, opt := range opts {
 		opt(&o)
 	}
@@ -134,8 +138,8 @@ func errorBody(body []byte) string {
 }
 
 // Export fetches the complete registry document. One call, no walk: the
-// service guarantees /export is byte-identical to the entity paths, and
-// per-entity fetches exist only for single-message freshness (Message).
+// service guarantees /export contains the message, endpoint, and schema
+// views the CLI needs.
 func (c *Client) Export(ctx context.Context) (*Export, error) {
 	var doc Export
 	if err := c.get(ctx, "/export", &doc); err != nil {
@@ -144,37 +148,10 @@ func (c *Client) Export(ctx context.Context) (*Export, error) {
 	return &doc, nil
 }
 
-// Message fetches one message's definition via its entity path — the
-// freshness read for single-message display, not required for resolution.
-// The response is the API view: the default version's attributes are
-// repeated on the resource, so the returned Message carries them directly.
-func (c *Client) Message(ctx context.Context, groupID, messageID string) (*Message, error) {
-	var m Message
-	path := fmt.Sprintf("/messagegroups/%s/messages/%s", url.PathEscape(groupID), url.PathEscape(messageID))
-	if err := c.get(ctx, path, &m); err != nil {
-		return nil, fmt.Errorf("fetch message %s in group %s: %w", messageID, groupID, err)
-	}
-	return &m, nil
-}
-
-// DefaultMessage resolves a message's definition attributes, whichever
-// view produced the struct: the export's doc view keeps attributes on the
-// single implicit version, the entity path repeats them on the resource.
+// DefaultMessage resolves a message's definition attributes from the doc
+// view, where they live on the single implicit version.
 func (m *Message) DefaultMessage() *MessageVersion {
 	if len(m.Versions) == 0 {
-		// API view with the attributes already on the resource: the
-		// version map is empty but the definition is present.
-		if m.DataSchemaXID != "" || m.EnvelopeMetadata != nil || m.Envelope != "" {
-			return &MessageVersion{
-				VersionID:        "1",
-				IsDefault:        true,
-				Envelope:         m.Envelope,
-				EnvelopeMetadata: m.EnvelopeMetadata,
-				DataSchemaFormat: m.DataSchemaFormat,
-				DataSchemaXID:    m.DataSchemaXID,
-				DataContentType:  m.DataContentType,
-			}
-		}
 		return nil
 	}
 	// Prefer an explicit default; a document without isdefault markers

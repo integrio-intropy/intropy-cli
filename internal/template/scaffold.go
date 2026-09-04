@@ -57,6 +57,14 @@ const (
 	BlockKindExtractor     = "extractor"
 	BlockKindLoader        = "loader"
 	BlockKindTransactional = "transactional-integration"
+
+	// Message direction values, derived from block kind. The mapping is
+	// boundary-relative data-flow inverted: an extractor flows data in
+	// from the external system and publishes messages, a loader flows out
+	// and subscribes. MessageDirection is the one home of that flip.
+	MessageDirectionPublish   = "publish"
+	MessageDirectionSubscribe = "subscribe"
+	MessageDirectionNone      = ""
 )
 
 var ErrScaffoldNotFound = errors.New("no " + ScaffoldRelPath + " found in current directory or any parent")
@@ -104,6 +112,24 @@ func roleFromLabels(labels map[string]string) string {
 
 func blockKindFromLabels(labels map[string]string) string {
 	return labels[TemplateBlockKindLabel]
+}
+
+// MessageDirection maps a template's block kind to the direction its
+// message parameters wire: publish for producers, subscribe for
+// consumers, None for kinds that talk with external systems directly
+// (transactional integrations) and for unknown or absent kinds — the
+// gate treats those as direction-neutral rather than guessing. A kind
+// with no messaging must carry no message parameters for the flags to
+// stay coherent; that check lives with the message-parameters gate.
+func MessageDirection(kind string) string {
+	switch kind {
+	case BlockKindExtractor:
+		return MessageDirectionPublish
+	case BlockKindLoader:
+		return MessageDirectionSubscribe
+	default:
+		return MessageDirectionNone
+	}
 }
 
 func dataFlowFromLabels(labels map[string]string) string {

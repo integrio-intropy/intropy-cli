@@ -85,8 +85,9 @@ var (
 	}
 	publishesValues = map[string]any{
 		"publishes": map[string]any{
-			"message":  "product-exported",
-			"contract": "ProductExported",
+			"message":    "product-exported",
+			"contract":   "ProductExported",
+			"dataschema": "/schemagroups/g/schemas/product-exported.v1",
 		},
 	}
 )
@@ -177,7 +178,7 @@ func TestReadPublishesBlock(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if b.Message != "product-exported" || b.Contract != "ProductExported" {
+		if b.Message != "product-exported" || b.Contract != "ProductExported" || b.Dataschema != "/schemagroups/g/schemas/product-exported.v1" {
 			t.Errorf("block = %+v", b)
 		}
 	})
@@ -235,6 +236,87 @@ func TestSubscribeBlockValueEmitsNoLegacyKeys(t *testing.T) {
 		if _, ok := v[legacy]; ok {
 			t.Errorf("writers must not emit legacy key %q", legacy)
 		}
+	}
+}
+
+func TestPublishesBlockValueEmitsOptionalDataschema(t *testing.T) {
+	v := PublishesBlockValue(&PublishesBlock{Message: "m", Contract: "C", Dataschema: "/schemas/m"})
+	if v[KeyMessage] != "m" || v[KeyContract] != "C" || v[KeyDataschema] != "/schemas/m" {
+		t.Errorf("publishes value = %#v", v)
+	}
+}
+
+func TestPublishesBlockSnapshotRoundTrip(t *testing.T) {
+	full := map[string]any{
+		"publishes": map[string]any{
+			"message":       "io.intropy.maxbo.product.export",
+			"pubsub":        "product-distribution-pubsub",
+			"topic":         "sbt-test-product-extractor-001",
+			"dataschema":    "/schemagroups/g/schemas/product-export.v1",
+			"dataschemaurl": "https://registry.example/schemagroups/g/schemas/product-export.v1/versions/1",
+		},
+	}
+	b, err := ReadPublishesBlock(wiringEntry(full))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !b.External() {
+		t.Error("a topic-carrying publishes block must be external")
+	}
+	if b.Pubsub != "product-distribution-pubsub" || b.Topic != "sbt-test-product-extractor-001" ||
+		b.DataschemaURL != "https://registry.example/schemagroups/g/schemas/product-export.v1/versions/1" {
+		t.Errorf("round trip lost fields: %+v", b)
+	}
+	// The writer emits only non-empty fields, so the read-back stays
+	// identical to the written shape.
+	back, err := ReadPublishesBlock(wiringEntry(map[string]any{"publishes": PublishesBlockValue(b)}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *back != *b {
+		t.Errorf("value round trip = %+v, want %+v", back, b)
+	}
+}
+
+func TestPublishesBlockInternalShape(t *testing.T) {
+	b, err := ReadPublishesBlock(wiringEntry(map[string]any{
+		"publishes": map[string]any{"message": "product-exported"},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.External() {
+		t.Error("a topic-less publishes block must not be external")
+	}
+	// A topic without pubsub reads successfully here: assembly validates
+	// the pair (it names the record either way), the block reader stays a
+	// shape reader.
+	b, err = ReadPublishesBlock(wiringEntry(map[string]any{
+		"publishes": map[string]any{"message": "m", "topic": "t"},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !b.External() {
+		t.Error("a block carrying a topic is external regardless of pubsub")
+	}
+}
+
+func TestPublishesBlockStrictSnapshotFields(t *testing.T) {
+	for name, block := range map[string]map[string]any{
+		"mistyped topic":         {"message": "m", "topic": 7},
+		"empty dataschemaurl":    {"message": "m", "dataschemaurl": ""},
+		"mistyped dataschemaurl": {"message": "m", "dataschemaurl": true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := func() error {
+				_, err := ReadPublishesBlock(wiringEntry(map[string]any{"publishes": block}))
+				return err
+			}()
+			if err == nil || !strings.Contains(err.Error(), "values.publishes.") {
+				t.Errorf("err = %v, want a strict error naming the block and key path", err)
+			}
+		})
 	}
 }
 

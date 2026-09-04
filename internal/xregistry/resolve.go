@@ -11,9 +11,9 @@ import (
 // event flows through, as split from the endpoint's <pubsub>/<topic>
 // channel string.
 type Channel struct {
-	Pubsub   string `json:"pubsub"`
-	Topic    string `json:"topic"`
-	Endpoint string `json:"endpoint,omitempty"`
+	Pubsub   string
+	Topic    string
+	Endpoint string
 }
 
 // ResolvedMessage is the wiring --subscribe writes into a scaffold record:
@@ -25,22 +25,20 @@ type ResolvedMessage struct {
 	// the same dotted name. Type carries the envelope value verbatim; the
 	// two are distinct fields so a registry that ever diverges them stays
 	// representable.
-	Message string `json:"message"`
-	Type    string `json:"type,omitempty"`
-	Group   string `json:"group"`
+	Message string
+	Type    string
+	Group   string
 
 	// Channels is the set of producer endpoints' channels for the message's
 	// group, split and sorted. Exactly one is the subscribe channel; more
 	// is AmbiguousProducerError, none is NoProducerError.
-	Channels []Channel `json:"channels,omitempty"`
+	Channels []Channel
 
 	// DataSchema is the logical schema xid from the message definition;
 	// DataSchemaURL pins the schema's default version — an immutable URL —
 	// at subscribe time.
-	DataSchema    string `json:"dataschema,omitempty"`
-	DataSchemaURL string `json:"dataschemaurl,omitempty"`
-
-	Envelope string `json:"envelope,omitempty"`
+	DataSchema    string
+	DataSchemaURL string
 }
 
 // ResolveMessage resolves one message reference — a bare message id or a
@@ -61,9 +59,8 @@ func ResolveMessage(doc *Export, ref string) (*ResolvedMessage, error) {
 	}
 
 	res := &ResolvedMessage{
-		Message:  msg.ID,
-		Group:    group.ID,
-		Envelope: dflt.Envelope,
+		Message: msg.ID,
+		Group:   group.ID,
 	}
 	if attr, ok := dflt.EnvelopeMetadata["type"]; ok {
 		if s, ok := attr.Value.(string); ok {
@@ -104,9 +101,6 @@ func (r *ResolvedMessage) SubscribeChannel() (Channel, error) {
 	}
 }
 
-// findMessage locates a message by reference. A bare id is matched across
-// groups and must name exactly one message — two groups reusing one id is
-// ambiguity the reference alone cannot resolve.
 // FindMessage locates one message by reference — a bare message id
 // (unique across groups) or a full /messagegroups/<gid>/messages/<mid>
 // xid — and returns it with its group. Exported for display surfaces; the

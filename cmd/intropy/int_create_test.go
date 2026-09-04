@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/integrio-intropy/intropy-cli/internal/template"
 	"github.com/integrio-intropy/intropy-cli/internal/template/templatetest"
+	"github.com/integrio-intropy/intropy-cli/internal/xregistry"
 )
 
 func TestSeedOrganization(t *testing.T) {
@@ -391,8 +393,288 @@ func TestIntCreateSubscribeGateIsUsageError(t *testing.T) {
 	if !errors.Is(err, template.ErrNoMessageParameters) {
 		t.Fatalf("err = %v, want ErrNoMessageParameters", err)
 	}
-	uerr := usageIfNoMessageParams(err)
+	uerr := usageIfMessageGateError(err)
 	if _, ok := uerr.(*usageError); !ok {
-		t.Errorf("usageIfNoMessageParams = %T, want *usageError", uerr)
+		t.Errorf("usageIfMessageGateError = %T, want *usageError", uerr)
+	}
+}
+
+func TestIntCreateSubscribeConflictIsUsageError(t *testing.T) {
+	err := usageIfMessageGateError(fmt.Errorf("template: %w", template.ErrSubscribeMessageConflict))
+	if _, ok := err.(*usageError); !ok {
+		t.Errorf("usageIfMessageGateError = %T, want *usageError", err)
+	}
+}
+
+func TestRegistryMessageRefsUnconfiguredIsEmpty(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("INTROPY_REGISTRY_URL", "")
+
+	refs, err := registryMessageRefs(context.Background(), "")
+	if err != nil {
+		t.Fatalf("registryMessageRefs: %v", err)
+	}
+	if len(refs) != 0 {
+		t.Errorf("refs = %v, want none", refs)
+	}
+}
+
+// registryFixtureWithEndpoints renders the AE1 export with a caller chosen
+// producer endpoint set, so the no-producer and multi-producer remediation
+// paths run against a registry otherwise identical to the happy fixture.
+func registryFixtureWithEndpoints(t *testing.T, endpointsJSON string) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /export", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{
+  "specversion": "1.0-rc2x",
+  "registryid": "intropy",
+  "messagegroups": {
+    "io.intropy.maxbo.product": {
+      "messagegroupid": "io.intropy.maxbo.product",
+      "messages": {
+        "io.intropy.maxbo.product.export": {
+          "messageid": "io.intropy.maxbo.product.export",
+          "versions": {"1": {"versionid": "1", "isdefault": true, "envelope": "CloudEvents/1.0", "envelopemetadata": {"type": {"value": "io.intropy.maxbo.product.export", "required": true}}, "dataschemaxid": "/schemagroups/io.intropy.maxbo.product/schemas/product-export.v1"}}
+        }
+      }
+    }
+  },
+  "endpoints": %s,
+  "schemagroups": {
+    "io.intropy.maxbo.product": {
+      "schemagroupid": "io.intropy.maxbo.product",
+      "schemas": {
+        "product-export.v1": {
+          "schemaid": "product-export.v1",
+          "versions": {"1": {"versionid": "1", "isdefault": true, "xid": "/schemagroups/io.intropy.maxbo.product/schemas/product-export.v1/versions/1"}}
+        }
+      }
+    }
+  }
+}`, endpointsJSON)
+	})
+	svc := httptest.NewServer(mux)
+	t.Cleanup(svc.Close)
+	return svc
+}
+
+func messageExtractorLibrary(t *testing.T) *templatetest.Library {
+	t.Helper()
+	manifest := `apiVersion: intropy.dev/v1
+kind: Template
+metadata:
+  name: message-extractor
+  labels:
+    intropy.dev/block-kind: extractor
+    intropy.dev/message-params: message
+spec:
+  parameters:
+    type: object
+    required: [integrationName, message]
+    properties:
+      integrationName:
+        type: string
+      message:
+        type: string
+`
+	return templatetest.NewLibrary(t, "v1", map[string]string{
+		"message-extractor/template.yaml":           manifest,
+		"message-extractor/skeleton/README.md.tmpl": "{{ .integrationName }} publishes {{ .message }}\n",
+	})
+}
+
+// AE1 through the publish path: the resolved block carries the producing
+// channel's pubsub and topic, the logical dataschema, and the pinned
+// default-version URL joined with the registry base.
+func TestIntCreatePublishesEndToEnd(t *testing.T) {
+	registry := messageRegistryFixture(t)
+	t.Setenv("INTROPY_REGISTRY_URL", registry.URL)
+
+	manifest := messageExtractorLibrary(t)
+	outDir := filepath.Join(t.TempDir(), "erp-extractor")
+
+	block, err := resolvePublishesBlock(context.Background(), "io.intropy.maxbo.product.export", "")
+	if err != nil {
+		t.Fatalf("resolvePublishesBlock: %v", err)
+	}
+
+	err = template.Create(context.Background(), template.CreateOptions{
+		Template:  "message-extractor",
+		OutputDir: outDir,
+		Version:   "v1",
+		SetValues: map[string]any{"integrationName": "erp", "message": "io.intropy.maxbo.product.export"},
+		NoInput:   true,
+		Stderr:    io.Discard,
+		Source:    manifest.Source(t),
+		Publishes: block,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	record, err := template.LoadScaffold(filepath.Join(outDir, template.ScaffoldRelPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := template.ReadPublishesBlock(template.ScaffoldEntry{Path: outDir, Scaffold: *record})
+	if err != nil {
+		t.Fatalf("scaffold record is not block-shaped: %v", err)
+	}
+	want := template.PublishesBlock{
+		Message:       "io.intropy.maxbo.product.export",
+		Pubsub:        "product-distribution-pubsub",
+		Topic:         "sbt-test-product-extractor-001",
+		Dataschema:    "/schemagroups/io.intropy.maxbo.product/schemas/product-export.v1",
+		DataschemaURL: registry.URL + "/schemagroups/io.intropy.maxbo.product/schemas/product-export.v1/versions/1",
+	}
+	if *b != want {
+		t.Errorf("publishes block = %+v, want %+v", *b, want)
+	}
+}
+
+// AE3: --publishes refuses to guess the channel. No producer endpoint
+// means the registry has not declared this component yet — the remediation
+// names the missing registration, and several producers is a hard error
+// listing the candidates, never a pick.
+func TestIntCreatePublishesChannelFailures(t *testing.T) {
+	t.Run("no producer endpoint names the registration", func(t *testing.T) {
+		registry := registryFixtureWithEndpoints(t, `{}`)
+		t.Setenv("INTROPY_REGISTRY_URL", registry.URL)
+
+		_, err := resolvePublishesBlock(context.Background(), "io.intropy.maxbo.product.export", "")
+		var no *xregistry.NoProducerError
+		if !errors.As(err, &no) {
+			t.Fatalf("err = %v, want NoProducerError", err)
+		}
+		if !strings.Contains(err.Error(), "register the producing endpoint") {
+			t.Errorf("error %q should name the registration remediation", err)
+		}
+	})
+
+	t.Run("several producers is a hard error naming channels", func(t *testing.T) {
+		registry := registryFixtureWithEndpoints(t, `{
+    "perfion-extractor": {"endpointid": "perfion-extractor", "usage": ["producer"], "channel": "product-distribution-pubsub/sbt-test-product-extractor-001", "messagegroups": ["/messagegroups/io.intropy.maxbo.product"]},
+    "erp-extractor": {"endpointid": "erp-extractor", "usage": ["producer"], "channel": "erp-distribution-pubsub/sbt-test-erp-extractor-001", "messagegroups": ["/messagegroups/io.intropy.maxbo.product"]}
+  }`)
+		t.Setenv("INTROPY_REGISTRY_URL", registry.URL)
+
+		_, err := resolvePublishesBlock(context.Background(), "io.intropy.maxbo.product.export", "")
+		var amb *xregistry.AmbiguousProducerError
+		if !errors.As(err, &amb) {
+			t.Fatalf("err = %v, want AmbiguousProducerError", err)
+		}
+		for _, channel := range []string{
+			"product-distribution-pubsub/sbt-test-product-extractor-001",
+			"erp-distribution-pubsub/sbt-test-erp-extractor-001",
+			"register the endpoint for this component",
+		} {
+			if !strings.Contains(err.Error(), channel) {
+				t.Errorf("error %q should name %q", err, channel)
+			}
+		}
+	})
+}
+
+func TestIntCreatePublishesFlagCombinations(t *testing.T) {
+	resetCreateFlags := func(t *testing.T) {
+		t.Helper()
+		intCreateFlags = createFlags{}
+		t.Cleanup(func() { intCreateFlags = createFlags{} })
+	}
+
+	t.Run("both message flags are a usage error", func(t *testing.T) {
+		resetCreateFlags(t)
+		var stdout, stderr bytes.Buffer
+		resetRootIO(t, &stdout, &stderr)
+		t.Chdir(t.TempDir())
+
+		rootCmd.SetArgs([]string{"int", "create", "hello-world", "--name", "x", "--no-input", "--subscribe", "a.b", "--publishes", "a.b"})
+		err := rootCmd.Execute()
+		var ue *usageError
+		if !errors.As(err, &ue) {
+			t.Fatalf("error %v is not a usageError", err)
+		}
+		if !strings.Contains(err.Error(), "cannot combine --subscribe with --publishes") {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("unconfigured registry fails before any prompt or fetch", func(t *testing.T) {
+		resetCreateFlags(t)
+		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+		t.Setenv("INTROPY_REGISTRY_URL", "")
+		var stdout, stderr bytes.Buffer
+		resetRootIO(t, &stdout, &stderr)
+		t.Chdir(t.TempDir())
+
+		rootCmd.SetArgs([]string{"int", "create", "hello-world", "--name", "x", "--no-input", "--publishes", "io.intropy.maxbo.product.export"})
+		err := rootCmd.Execute()
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "registryUrl") && !strings.Contains(err.Error(), "registry") {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+}
+
+// The direction and conflict gates exit 2 through the shared mapper.
+func TestIntCreatePublishesGatesAreUsageErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"direction", fmt.Errorf("template: %w", template.ErrMessageDirection)},
+		{"publishes conflict", fmt.Errorf("template: %w", template.ErrMessageParameterConflict)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			uerr := usageIfMessageGateError(tc.err)
+			if _, ok := uerr.(*usageError); !ok {
+				t.Errorf("usageIfMessageGateError = %T, want *usageError", uerr)
+			}
+		})
+	}
+}
+
+// An unconfigured registry warns before the pool loads: an empty pool
+// must read as "no registry configured", not "no messages exist".
+func TestPromptMessageRefsLoaderWarnsUnconfigured(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("INTROPY_REGISTRY_URL", "")
+	var stderr bytes.Buffer
+
+	loader := promptMessageRefsLoader(true, "", &stderr)
+	refs, err := loader(context.Background())
+	if err != nil {
+		t.Fatalf("loader: %v", err)
+	}
+	if len(refs) != 0 {
+		t.Errorf("refs = %v, want none", refs)
+	}
+	if !strings.Contains(stderr.String(), "no registryUrl configured") {
+		t.Errorf("stderr %q should carry the unconfigured warning", stderr.String())
+	}
+	// The memo holds: a second load neither reloads nor re-warns.
+	refs, err = loader(context.Background())
+	if err != nil || len(refs) != 0 {
+		t.Fatalf("second load = %v, %v", refs, err)
+	}
+	if n := strings.Count(stderr.String(), "no registryUrl configured"); n != 1 {
+		t.Errorf("warnings = %d, want the memoized one", n)
+	}
+}
+
+// A loader failure now propagates: the create flow degrades it to a
+// warning beside the workspace-only pool, the CLI no longer masks it here.
+func TestPromptMessageRefsLoaderPropagatesErrors(t *testing.T) {
+	registry := messageRegistryFixture(t)
+	t.Setenv("INTROPY_REGISTRY_URL", registry.URL)
+	var stderr bytes.Buffer
+
+	loader := promptMessageRefsLoader(true, registry.URL+"/broken", &stderr)
+	if _, err := loader(context.Background()); err == nil {
+		t.Fatal("the failed export fetch must propagate to the caller that degrades it")
 	}
 }

@@ -374,7 +374,10 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 		if !ok {
 			return fmt.Errorf("%s: values.messages entry has type %T, expected object", recordPath, msg)
 		}
-		name, _ := m[template.KeyMessage].(string)
+		name, _ := m[template.KeyName].(string)
+		if name == "" {
+			name, _ = m[template.KeyMessage].(string)
+		}
 		seenMessages[name] = true
 		messages = append(messages, msg)
 	}
@@ -382,8 +385,17 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 	// Each orphan contributes the wiring its scaffold record declared;
 	// Assemble already deduplicated and cross-checked these against every
 	// other scanned scaffold. The map literals are the stored shape the
-	// system-host template ranges over; the key constants name the same
-	// vocabulary the records carry.
+	// system-host template ranges over, and they must stay the shape
+	// internal/system/payload.go builds for sys create — one payload,
+	// two writers, one vocabulary.
+	//
+	// Repinning a host to an older template release re-renders these
+	// values through a template that may predate the messages section or
+	// its keys; the section's own comment in payload.go covers the
+	// predates-the-section case (the key is ignored), and a release that
+	// reads messages but not these keys renders without them. Template
+	// releases and CLI vocabulary move together — a repin across a
+	// vocabulary gap is a user-driven override, not a CLI decision.
 	for _, c := range plan.orphans {
 		if c.Topic != nil {
 			key := topicKey{c.Topic.Pubsub, c.Topic.Name}
@@ -402,11 +414,18 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 				ports = append(ports, map[string]any{template.KeyName: p})
 			}
 		}
-		if c.Message != nil && c.Message.Kind == MessagePublish && !seenMessages[c.Message.Name] {
+		// External publications are excluded here exactly as
+		// aggregateMessages excludes them from the payload: the registry
+		// serves the message's definition, and the host's internal
+		// messagegroup must not duplicate it. The publication's channel
+		// still joins the topics list above — the transport is real; the
+		// internal definition is not.
+		if c.Message != nil && c.Message.Kind == MessagePublish && !c.Message.External && !seenMessages[c.Message.Name] {
 			seenMessages[c.Message.Name] = true
 			e := map[string]any{
-				template.KeyMessage: c.Message.Name,
-				"type":              c.Message.Name,
+				template.KeyName: c.Message.Name,
+				"type":           c.Message.Name,
+				"publisher":      c.AppID,
 			}
 			if c.Message.Contract != "" {
 				e[template.KeyContract] = c.Message.Contract
