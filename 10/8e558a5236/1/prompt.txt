@@ -1,0 +1,69 @@
+This branch introduced functionality to declare that a component either subscribe or publish xregistry messages. Can you make that visible in the integration flow tab of the dashboard? Use the chrome mcp  to verify
+
+---
+
+<task-notification>
+<task-id>kw6nvcp3d</task-id>
+<status>failed</status>
+<summary>MCP task kw6nvcp3 (plugin:chrome-devtools-mcp:chrome-devtools/wait_for) failed.</summary>
+<result>
+Task failed: Error: Timed out after waiting 120000ms
+</result>
+</task-notification>
+
+---
+
+A more realistic example scenario is that you have the sales system. It needs product data, product data comes from another system, product. In the sales system the product system appears as a single box outside of the boundry. If we look at the product system the subscribing systems instead appears outside the boundry
+
+---
+
+Can you render it with the chrome mcp?
+
+---
+
+I dont think we should render the topics. They live outside of the system and perhaps we should just show the system? As of now we show the source component but can we show the system instead?
+
+---
+
+Fair point. Perhaps we should have system -> topic -> <system boundrary> component?
+
+---
+
+What do I need to to so that I can use the loader slot in the dashboard to create a loader with a reference to a message setup so that we will be able to render that one automatically in the dashboard?
+
+---
+
+The dashboard should only have a single dependency. The cli. The cli have message list command and more. If anything is missing we should extend the cli. Not build any smartness into the dashboard
+
+---
+
+yes please
+
+---
+
+continue
+
+---
+
+continue
+
+---
+
+Did we accidently add the reference to intropy.dev back? We changed to intropy.io 
+intropy.dev/block-kind
+
+---
+
+I launched the dashboard with dashboard --template-version v0.9.0-beta.3 --registry-url http://localhost:8787 and v0.9.0-beta.3 should have all labels switched to intropy.io
+
+---
+
+Is it possible with the current implementation of the cli to find out what the producer of a specific message is?
+
+---
+
+is message show the right place or should we have another command?
+
+---
+
+yes
