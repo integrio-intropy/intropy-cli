@@ -1,0 +1,64 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "108e558a5236",
+  "session_id": "01a06afc-bae1-750f-bd96-5843f3319880",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-04T10:28:55.104331Z",
+  "branch": "feat/xregistry-message-integration",
+  "checkpoints_count": 7,
+  "save_step_count": 3,
+  "files_touched": [
+    "internal/system/assemble_test.go",
+    "internal/system/blocks.go"
+  ],
+  "agent": "Pi",
+  "model": "zai-org/GLM-5.3-Flash",
+  "turn_id": "b15fb29ebfd6",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 837124,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 29975296,
+    "output_tokens": 121815,
+    "api_call_count": 235
+  },
+  "session_metrics": {
+    "turn_count": 24
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-04T10:28:55.036213Z",
+    "agent_lines": 31,
+    "agent_removed": 0,
+    "human_added": 3429,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 3460,
+    "total_lines_changed": 4116,
+    "agent_percentage": 0.7531584062196307,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1518,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1869,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    }
+  ]
+}
