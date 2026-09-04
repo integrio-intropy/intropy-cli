@@ -33,6 +33,8 @@ const (
 	flagUsageTemplateVer       = "template release tag (default: latest)"
 	flagUsageNoInput           = "never prompt; fail if a required value is missing"
 	flagUsageTemplateRepo      = "template library as owner/repo (default: templateRepo from the active context or config, or INTROPY_TEMPLATE_REPO)"
+	flagUsageRegistryURL       = "xRegistry base URL (default: registryUrl from the active context or config, or INTROPY_REGISTRY_URL)"
+	flagUsageSubscribe         = "subscribe the component to a registry message as <message-ref>"
 	flagUsageBinding           = "local port fixture as <port>=<fixture> (repeatable)"
 	flagUsageGitOpsBinding     = "GitOps port binding kind as <port>=<kind> (repeatable)"
 )

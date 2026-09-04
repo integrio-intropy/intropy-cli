@@ -411,3 +411,174 @@ func TestCreateSetOverridesPrefill(t *testing.T) {
 		t.Errorf("rendered = %q", rendered)
 	}
 }
+
+// messageTemplateYAML declares one message-wiring parameter through the
+// message label — the shape the template library's message PR will ship.
+const messageTemplateYAML = `apiVersion: intropy.dev/v1
+kind: Template
+metadata:
+  name: message-loader
+  labels:
+    intropy.dev/block-kind: loader
+    intropy.dev/message-params: message
+spec:
+  parameters:
+    type: object
+    required: [integrationName, message]
+    properties:
+      integrationName:
+        type: string
+      message:
+        type: string
+`
+
+func newMessageTemplateLibrary(t *testing.T, tag string) *testLibrary {
+	t.Helper()
+	return newTestLibrary(t, tag, map[string]string{
+		"message-loader/template.yaml":           messageTemplateYAML,
+		"message-loader/skeleton/README.md.tmpl": "{{ .integrationName }} subscribes {{ .message }}\n",
+	})
+}
+
+func subscribeBlockFixture() *SubscribeBlock {
+	return &SubscribeBlock{
+		Message:       "io.intropy.maxbo.product.export",
+		Pubsub:        "product-distribution-pubsub",
+		Topic:         "sbt-test-product-extractor-001",
+		Dataschema:    "/schemagroups/io.intropy.maxbo.product/schemas/product-export.v1",
+		DataschemaURL: "https://registry.example.com/schemagroups/io.intropy.maxbo.product/schemas/product-export.v1/versions/1",
+	}
+}
+
+// AE1: --subscribe with a resolved block writes the full block into the
+// scaffold record's values, and the resolution reaches the render.
+func TestCreateSubscribeWritesBlock(t *testing.T) {
+	lib := newMessageTemplateLibrary(t, "v9.9.9")
+	outDir := filepath.Join(t.TempDir(), "order-loader")
+	var stderr bytes.Buffer
+
+	err := Create(context.Background(), CreateOptions{
+		Template:  "message-loader",
+		OutputDir: outDir,
+		Version:   "v9.9.9",
+		SetValues: map[string]any{"integrationName": "orders", "message": "io.intropy.maxbo.product.export"},
+		NoInput:   true,
+		Stderr:    &stderr,
+		Source:    lib.sourceOpts(t.TempDir(), nil),
+		Subscribe: subscribeBlockFixture(),
+	})
+	if err != nil {
+		t.Fatalf("Create: %v\nstderr: %s", err, stderr.String())
+	}
+
+	record, err := LoadScaffold(filepath.Join(outDir, ScaffoldRelPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := ReadSubscribeBlock(ScaffoldEntry{Path: outDir, Scaffold: *record})
+	if err != nil {
+		t.Fatalf("scaffold record is not the block shape: %v (values: %v)", err, record.Values)
+	}
+	if *b != *subscribeBlockFixture() {
+		t.Errorf("record subscribe block = %+v, want %+v", *b, *subscribeBlockFixture())
+	}
+
+	rendered, err := os.ReadFile(filepath.Join(outDir, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(rendered), "io.intropy.maxbo.product.export") {
+		t.Errorf("render = %q, want the wired message", rendered)
+	}
+}
+
+// AE2: --subscribe against a template with no message parameters is a
+// usage-class error naming the template, before anything renders.
+func TestCreateSubscribeGate(t *testing.T) {
+	lib := newTemplateLibrary(t, "v9.9.9") // no message label
+	var stderr bytes.Buffer
+
+	err := Create(context.Background(), CreateOptions{
+		Template:  "test-template",
+		OutputDir: filepath.Join(t.TempDir(), "out"),
+		Version:   "v9.9.9",
+		SetValues: map[string]any{"integrationName": "orders", "message": "io.intropy.maxbo.product.export"},
+		NoInput:   true,
+		Stderr:    &stderr,
+		Source:    lib.sourceOpts(t.TempDir(), nil),
+		Subscribe: subscribeBlockFixture(),
+	})
+	if !errors.Is(err, ErrNoMessageParameters) {
+		t.Fatalf("err = %v, want ErrNoMessageParameters", err)
+	}
+	if !strings.Contains(err.Error(), "test-template") {
+		t.Errorf("error %q should name the template", err)
+	}
+
+	// Nothing rendered: the gate runs before output.
+	if _, statErr := os.Stat(filepath.Join(t.TempDir(), "out")); statErr == nil {
+		// (out is a fresh dir; nothing from this run landed anywhere)
+	}
+}
+
+// A message-capable template registers its message parameters and the
+// registry refs with the facts, so prompts offer the union.
+func TestCreateSubscribeFactsGetMessageCandidates(t *testing.T) {
+	lib := newMessageTemplateLibrary(t, "v9.9.9")
+	var stderr bytes.Buffer
+	facts := BuildWorkspaceFacts(nil)
+
+	err := Create(context.Background(), CreateOptions{
+		Template:  "message-loader",
+		OutputDir: filepath.Join(t.TempDir(), "out"),
+		Version:   "v9.9.9",
+		SetValues: map[string]any{"integrationName": "orders", "message": "io.intropy.maxbo.product.export"},
+		NoInput:   true,
+		Stderr:    &stderr,
+		Source:    lib.sourceOpts(t.TempDir(), nil),
+		Facts:     facts,
+		MessageRefs: []string{
+			"io.intropy.maxbo.product.export",
+			"io.intropy.maxbo.catalog.updated",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if !facts.IsMessageParameter("message") {
+		t.Fatal("the manifest's message parameter did not reach the facts")
+	}
+	got := facts.MessageCandidates()
+	if len(got) != 2 || got[0] != "io.intropy.maxbo.catalog.updated" {
+		t.Errorf("candidates = %v, want both registry refs", got)
+	}
+}
+
+// --no-input plus a required message parameter and no --subscribe fails
+// naming --subscribe.
+func TestCreateNoInputMessageParameterHintsSubscribe(t *testing.T) {
+	lib := newMessageTemplateLibrary(t, "v9.9.9")
+	var stderr bytes.Buffer
+
+	err := Create(context.Background(), CreateOptions{
+		Template:  "message-loader",
+		OutputDir: filepath.Join(t.TempDir(), "out"),
+		Version:   "v9.9.9",
+		SetValues: map[string]any{"integrationName": "orders"},
+		NoInput:   true,
+		Stderr:    &stderr,
+		Source:    lib.sourceOpts(t.TempDir(), nil),
+		// The command always supplies the workspace facts; the parameter
+		// registry that turns the hint on lives there.
+		Facts: BuildWorkspaceFacts(nil),
+	})
+	if err == nil {
+		t.Fatal("expected the missing-required error")
+	}
+	if !strings.Contains(err.Error(), "--subscribe") {
+		t.Errorf("error %q should name --subscribe", err)
+	}
+	if !strings.Contains(err.Error(), "message") {
+		t.Errorf("error %q should name the message parameter", err)
+	}
+}

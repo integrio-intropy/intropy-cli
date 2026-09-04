@@ -2,17 +2,21 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
+	"strings"
 	"syscall"
 
 	"github.com/huandu/xstrings"
 	"github.com/integrio-intropy/intropy-cli/internal/config"
 	"github.com/integrio-intropy/intropy-cli/internal/system"
 	"github.com/integrio-intropy/intropy-cli/internal/template"
+	"github.com/integrio-intropy/intropy-cli/internal/xregistry"
 	"github.com/spf13/cobra"
 )
 
@@ -26,6 +30,8 @@ type createFlags struct {
 	sets            []string
 	force           bool
 	noInput         bool
+	subscribe       string
+	registryURL     string
 }
 
 var intCreateFlags createFlags
@@ -59,6 +65,34 @@ var intCreateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		stderr := cmd.ErrOrStderr()
+		// The subscribe rung resolves before the template fetch, so a wrong
+		// or unconfigured registry is reported before a GitHub download.
+		downloadRefs := !intCreateFlags.noInput && intCreateFlags.subscribe == ""
+		var subscribeBlock *template.SubscribeBlock
+		if intCreateFlags.subscribe != "" {
+			block, err := resolveSubscribeBlock(cmd.Context(), intCreateFlags.subscribe, intCreateFlags.registryURL, intCreateFlags.noInput, stderr)
+			if err != nil {
+				return err
+			}
+			subscribeBlock = block
+		}
+		var messageRefs []string
+		if downloadRefs {
+			// Prompt-time candidates, best effort: an unreachable registry
+			// degrades to facts-only suggestions. With --subscribe set the
+			// same failure fails hard, inside resolveSubscribeBlock.
+			refs, err := registryMessageRefs(cmd.Context(), intCreateFlags.registryURL)
+			if err != nil {
+				var ue *usageError
+				if errors.As(err, &ue) {
+					return err
+				}
+				fmt.Fprintf(stderr, "warning: %v — prompt suggestions fall back to workspace messages only\n", err)
+			} else {
+				messageRefs = refs
+			}
+		}
 		if skipOutDir {
 			out, err := deriveOutDir(cmd.Context(), template.CreateOptions{
 				Template:  args[0],
@@ -72,13 +106,13 @@ var intCreateCmd = &cobra.Command{
 				UserAgent: "intropy-cli/" + version,
 				Owner:     owner,
 				Repo:      repo,
+				Subscribe: subscribeBlock,
 			})
 			if err != nil {
 				return err
 			}
 			outputDir = out
 		}
-		stderr := cmd.ErrOrStderr()
 		facts, warnings := system.LoadWorkspaceFacts(workspaceRootOf(outputDir))
 		for _, w := range warnings {
 			printWarning(stderr, w)
@@ -87,21 +121,23 @@ var intCreateCmd = &cobra.Command{
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 		if err := template.Create(ctx, template.CreateOptions{
-			Template:   args[0],
-			OutputDir:  outputDir,
-			Version:    intCreateFlags.templateVersion,
-			SetValues:  sets,
-			Files:      intCreateFlags.values,
-			Force:      intCreateFlags.force,
-			NoInput:    intCreateFlags.noInput,
-			OutputJSON: outputJSON,
-			Stdin:      cmd.InOrStdin(),
-			Stdout:     cmd.OutOrStdout(),
-			Stderr:     stderr,
-			UserAgent:  "intropy-cli/" + version,
-			Owner:      owner,
-			Repo:       repo,
-			Facts:      facts,
+			Template:    args[0],
+			OutputDir:   outputDir,
+			Version:     intCreateFlags.templateVersion,
+			SetValues:   sets,
+			Files:       intCreateFlags.values,
+			Force:       intCreateFlags.force,
+			NoInput:     intCreateFlags.noInput,
+			OutputJSON:  outputJSON,
+			Stdin:       cmd.InOrStdin(),
+			Stdout:      cmd.OutOrStdout(),
+			Stderr:      stderr,
+			UserAgent:   "intropy-cli/" + version,
+			Owner:       owner,
+			Repo:        repo,
+			Facts:       facts,
+			Subscribe:   subscribeBlock,
+			MessageRefs: messageRefs,
 		}); err != nil {
 			return err
 		}
@@ -187,5 +223,113 @@ func init() {
 	f.StringArrayVarP(&intCreateFlags.sets, "set", "s", nil, "set a value as key=value (repeatable)")
 	f.BoolVar(&intCreateFlags.force, "force", false, "allow rendering into a non-empty output directory")
 	f.BoolVar(&intCreateFlags.noInput, "no-input", false, flagUsageNoInput)
+	f.StringVar(&intCreateFlags.subscribe, "subscribe", "", flagUsageSubscribe)
+	f.StringVar(&intCreateFlags.registryURL, "registry-url", "", flagUsageRegistryURL)
 	intCmd.AddCommand(intCreateCmd)
+}
+
+// resolveSubscribeBlock turns --subscribe <ref> into the record block:
+// resolve the message against the registry, pin its schema's default
+// version URL, and pick the producing channel. An ambiguous channel is an
+// interactive pick; under --no-input it is an error listing the
+// candidates. Every failure here is hard: an explicit --subscribe asked
+// for this wiring.
+func resolveSubscribeBlock(ctx context.Context, ref, registryURLFlag string, noInput bool, stderr io.Writer) (*template.SubscribeBlock, error) {
+	url, err := resolveRegistryURL(registryURLFlag)
+	if err != nil {
+		return nil, err
+	}
+	client, err := xregistry.New(url, xregistry.WithUserAgent("intropy-cli/"+version))
+	if err != nil {
+		return nil, err
+	}
+	res, err := client.Resolve(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	channel, err := pickSubscribeChannel(res, noInput, stderr)
+	if err != nil {
+		return nil, err
+	}
+	return &template.SubscribeBlock{
+		Message:       res.Message,
+		Pubsub:        channel.Pubsub,
+		Topic:         channel.Topic,
+		Dataschema:    res.DataSchema,
+		DataschemaURL: res.DataSchemaURL,
+	}, nil
+}
+
+// pickSubscribeChannel chooses among the resolved message's producing
+// channels: one is taken, several prompt, several under --no-input fail
+// naming every candidate.
+func pickSubscribeChannel(res *xregistry.ResolvedMessage, noInput bool, stderr io.Writer) (xregistry.Channel, error) {
+	channel, pickErr := res.SubscribeChannel()
+	if pickErr == nil {
+		return channel, nil
+	}
+	var amb *xregistry.AmbiguousProducerError
+	if !errors.As(pickErr, &amb) || noInput {
+		return channel, pickErr
+	}
+	prompter := template.AutoPrompter(os.Stdin, stderr, false)
+	if prompter == nil {
+		return channel, pickErr
+	}
+	suggestions := make([]string, 0, len(amb.Channels))
+	for _, c := range amb.Channels {
+		suggestions = append(suggestions, c.Pubsub+"/"+c.Topic)
+	}
+	field := template.FieldSpec{
+		Name:        "channel",
+		Title:       fmt.Sprintf("message %s is produced on several channels; pick one", res.Message),
+		Type:        "string",
+		Suggestions: suggestions,
+	}
+	ans, _, err := prompter.Prompt(field)
+	if err != nil {
+		return channel, err
+	}
+	picked, _ := ans.(string)
+	for _, c := range amb.Channels {
+		if c.Pubsub+"/"+c.Topic == picked {
+			return c, nil
+		}
+	}
+	return channel, fmt.Errorf("picked channel %q is not one of: %s", picked, strings.Join(suggestions, ", "))
+}
+
+// registryMessageRefs lists every registry message ref for prompt
+// suggestions. Internal (workspace) messages join them via the facts, not
+// here.
+func registryMessageRefs(ctx context.Context, registryURLFlag string) ([]string, error) {
+	url, err := resolveRegistryURL(registryURLFlag)
+	if err != nil {
+		return nil, err
+	}
+	client, err := xregistry.New(url, xregistry.WithUserAgent("intropy-cli/"+version))
+	if err != nil {
+		return nil, err
+	}
+	doc, err := client.Export(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var refs []string
+	for _, g := range doc.MessageGroups {
+		for id := range g.Messages {
+			refs = append(refs, id)
+		}
+	}
+	sort.Strings(refs)
+	return refs, nil
+}
+
+// usageIfNoMessageParams maps the --subscribe gate to a usage error so an
+// unsupported template/request combination exits 2, not 1.
+func usageIfNoMessageParams(err error) error {
+	if errors.Is(err, template.ErrNoMessageParameters) {
+		return newUsageErrorf("%v", err)
+	}
+	return err
 }

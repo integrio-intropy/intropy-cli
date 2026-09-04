@@ -43,6 +43,13 @@ const (
 	// or "both"). Recorded alongside the block kind.
 	TemplateDataFlowLabel = "intropy.dev/data-flow"
 
+	// TemplateMessageParamsLabel names the manifest label that declares
+	// which parameters carry message wiring, as a comma-separated list of
+	// parameter names. A template without it declares no message
+	// parameters: --subscribe against it is a usage error (R4), and its
+	// parameters get no message suggestions however they are named.
+	TemplateMessageParamsLabel = "intropy.dev/message-params"
+
 	// The BlockKind constants name the block kinds with a parse entry in
 	// internal/system's blockParsers registry — the set `sys create`
 	// assembles. Records carrying any other kind are skipped with a

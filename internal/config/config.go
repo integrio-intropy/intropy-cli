@@ -47,6 +47,10 @@ const (
 	// library as owner/repo on GitHub.
 	EnvTemplateRepo = "INTROPY_TEMPLATE_REPO"
 
+	// EnvRegistryURL overrides registryUrl: the base URL of the read-only
+	// xRegistry service that backs the message noun and --subscribe.
+	EnvRegistryURL = "INTROPY_REGISTRY_URL"
+
 	dirName  = "intropy"
 	fileName = "config.yaml"
 )
@@ -71,6 +75,12 @@ type Config struct {
 	// GitHub. Empty targets the official library.
 	TemplateRepo string `yaml:"templateRepo"`
 
+	// RegistryURL is the base URL of the read-only xRegistry service that
+	// backs message discovery and --subscribe resolution. Empty means
+	// unconfigured: there is no built-in default, and every consumer must
+	// treat the zero value as "nothing to contact".
+	RegistryURL string `yaml:"registryUrl"`
+
 	// CurrentContext selects which entry of Contexts is active. It must name
 	// a key of Contexts; a dangling pointer is a load error, because
 	// resolving against the wrong customer is worse than refusing to run.
@@ -89,6 +99,7 @@ type Context struct {
 	GitopsRepo   string `yaml:"gitopsRepo"`
 	ArgocdServer string `yaml:"argocdServer"`
 	TemplateRepo string `yaml:"templateRepo"`
+	RegistryURL  string `yaml:"registryUrl"`
 }
 
 // Flags carries the command-line values that take precedence over everything
@@ -98,6 +109,7 @@ type Flags struct {
 	GitopsRepo   string
 	ArgocdServer string
 	TemplateRepo string
+	RegistryURL  string
 }
 
 // Dir returns the directory holding the configuration file. It honours
@@ -207,6 +219,7 @@ func (c Config) Resolve(flags Flags) Config {
 		GitopsRepo:   cmp.Or(flags.GitopsRepo, os.Getenv(EnvGitopsRepo), ctx.GitopsRepo, c.GitopsRepo),
 		ArgocdServer: cmp.Or(flags.ArgocdServer, os.Getenv(EnvArgocdServer), ctx.ArgocdServer, c.ArgocdServer),
 		TemplateRepo: cmp.Or(flags.TemplateRepo, os.Getenv(EnvTemplateRepo), ctx.TemplateRepo, c.TemplateRepo),
+		RegistryURL:  cmp.Or(flags.RegistryURL, os.Getenv(EnvRegistryURL), ctx.RegistryURL, c.RegistryURL),
 		// The resolved config answers "what am I pointed at"; the selection
 		// itself is not re-layered, so both travel through unchanged.
 		CurrentContext: c.CurrentContext,
@@ -303,6 +316,20 @@ func (c Config) RequireGitopsRepo() (string, error) {
 		path = filepath.Join("~", ".config", dirName, fileName)
 	}
 	return "", fmt.Errorf("no GitOps repository configured; pass --gitops-repo, set %s, or add gitopsRepo to %s", EnvGitopsRepo, path)
+}
+
+// RequireRegistryURL returns the resolved xRegistry base URL, or an error
+// listing every way it can be supplied. An empty value is unconfigured, not
+// a default: no consumer may guess a registry host on the user's behalf.
+func (c Config) RequireRegistryURL() (string, error) {
+	if c.RegistryURL != "" {
+		return c.RegistryURL, nil
+	}
+	path, err := Path()
+	if err != nil {
+		path = filepath.Join("~", ".config", dirName, fileName)
+	}
+	return "", fmt.Errorf("no xRegistry configured; pass --registry-url, set %s, or add registryUrl to %s", EnvRegistryURL, path)
 }
 
 // ParseTemplateRepo splits a templateRepo value into owner and repo. An empty

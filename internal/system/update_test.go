@@ -521,3 +521,69 @@ func TestUpdateJSONOutput(t *testing.T) {
 		t.Errorf("OrderFlowSystem.cs does not declare returns-extractor:\n%s", systemClass)
 	}
 }
+
+// mergeWiring must round-trip the new shapes: stored topics, ports and
+// messages pass through, and an orphan carrying message wiring contributes
+// its message and its resolved channel without dropping block values.
+func TestMergeWiringMessageBlocks(t *testing.T) {
+	plan := &updatePlan{
+		hostDir: "host",
+		baseline: map[string]any{
+			"components": []any{},
+			"topics": []any{map[string]any{
+				"pubsub": "pubsub", "name": "orders", "contract": "Order",
+			}},
+			"ports": []any{},
+			"messages": []any{map[string]any{
+				"message": "product-exported", "type": "product-exported", "contract": "ProductExported",
+			}},
+		},
+		orphans: []Component{
+			{
+				AppID: "order-extractor", Kind: template.BlockKindExtractor,
+				Topic: &TopicKey{Pubsub: "pubsub", Name: "orders"}, topicContract: "Order",
+				Message: &MessageWiring{Kind: MessagePublish, Name: "product-exported", Contract: "ProductExported"},
+			},
+			{
+				AppID: "new-sink", Kind: template.BlockKindExtractor,
+				Topic: &TopicKey{Pubsub: template.DefaultPubsub, Name: "another-exported"}, topicContract: "AnotherExported",
+				Message: &MessageWiring{Kind: MessagePublish, Name: "another-exported", Contract: "AnotherExported"},
+			},
+		},
+	}
+	merged := map[string]any{}
+	if err := mergeWiring(plan, merged); err != nil {
+		t.Fatal(err)
+	}
+
+	// The stored topic passes through; the new message's channel is a
+	// genuinely new topic key and is appended.
+	topics := merged["topics"].([]any)
+	if len(topics) != 2 {
+		t.Fatalf("topics = %#v, want stored + the new channel", topics)
+	}
+	messages := merged["messages"].([]any)
+	if len(messages) != 2 {
+		t.Fatalf("messages = %#v, want stored + the new message", messages)
+	}
+	newMsg, _ := messages[1].(map[string]any)
+	if newMsg["message"] != "another-exported" || newMsg["type"] != "another-exported" || newMsg["contract"] != "AnotherExported" {
+		t.Errorf("new message entry = %#v", newMsg)
+	}
+	if _, ok := merged["ports"].([]any); !ok {
+		t.Error("ports list must survive the round-trip")
+	}
+}
+
+// A stored messages list of the wrong shape fails naming the record, like
+// topics and ports do.
+func TestMergeWiringRejectsMalformedMessages(t *testing.T) {
+	plan := &updatePlan{
+		hostDir:  "host",
+		baseline: map[string]any{"messages": []any{"not-an-object"}},
+	}
+	err := mergeWiring(plan, map[string]any{})
+	if err == nil || !strings.Contains(err.Error(), "messages entry has type string") {
+		t.Errorf("err = %v, want a typed error naming the messages list", err)
+	}
+}

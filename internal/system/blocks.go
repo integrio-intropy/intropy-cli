@@ -2,6 +2,7 @@ package system
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 
 	"github.com/integrio-intropy/intropy-cli/internal/template"
@@ -33,11 +34,19 @@ func supportedKinds() []string {
 	return kinds
 }
 
-// parseTopicBlock parses the wiring of a topic block (extractor, loader):
-// a required topic and contract, and one optional port. A record without a
-// port stays a valid component — it just gets no From/To in the generated
-// wiring.
+// parseTopicBlock parses the wiring of a topic block (extractor, loader).
+// A block-shaped record reads its message wiring from subscribe/publishes
+// blocks and its transport from the resolution rules below; a legacy flat
+// record keeps the topic+contract pair that always paired the halves.
 func parseTopicBlock(e template.ScaffoldEntry, c *Component) error {
+	if template.HasMessageBlocks(e.Values) {
+		return parseMessageBlocks(e, c)
+	}
+
+	// Legacy flat-key record. Directionless: the shared topic key pairs the
+	// halves, so the direction comes from the block kind — the same rule
+	// the host template applies today — and the message name is the topic
+	// name, the only message identity this vocabulary had.
 	topic, err := template.RecordValue(e, template.KeyTopic)
 	if err != nil {
 		return err
@@ -52,6 +61,7 @@ func parseTopicBlock(e template.ScaffoldEntry, c *Component) error {
 	}
 	c.Topic = &TopicKey{Pubsub: pubsub, Name: topic}
 	c.topicContract = contract
+	c.Message = legacyMessageWiring(c.Kind, topic, contract)
 
 	// No fallback for the port: a default would describe a binding the
 	// rendered code doesn't use. A missing key is reported by the caller as
@@ -67,6 +77,80 @@ func parseTopicBlock(e template.ScaffoldEntry, c *Component) error {
 		c.missingPort = true
 	}
 	return nil
+}
+
+// legacyMessageWiring derives the message view of a legacy record. Both
+// halves keep the topic as the channel and its name as the message name:
+// resolving a block-shaped subscriber against a legacy producer relies on
+// the two name spaces agreeing.
+func legacyMessageWiring(kind, topic, contract string) *MessageWiring {
+	m := &MessageWiring{Name: topic, Contract: contract}
+	switch kind {
+	case template.BlockKindExtractor:
+		m.Kind = MessagePublish
+	case template.BlockKindLoader:
+		m.Kind = MessageSubscribe
+	}
+	return m
+}
+
+// parseMessageBlocks parses the block wiring shape: at most one of
+// subscribe/publishes — both in one record is a record that contradicts
+// itself, never a component with two directions.
+func parseMessageBlocks(e template.ScaffoldEntry, c *Component) error {
+	sub, err := template.ReadSubscribeBlock(e)
+	if err != nil {
+		return err
+	}
+	pub, err := template.ReadPublishesBlock(e)
+	if err != nil {
+		return err
+	}
+	if sub != nil && pub != nil {
+		return fmt.Errorf("%s carries both a subscribe and a publishes block; one component is one direction — keep the publish in its producing record and the subscribe in its consuming record", recordRef(e))
+	}
+	switch {
+	case pub != nil:
+		c.Message = &MessageWiring{Kind: MessagePublish, Name: pub.Message, Contract: pub.Contract}
+	case sub != nil:
+		c.Message = &MessageWiring{Kind: MessageSubscribe, Name: sub.Message, Dataschema: sub.Dataschema}
+		c.Message.External = sub.External()
+		if sub.External() {
+			pubsub, err := blockRequiredField(e, template.KeySubscribe, template.KeyPubsub, sub.Pubsub)
+			if err != nil {
+				return err
+			}
+			c.Topic = &TopicKey{Pubsub: pubsub, Name: sub.Topic}
+		}
+	}
+
+	// A port carries over from any shape: block writers emit it like the
+	// flat writers did.
+	if _, ok := e.Values[template.KeyPort]; ok {
+		port, err := template.RecordValue(e, template.KeyPort)
+		if err != nil {
+			return err
+		}
+		c.Port = port
+		c.Ports = []string{port}
+	} else {
+		c.missingPort = true
+	}
+	return nil
+}
+
+// blockRequiredField re-reports an empty required snapshot half as the
+// paired-field error, naming both keys so the fix is one edit away.
+func blockRequiredField(e template.ScaffoldEntry, block, key, value string) (string, error) {
+	if value != "" {
+		return value, nil
+	}
+	return "", fmt.Errorf("%s: values.%s.%s is required when values.%s.%s is set", recordRef(e), block, key, block, template.KeyTopic)
+}
+
+// recordRef names the record the way parse errors across assembly do.
+func recordRef(e template.ScaffoldEntry) string {
+	return filepath.Join(e.Path, filepath.FromSlash(template.ScaffoldRelPath))
 }
 
 // parseTransactional parses the wiring of a transactional block: exactly

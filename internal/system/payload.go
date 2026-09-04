@@ -42,9 +42,31 @@ func buildPayload(m *Model, outputDir, kebab string) (map[string]any, error) {
 		components[i] = ComponentEntry(c)
 	}
 
+	// The internal messagegroup: what the components declare by name,
+	// disjoint from the transport list above. Host templates that predate
+	// the section ignore the key; message-aware templates render from it.
+	messages := make([]any, len(m.Messages))
+	for i, msg := range m.Messages {
+		e := map[string]any{
+			"name": msg.Name,
+			"type": msg.Type,
+		}
+		if msg.Contract != "" {
+			e["contract"] = msg.Contract
+		}
+		if msg.Dataschema != "" {
+			e["dataschema"] = msg.Dataschema
+		}
+		if msg.Publisher != "" {
+			e["publisher"] = msg.Publisher
+		}
+		messages[i] = e
+	}
+
 	payload := map[string]any{
 		"name":       kebab,
 		"topics":     topics,
+		"messages":   messages,
 		"ports":      ports,
 		"components": components,
 	}
@@ -75,12 +97,20 @@ func buildPayload(m *Model, outputDir, kebab string) (map[string]any, error) {
 func ComponentEntry(c Component) map[string]any {
 	entry := map[string]any{
 		template.KeyAppID: c.AppID,
-		"kind":           c.Kind,
+		"kind":            c.Kind,
 	}
 	if c.Topic != nil {
 		entry[template.KeyTopic] = map[string]any{
 			template.KeyPubsub: c.Topic.Pubsub,
 			template.KeyName:   c.Topic.Name,
+		}
+	}
+	if c.Message != nil {
+		// The template joins the two message views by name; the direction
+		// is already the kind. Dataschema only exists on external snapshots.
+		entry[template.KeyMessage] = c.Message.Name
+		if c.Message.Dataschema != "" {
+			entry[template.KeyDataschema] = c.Message.Dataschema
 		}
 	}
 	switch len(c.Ports) {

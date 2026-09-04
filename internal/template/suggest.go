@@ -40,6 +40,14 @@ func Suggest(fields []FieldSpec, facts *WorkspaceFacts, confirmed map[string]any
 // values on every call rather than threading field-to-field wiring, so the
 // registry stays a flat name-to-rule table.
 func suggestField(f FieldSpec, facts *WorkspaceFacts, confirmed map[string]any) []string {
+	// Message parameters are identified by the manifest's message label,
+	// not by a reserved name, so the registry cannot switch on their name —
+	// the check is a set membership instead. A run without that label
+	// (every template that declares no message wiring) falls through to
+	// the name table below.
+	if facts.IsMessageParameter(f.Name) {
+		return facts.MessageCandidates()
+	}
 	switch f.Name {
 	case KeyOrganization:
 		// One organization or none: a component belongs to exactly one, so

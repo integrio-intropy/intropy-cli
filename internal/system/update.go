@@ -329,11 +329,12 @@ func mergedComponentEntries(plan *updatePlan) ([]any, error) {
 	return merged, nil
 }
 
-// mergeWiring folds the orphans' topics and ports into the record's stored
-// lists, deduplicating by (pubsub, name) and name respectively. A stored
-// entry passes through verbatim; only genuinely new names are appended.
-// Component payloads build their wiring against these lists, so an orphan
-// naming a topic or port the host never declared must add it here.
+// mergeWiring folds the orphans' topics, ports and messages into the
+// record's stored lists, deduplicating by (pubsub, name), name, and
+// message name respectively. A stored entry passes through verbatim; only
+// genuinely new names are appended. Component payloads build their wiring
+// against these lists, so an orphan naming a topic, port or message the
+// host never declared must add it here.
 func mergeWiring(plan *updatePlan, merged map[string]any) error {
 	recordPath := filepath.Join(plan.hostDir, filepath.FromSlash(template.ScaffoldRelPath))
 
@@ -365,6 +366,19 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 		ports = append(ports, p)
 	}
 
+	seenMessages := map[string]bool{}
+	storedMessages, _ := plan.baseline["messages"].([]any)
+	messages := make([]any, 0, len(storedMessages))
+	for _, msg := range storedMessages {
+		m, ok := msg.(map[string]any)
+		if !ok {
+			return fmt.Errorf("%s: values.messages entry has type %T, expected object", recordPath, msg)
+		}
+		name, _ := m[template.KeyMessage].(string)
+		seenMessages[name] = true
+		messages = append(messages, msg)
+	}
+
 	// Each orphan contributes the wiring its scaffold record declared;
 	// Assemble already deduplicated and cross-checked these against every
 	// other scanned scaffold. The map literals are the stored shape the
@@ -388,10 +402,25 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 				ports = append(ports, map[string]any{template.KeyName: p})
 			}
 		}
+		if c.Message != nil && c.Message.Kind == MessagePublish && !seenMessages[c.Message.Name] {
+			seenMessages[c.Message.Name] = true
+			e := map[string]any{
+				template.KeyMessage: c.Message.Name,
+				"type":              c.Message.Name,
+			}
+			if c.Message.Contract != "" {
+				e[template.KeyContract] = c.Message.Contract
+			}
+			if c.Message.Dataschema != "" {
+				e[template.KeyDataschema] = c.Message.Dataschema
+			}
+			messages = append(messages, e)
+		}
 	}
 
 	merged["topics"] = topics
 	merged["ports"] = ports
+	merged["messages"] = messages
 	return nil
 }
 

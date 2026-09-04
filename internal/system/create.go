@@ -69,6 +69,7 @@ type Summary struct {
 	Name          string      `json:"name"`
 	Components    []Component `json:"components"`
 	Topics        []Topic     `json:"topics"`
+	Messages      []Message   `json:"messages"` // the internal messagegroup
 	Ports         []Port      `json:"ports,omitempty"`
 	SharedLibrary string      `json:"sharedLibrary"` // scaffold directory
 }
@@ -212,6 +213,7 @@ func maybeWriteCreateResult(opts CreateOptions, record *template.Scaffold, model
 			Name:          model.Name,
 			Components:    model.Components,
 			Topics:        model.Topics,
+			Messages:      model.Messages,
 			Ports:         model.Ports,
 			SharedLibrary: sharedPath(model),
 		},

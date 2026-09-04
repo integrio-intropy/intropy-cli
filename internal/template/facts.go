@@ -19,13 +19,17 @@ type TopicKey struct {
 
 // WorkspaceFacts is the prompt-time view of what a workspace's scaffold
 // records already declare: the topics in use, the contract each carries,
-// and the external ports already named, plus the one organization the
-// records agree on. Create flows derive parameter
-// suggestions from it; it is built by callers that scan workspaces
-// (internal/system) and consumed read-only by value resolution.
+// the external ports already named, the internal messages declared by
+// publishes blocks, plus the one organization the records agree on. Create
+// flows derive parameter suggestions from it; it is built by callers that
+// scan workspaces (internal/system) and consumed read-only by value
+// resolution.
 //
-// BuildWorkspaceFacts constructs one from scaffold entries; the zero value
-// is a valid empty index.
+// Two fields are ambient inputs a caller seeds for the run rather than
+// facts a scan derived: messageCandidates (registry refs offered next to
+// the internal messages) and messageParams (the template's message
+// parameters, identified from the fetched manifest). Both live here so
+// Suggest stays a single flat registry keyed by parameter name.
 type WorkspaceFacts struct {
 	// TopicKeys holds the distinct topic keys in use, sorted by
 	// (Pubsub, Topic).
@@ -45,6 +49,19 @@ type WorkspaceFacts struct {
 	// records disagree on the contract is absent — a conflicted fact is no
 	// fact, and callers treat absence as "no suggestion".
 	contracts map[TopicKey]string
+
+	// messages maps an internal message name (from publishes blocks) to its
+	// declared contract, when one was recorded.
+	messages map[string]string
+
+	// messageCandidates are registry message refs offered as prompt
+	// suggestions for message parameters, seeded by the caller.
+	messageCandidates []string
+
+	// messageParams names the template parameters that carry message
+	// wiring, identified from the fetched manifest's label. Parameters
+	// outside this set get no message suggestions whatever their name.
+	messageParams map[string]bool
 }
 
 // Organization returns the organization the workspace's block records
@@ -76,6 +93,74 @@ func (f *WorkspaceFacts) ContractFor(key TopicKey) (string, bool) {
 	return c, ok
 }
 
+// AddMessageCandidates seeds the registry message candidates offered as
+// prompt suggestions for message parameters. Internal message names come
+// from the workspace's publishes blocks; these join them, and callers
+// normally pass every ref the registry serves.
+func (f *WorkspaceFacts) AddMessageCandidates(refs []string) {
+	if f == nil {
+		return
+	}
+	f.messageCandidates = append(f.messageCandidates, refs...)
+}
+
+// MessageCandidates returns the deduplicated suggestion pool for message
+// parameters: internal messages declared by the workspace's publishes
+// blocks plus the seeded registry refs, merged and sorted.
+func (f *WorkspaceFacts) MessageCandidates() []string {
+	if f == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	for name := range f.messages {
+		if !seen[name] {
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	for _, ref := range f.messageCandidates {
+		if !seen[ref] {
+			seen[ref] = true
+			out = append(out, ref)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// SetMessageParameters names the template's message parameters. It is
+// derived from the fetched manifest, so the prompt-time suggestion only
+// fires for templates that declare message wiring — a template whose
+// parameters merely share a name keeps working as before.
+func (f *WorkspaceFacts) SetMessageParameters(names []string) {
+	if f == nil {
+		return
+	}
+	if f.messageParams == nil {
+		f.messageParams = map[string]bool{}
+	}
+	for _, n := range names {
+		f.messageParams[n] = true
+	}
+}
+
+// IsMessageParameter reports whether the template's manifest identifies
+// name as carrying message wiring.
+func (f *WorkspaceFacts) IsMessageParameter(name string) bool {
+	return f != nil && f.messageParams[name]
+}
+
+// ContractForMessage returns the contract a workspace record declared for
+// an internal message name, or ("", false) when nothing declared it.
+func (f *WorkspaceFacts) ContractForMessage(name string) (string, bool) {
+	if f == nil {
+		return "", false
+	}
+	c, ok := f.messages[name]
+	return c, ok
+}
+
 // WorkspaceFactEntry is the slice of a scaffold record fact-building reads:
 // which block the record scaffolds and the values it recorded. Keeping the
 // input this narrow lets BuildWorkspaceFacts stay in this package — a
@@ -102,7 +187,7 @@ type WorkspaceFactEntry struct {
 // on one topic key demote the contract — suggesting either side of a
 // conflict would bake a guess into the new record.
 func BuildWorkspaceFacts(entries []WorkspaceFactEntry) *WorkspaceFacts {
-	facts := &WorkspaceFacts{contracts: map[TopicKey]string{}}
+	facts := &WorkspaceFacts{contracts: map[TopicKey]string{}, messages: map[string]string{}}
 	type contractSighting struct {
 		contract   string
 		conflicted bool
@@ -112,6 +197,22 @@ func BuildWorkspaceFacts(entries []WorkspaceFactEntry) *WorkspaceFacts {
 	seenPort := map[string]bool{}
 	orgSeen := false
 	orgConflicted := false
+
+	indexTopic := func(key TopicKey, contract string) {
+		if !seenTopic[key] {
+			seenTopic[key] = true
+			facts.TopicKeys = append(facts.TopicKeys, key)
+		}
+		if contract != "" {
+			if s, seen := sightings[key]; seen {
+				if s.contract != contract {
+					s.conflicted = true
+				}
+			} else {
+				sightings[key] = &contractSighting{contract: contract}
+			}
+		}
+	}
 
 	for _, e := range entries {
 		if e.BlockKind == "" {
@@ -128,6 +229,30 @@ func BuildWorkspaceFacts(entries []WorkspaceFactEntry) *WorkspaceFacts {
 		}
 		switch e.BlockKind {
 		case BlockKindExtractor, BlockKindLoader:
+			// Block-shaped records ignore the legacy flat keys: the block is
+			// the wiring when present, and reading both would invent a merge
+			// the record never declared. Errors from misshaped blocks stay
+			// out of suggestions — a suggestion aid never fails; assembly is
+			// the surface that reports them.
+			if HasMessageBlocks(e.Values) {
+				if sub, err := ReadSubscribeBlock(entry(e)); err == nil && sub != nil {
+					if sub.External() {
+						indexTopic(TopicKey{Pubsub: sub.Pubsub, Name: sub.Topic}, "")
+					}
+				}
+				if pub, err := ReadPublishesBlock(entry(e)); err == nil && pub != nil {
+					if _, seen := facts.messages[pub.Message]; !seen {
+						facts.messages[pub.Message] = pub.Contract
+					}
+				}
+				if port, ok := SoftValue(e.Values, KeyPort); ok && !seenPort[port] {
+					seenPort[port] = true
+					facts.Ports = append(facts.Ports, port)
+				}
+				break
+			}
+
+			// Legacy flat-key record: topic and contract pair the halves.
 			topic, tok := SoftValue(e.Values, KeyTopic)
 			contract, cok := SoftValue(e.Values, KeyContract)
 			// Default on the zero result, not on key absence: a present but
@@ -138,18 +263,7 @@ func BuildWorkspaceFacts(entries []WorkspaceFactEntry) *WorkspaceFacts {
 				pubsub = DefaultPubsub
 			}
 			if tok && cok {
-				key := TopicKey{Pubsub: pubsub, Name: topic}
-				if !seenTopic[key] {
-					seenTopic[key] = true
-					facts.TopicKeys = append(facts.TopicKeys, key)
-				}
-				if s, seen := sightings[key]; seen {
-					if s.contract != contract {
-						s.conflicted = true
-					}
-				} else {
-					sightings[key] = &contractSighting{contract: contract}
-				}
+				indexTopic(TopicKey{Pubsub: pubsub, Name: topic}, contract)
 			}
 			if port, ok := SoftValue(e.Values, KeyPort); ok && !seenPort[port] {
 				seenPort[port] = true
@@ -183,3 +297,8 @@ func BuildWorkspaceFacts(entries []WorkspaceFactEntry) *WorkspaceFacts {
 	return facts
 }
 
+// entry adapts the fact entry into the ScaffoldEntry shape the strict
+// block readers consume: same values, zero path beyond the record name.
+func entry(e WorkspaceFactEntry) ScaffoldEntry {
+	return ScaffoldEntry{Scaffold: Scaffold{Values: e.Values}}
+}

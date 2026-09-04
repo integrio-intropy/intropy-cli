@@ -49,6 +49,21 @@ type CreateOptions struct {
 	// ports). Facts propose to the prompter; they never resolve a value on
 	// their own, and a nil index resolves exactly as before.
 	Facts *WorkspaceFacts
+
+	// Subscribe, when set, is the pre-resolved registry wiring written into
+	// the record's subscribe block — the value --subscribe produces. The
+	// manifest must declare message parameters for it to apply; otherwise
+	// the run fails with ErrNoMessageParameters before anything renders.
+	// The block lands in values as the U3 shape and renders only in
+	// templates that declare message parameters — the resolved block is
+	// additive to the parameter set, never a replacement for one.
+	Subscribe *SubscribeBlock
+
+	// MessageRefs are registry message references offered as prompt
+	// suggestions for the template's message parameters (next to the
+	// workspace's own publishes declarations). Suggestion metadata only —
+	// a ref becomes a value only through a confirmed prompt or --set.
+	MessageRefs []string
 }
 
 // CreateResult is the machine-readable summary written when --output-json is
@@ -169,6 +184,20 @@ func prepareCreateTemplate(templateRoot string, opts CreateOptions) (*Template, 
 		if err := opts.OnManifest(tmpl); err != nil {
 			return nil, nil, err
 		}
+	}
+
+	// Message-capable templates get the prompt-time candidate pool even on
+	// runs without the registry: the ref list may be empty, but the
+	// parameter registry still turns --subscribe hints and pick lists on.
+	if params := tmpl.MessageParameters(); len(params) > 0 && opts.Facts != nil {
+		opts.Facts.SetMessageParameters(params)
+		opts.Facts.AddMessageCandidates(opts.MessageRefs)
+	}
+	if opts.Subscribe != nil {
+		if len(tmpl.MessageParameters()) == 0 {
+			return nil, nil, fmt.Errorf("template %q: %w\n--subscribe requires a template release whose manifest declares message parameters (label %s); check the pinned template version", tmpl.Metadata.Name, ErrNoMessageParameters, TemplateMessageParamsLabel)
+		}
+		opts.SetValues[KeySubscribe] = SubscribeBlockValue(opts.Subscribe)
 	}
 
 	prompter := selectPrompter(&opts)
@@ -300,3 +329,8 @@ func AutoPrompter(stdin io.Reader, out io.Writer, noInput bool) Prompter {
 	}
 	return NewStdinPrompter(stdin, out)
 }
+
+// ErrNoMessageParameters reports --subscribe against a template whose
+// manifest declares no message parameters. Callers map it to a usage
+// error: the fault is in the requested combination, not the environment.
+var ErrNoMessageParameters = errors.New("declares no message parameters")
