@@ -1,0 +1,47 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "c53b28bc740a",
+  "strategy": "manual-commit",
+  "branch": "feat/xregistry-message-integration",
+  "checkpoints_count": 8,
+  "files_touched": [
+    ".gitignore",
+    "Makefile",
+    "cmd/intropy/flagtext.go",
+    "cmd/intropy/int_create.go",
+    "cmd/intropy/int_create_test.go",
+    "cmd/intropy/message.go",
+    "cmd/intropy/message_list.go",
+    "cmd/intropy/message_show.go",
+    "cmd/intropy/message_test.go",
+    "internal/system/blocks.go",
+    "internal/system/model.go",
+    "internal/system/update.go",
+    "internal/system/update_test.go",
+    "internal/template/create.go",
+    "internal/template/create_test.go",
+    "internal/template/prepare.go",
+    "internal/template/wiring.go",
+    "internal/template/wiring_test.go",
+    "internal/xregistry/client.go",
+    "internal/xregistry/client_test.go",
+    "internal/xregistry/resolve.go",
+    "internal/xregistry/types.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/c5/3b28bc740a/0/metadata.json",
+      "transcript": "/c5/3b28bc740a/0/full.jsonl",
+      "compact_transcript": "/c5/3b28bc740a/0/transcript.jsonl",
+      "content_hash": "/c5/3b28bc740a/0/content_hash.txt",
+      "prompt": "/c5/3b28bc740a/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 365044,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 12587008,
+    "output_tokens": 35263,
+    "api_call_count": 140
+  }
+}

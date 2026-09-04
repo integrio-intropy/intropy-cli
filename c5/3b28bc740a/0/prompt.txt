@@ -1,0 +1,29 @@
+Can you start a review agent of the implementation of ./docs/plans/2026-09-04-001-feat-xregistry-message-integration-plan.md on the current branch? It should be run with pi --print and use the model moonshotai/Kimi-K3 [berget]
+
+---
+
+Can you fix all issues? On this branch, do not push
+
+---
+
+Can you start off a review agent with pi --print and the kimi k3 model?
+
+---
+
+Can you fix these issues aswell=
+
+---
+
+Can you start off a new review session with pi --print and the kimi k3 model?
+
+---
+
+can you fix those aswell?
+
+---
+
+Can you summarize the changes and what new and updated user-facing commands we got?
+
+---
+
+I am trying to run make bundle but it seems to hang (or take a lot longer time than before)
