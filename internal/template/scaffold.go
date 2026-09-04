@@ -48,7 +48,7 @@ const (
 	// parameter names. A template without it declares no message
 	// parameters: --subscribe against it is a usage error (R4), and its
 	// parameters get no message suggestions however they are named.
-	TemplateMessageParamsLabel = "intropy.dev/message-params"
+	TemplateMessageParamsLabel = "intropy.io/message-params"
 
 	// The BlockKind constants name the block kinds with a parse entry in
 	// internal/system's blockParsers registry — the set `sys create`

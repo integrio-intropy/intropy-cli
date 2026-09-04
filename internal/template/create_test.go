@@ -415,13 +415,13 @@ func TestCreateSetOverridesPrefill(t *testing.T) {
 
 // messageTemplateYAML declares one message-wiring parameter through the
 // message label — the shape the template library's message PR will ship.
-const messageTemplateYAML = `apiVersion: intropy.dev/v1
+const messageTemplateYAML = `apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: message-loader
   labels:
-    intropy.dev/block-kind: loader
-    intropy.dev/message-params: message
+    intropy.io/block-kind: loader
+    intropy.io/message-params: message
 spec:
   parameters:
     type: object
@@ -664,13 +664,13 @@ func TestCreateNoInputMessageParameterHintsSubscribe(t *testing.T) {
 	}
 }
 
-const messageExtractorYAML = `apiVersion: intropy.dev/v1
+const messageExtractorYAML = `apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: message-extractor
   labels:
-    intropy.dev/block-kind: extractor
-    intropy.dev/message-params: message
+    intropy.io/block-kind: extractor
+    intropy.io/message-params: message
 spec:
   parameters:
     type: object
@@ -682,13 +682,13 @@ spec:
         type: string
 `
 
-const messageTransactionalYAML = `apiVersion: intropy.dev/v1
+const messageTransactionalYAML = `apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: message-transactional
   labels:
-    intropy.dev/block-kind: transactional-integration
-    intropy.dev/message-params: message
+    intropy.io/block-kind: transactional-integration
+    intropy.io/message-params: message
 spec:
   parameters:
     type: object
@@ -997,13 +997,13 @@ func TestCreatePublishesNilSetValues(t *testing.T) {
 	// Only the message parameter is required: the run carries no sets, so
 	// the seed must come from the resolution, and the block must land even
 	// though SetValues started nil.
-	manifest := `apiVersion: intropy.dev/v1
+	manifest := `apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: message-extractor
   labels:
-    intropy.dev/block-kind: extractor
-    intropy.dev/message-params: message
+    intropy.io/block-kind: extractor
+    intropy.io/message-params: message
 spec:
   parameters:
     type: object
@@ -1112,13 +1112,13 @@ func TestCreateMessageRefsLoaderErrorDegrades(t *testing.T) {
 // parameters is refused under the flags rather than silently seeding both
 // with the same id.
 func TestCreateMultiMessageParameterFlagGate(t *testing.T) {
-	manifest := `apiVersion: intropy.dev/v1
+	manifest := `apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: two-message-loader
   labels:
-    intropy.dev/block-kind: loader
-    intropy.dev/message-params: message, secondMessage
+    intropy.io/block-kind: loader
+    intropy.io/message-params: message, secondMessage
 spec:
   parameters:
     type: object

@@ -292,13 +292,13 @@ func messageRegistryFixture(t *testing.T) *httptest.Server {
 // ship — so the full AE1 flow can run end to end.
 func messageLoaderLibrary(t *testing.T) *templatetest.Library {
 	t.Helper()
-	manifest := `apiVersion: intropy.dev/v1
+	manifest := `apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: message-loader
   labels:
-    intropy.dev/block-kind: loader
-    intropy.dev/message-params: message
+    intropy.io/block-kind: loader
+    intropy.io/message-params: message
 spec:
   parameters:
     type: object
@@ -462,13 +462,13 @@ func registryFixtureWithEndpoints(t *testing.T, endpointsJSON string) *httptest.
 
 func messageExtractorLibrary(t *testing.T) *templatetest.Library {
 	t.Helper()
-	manifest := `apiVersion: intropy.dev/v1
+	manifest := `apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: message-extractor
   labels:
-    intropy.dev/block-kind: extractor
-    intropy.dev/message-params: message
+    intropy.io/block-kind: extractor
+    intropy.io/message-params: message
 spec:
   parameters:
     type: object
