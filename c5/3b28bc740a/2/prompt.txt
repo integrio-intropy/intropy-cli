@@ -1,0 +1,445 @@
+<file name="/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/docs/plans/2026-09-04-001-feat-xregistry-message-integration-plan.md">
+---
+title: "feat: xRegistry message integration"
+type: feat
+status: active
+date: 2026-09-04
+origin: docs/brainstorms/2026-09-04-xregistry-message-integration-requirements.md
+---
+
+# feat: xRegistry message integration
+
+## Overview
+
+Connect the CLI to the read-only xRegistry so `int create --subscribe
+<message-ref>` wires a component to an external CloudEvents stream in one
+flag, add a `message` noun for discovery, and unify internal and external
+events under one vocabulary — **message** — with two resolution sources:
+the registry (external) and the system's producer components (internal).
+The `contract`/`topic` flat wiring keys are superseded by `subscribe` /
+`publishes` blocks, read leniently during transition.
+
+---
+
+## Problem Frame
+
+See origin: docs/brainstorms/2026-09-04-xregistry-message-integration-requirements.md.
+Wiring values the registry already owns (CloudEvents type, pubsub, topic,
+schema) are today typed by hand into template prompts, and intra-system
+events are described by a different vocabulary (`contract` = C# type name
+in the shared contract project) than cross-system events.
+
+---
+
+## Requirements Trace
+
+- R1. `--subscribe` resolves ref → pubsub/topic/CE type via producing endpoint channel
+- R2. Scaffold record stores `subscribe: {message, pubsub, topic, dataschema, dataschemaurl}`, list-growable shape
+- R3. Block records logical `dataschema` (xid) and pinned `dataschemaurl` (version URL)
+- R4. `--subscribe` against a template with no message parameters is a usage error
+- R5. `message list` / `message show <ref>`, external + internal
+- R6. `message list --group <id>` filter
+- R7. Interactive pick list for message parameters when `--subscribe` absent
+- R8. `contract` → `message` rename across values, topology, user text
+- R9. Internal messages producer-declared via `publishes: {message, dataschema?}`
+- R10. Assembly aggregates internal messagegroup; resolves subscriber channel from producer
+- R11. `sys create/update` never contacts the registry
+- R12. `registryUrl` config key + context override + `--registry-url`, no default
+- R13. Degradation contract (unconfigured vs unreachable; hard fail vs fallback)
+
+**Origin actors:** A1 (integration developer), A2 (external codegen tool), A3 (xRegistry service)
+**Origin flows:** F1 (subscribe external), F2 (discover), F3 (internal wiring), F4 (codegen)
+**Origin acceptance examples:** AE1 (covers R1–R3), AE2 (covers R4), AE3 (covers R13), AE4 (covers R9, R10)
+
+---
+
+## Scope Boundaries
+
+- No code generation in the CLI; no `schema` noun or schema-fetch command
+- No multiple subscriptions per component; no registry writes; no internal→external promotion flow
+- No record migration tooling — dual-read only
+- Filtering beyond `--group` deferred; no `message` verbs beyond `list`/`show`
+
+### Deferred to Follow-Up Work
+
+- Template library changes (loader/extractor/system-host templates declare message parameters and render the internal messagegroup): separate PR in the templates repo. The CLI units here land behind dual-read and work with current template releases; end-to-end `--subscribe` requires the template PR.
+- Host SDK / `graph` verb emitting the messagegroup section of the topology record: templates/host repo.
+- Future `int update`-style re-resolve of `subscribe` blocks against the registry.
+
+---
+
+## Context & Research
+
+### Relevant Code and Patterns
+
+- `internal/config/config.go` — `Config`/`Context`/`Flags` layering with env fallbacks (`INTROPY_TEMPLATE_REPO` is the pattern for `INTROPY_REGISTRY_URL`); `Resolve` order flags → env → context → file
+- `internal/registry/` — the OCI HTTP client: construction via functional options, `UserAgent` injection, typed error mapping. The new xregistry client mirrors this shape; the two packages share a name and nothing else, so the new package is `internal/xregistry` with a doc comment disowning the relation
+- `internal/template/wiring.go` — the CLI-owned wiring vocabulary constants; the one home for new keys
+- `internal/template/facts.go`, `suggest.go`, `values.go` — workspace facts: prefill on single candidate, pick-list suggestions on several, `ContractFor` conflict demotion
+- `internal/template/prompt.go` — `StdinPrompter` suggestion lists accept free input alongside picks; `internal/interactive/select.go` for richer selection
+- `internal/system/assemble.go`, `blocks.go`, `model.go`, `payload.go` — assembly: `blockParsers` registry, strict `RecordValue` regime, topic-contract conflict errors, first-seen-wins dedup
+- `internal/system/update.go` (`mergeWiring`, ~line 337) — re-injects wiring values on update; must learn the new block shape
+- `internal/topology/topology.go` — topology record decode; opaque passthrough precedent (`APIs []json.RawMessage`) for sections whose shape is not finalized
+- `cmd/intropy/int_list.go` — table via `text/tabwriter`, `--output json` to stdout, empty state on stderr (`no releases found` style)
+- `cmd/intropy/flagtext.go` — shared flag description constants (AGENTS.md requires one for any shared flag)
+- `cmd/intropy/int_create.go` — `-n` as sugar for `--set name=` is the precedent for `--subscribe` seeding values before resolution
+- `internal/system/create.go` (`requireFactsPayload`) — precedent for gating on template-release capability
+
+### Institutional Learnings
+
+- No `docs/solutions/` directory exists yet — nothing to carry forward.
+
+### External References
+
+- intropy-registry `docs/api.md` and `registry/` definitions (sibling repo): endpoint `channel` is `<pubsub>/<topic>`; endpoints carry `usage: [producer]`; messages carry `dataschemaxid`; schema Version URLs are immutable; `/export` inlines all collections
+- xRegistry 1.0-rc4 spec — only the served subset matters; the client must not invent endpoints the registry declares out of scope (filtering/inlining query params)
+
+---
+
+## Key Technical Decisions
+
+- **Client consumes `/export`, not per-entity walks**: one GET yields every message, group, endpoint, and schema; the registry guarantees it byte-identical to the entity paths. Resolution (message → producer endpoint → channel) happens in-memory. Per-entity fetches stay available for `message show` freshness but are not required for v1.
+- **Dual-read, never dual-write**: new scaffolds write only the `subscribe`/`publishes` block shape; readers (facts, assembly, suggestions, `mergeWiring`) accept both the blocks and the legacy flat `topic`/`contract`/`pubsub` keys. No rewrite of existing records; the legacy path dies when template releases stop emitting it.
+- **`contract` semantics preserved through the rename**: today's `contract` value is a .NET type name in the shared contract project, not a CloudEvents type. The internal message block therefore carries `message` (name, doubles as the CE type) alongside the existing contract-type value during transition; the messagegroup payload to the host template keeps both fields so current host templates keep rendering. Folding the .NET type fully into the message model is template-repo work.
+- **Subscriber channel resolution moves to assembly**: internal `subscribe` blocks name only the message; `Assemble` resolves pubsub/topic from the component whose `publishes` declares that message. External `subscribe` blocks carry their own snapshot and need no producer.
+- **Unresolved internal subscription is a hard assembly error** naming the message and the subscribing record — a half-wired system must not render (mirrors `parseTransactional`'s both-ports-required rule).
+- **Ambiguous producer resolution**: interactive runs offer a pick list of candidate channels; `--no-input` fails listing the candidates. Same rule for several producer endpoints on one message group and for a message group with no producer endpoint (error names the group).
+- **`dataschemaurl` pins the schema's default version at subscribe time**; the version ID is recoverable from the URL. Re-pinning is the future re-resolve flow, not v1.
+- **`--no-input` + required message parameter + no `--subscribe` fails** naming `--subscribe` — consistent with the flag's "fail rather than ask" contract.
+
+---
+
+## Open Questions
+
+### Resolved During Planning
+
+- Migration path for existing records: dual-read, no tooling (see Key Technical Decisions).
+- Subscriber names an unpublished internal message: hard assembly error.
+- Multiple producer endpoints, different channels: interactive pick; `--no-input` error listing candidates.
+- `message list` internal source: workspace facts scan of scaffold records (works pre-assembly; consistent with prompt suggestions).
+- `dataschemaurl` pinning: default version at subscribe time.
+
+### Deferred to Implementation
+
+- Exact `subscribe`/`publishes` block key names inside values (e.g. whether the CE type lives under `message` or a separate `type` key) — settle against the template repo's parameter naming when the first template declares them.
+- Whether `message show` hits `/export` or the per-entity path — whichever the client already has; do not add an endpoint for cosmetics.
+- Cache policy for `/export` (none vs short-lived) — measure against the local dev registry first; correctness never depends on cache.
+
+---
+
+## High-Level Technical Design
+
+> *This illustrates the intended approach and is directional guidance for review, not implementation specification. The implementing agent should treat it as context, not code to reproduce.*
+
+Resolution flow for `--subscribe` (F1):
+
+```mermaid
+flowchart LR
+    A[int create --subscribe REF] --> B[xregistry client: GET /export]
+    B --> C{resolve REF}
+    C -->|message + group| D[find endpoint: usage=producer, messagegroups contains group]
+    D -->|exactly 1| E[split channel pubsub/topic]
+    D -->|several| F[pick list, or error under --no-input]
+    D -->|none| G[error naming group]
+    E --> H[resolve dataschemaxid -> schema default version URL]
+    H --> I[seed values: subscribe block]
+    I --> J[template.Resolve as today]
+```
+
+Record shape written into `.intropy/scaffold.json` values:
+
+```jsonc
+{
+  "subscribe": {
+    "message": "io.intropy.maxbo.product.export",
+    "pubsub": "product-distribution-pubsub",
+    "topic": "sbt-test-product-extractor-001",
+    "dataschema": "/schemagroups/io.intropy.maxbo.product/schemas/product-export.v1",
+    "dataschemaurl": "https://registry.intropy.io/schemagroups/io.intropy.maxbo.product/schemas/product-export.v1/versions/1"
+  }
+}
+```
+
+Internal publisher (R9): `"publishes": {"message": "product-exported", "contract": "ProductExported"}` —
+`contract` kept during transition for the .NET shared-project type.
+
+---
+
+## Implementation Units
+
+- [ ] U1. **xregistry client package**
+
+**Goal:** Read-only client for the registry with in-memory resolution of message refs to wiring.
+
+**Requirements:** R1, R3, and the resolution half of R13
+
+**Dependencies:** None
+
+**Files:**
+- Create: `internal/xregistry/client.go`, `internal/xregistry/types.go`, `internal/xregistry/resolve.go`
+- Test: `internal/xregistry/client_test.go`, `internal/xregistry/resolve_test.go`
+
+**Approach:**
+- Package doc comment states it is unrelated to `internal/registry` (OCI) — they share a name and nothing else
+- Functional-options construction, `UserAgent`, context-first methods, mirroring `internal/registry/client.go`
+- `Export(ctx)` GETs `/export`; typed decode of messagegroups/messages (attributes on the default version), endpoints (`usage`, `channel`, `messagegroups`), schemagroups/schemas (versions, `defaultversionid`)
+- `ResolveMessage(ref)` → resolved wiring: message, CE type from `envelopemetadata.type.value`, candidate channels from producer endpoints, schema xid + default version URL
+- Typed errors: message not found, no producer endpoint, ambiguous producers (carrying candidates), schema not found — callers map them to the CLI error voice
+- Channel split helper `<pubsub>/<topic>` rejecting malformed channels
+
+**Test scenarios:**
+- Happy path: export fixture with one producer endpoint → resolved wiring carries pubsub, topic, CE type, dataschema xid, pinned `/versions/<default>` URL (Covers AE1's resolution half)
+- Happy path: message attributes read from the default version, not the message resource
+- Edge case: message ref that matches no message → `MessageNotFound` naming the ref
+- Edge case: group with no producer endpoint → error naming the group
+- Edge case: two producer endpoints with different channels → ambiguous error listing both channels
+- Edge case: malformed channel (no `/`, empty half) → error naming the endpoint
+- Error path: non-200 from registry → wrapped error naming the operation; xRegistry error body surfaced
+- Error path: unreachable host → context/transport error wrapped, not panicked
+- Integration: httptest server serving a captured `/export` document → end-to-end resolve
+
+**Verification:**
+- `go test ./internal/xregistry/` green; package docs explain the resolution join in the AGENTS.md comment style
+
+---
+
+- [ ] U2. **Registry URL configuration**
+
+**Goal:** `registryUrl` flows from file/context/env/flag to any command that needs it.
+
+**Requirements:** R12, and the unconfigured half of R13
+
+**Dependencies:** None
+
+**Files:**
+- Modify: `internal/config/config.go`
+- Modify: `cmd/intropy/flagtext.go` (add `flagUsageRegistryURL` constant)
+- Test: `internal/config/config_test.go`
+
+**Approach:**
+- Add `RegistryUrl` to `Config`, `Context`, `Flags`; env `INTROPY_REGISTRY_URL`; `Resolve` layering identical to `TemplateRepo`
+- No built-in default; empty means unconfigured
+- Flag description constant: fragment style, names the config key and env var as defaults, per `flagUsageTemplateRepo` precedent
+
+**Test scenarios:**
+- Happy path: file value resolved; context override beats file; flag beats context; env beats file
+- Edge case: empty everywhere → resolved empty (unconfigured), no error at load
+- Error path: unknown config key still rejected (existing strictness preserved with the new key accepted)
+
+**Verification:**
+- `go test ./internal/config/` green; `intropy <cmd> --help` shows the shared description wherever the flag lands
+
+---
+
+- [ ] U3. **Wiring vocabulary: subscribe/publishes blocks + dual-read**
+
+**Goal:** New keys and block parsing in `internal/template`, with facts/suggestions reading both shapes.
+
+**Requirements:** R2, R8, R9; enables R7, R10
+
+**Dependencies:** None (block shape settled in plan; U1 not required)
+
+**Files:**
+- Modify: `internal/template/wiring.go`, `internal/template/facts.go`, `internal/template/suggest.go`, `internal/template/values.go`
+- Test: `internal/template/facts_test.go`, `internal/template/suggest_test.go`, `internal/template/wiring_test.go` (new)
+
+**Approach:**
+- New constants: `KeySubscribe`, `KeyPublishes`, `KeyMessage`, `KeyDataschema`, `KeyDataschemaURL`; legacy `KeyTopic`/`KeyContract`/`KeyPubsub` retained
+- Strict reader for the `subscribe` map (RecordValue-equivalent regime: present-but-mistyped is an error naming the record); soft reader for suggestions
+- Facts index gains message-keyed views: internal messages from `publishes` blocks, topics from both new and legacy shapes; `ContractFor` demotion logic preserved for legacy records
+- Writers never emit legacy keys
+
+**Test scenarios:**
+- Happy path: record with `subscribe` block → strict reader yields message/pubsub/topic/dataschema/dataschemaurl
+- Happy path: legacy flat-key record → same reader yields equivalent wiring (dual-read)
+- Edge case: block present but `pubsub` mistyped → error naming record and key
+- Edge case: block and legacy keys both present → block wins, no error
+- Edge case: facts over mixed old/new workspace → suggestions union without duplicates
+- Error path: empty `message` in block → error naming the record
+
+**Verification:**
+- `go test ./internal/template/` green; no call site writes legacy keys
+
+---
+
+- [ ] U4. **`message` noun: list and show**
+
+**Goal:** Human/agent discovery surface for external and internal messages.
+
+**Requirements:** R5, R6, R13 (degradation)
+
+**Dependencies:** U1, U2, U3
+
+**Files:**
+- Create: `cmd/intropy/message.go`, `cmd/intropy/message_list.go`, `cmd/intropy/message_show.go`
+- Test: `cmd/intropy/message_test.go` (or per-command test files, repo convention)
+
+**Approach:**
+- `message list [--group <id>] [--output json]`: registry messages merged with workspace internal messages (facts scan); table via `text/tabwriter` (ref, group, channel, schema), one row per message; empty state on stderr lowercase (`no messages found`)
+- `message show <ref> [--output json]`: one message's definition — envelope metadata, channel, producing endpoint, schema refs; internal refs resolve from workspace facts
+- `--registry-url` flag using the U2 constant; unconfigured → usage error naming `registryUrl` and the config path; unreachable → wrapped error front-loading what failed
+- Help text per AGENTS.md: one-line imperative `Short`, `Long` ≤150 words, registry reading described in one sentence
+
+**Test scenarios:**
+- Happy path: list against fixture registry → rows grouped, `--group` narrows to one group (Covers F2)
+- Happy path: list inside a workspace with `publishes` records → internal messages appear, marked as local
+- Happy path: `--output json` emits machine-readable document on stdout, diagnostics on stderr
+- Edge case: empty registry + no workspace → `no messages found` on stderr, exit 0
+- Error path: unconfigured registry → error names `registryUrl` and how to set it (Covers AE3)
+- Error path: unreachable registry → error front-loads the failure; stderr only
+- Error path: `show` with unknown ref → not-found naming the ref
+
+**Verification:**
+- `go test ./cmd/intropy/` green; `intropy message list --help` passes the helptext conventions test
+
+---
+
+- [ ] U5. **`int create --subscribe`**
+
+**Goal:** One-flag external subscription with resolution, prompting, and record write.
+
+**Requirements:** R1, R2, R3, R4, R7, R13
+
+**Dependencies:** U1, U2, U3
+
+**Files:**
+- Modify: `cmd/intropy/int_create.go`
+- Modify: `internal/template/create.go` (seed resolved block into values pre-resolution), `internal/template/prepare.go` as needed
+- Test: `cmd/intropy/int_create_test.go`, `internal/template/create_test.go`
+
+**Approach:**
+- `--subscribe <ref>` resolves via U1 before value resolution, seeds the `subscribe` block like `-n` seeds `name`; `--registry-url` override flag
+- Usage error when the template declares no message parameters (R4) — checked against the fetched template manifest before any render (Covers AE2)
+- Interactive: template message parameter without `--subscribe` prompts with pick list from registry + facts (U3 readers); pick list keeps the free-text escape per `promptSuggestedList`
+- Registry unreachable during prompting: warn on stderr, fall back to facts-only suggestions; during explicit `--subscribe`: fail hard
+- `--no-input` + missing required message parameter → error naming `--subscribe`
+- Record written with the block shape from U3 (Covers AE1)
+
+**Test scenarios:**
+- Happy path: Covers AE1 — subscribe against fixture registry writes the full block, no prompts for wired values
+- Happy path: pick-list prompt offers registry messages plus local internal messages
+- Error path: Covers AE2 — non-message template + `--subscribe` → usage error naming the template
+- Error path: unconfigured registry + `--subscribe` → remediation error (Covers AE3)
+- Error path: unreachable registry + `--subscribe` → hard failure; same during prompting → stderr warning + facts fallback
+- Error path: `--no-input` without `--subscribe` → error naming the flag
+- Edge case: ambiguous producers → interactive pick; `--no-input` → error listing candidate channels
+
+**Verification:**
+- `go test ./cmd/intropy/ ./internal/template/` green; scaffold record on disk matches the U3 shape
+
+---
+
+- [ ] U6. **Assembly: producer-declared internal messages**
+
+**Goal:** `sys create/update` understands both wiring shapes, aggregates the internal messagegroup, and resolves subscriber channels from producers.
+
+**Requirements:** R9, R10, R11; R8 in system code
+
+**Dependencies:** U3
+
+**Files:**
+- Modify: `internal/system/blocks.go`, `internal/system/assemble.go`, `internal/system/model.go`, `internal/system/payload.go`, `internal/system/update.go` (`mergeWiring`)
+- Test: `internal/system/assemble_test.go`, `internal/system/update_test.go`, `internal/system/payload_test.go`
+
+**Approach:**
+- `parseTopicBlock` accepts the block shape via U3 readers; legacy path untouched
+- Component model distinguishes publish vs subscribe wiring; subscriber `subscribe{message}` (internal, no channel) resolves against the workspace's `publishes` declarations — external subscriptions carry their own snapshot (R11: no network here)
+- Legacy records are directionless (shared topic key pairs the halves); their publish/subscribe direction is derived from block kind (extractor publishes, loader subscribes) — the same rule the host template applies today — so mixed workspaces assemble deterministically
+- `Assemble` gains cross-component checks: subscriber names unpublished message → hard error naming message + record (Covers AE4's failure twin); two producers publish the same message → conflict error in the existing topic-conflict style
+- Model/payload gain the internal messagegroup section (name + type required, `dataschema` optional, `contract` carried for the .NET type during transition); `mergeWiring` round-trips the new shape
+- Assembly never builds an xregistry client (R11) — enforce by construction: no import
+
+**Test scenarios:**
+- Happy path: Covers AE4 — publisher + subscriber records assemble; subscriber's channel resolves from the publisher; payload's messagegroup contains the message with its type
+- Happy path: external `subscribe` block assembles from its snapshot with the registry unreachable (R11)
+- Happy path: mixed legacy + new records assemble into one system
+- Edge case: legacy topic-conflict check still fires for conflicting contracts on one topic key
+- Error path: subscriber names unpublished message → error naming message and record
+- Error path: two producers, same message → conflict error naming both paths
+- Integration: `sys update` on a mixed workspace re-renders wiring without dropping block values (mergeWiring round-trip)
+
+**Verification:**
+- `go test ./internal/system/` green; no `internal/xregistry` import under `internal/system/`
+
+---
+
+- [ ] U7. **Topology record + vocabulary docs**
+
+**Goal:** The topology model carries the internal messagegroup shape, and user-facing vocabulary docs catch up with the rename.
+
+**Requirements:** R8, R10 (topology half)
+
+**Dependencies:** U3, U6
+
+**Files:**
+- Modify: `internal/topology/topology.go` (messagegroup section; opaque decode per the `APIs` precedent if the host shape is not yet final)
+- Modify: `AGENTS.md` (vocabulary section: `message` definition, `event` as prose, `message` noun verbs), `cmd/intropy/flagtext.go` if new shared flags landed
+- Modify: `catalog/concepts/intropy-resource-model.md` and related concept docs mentioning `contract`
+- Test: `internal/topology/topology_test.go`
+
+**Approach:**
+- Decode the messagegroup section leniently: preserve for round-trip to the dashboard without asserting an unfinalized schema (the `APIs []json.RawMessage` precedent)
+- Docs rename `contract` → `message` where the concept means the message definition; keep `contract` only where the .NET shared project is literally meant, marked as transitional
+
+**Test scenarios:**
+- Happy path: topology record with messagegroup section decodes and re-encodes losslessly
+- Edge case: record without the section (older hosts) decodes identically to today
+- Test expectation for docs: none — prose only
+
+**Verification:**
+- `go test ./internal/topology/` green; `grep -rn "contract" catalog/` shows only transitional mentions
+
+---
+
+## System-Wide Impact
+
+- **Interaction graph:** value resolution (`values.go`), prompt suggestions (`suggest.go`), assembly (`blocks.go`/`assemble.go`), and `mergeWiring` all read wiring — U3's dual-read is the single seam every consumer shares; no consumer may parse blocks ad hoc.
+- **Error propagation:** xregistry errors are typed at the client boundary and mapped to the CLI error voice at the command layer (front-loaded failure, remediation on the second line); assembly errors keep the strict `RecordValue` regime.
+- **State lifecycle risks:** scaffold records are committed files — dual-read prevents a mixed fleet of old and new records from breaking any command; writers emit new shape only.
+- **API surface parity:** the dashboard (`internal/dashboard`, `web/`) renders template fields and wiring; it reads the same facts/scaffold shapes and will show `subscribe` blocks — parity work there is follow-up, not this plan.
+- **Integration coverage:** end-to-end `--subscribe` requires the template-repo PR (see Deferred to Follow-Up Work); CLI units are tested against fixtures until then.
+- **Unchanged invariants:** the OCI release/template registry (`internal/registry`, `release`, `template` nouns) is untouched; `sys create/update` stays offline; legacy flat-key records remain fully functional.
+
+---
+
+## Risks & Dependencies
+
+| Risk | Mitigation |
+|------|------------|
+| Template library lags the CLI, so `--subscribe` errors on every current template (R4) | Dual-read keeps everything else working; template PR is sequenced immediately after; R4 error message points at the required template release |
+| `contract` means two things during transition (CE type vs .NET type) | Both fields carried in the messagegroup payload; docs mark the .NET usage transitional; full fold-in is template-repo work |
+| Registry `channel` format changes (`<pubsub>/<topic>`) | Split helper validates and errors naming the endpoint; registry conformance suite owns the format |
+| `/export` grows large as the registry grows | One GET per command invocation; cache policy deferred to implementation with correctness never cache-dependent |
+| Registry unavailable in CI/offline demos | R11 keeps assembly offline; `message`/`--subscribe` failures carry remediation; local dev registry via `task dev` in intropy-registry |
+
+---
+
+## Documentation / Operational Notes
+
+- AGENTS.md vocabulary section updated in U7 — the house style file is the authority contributors read.
+- `catalog/concepts/` gains the message-model explanation; the xRegistry relationship links to intropy-registry's `docs/api.md`.
+- No rollout concerns: CLI is opt-in per release; new keys are additive to scaffold records.
+
+---
+
+## Sources & References
+
+- **Origin document:** docs/brainstorms/2026-09-04-xregistry-message-integration-requirements.md
+- Related code: `internal/template/wiring.go`, `internal/system/assemble.go`, `internal/config/config.go`, `internal/registry/client.go`
+- External docs: intropy-registry `docs/api.md` (sibling repo), xRegistry 1.0-rc4 spec
+
+</file>
+You are a focused implementation review agent. Review the current branch's implementation against the attached plan: docs/plans/2026-09-04-001-feat-xregistry-message-integration-plan.md.
+
+Scope:
+- Compare the current branch against its merge-base with the default branch, and include relevant uncommitted tracked/untracked files in the working tree.
+- Verify that the implemented behavior satisfies the plan's requirements and slices.
+- Specifically re-check the prior findings around prompt-time unconfigured registry behavior, lazy registry candidate loading only for message-capable templates, --subscribe seeding the declared message parameter, messagegroup name/message shape round-tripping, --subscribe usage-error mapping, dead xregistry entity-path fetches, stale comments, unused fields, registryClient duplication, HTTP timeout, update-created publisher field, publishes.dataschema propagation, help-text style, and worktree artifacts.
+- Review Go CLI quality, tests, backward compatibility, error handling, docs/help text style, and integration seams.
+- Do not modify files, do not commit, do not push.
+
+Output:
+- Start with a one-line verdict: ready / needs changes / blocked.
+- Then list findings ordered by severity, each with file/line references, requirement or plan section, why it matters, and a concrete fix.
+- Include a short 'verified' section naming commands or evidence you used.
+- If no significant issues are found, say so explicitly and list residual risks.
