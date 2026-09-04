@@ -3,7 +3,7 @@
   "checkpoint_id": "c53b28bc740a",
   "strategy": "manual-commit",
   "branch": "feat/xregistry-message-integration",
-  "checkpoints_count": 27,
+  "checkpoints_count": 31,
   "files_touched": [
     ".gitignore",
     "AGENTS.md",
@@ -63,6 +63,13 @@
       "compact_transcript": "/c5/3b28bc740a/3/transcript.jsonl",
       "content_hash": "/c5/3b28bc740a/3/content_hash.txt",
       "prompt": "/c5/3b28bc740a/3/prompt.txt"
+    },
+    {
+      "metadata": "/c5/3b28bc740a/4/metadata.json",
+      "transcript": "/c5/3b28bc740a/4/full.jsonl",
+      "compact_transcript": "/c5/3b28bc740a/4/transcript.jsonl",
+      "content_hash": "/c5/3b28bc740a/4/content_hash.txt",
+      "prompt": "/c5/3b28bc740a/4/prompt.txt"
     }
   ],
   "token_usage": {
@@ -70,6 +77,6 @@
     "cache_creation_tokens": 0,
     "cache_read_tokens": 34695616,
     "output_tokens": 155624,
-    "api_call_count": 371
+    "api_call_count": 375
   }
 }
