@@ -1,0 +1,58 @@
+Brainstorming task. This branch implements xregistry support and the subscribe side of things. How do you think we should design the publishing sie?
+
+---
+
+For that flag it is "Declaring production of an existing registry message"
+
+---
+
+I am leaning to 2. What do you think?
+
+---
+
+Hmm I dont know. What do you suggest?
+
+---
+
+1
+
+---
+
+It is implicit in a template. An extractor will never subscribe and a loader will never produce. But I am not sure how we should implement this in the template?
+
+---
+
+1. transactional-integration is actually neither. It talks directly with external systems 
+2. Yep
+
+---
+
+2
+
+---
+
+1. Do the changes on this branch. Do not push anything
+
+---
+
+Can you continue the implementation?
+
+---
+
+Can you launch a review agent with pi --print that uses GLM-5.3-Flash model?
+
+---
+
+Can you fix the remaining review findings?
+
+---
+
+can you launch a new review session with pi --print?
+
+---
+
+You are a strict code reviewer for this Go CLI repository (intropy-cli). Context: you reviewed this change set earlier and issued REQUEST_CHANGES. Since then, fixes landed. Re-review the uncommitted changes: run 'git diff HEAD' and 'git status --short'. The change set spans an xRegistry message publishing feature (int create --publishes, direction gates, snapshot publishes block, external-publish assembly) plus subscribe-side hardening. Previous findings and their claimed dispositions, which you should VERIFY in the code: (1) nil SetValues panic / lost seed — fixed by normalizing SetValues in prepareCreateTemplate, with tests; (2) mergeWiring stored message shape vs pinned host templates — investigation showed payload.go (committed) already writes {name, type, publisher?}, so update.go's change converges two writers of one shape; a writer-parity comment now documents it — judge whether that documentation is adequate; (3) planning docs untracked — house precedent keeps them out of git (commit 706c0a68), a commit-time decision; (4) unconfigured registry now warns instead of failing interactive creates, with memoized single warning and tests; (5) non-string message values now conflict; (6) MessageRefsLoader errors now degrade to warnings at the template layer and propagate from the CLI; (7) exclusivity is a mapped sentinel ErrMessageFlagsExclusive; (8) client timeout override documented (WithHTTPClient); (9) AE-ID references in test comments match committed style; (10) Makefile/.gitignore are a separate housekeeping commit. Also look for any NEW issues introduced by those fixes. Review criteria: correctness bugs, error-handling gaps, house style compliance (read AGENTS.md at the repo root), test coverage, backwards compatibility of record formats and CLI errors. Do NOT modify any files. Output findings as a numbered list with severity (P0/P1/P2), file path, one-sentence rationale, and for each of the ten items above state VERIFIED or NOT VERIFIED. End with a verdict line: APPROVE or REQUEST_CHANGES.
+
+---
+
+What changes are required on the template repo? Are there any changes necessary for the topology repo?

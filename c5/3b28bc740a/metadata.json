@@ -3,9 +3,10 @@
   "checkpoint_id": "c53b28bc740a",
   "strategy": "manual-commit",
   "branch": "feat/xregistry-message-integration",
-  "checkpoints_count": 10,
+  "checkpoints_count": 27,
   "files_touched": [
     ".gitignore",
+    "AGENTS.md",
     "Makefile",
     "cmd/intropy/flagtext.go",
     "cmd/intropy/int_create.go",
@@ -14,13 +15,19 @@
     "cmd/intropy/message_list.go",
     "cmd/intropy/message_show.go",
     "cmd/intropy/message_test.go",
+    "internal/system/assemble.go",
+    "internal/system/assemble_test.go",
     "internal/system/blocks.go",
     "internal/system/model.go",
     "internal/system/update.go",
     "internal/system/update_test.go",
     "internal/template/create.go",
     "internal/template/create_test.go",
+    "internal/template/facts.go",
     "internal/template/prepare.go",
+    "internal/template/scaffold.go",
+    "internal/template/scaffold_test.go",
+    "internal/template/values.go",
     "internal/template/wiring.go",
     "internal/template/wiring_test.go",
     "internal/xregistry/client.go",
@@ -49,13 +56,20 @@
       "compact_transcript": "/c5/3b28bc740a/2/transcript.jsonl",
       "content_hash": "/c5/3b28bc740a/2/content_hash.txt",
       "prompt": "/c5/3b28bc740a/2/prompt.txt"
+    },
+    {
+      "metadata": "/c5/3b28bc740a/3/metadata.json",
+      "transcript": "/c5/3b28bc740a/3/full.jsonl",
+      "compact_transcript": "/c5/3b28bc740a/3/transcript.jsonl",
+      "content_hash": "/c5/3b28bc740a/3/content_hash.txt",
+      "prompt": "/c5/3b28bc740a/3/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 465308,
+    "input_tokens": 845463,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 14285632,
-    "output_tokens": 59083,
-    "api_call_count": 185
+    "cache_read_tokens": 34695616,
+    "output_tokens": 155624,
+    "api_call_count": 371
   }
 }
