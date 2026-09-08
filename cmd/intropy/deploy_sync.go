@@ -41,7 +41,7 @@ var deploySyncCmd = &cobra.Command{
 		"Pass --revision to name the commit whose diff you reviewed: if the pending change is a different one, " +
 		"the sync is refused rather than spending your approval on something you did not read.\n\n" +
 		"Nothing is written to git, and kubectl is never invoked.",
-	Args: cobra.ExactArgs(1),
+	Args: usageArgs(cobra.ExactArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validateOutputFlag(syncFlagValues.output, deploy.OutputPlain, deploy.OutputJSON); err != nil {
 			return err

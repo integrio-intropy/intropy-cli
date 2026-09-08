@@ -4,7 +4,7 @@
 // Two trees are embedded and one is picked at serve time: placeholder/dist,
 // committed, and dist, the `vite build` output (see `make web`), which is
 // gitignored and present only in a workspace where the SPA has been built.
-// go:embed patterns must match at compile time, so an unbuilt workspace
+// Embed patterns must match at compile time, so an unbuilt workspace
 // keeps a marker file in dist (restored by `make web-clean`). A built dist
 // drops the marker, and its absence is what makes the real SPA win — the
 // state released binaries ship.

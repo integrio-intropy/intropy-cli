@@ -39,7 +39,7 @@ var deployDiffCmd = &cobra.Command{
 		"ArgoCD must therefore be reachable.\n\n" +
 		"A non-empty diff still exits 0 — this reports, it does not gate. Nothing is written to git, and " +
 		"kubectl is never invoked.",
-	Args: cobra.ExactArgs(1),
+	Args: usageArgs(cobra.ExactArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validateOutputFlag(diffFlagValues.output, deploy.OutputPlain, deploy.OutputJSON); err != nil {
 			return err

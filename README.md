@@ -166,6 +166,10 @@ intropy
 │   ├── create <component>     Publish a release manifest and push a git tag
 │   ├── list <component>       List the releases published for a component
 │   └── view <component> <ver> Read a published release manifest
+├── context                Manage customer contexts
+│   ├── use <name>           Switch the active customer context
+│   ├── list                 List customer contexts
+│   └── show                 Show the active context's resolved settings
 ├── dashboard [dir]        Browse the integrations scaffolded under dir
 └── version                Print version information
 ```
@@ -206,14 +210,18 @@ intropy int create hello-world --out-dir ./my-integration
 
 Name the integration and scaffold it in one step. `-n/--name` sets the template's
 `name` parameter (so you're not prompted for it) and, unless `-o/--out-dir` is given,
-becomes the output directory — the same split as `dotnet new`, where `-o` is the literal
-output location and `-n` only names the artifacts.
+defaults the output directory to the kebab-cased name — `OrderSync` scaffolds into
+`./order-sync`, the same normalization `sys create` applies. With neither flag, the
+resolved `name` parameter kebab-cases the same way, so a run that answers the prompts
+needs no directory decision at all. `-o/--out-dir` always wins when given — the same
+split as `dotnet new`, where `-o` is the literal output location and `-n` only names
+the artifacts.
 
 > **Note:** in `int create` and `sys create`, `--output json` selects the result document
 > on stdout like everywhere else in the CLI. `-o` always means `--out-dir` here.
 
 ```sh
-# scaffolds into ./orders and sets name=orders
+# scaffolds into ./orders and sets name=orders (-n OrderSync would scaffold ./order-sync)
 intropy int create hello-world -n orders
 
 # -o/--out-dir overrides the output directory: scaffolds into ./order-extractor with name=OrderExtractor
@@ -670,7 +678,8 @@ Credentials come from the argocd CLI's own configuration, so if you have run
 `ARGOCD_AUTH_TOKEN` override it — those are argocd's variable names, honoured
 deliberately so an existing CI setup works unchanged. Precedence for the server
 is the `--argocd-server` flag, then `ARGOCD_SERVER`, then `deploy.yaml`, and
-finally `argocdServer` in the user configuration. `deploy.yaml` beats the user
+finally `argocdServer` in the user configuration — where the active
+context's value beats the top-level one. `deploy.yaml` beats the user
 configuration on purpose: it travels with the repository the overlays live in.
 
 The wait is defined in terms of the pushed revision, not just sync status.
@@ -759,6 +768,39 @@ API, so URLs and SSH remotes are rejected. Override it with `--template-repo`
 or `INTROPY_TEMPLATE_REPO`, on `int create`, `sys create`, `template list`,
 `template show`, and the `manifests` commands. Unset, the official library at
 `integrio-intropy/intropy-templates` is used.
+
+#### Customer contexts
+
+Working across several customers means the settings above change together.
+The same file holds them as named contexts, kubeconfig-style:
+
+```yaml
+organization: integrio
+currentContext: acme
+contexts:
+  acme:
+    organization: acme
+    gitopsRepo: git@gitlab.com:integrio/intropy/customers/acme/gitops.git
+  staging-eu:
+    gitopsRepo: git@gitlab.com:integrio/intropy/customers/staging-eu/gitops.git
+```
+
+A context overrides only the top-level keys it sets; the rest fall through
+to the file's defaults, so `staging-eu` above keeps the top-level
+`organization`. Precedence is flag > environment > active context >
+top-level keys, and a file with no `contexts:` behaves exactly as before.
+
+Contexts are authored in the file by hand; the CLI switches, lists, and
+inspects them:
+
+```sh
+intropy context use acme     # persist the active context
+intropy context list         # show contexts, marking the active one
+intropy context show         # show the resolved settings and where each came from
+```
+
+`context show` annotates every value with its source — `env`, `context`, or
+`file` — so a forgotten exported variable is visible before a deploy.
 
 ### What the GitOps repository must contain
 
@@ -1041,6 +1083,42 @@ OCI operations use the standard Docker credential chain — log in once with
 `docker login`, `gh auth login` (for `ghcr.io`), or your registry-specific
 tooling, and the CLI will pick up the credentials transparently.
 
+## Seeding test files from the dashboard
+
+An extractor's local input is a folder: the host's development definition
+resolves each external port to one (`development.Files(Ports.ErpSource)
+.RootPath("./test/erp-source")`, emitted by the host's `graph --development`
+verb), and the running extractor watches it through a localstorage binding.
+The flow view can fill that folder for you: every declared extractor carries a
+seed action that copies a chosen sample payload into the port's dev folder.
+
+Sample payloads live in a per-system library, keyed by port name — the twin of
+the `messages/<port>.md` docs convention:
+
+```
+order-flow/
+  messages/erp-source.md        # what the payload means
+  testdata/erp-source/          # what the payload looks like
+    orders-2024-01.csv
+    orders-missing-column.csv
+```
+
+The library is **committed to git** — it is shared team material, served by any
+developer's dashboard — and its samples must be sanitized before committing
+them, the same bar the message docs' `redacted: true` assertion sets. Keep it
+named `testdata/`: the dev folder itself is conventionally `test/<port>`, and a
+library named `test/` would collide with the inbox an extractor consumes from.
+
+The copy lands flat at `<rootPath>/<filename>` — the localstorage binding
+reads the folder, not subdirectories. Writing onto a file that is already
+there is a conflict the drawer offers to replace; two components consuming the
+same port share one inbox, so seeding for one overwrites the other's pending
+drop (the conflict prompt is the guard).
+
+A scaffolded-but-undeclared extractor (a ghost) shows the action disabled:
+without the declared topology there is no port wiring to seed against. Update
+the host, refresh the topology, and the action comes alive.
+
 ## Project layout
 
 ```
@@ -1068,6 +1146,8 @@ own; `deploy` holds the policy that combines them. Test fixtures live in
 
 ## Exit codes
 
+These codes are stable and safe to gate scripts and CI on.
+
 - `0` — success
 - `1` — runtime error
 - `2` — usage error (unknown command, missing required flag, bad argument)
@@ -1094,3 +1174,7 @@ and the pull request workflow.
 - [`integrio-intropy/intropy-templates`](https://github.com/integrio-intropy/intropy-templates)
   — the template library `intropy int create` and `intropy template`
   download from by default.
+
+## License
+
+[FSL-1.1-ALv2](LICENSE) © Integrio — Functional Source License, converting to Apache 2.0 two years after each release.

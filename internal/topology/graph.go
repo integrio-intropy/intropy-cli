@@ -36,7 +36,11 @@ func RunGraph(ctx context.Context, hostDir string) (*Topology, error) {
 		return nil, fmt.Errorf("build failed: %v%s", err, tail(buildOut.Bytes()))
 	}
 
-	cmd := exec.CommandContext(ctx, "dotnet", "run", "--no-build", "--no-launch-profile", "--project", hostDir, "--", "graph")
+	// --development asks the host to include its development section (local
+	// file resolutions for ports). The verb parses args by presence, so a
+	// host built against an Intropy.Topology that predates the flag simply
+	// ignores it and emits no section.
+	cmd := exec.CommandContext(ctx, "dotnet", "run", "--no-build", "--no-launch-profile", "--project", hostDir, "--", "graph", "--development")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {

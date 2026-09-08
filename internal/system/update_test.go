@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/integrio-intropy/intropy-cli/internal/template"
+	"github.com/integrio-intropy/intropy-cli/internal/template/templatetest"
 )
 
 func readFile(t *testing.T, path string) string {
@@ -118,19 +118,17 @@ func renderFixtureHost(t *testing.T, hostDir string, values map[string]any) {
 	}
 }
 
-func runUpdate(t *testing.T, srv *httptest.Server, opts UpdateOptions) (stdout, stderr bytes.Buffer, err error) {
+func runUpdate(t *testing.T, lib *templatetest.Library, opts UpdateOptions) (stdout, stderr bytes.Buffer, err error) {
 	t.Helper()
 	opts.Stdout = &stdout
 	opts.Stderr = &stderr
-	opts.HTTP = srv.Client()
-	opts.GitHubBaseURL = srv.URL
+	opts.Source = lib.Source(t)
 	err = Update(context.Background(), opts)
 	return stdout, stderr, err
 }
 
 func TestUpdateFoldsOrphanIntoHost(t *testing.T) {
-	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
-	defer srv.Close()
+	lib, _ := newSystemHostLibrary(t, "v1", systemHostFiles())
 
 	ws, hostDir := updateWorkspace(t)
 	writeBlock(t, filepath.Join(ws, "billing-sync"), template.BlockKindTransactional, "billing-sync")
@@ -150,7 +148,7 @@ func TestUpdateFoldsOrphanIntoHost(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, stderr, err := runUpdate(t, srv, UpdateOptions{StartDir: ws})
+	_, stderr, err := runUpdate(t, lib, UpdateOptions{StartDir: ws})
 	if err != nil {
 		t.Fatalf("Update: %v\nstderr: %s", err, stderr.String())
 	}
@@ -190,7 +188,7 @@ func TestUpdateFoldsOrphanIntoHost(t *testing.T) {
 	}
 
 	// Idempotence: a second run is a no-op.
-	_, stderr2, err := runUpdate(t, srv, UpdateOptions{StartDir: ws})
+	_, stderr2, err := runUpdate(t, lib, UpdateOptions{StartDir: ws})
 	if err != nil {
 		t.Fatalf("second Update: %v", err)
 	}
@@ -200,8 +198,7 @@ func TestUpdateFoldsOrphanIntoHost(t *testing.T) {
 }
 
 func TestUpdateNoOrphansIsNoOp(t *testing.T) {
-	srv, hits := newSystemHostServer(t, "v1", systemHostFiles())
-	defer srv.Close()
+	lib, hits := newSystemHostLibrary(t, "v1", systemHostFiles())
 
 	ws, hostDir := updateWorkspace(t)
 	marker := filepath.Join(hostDir, "marker.txt")
@@ -209,7 +206,7 @@ func TestUpdateNoOrphansIsNoOp(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, stderr, err := runUpdate(t, srv, UpdateOptions{StartDir: ws})
+	_, stderr, err := runUpdate(t, lib, UpdateOptions{StartDir: ws})
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -225,8 +222,7 @@ func TestUpdateNoOrphansIsNoOp(t *testing.T) {
 }
 
 func TestUpdatePreservesReverseOrphan(t *testing.T) {
-	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
-	defer srv.Close()
+	lib, _ := newSystemHostLibrary(t, "v1", systemHostFiles())
 
 	ws, hostDir := updateWorkspace(t)
 	// The loader's scaffold disappears after the host declared it.
@@ -235,7 +231,7 @@ func TestUpdatePreservesReverseOrphan(t *testing.T) {
 	}
 	writeBlock(t, filepath.Join(ws, "returns-extractor"), template.BlockKindExtractor, "returns-extractor")
 
-	_, stderr, err := runUpdate(t, srv, UpdateOptions{StartDir: ws})
+	_, stderr, err := runUpdate(t, lib, UpdateOptions{StartDir: ws})
 	if err != nil {
 		t.Fatalf("Update: %v\nstderr: %s", err, stderr.String())
 	}
@@ -264,8 +260,7 @@ func TestUpdatePreservesReverseOrphan(t *testing.T) {
 func TestUpdateRendersWithRecordPin(t *testing.T) {
 	// The record pins v9; only a fetch of v9 can succeed, so a run that
 	// silently resolved latest fails loudly.
-	srv, _ := newSystemHostServer(t, "v9", systemHostFiles())
-	defer srv.Close()
+	lib, _ := newSystemHostLibrary(t, "v9", systemHostFiles())
 
 	ws, hostDir := updateWorkspace(t)
 	values := hostValues("order-flow", []any{
@@ -284,7 +279,7 @@ func TestUpdateRendersWithRecordPin(t *testing.T) {
 
 	writeBlock(t, filepath.Join(ws, "returns-extractor"), template.BlockKindExtractor, "returns-extractor")
 
-	if _, stderr, err := runUpdate(t, srv, UpdateOptions{StartDir: ws}); err != nil {
+	if _, stderr, err := runUpdate(t, lib, UpdateOptions{StartDir: ws}); err != nil {
 		t.Fatalf("Update: %v\nstderr: %s", err, stderr.String())
 	}
 
@@ -297,9 +292,28 @@ func TestUpdateRendersWithRecordPin(t *testing.T) {
 	}
 }
 
+func TestUpdateExplicitPinKeepsBaseline(t *testing.T) {
+	// The dashboard's sync always passes its held release explicitly.
+	// Naming the same version the record pins must not invalidate the
+	// baseline — the render comes from the same template, so the update
+	// folds the orphan in instead of conflicting on every changed file.
+	lib, _ := newSystemHostLibrary(t, "v1", systemHostFiles())
+
+	ws, hostDir := updateWorkspace(t)
+	writeBlock(t, filepath.Join(ws, "returns-extractor"), template.BlockKindExtractor, "returns-extractor")
+
+	_, stderr, err := runUpdate(t, lib, UpdateOptions{StartDir: ws, Version: "v1"})
+	if err != nil {
+		t.Fatalf("Update with the record's pin passed explicitly: %v\nstderr: %s", err, stderr.String())
+	}
+	systemClass := readFile(t, filepath.Join(hostDir, "OrderFlowSystem.cs"))
+	if !strings.Contains(systemClass, `builder.AddExtractor("returns-extractor")`) {
+		t.Errorf("OrderFlowSystem.cs does not declare returns-extractor:\n%s", systemClass)
+	}
+}
+
 func TestUpdateDryRunWritesNothing(t *testing.T) {
-	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
-	defer srv.Close()
+	lib, _ := newSystemHostLibrary(t, "v1", systemHostFiles())
 
 	ws, hostDir := updateWorkspace(t)
 	writeBlock(t, filepath.Join(ws, "returns-extractor"), template.BlockKindExtractor, "returns-extractor")
@@ -310,7 +324,7 @@ func TestUpdateDryRunWritesNothing(t *testing.T) {
 	}
 	systemBefore := readFile(t, filepath.Join(hostDir, "OrderFlowSystem.cs"))
 
-	stdout, stderr, err := runUpdate(t, srv, UpdateOptions{StartDir: ws, DryRun: true, OutputJSON: "-"})
+	stdout, stderr, err := runUpdate(t, lib, UpdateOptions{StartDir: ws, DryRun: true, OutputJSON: "-"})
 	if err != nil {
 		t.Fatalf("Update: %v\nstderr: %s", err, stderr.String())
 	}
@@ -350,8 +364,7 @@ func TestUpdateDryRunWritesNothing(t *testing.T) {
 }
 
 func TestUpdateConflictRefusesAndKeepsBaseline(t *testing.T) {
-	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
-	defer srv.Close()
+	lib, _ := newSystemHostLibrary(t, "v1", systemHostFiles())
 
 	ws, hostDir := updateWorkspace(t)
 	writeBlock(t, filepath.Join(ws, "returns-extractor"), template.BlockKindExtractor, "returns-extractor")
@@ -366,7 +379,7 @@ func TestUpdateConflictRefusesAndKeepsBaseline(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, _, err = runUpdate(t, srv, UpdateOptions{StartDir: ws})
+	_, _, err = runUpdate(t, lib, UpdateOptions{StartDir: ws})
 	if err == nil {
 		t.Fatal("Update succeeded despite a conflicting file")
 	}
@@ -391,8 +404,7 @@ func TestUpdateConflictRefusesAndKeepsBaseline(t *testing.T) {
 }
 
 func TestUpdateForceOverwritesConflict(t *testing.T) {
-	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
-	defer srv.Close()
+	lib, _ := newSystemHostLibrary(t, "v1", systemHostFiles())
 
 	ws, hostDir := updateWorkspace(t)
 	writeBlock(t, filepath.Join(ws, "returns-extractor"), template.BlockKindExtractor, "returns-extractor")
@@ -401,7 +413,7 @@ func TestUpdateForceOverwritesConflict(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, stderr, err := runUpdate(t, srv, UpdateOptions{StartDir: ws, Force: true}); err != nil {
+	if _, stderr, err := runUpdate(t, lib, UpdateOptions{StartDir: ws, Force: true}); err != nil {
 		t.Fatalf("Update --force: %v\nstderr: %s", err, stderr.String())
 	}
 	got := readFile(t, conflicted)
@@ -411,13 +423,12 @@ func TestUpdateForceOverwritesConflict(t *testing.T) {
 }
 
 func TestUpdateErrorsWithoutHost(t *testing.T) {
-	srv, hits := newSystemHostServer(t, "v1", systemHostFiles())
-	defer srv.Close()
+	lib, hits := newSystemHostLibrary(t, "v1", systemHostFiles())
 
 	ws := t.TempDir()
 	writeBlock(t, filepath.Join(ws, "order-extractor"), template.BlockKindExtractor, "order-extractor")
 
-	_, _, err := runUpdate(t, srv, UpdateOptions{StartDir: ws})
+	_, _, err := runUpdate(t, lib, UpdateOptions{StartDir: ws})
 	if err == nil {
 		t.Fatal("Update succeeded without a host")
 	}
@@ -430,11 +441,10 @@ func TestUpdateErrorsWithoutHost(t *testing.T) {
 }
 
 func TestUpdateErrorsInsideHostDir(t *testing.T) {
-	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
-	defer srv.Close()
+	lib, _ := newSystemHostLibrary(t, "v1", systemHostFiles())
 
 	_, hostDir := updateWorkspace(t)
-	_, _, err := runUpdate(t, srv, UpdateOptions{StartDir: hostDir})
+	_, _, err := runUpdate(t, lib, UpdateOptions{StartDir: hostDir})
 	if err == nil {
 		t.Fatal("Update succeeded from inside the host directory")
 	}
@@ -444,13 +454,12 @@ func TestUpdateErrorsInsideHostDir(t *testing.T) {
 }
 
 func TestUpdateErrorsWithTwoHosts(t *testing.T) {
-	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
-	defer srv.Close()
+	lib, _ := newSystemHostLibrary(t, "v1", systemHostFiles())
 
 	ws, _ := updateWorkspace(t)
 	writeHost(t, filepath.Join(ws, "second-host"), nil)
 
-	_, _, err := runUpdate(t, srv, UpdateOptions{StartDir: ws})
+	_, _, err := runUpdate(t, lib, UpdateOptions{StartDir: ws})
 	if err == nil {
 		t.Fatal("Update succeeded with two hosts")
 	}
@@ -460,8 +469,7 @@ func TestUpdateErrorsWithTwoHosts(t *testing.T) {
 }
 
 func TestUpdateErrorsOnMalformedComponents(t *testing.T) {
-	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
-	defer srv.Close()
+	lib, _ := newSystemHostLibrary(t, "v1", systemHostFiles())
 
 	ws, hostDir := updateWorkspace(t)
 	values := hostValues("order-flow", []any{
@@ -469,7 +477,7 @@ func TestUpdateErrorsOnMalformedComponents(t *testing.T) {
 	})
 	writeHost(t, hostDir, values)
 
-	_, _, err := runUpdate(t, srv, UpdateOptions{StartDir: ws})
+	_, _, err := runUpdate(t, lib, UpdateOptions{StartDir: ws})
 	if err == nil {
 		t.Fatal("Update succeeded on a malformed record")
 	}
@@ -479,13 +487,12 @@ func TestUpdateErrorsOnMalformedComponents(t *testing.T) {
 }
 
 func TestUpdateJSONOutput(t *testing.T) {
-	srv, _ := newSystemHostServer(t, "v1", systemHostFiles())
-	defer srv.Close()
+	lib, _ := newSystemHostLibrary(t, "v1", systemHostFiles())
 
 	ws, hostDir := updateWorkspace(t)
 	writeBlock(t, filepath.Join(ws, "returns-extractor"), template.BlockKindExtractor, "returns-extractor")
 
-	stdout, stderr, err := runUpdate(t, srv, UpdateOptions{StartDir: ws, OutputJSON: "-"})
+	stdout, stderr, err := runUpdate(t, lib, UpdateOptions{StartDir: ws, OutputJSON: "-"})
 	if err != nil {
 		t.Fatalf("Update: %v\nstderr: %s", err, stderr.String())
 	}
@@ -512,5 +519,106 @@ func TestUpdateJSONOutput(t *testing.T) {
 	systemClass := readFile(t, filepath.Join(hostDir, "OrderFlowSystem.cs"))
 	if !strings.Contains(systemClass, `builder.AddExtractor("returns-extractor")`) {
 		t.Errorf("OrderFlowSystem.cs does not declare returns-extractor:\n%s", systemClass)
+	}
+}
+
+// mergeWiring must round-trip the new shapes: stored topics, ports and
+// messages pass through, and an orphan carrying message wiring contributes
+// its message and its resolved channel without dropping block values.
+func TestMergeWiringMessageBlocks(t *testing.T) {
+	plan := &updatePlan{
+		hostDir: "host",
+		baseline: map[string]any{
+			"components": []any{},
+			"topics": []any{map[string]any{
+				"pubsub": "pubsub", "name": "orders", "contract": "Order",
+			}},
+			"ports": []any{},
+			"messages": []any{map[string]any{
+				"name": "product-exported", "type": "product-exported", "contract": "ProductExported",
+			}},
+		},
+		orphans: []Component{
+			{
+				AppID: "order-extractor", Kind: template.BlockKindExtractor,
+				Topic: &TopicKey{Pubsub: "pubsub", Name: "orders"}, topicContract: "Order",
+				Message: &MessageWiring{Kind: MessagePublish, Name: "product-exported", Contract: "ProductExported"},
+			},
+			{
+				AppID: "new-sink", Kind: template.BlockKindExtractor,
+				Topic: &TopicKey{Pubsub: template.DefaultPubsub, Name: "another-exported"}, topicContract: "AnotherExported",
+				Message: &MessageWiring{Kind: MessagePublish, Name: "another-exported", Contract: "AnotherExported"},
+			},
+		},
+	}
+	merged := map[string]any{}
+	if err := mergeWiring(plan, merged); err != nil {
+		t.Fatal(err)
+	}
+
+	// The stored topic passes through; the new message's channel is a
+	// genuinely new topic key and is appended.
+	topics := merged["topics"].([]any)
+	if len(topics) != 2 {
+		t.Fatalf("topics = %#v, want stored + the new channel", topics)
+	}
+	messages := merged["messages"].([]any)
+	if len(messages) != 2 {
+		t.Fatalf("messages = %#v, want stored + the new message", messages)
+	}
+	newMsg, _ := messages[1].(map[string]any)
+	if newMsg["name"] != "another-exported" || newMsg["type"] != "another-exported" || newMsg["contract"] != "AnotherExported" || newMsg["publisher"] != "new-sink" {
+		t.Errorf("new message entry = %#v", newMsg)
+	}
+	if _, ok := merged["ports"].([]any); !ok {
+		t.Error("ports list must survive the round-trip")
+	}
+}
+
+// A stored messages list of the wrong shape fails naming the record, like
+// topics and ports do.
+func TestMergeWiringRejectsMalformedMessages(t *testing.T) {
+	plan := &updatePlan{
+		hostDir:  "host",
+		baseline: map[string]any{"messages": []any{"not-an-object"}},
+	}
+	err := mergeWiring(plan, map[string]any{})
+	if err == nil || !strings.Contains(err.Error(), "messages entry has type string") {
+		t.Errorf("err = %v, want a typed error naming the messages list", err)
+	}
+}
+
+// An external publication joins the update's topics list (the transport is
+// real) but never values.messages — sys update stores the same internal
+// messagegroup exclusion sys create renders.
+func TestMergeWiringExternalPublishKeptOutOfMessages(t *testing.T) {
+	plan := &updatePlan{
+		baseline: map[string]any{
+			"components": []any{},
+			"topics":     []any{},
+			"ports":      []any{},
+			"messages":   []any{},
+		},
+		orphans: []Component{{
+			AppID: "erp-extractor",
+			Topic: &TopicKey{Pubsub: "product-distribution-pubsub", Name: "sbt-test-erp-extractor-001"},
+			Message: &MessageWiring{
+				Kind:       MessagePublish,
+				Name:       "io.intropy.maxbo.product.export",
+				Dataschema: "/schemagroups/g/schemas/product-export.v1",
+				External:   true,
+			},
+		}},
+	}
+	merged := map[string]any{}
+	if err := mergeWiring(plan, merged); err != nil {
+		t.Fatal(err)
+	}
+	topics := merged["topics"].([]any)
+	if len(topics) != 1 {
+		t.Errorf("topics = %+v, want the publication's channel", topics)
+	}
+	if messages := merged["messages"].([]any); len(messages) != 0 {
+		t.Errorf("messages = %+v, want none for an externally-published message", messages)
 	}
 }

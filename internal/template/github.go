@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
-	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
 )
 
 const (
@@ -27,9 +28,14 @@ type GitHub struct {
 	UserAgent string
 }
 
+// githubTimeout bounds a latest-release lookup. http.DefaultClient has none,
+// so a connection that stalls rather than fails would hang the command — and
+// in the dashboard it would hang every template request behind it.
+const githubTimeout = 30 * time.Second
+
 func newGitHub(client *http.Client, userAgent string) *GitHub {
 	if client == nil {
-		client = http.DefaultClient
+		client = &http.Client{Timeout: githubTimeout}
 	}
 	return &GitHub{
 		BaseURL:   githubAPIBaseURL,
@@ -52,10 +58,6 @@ func newConfiguredGitHub(client *http.Client, userAgent, baseURL string) *GitHub
 	return NewGitHubClient(client, userAgent, baseURL)
 }
 
-func resolveReleaseTag(ctx context.Context, gh *GitHub, owner, repo, requestedTag string) (string, error) {
-	return gh.ResolveTag(ctx, owner, repo, requestedTag)
-}
-
 // ResolveTag returns requestedTag as-is when set, otherwise the latest
 // release tag for owner/repo.
 func (g *GitHub) ResolveTag(ctx context.Context, owner, repo, requestedTag string) (string, error) {
@@ -63,35 +65,6 @@ func (g *GitHub) ResolveTag(ctx context.Context, owner, repo, requestedTag strin
 		return requestedTag, nil
 	}
 	return g.LatestTag(ctx, owner, repo)
-}
-
-// downloadTemplate fetches the repo tarball at tag, extracts it to a temp
-// dir (created with tempPattern), and returns the path of the named template
-// subdirectory plus a cleanup func that removes the temp dir.
-func downloadTemplate(ctx context.Context, gh *GitHub, owner, repo, tag, templateName, tempPattern string) (string, func(), error) {
-	rc, err := gh.Tarball(ctx, owner, repo, tag)
-	if err != nil {
-		return "", nil, err
-	}
-	defer rc.Close()
-
-	tmpDir, err := os.MkdirTemp("", tempPattern)
-	if err != nil {
-		return "", nil, err
-	}
-	cleanup := func() { _ = os.RemoveAll(tmpDir) }
-
-	if err := ExtractTarGz(rc, tmpDir); err != nil {
-		cleanup()
-		return "", nil, err
-	}
-
-	templateRoot := filepath.Join(tmpDir, templateName)
-	if info, err := os.Stat(templateRoot); err != nil || !info.IsDir() {
-		cleanup()
-		return "", nil, fmt.Errorf("template %q not found in %s/%s@%s", templateName, owner, repo, tag)
-	}
-	return templateRoot, cleanup, nil
 }
 
 // LatestTag returns the tag_name of the most recent release for owner/repo.
@@ -111,6 +84,9 @@ func (g *GitHub) LatestTag(ctx context.Context, owner, repo string) (string, err
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if limit := asRateLimit(resp, body); limit != nil {
+			return "", fmt.Errorf("github releases: %w", limit)
+		}
 		return "", fmt.Errorf("github releases: %s: %s", resp.Status, string(body))
 	}
 	var rel struct {
@@ -125,76 +101,6 @@ func (g *GitHub) LatestTag(ctx context.Context, owner, repo string) (string, err
 	return rel.TagName, nil
 }
 
-// Tarball returns a streaming reader of the gzipped tar for owner/repo at tag.
-// The caller must Close the returned ReadCloser.
-func (g *GitHub) Tarball(ctx context.Context, owner, repo, tag string) (io.ReadCloser, error) {
-	u := fmt.Sprintf("%s/repos/%s/%s/tarball/%s", g.BaseURL, owner, repo, tag)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return nil, err
-	}
-	g.addCommonHeaders(req)
-
-	resp, err := g.HTTP.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("download tarball: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		resp.Body.Close()
-		return nil, fmt.Errorf("download tarball: %s: %s", resp.Status, string(body))
-	}
-	return resp.Body, nil
-}
-
-// ListTemplates returns the names of template directories at the root of
-// the templates repository at the given ref (a release tag). An empty ref
-// lists the default branch.
-func (g *GitHub) ListTemplates(ctx context.Context, owner, repo, ref string) ([]string, error) {
-	if owner == "" {
-		owner = defaultTemplateOwner
-	}
-	if repo == "" {
-		repo = defaultTemplateRepo
-	}
-	u := fmt.Sprintf("%s/repos/%s/%s/contents/", g.BaseURL, owner, repo)
-	if ref != "" {
-		u += "?ref=" + url.QueryEscape(ref)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	g.addCommonHeaders(req)
-
-	resp, err := g.HTTP.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("list contents: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("list contents: %s: %s", resp.Status, string(body))
-	}
-
-	var entries []struct {
-		Name string `json:"name"`
-		Type string `json:"type"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
-		return nil, fmt.Errorf("decode contents: %w", err)
-	}
-
-	var dirs []string
-	for _, e := range entries {
-		if e.Type == "dir" {
-			dirs = append(dirs, e.Name)
-		}
-	}
-	return dirs, nil
-}
-
 func (g *GitHub) addCommonHeaders(req *http.Request) {
 	if g.UserAgent != "" {
 		req.Header.Set("User-Agent", g.UserAgent)
@@ -202,4 +108,73 @@ func (g *GitHub) addCommonHeaders(req *http.Request) {
 	if g.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+g.Token)
 	}
+}
+
+// RateLimitError reports a GitHub rate limit: the primary hourly budget, or
+// the secondary limit that bursts of requests trip. It is a distinct type
+// because the two answers a caller can give are different — a primary limit
+// means authenticate or wait, a secondary one means slow down — and because
+// a bare "403 Forbidden" reads as a permissions problem, which it is not.
+type RateLimitError struct {
+	// Secondary distinguishes the burst limit from the hourly budget.
+	Secondary bool
+
+	// RetryAfter is how long GitHub says to wait, zero when it says nothing.
+	RetryAfter time.Duration
+
+	Status string
+}
+
+func (e *RateLimitError) Error() string {
+	kind := "github rate limit reached"
+	if e.Secondary {
+		kind = "github secondary rate limit reached"
+	}
+	if e.RetryAfter > 0 {
+		return fmt.Sprintf("%s; retry in %s", kind, e.RetryAfter.Round(time.Second))
+	}
+	return kind
+}
+
+// asRateLimit reports whether a non-OK response is a rate limit, and how long
+// to wait. GitHub spends three shapes on this: 429, a 403 carrying an explicit
+// Retry-After, and a 403 whose remaining budget is zero. Only the last is
+// distinguishable from an ordinary permissions 403 by status alone, so the
+// headers decide rather than the status code.
+func asRateLimit(resp *http.Response, body []byte) *RateLimitError {
+	retry := retryAfter(resp)
+	exhausted := resp.Header.Get("x-ratelimit-remaining") == "0"
+	secondary := strings.Contains(strings.ToLower(string(body)), "secondary rate limit")
+
+	switch {
+	case resp.StatusCode == http.StatusTooManyRequests:
+	case resp.StatusCode == http.StatusForbidden && (exhausted || retry > 0 || secondary):
+	default:
+		return nil
+	}
+	// A named wait without an exhausted budget is the burst limit: the hourly
+	// budget reports what is left, the secondary one only asks for a pause.
+	return &RateLimitError{
+		Secondary:  secondary || (retry > 0 && !exhausted),
+		RetryAfter: retry,
+		Status:     resp.Status,
+	}
+}
+
+// retryAfter reads the wait GitHub named, preferring the explicit Retry-After
+// over the reset timestamp of the hourly budget.
+func retryAfter(resp *http.Response) time.Duration {
+	if v := resp.Header.Get("retry-after"); v != "" {
+		if secs, err := strconv.Atoi(v); err == nil && secs > 0 {
+			return time.Duration(secs) * time.Second
+		}
+	}
+	if v := resp.Header.Get("x-ratelimit-reset"); v != "" {
+		if unix, err := strconv.ParseInt(v, 10, 64); err == nil {
+			if d := time.Until(time.Unix(unix, 0)); d > 0 {
+				return d
+			}
+		}
+	}
+	return 0
 }

@@ -26,7 +26,7 @@ var intShowCmd = &cobra.Command{
 	Long: "Show the scaffold record (.intropy/scaffold.json) of the integration at dir (default: the current " +
 		"directory, searched upward). The record pins the template, the release it was rendered from, and the " +
 		"resolved parameter values. Use --output json to print the record unchanged.",
-	Args: cobra.MaximumNArgs(1),
+	Args: usageArgs(cobra.MaximumNArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validateOutputFlag(intShowOpts.output, "json", "plain"); err != nil {
 			return err

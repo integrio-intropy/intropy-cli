@@ -27,7 +27,7 @@ var releaseListCmd = &cobra.Command{
 		"first line of its notes. Pass one of those versions to release show to read the full manifest.\n\n" +
 		"Releases are read from the registry beside the component's images, so this reports what is actually published rather " +
 		"than what git tags claim. It changes no source repository, GitOps remote, or environment.",
-	Args: cobra.ExactArgs(1),
+	Args: usageArgs(cobra.ExactArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validateOutputFlag(releaseListOpts.output, release.OutputPlain, release.OutputJSON); err != nil {
 			return err

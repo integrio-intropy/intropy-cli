@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/integrio-intropy/intropy-cli/internal/config"
 	"github.com/integrio-intropy/intropy-cli/internal/dashboard"
 	"github.com/spf13/cobra"
 )
@@ -25,9 +26,10 @@ var dashboardCmd = &cobra.Command{
 	Short: "Launch the local integration dashboard",
 	Long: "Start a local web dashboard that visualizes the integrations and systems scaffolded under dir " +
 		"(default: the current directory) — their template, pinned source, version, scaffold values and " +
-		"system topology. The dashboard is served from the CLI itself and opens in your browser; it does " +
-		"not start any integration processes. Press Ctrl+C to stop.",
-	Args: cobra.MaximumNArgs(1),
+		"system topology. The flow view can also start and stop a system's host locally (dotnet run); " +
+		"started hosts stop when the dashboard does. The dashboard is served from the CLI itself and " +
+		"opens in your browser. Press Ctrl+C to stop.",
+	Args: usageArgs(cobra.MaximumNArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		root := "."
 		if len(args) == 1 {
@@ -49,10 +51,23 @@ var dashboardCmd = &cobra.Command{
 			OpenBrowser:     !dashboardOpts.noBrowser,
 			Version:         version,
 			TemplateVersion: dashboardOpts.templateVersion,
+			Organization:    resolvedOrganization(),
 			Stdout:          cmd.OutOrStdout(),
 			Stderr:          cmd.ErrOrStderr(),
 		})
 	},
+}
+
+// resolvedOrganization reads the config's organization for the
+// dashboard's template suggestions. A config that cannot be read yields
+// "": the dashboard serves workspaces without one, and template forms
+// simply offer no organization candidate.
+func resolvedOrganization() string {
+	cfg, err := config.Load()
+	if err != nil {
+		return ""
+	}
+	return cfg.Resolve(config.Flags{}).Organization
 }
 
 func init() {
@@ -60,5 +75,6 @@ func init() {
 	f.IntVarP(&dashboardOpts.port, "port", "p", 8730, "port to bind (0 picks a free port)")
 	f.BoolVar(&dashboardOpts.noBrowser, "no-browser", false, "do not open the dashboard in a browser")
 	f.StringVar(&dashboardOpts.templateVersion, "template-version", "", flagUsageTemplateVer)
+	markPreview(dashboardCmd)
 	rootCmd.AddCommand(dashboardCmd)
 }

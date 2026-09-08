@@ -136,11 +136,12 @@ type manifestRunOptions struct {
 	Stderr     io.Writer
 
 	// Owner and Repo select the template library; zero values target the
-	// official library. GitHubBaseURL is a test-only seam.
-	Owner         string
-	Repo          string
-	GitHubBaseURL string
-	HTTP          *http.Client
+	// official library. Source carries the fetch seams (GitHubBaseURL
+	// redirects the latest-release API call in tests).
+	Owner  string
+	Repo   string
+	Source template.SourceOptions
+	HTTP   *http.Client
 
 	// The manifests create command sets these internal policy fields. Keeping
 	// them private prevents another deploy operation from enabling create-only
@@ -505,8 +506,9 @@ func selectHost(hosts []template.ScaffoldEntry, system, sourceDir string) (templ
 // directory itself — which is often a generic "system-host" and so the weakest.
 func matchesSystemName(h template.ScaffoldEntry, system string) bool {
 	want := normalizeSystemName(system)
+	recordName, _ := template.SoftValue(h.Values, template.KeyName)
 	keys := []string{
-		scaffoldString(h, "name"),
+		recordName,
 		filepath.Base(filepath.Dir(h.Path)),
 		filepath.Base(h.Path),
 	}
@@ -528,7 +530,7 @@ func normalizeSystemName(s string) string {
 func describeHosts(hosts []template.ScaffoldEntry) string {
 	lines := make([]string, 0, len(hosts))
 	for _, h := range hosts {
-		name := scaffoldString(h, "name")
+		name, _ := template.SoftValue(h.Values, template.KeyName)
 		if name == "" {
 			name = filepath.Base(filepath.Dir(h.Path))
 		}
@@ -1016,7 +1018,7 @@ func publishScaffold(ctx context.Context, opts manifestRunOptions, repo *gitops.
 		return publishedScaffold{}, err
 	}
 	if err := repo.Git.Push(ctx, gitops.RemoteName, "HEAD:refs/heads/"+p.Branch); err != nil {
-		return publishedScaffold{}, fmt.Errorf("push %s: %w\n\nA rejection here usually means the branch already exists on the remote. Delete it, or merge the open review first.", p.Branch, err)
+		return publishedScaffold{}, fmt.Errorf("push %s: %w\n\nA rejection here usually means the branch already exists on the remote. Delete it, or merge the open review first", p.Branch, err)
 	}
 
 	revision, err := repo.Git.HEAD(ctx)

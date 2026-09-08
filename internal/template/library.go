@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
-	"strings"
 )
 
 // DefaultLibrary reports the official template library the CLI targets.
@@ -30,77 +28,46 @@ type LibraryOptions struct {
 	Stderr    io.Writer
 
 	// Owner and Repo select the template library; zero values target the
-	// official library. GitHubBaseURL is a test-only seam.
-	Owner         string
-	Repo          string
-	GitHubBaseURL string
+	// official library. Source carries the fetch seams (GitHubBaseURL
+	// redirects the latest-release API call in tests).
+	Owner  string
+	Repo   string
+	Source SourceOptions
 }
 
-// Library is a template library extracted on disk at one resolved version.
+// Library is a template library checked out on disk at one resolved version.
 //
-// It exists so a caller rendering several templates pays for one download and
+// It exists so a caller rendering several templates pays for one fetch and
 // gets one version across all of them — a component's manifests and its system's
 // shared manifests drifting apart by a release would be a subtle, ugly bug. It
 // also keeps the on-disk layout of a template package private to this package.
-//
-// The caller owns the returned Library and must Close it.
 type Library struct {
 	Owner   string
 	Repo    string
 	Version string
 
-	root    string
-	cleanup func()
+	root string
 }
 
-// FetchLibrary resolves the release tag, downloads the library tarball and
-// extracts it.
+// FetchLibrary resolves the release tag and ensures the cached checkout of
+// the library at that tag.
 func FetchLibrary(ctx context.Context, opts LibraryOptions) (*Library, error) {
-	owner, repo := DefaultLibrary()
-	if opts.Owner != "" {
-		owner = opts.Owner
+	s := opts.Source
+	s.Version, s.Stderr, s.UserAgent = opts.Version, opts.Stderr, opts.UserAgent
+	if s.Owner == "" && s.Repo == "" {
+		s.Owner, s.Repo = libraryIdentity(opts.Owner, opts.Repo)
 	}
-	if opts.Repo != "" {
-		repo = opts.Repo
-	}
-	userAgent := opts.UserAgent
-	if userAgent == "" {
-		userAgent = "intropy-cli"
-	}
-
-	gh := newConfiguredGitHub(opts.HTTP, userAgent, opts.GitHubBaseURL)
-	tag, err := gh.ResolveTag(ctx, owner, repo, opts.Version)
+	src, err := FetchSource(ctx, s)
 	if err != nil {
 		return nil, err
 	}
-	if opts.Stderr != nil {
-		fmt.Fprintf(opts.Stderr, "fetching %s/%s@%s\n", owner, repo, tag)
-	}
-
-	rc, err := gh.Tarball(ctx, owner, repo, tag)
-	if err != nil {
-		return nil, err
-	}
-	defer rc.Close()
-
-	tmpDir, err := os.MkdirTemp("", "intropy-library-*")
-	if err != nil {
-		return nil, err
-	}
-	cleanup := func() { _ = os.RemoveAll(tmpDir) }
-	if err := ExtractTarGz(rc, tmpDir); err != nil {
-		cleanup()
-		return nil, err
-	}
-	return &Library{Owner: owner, Repo: repo, Version: tag, root: tmpDir, cleanup: cleanup}, nil
+	owner, repo := s.Owner, s.Repo // applyDefaults ran inside FetchSource
+	return &Library{Owner: owner, Repo: repo, Version: src.Version, root: src.Root()}, nil
 }
 
-// Close removes the extracted copy.
-func (l *Library) Close() {
-	if l != nil && l.cleanup != nil {
-		l.cleanup()
-	}
-}
+// Close is retained for callers that hold a library across a session; the
+// checkout lives in the shared cache, so it is a no-op.
+func (l *Library) Close() {}
 
 // Ref describes the fetched library, for logs and result records.
 func (l *Library) Ref() string {
@@ -108,16 +75,10 @@ func (l *Library) Ref() string {
 }
 
 // Open loads one template's manifest and returns it with its skeleton root.
-//
-// The name is validated as a single path segment before it is joined, because it
-// is user input turned into a path inside the extracted tarball.
 func (l *Library) Open(name string) (*Template, string, error) {
-	if err := validateTemplateName(name); err != nil {
+	templateRoot, err := templateDir(&Source{Version: l.Version, root: l.root}, l.Owner, l.Repo, name)
+	if err != nil {
 		return nil, "", err
-	}
-	templateRoot := filepath.Join(l.root, name)
-	if info, err := os.Stat(templateRoot); err != nil || !info.IsDir() {
-		return nil, "", fmt.Errorf("template %q not found in %s", name, l.Ref())
 	}
 	tmpl, err := LoadTemplate(filepath.Join(templateRoot, templateManifestName))
 	if err != nil {
@@ -134,18 +95,7 @@ func (l *Library) Open(name string) (*Template, string, error) {
 // names Open, Describe and Create accept. It mirrors the standalone List for
 // a caller that already fetched the release.
 func (l *Library) List() ([]string, error) {
-	ents, err := os.ReadDir(l.root)
-	if err != nil {
-		return nil, err
-	}
-	names := []string{}
-	for _, ent := range ents {
-		if ent.IsDir() && !strings.HasPrefix(ent.Name(), ".") {
-			names = append(names, ent.Name())
-		}
-	}
-	sort.Strings(names)
-	return names, nil
+	return listTemplateDirs(l.root)
 }
 
 // Describe returns the machine-readable manifest of one template in the

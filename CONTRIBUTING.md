@@ -311,7 +311,7 @@ A good bug report includes:
 ## License
 
 By contributing, you agree that your contributions will be licensed under the
-[MIT License](LICENSE).
+[FSL-1.1-ALv2 License](LICENSE).
 
 ## Security
 

@@ -71,7 +71,7 @@ dockers_v2:
       org.opencontainers.image.version: '{{ .Version }}'
       org.opencontainers.image.revision: '{{ .FullCommit }}'
       org.opencontainers.image.created: '{{ .Date }}'
-      org.opencontainers.image.licenses: MIT
+      org.opencontainers.image.licenses: FSL-1.1-ALv2
 
 # Keyless (OIDC) image signing, same sigstore flow as the blob signing below.
 # Default artifacts selector targets the dockers_v2 images.

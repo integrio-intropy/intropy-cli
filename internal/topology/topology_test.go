@@ -1,6 +1,8 @@
 package topology
 
 import (
+	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -94,6 +96,39 @@ func TestDecodeValid(t *testing.T) {
 	}
 }
 
+// A record carrying a development section (graph --development) decodes its
+// file resolutions; one without it leaves Development nil. The compatibility
+// direction is one-way: an old host emitting no section decodes exactly as
+// before, and the new field is absent, not defaulted.
+func TestDecodeDevelopment(t *testing.T) {
+	withDev := strings.Replace(validRecord, `
+}`, `,
+  "development": {
+    "files": [
+      {"port": "price-master", "rootPath": "./test/price-master"}
+    ]
+  }
+}`, 1)
+	got, err := Decode(strings.NewReader(withDev))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if got.Development == nil || len(got.Development.Files) != 1 {
+		t.Fatalf("development = %+v, want one file resolution", got.Development)
+	}
+	if f := got.Development.Files[0]; f.Port != "price-master" || f.RootPath != "./test/price-master" {
+		t.Errorf("file resolution = %+v", f)
+	}
+
+	without, err := Decode(strings.NewReader(validRecord))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if without.Development != nil {
+		t.Errorf("development = %+v, want nil", without.Development)
+	}
+}
+
 // A record without contracts[] still decodes; the section is
 // simply absent.
 func TestDecodeWithoutContracts(t *testing.T) {
@@ -137,4 +172,76 @@ func TestDecodeOldSchemaIsRejected(t *testing.T) {
 	if _, err := Decode(strings.NewReader(`{"schemaVersion": 1, "system": {"name": "x"}}`)); err == nil {
 		t.Fatal("expected error for old-schema record, got nil")
 	}
+}
+
+// The messagegroup section is preserved opaquely: decode and re-encode
+// must be lossless so the record reaches the frontend exactly as the host
+// emitted it.
+func TestDecodeMessagegroupsRoundTrip(t *testing.T) {
+	raw := `{
+  "apiVersion": "topology.intropy.io/v1",
+  "system": "order-flow",
+  "messagegroups": [
+    {"name": "product-exported", "type": "product-exported", "contract": "ProductExported"},
+    {"name": "external-event", "type": "io.registry/export", "dataschema": "/schemagroups/g/schemas/s"}
+  ],
+  "components": [{"name": "loader", "kind": "loader"}]
+}`
+	tt, err := Decode(strings.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tt.MessageGroups) != 2 {
+		t.Fatalf("messagegroups = %s", tt.MessageGroups)
+	}
+	var got []map[string]any
+	if err := json.Unmarshal([]byte("["+strings.Join(rawJSON(tt.MessageGroups), ",")+"]"), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got[0]["contract"] != "ProductExported" || got[1]["dataschema"] != "/schemagroups/g/schemas/s" {
+		t.Errorf("messagegroups decoded = %#v", got)
+	}
+
+	out, err := json.Marshal(tt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var again Topology
+	if err := json.Unmarshal(out, &again); err != nil {
+		t.Fatal(err)
+	}
+	var orig, rt []map[string]any
+	if err := json.Unmarshal([]byte("["+strings.Join(rawJSON(tt.MessageGroups), ",")+"]"), &orig); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte("["+strings.Join(rawJSON(again.MessageGroups), ",")+"]"), &rt); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(orig, rt) {
+		t.Errorf("round-trip changed the section: %#v vs %#v", orig, rt)
+	}
+}
+
+// A record without the section — every host older than message wiring —
+// decodes identically to before the field existed.
+func TestDecodeWithoutMessagegroups(t *testing.T) {
+	raw := `{"apiVersion": "topology.intropy.io/v1", "system": "s", "components": []}`
+	tt, err := Decode(strings.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tt.MessageGroups != nil {
+		t.Errorf("messagegroups = %s, want nil", tt.MessageGroups)
+	}
+	if len(tt.Components) != 0 {
+		t.Errorf("components = %+v", tt.Components)
+	}
+}
+
+func rawJSON(rs []json.RawMessage) []string {
+	out := make([]string, len(rs))
+	for i, r := range rs {
+		out[i] = string(r)
+	}
+	return out
 }

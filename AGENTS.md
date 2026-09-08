@@ -97,6 +97,16 @@ parsing. The two never share a stream.
 
 - **image digest**, not "bits", "artifacts", or "the images".
 - **environment** in prose, `--env` only when naming the flag.
+- A template's message **direction** is derived from its block kind: an
+  extractor publishes, a loader subscribes, a transactional integration
+  wires no messages. The flags follow it: `--publishes` for producing
+  templates, `--subscribe` for consuming templates.
+- **message** is a message definition: a registry entry (`message list`,
+  `message show <ref>`) or a producing component's `publishes` declaration.
+  A subscription is written to the record as a `subscribe` block; a
+  producer's as `publishes`. **event** is prose for the runtime occurrence
+  of a message, never a scaffold value. `contract` survives only where the
+  .NET shared-project type name is literally meant — transitional.
 - `->` for a transition (`1.0 -> 1.1`), ` @ ` for a pin (`api @ 1.2.0`).
   Never mix the two in one message.
 - A commit SHA is shown short (7 chars) unless the full value is the point.
@@ -152,6 +162,12 @@ Manifest creation may push a review branch, never the default branch:
   environment in the promotion graph.
 - **`sync`** applies an environment's pending change through ArgoCD. It
   never decides what the change is — that is `pin` and `promote`.
+- **`use`** selects which named customer context subsequent commands act
+  on. Neither `update` (reconciles an installed thing against its source)
+  nor `pin` (writes one component's digest) covers selecting the operator's
+  active context, and `use` is the name kubeconfig muscle memory expects
+  for it. It never creates or edits contexts — those are authored in the
+  config file by hand.
 
 Do not import kubectl's `get`/`describe` split — `int describe` was retired
 because it described templates, not integrations. New verbs need a reason

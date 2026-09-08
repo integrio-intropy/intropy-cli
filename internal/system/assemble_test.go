@@ -423,3 +423,359 @@ func TestKebabParityWithSprig(t *testing.T) {
 		}
 	}
 }
+
+func publishesEntry(path, appID, message, contract string) template.ScaffoldEntry {
+	values := map[string]any{
+		"appId": appID,
+		"publishes": map[string]any{
+			"message": message,
+		},
+	}
+	if contract != "" {
+		values["publishes"].(map[string]any)["contract"] = contract
+	}
+	return blockEntry(path, template.BlockKindExtractor, values)
+}
+
+// AE4: a publisher and a subscriber assemble as one system; the
+// subscriber's channel comes from the publisher, and the payload's
+// messagegroup names the message with its type.
+func TestAssembleMessageBlocksHappyPath(t *testing.T) {
+	model, err := Assemble([]template.ScaffoldEntry{
+		publishesEntry("product-sink", "product-sink", "product-exported", "ProductExported"),
+		blockEntry("product-loader", template.BlockKindLoader, map[string]any{
+			"appId": "product-loader",
+			"subscribe": map[string]any{
+				"message": "product-exported",
+			},
+		}),
+	}, discardWarnf)
+	if err != nil {
+		t.Fatalf("Assemble: %v", err)
+	}
+
+	if len(model.Messages) != 1 {
+		t.Fatalf("messages = %+v", model.Messages)
+	}
+	msg := model.Messages[0]
+	if msg.Name != "product-exported" || msg.Type != "product-exported" {
+		t.Errorf("message = %+v, want name/type product-exported", msg)
+	}
+	if msg.Contract != "ProductExported" {
+		t.Errorf("contract = %q, want the transitional .NET type carried", msg.Contract)
+	}
+	if msg.Publisher != "product-sink" {
+		t.Errorf("publisher = %q", msg.Publisher)
+	}
+
+	// The subscriber resolved its channel from the producer's default:
+	// system pubsub, topic named after the message.
+	var loader Component
+	for _, c := range model.Components {
+		if c.AppID == "product-loader" {
+			loader = c
+		}
+	}
+	if loader.Topic == nil || loader.Topic.Name != "product-exported" || loader.Topic.Pubsub != template.DefaultPubsub {
+		t.Errorf("loader topic = %+v, want the producer-resolved channel", loader.Topic)
+	}
+
+}
+
+// The workload spread across the pubsub default and the message topic is
+// the shared channel both halves resolve to.
+func TestAssembleMessageBlocksChannelKey(t *testing.T) {
+	model, err := Assemble([]template.ScaffoldEntry{
+		publishesEntry("sink", "sink", "m", "M"),
+		blockEntry("loader", template.BlockKindLoader, map[string]any{
+			"appId": "loader", "subscribe": map[string]any{"message": "m"},
+		}),
+	}, discardWarnf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(model.Topics) != 1 || model.Topics[0].TopicKey != (template.TopicKey{Pubsub: template.DefaultPubsub, Name: "m"}) {
+		t.Fatalf("topics = %+v, want exactly the resolved channel once", model.Topics)
+	}
+}
+
+// An external subscribe block carries its own snapshot: it assembles with
+// no producing record and never touches a registry (assembly is offline).
+func TestAssembleExternalSubscribeIsOffline(t *testing.T) {
+	model, err := Assemble([]template.ScaffoldEntry{
+		blockEntry("product-loader", template.BlockKindLoader, map[string]any{
+			"appId": "product-loader",
+			"subscribe": map[string]any{
+				"message":       "io.intropy.maxbo.product.export",
+				"pubsub":        "product-distribution-pubsub",
+				"topic":         "sbt-test-product-extractor-001",
+				"dataschema":    "/schemagroups/io.intropy.maxbo.product/schemas/product-export.v1",
+				"dataschemaurl": "https://registry.example.com/versions/1",
+			},
+		}),
+	}, discardWarnf)
+	if err != nil {
+		t.Fatalf("Assemble: %v", err)
+	}
+	if len(model.Components) != 1 || model.Components[0].Message == nil || !model.Components[0].Message.External {
+		t.Fatalf("components = %+v", model.Components)
+	}
+	if model.Components[0].Topic == nil || *model.Components[0].Topic != (template.TopicKey{Pubsub: "product-distribution-pubsub", Name: "sbt-test-product-extractor-001"}) {
+		t.Errorf("topic = %+v, want the snapshot verbatim", model.Components[0].Topic)
+	}
+	// Registry messages do not enter the internal messagegroup.
+	if len(model.Messages) != 0 {
+		t.Errorf("messages = %+v, want none for an external-only workspace", model.Messages)
+	}
+}
+
+// Mixed legacy + new records assemble into one system: the legacy pair on
+// its flat keys, the new pair on its blocks, no cross-contamination.
+func TestAssembleMixedShapes(t *testing.T) {
+	model, err := Assemble([]template.ScaffoldEntry{
+		extractorEntry("order-extractor", "order-extractor", "orders", "Order"),
+		loaderEntry("order-loader", "order-loader", "orders", "Order"),
+		publishesEntry("product-sink", "product-sink", "product-exported", "ProductExported"),
+		blockEntry("product-loader", template.BlockKindLoader, map[string]any{
+			"appId": "product-loader", "subscribe": map[string]any{"message": "product-exported"},
+		}),
+	}, discardWarnf)
+	if err != nil {
+		t.Fatalf("Assemble: %v", err)
+	}
+	if len(model.Components) != 4 || len(model.Topics) != 2 || len(model.Messages) != 2 {
+		t.Fatalf("components=%d topics=%d messages=%d", len(model.Components), len(model.Topics), len(model.Messages))
+	}
+}
+
+// A block-shaped subscriber whose message names a legacy topic resolves
+// its channel from the legacy producer: the topic name was the only
+// message identity the flat vocabulary had, and the two spaces must agree.
+func TestAssembleMixedLegacyProducerResolvesNewSubscriber(t *testing.T) {
+	model, err := Assemble([]template.ScaffoldEntry{
+		extractorEntry("order-extractor", "order-extractor", "orders", "Order"),
+		blockEntry("order-loader", template.BlockKindLoader, map[string]any{
+			"appId": "order-loader", "subscribe": map[string]any{"message": "orders"},
+		}),
+	}, discardWarnf)
+	if err != nil {
+		t.Fatalf("Assemble: %v", err)
+	}
+	for _, c := range model.Components {
+		if c.AppID == "order-loader" && (c.Topic == nil || *c.Topic != (template.TopicKey{Pubsub: "pubsub", Name: "orders"})) {
+			t.Errorf("loader topic = %+v, want the legacy producer's channel", c.Topic)
+		}
+	}
+}
+
+func TestAssembleMessageErrors(t *testing.T) {
+	t.Run("internal subscriber names unpublished message", func(t *testing.T) {
+		_, err := Assemble([]template.ScaffoldEntry{
+			blockEntry("orphan-loader", template.BlockKindLoader, map[string]any{
+				"appId": "orphan-loader", "subscribe": map[string]any{"message": "nowhere-exported"},
+			}),
+		}, discardWarnf)
+		if err == nil {
+			t.Fatal("expected a hard error")
+		}
+		for _, want := range []string{"nowhere-exported", "orphan-loader"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error %q should name %q", err, want)
+			}
+		}
+	})
+
+	t.Run("two producers, same message, different channels", func(t *testing.T) {
+		_, err := Assemble([]template.ScaffoldEntry{
+			publishesEntry("sink-a", "sink-a", "m", "M"),
+			blockEntry("sink-b", template.BlockKindExtractor, map[string]any{
+				"appId":     "sink-b",
+				"publishes": map[string]any{"message": "m", "contract": "M2"},
+			}),
+		}, discardWarnf)
+		if err == nil {
+			t.Fatal("expected a conflict error")
+		}
+		for _, want := range []string{"m", "sink-a", "sink-b"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error %q should name %q", err, want)
+			}
+		}
+	})
+
+	t.Run("both blocks in one record", func(t *testing.T) {
+		_, err := Assemble([]template.ScaffoldEntry{
+			blockEntry("both", template.BlockKindExtractor, map[string]any{
+				"appId":     "both",
+				"publishes": map[string]any{"message": "m"},
+				"subscribe": map[string]any{"message": "m"},
+			}),
+		}, discardWarnf)
+		if err == nil || !strings.Contains(err.Error(), "both a subscribe and a publishes block") {
+			t.Errorf("err = %v, want the one-direction error", err)
+		}
+	})
+
+	t.Run("mistyped block field fails the record", func(t *testing.T) {
+		_, err := Assemble([]template.ScaffoldEntry{
+			blockEntry("broken", template.BlockKindLoader, map[string]any{
+				"appId": "broken", "subscribe": map[string]any{"message": 7.0},
+			}),
+		}, discardWarnf)
+		if err == nil || !strings.Contains(err.Error(), "subscribe.message") {
+			t.Errorf("err = %v, want an error naming subscribe.message", err)
+		}
+	})
+}
+
+// The legacy topic-conflict rule still fires unchanged: two differing
+// contracts on one topic key is a conflict, contracts omitted by new
+// records are not.
+func TestAssembleLegacyTopicConflictStillFires(t *testing.T) {
+	_, err := Assemble([]template.ScaffoldEntry{
+		extractorEntry("a", "a", "orders", "Order"),
+		loaderEntry("b", "b", "orders", "OrderV2"),
+	}, discardWarnf)
+	if err == nil || !strings.Contains(err.Error(), "conflicting contracts") {
+		t.Fatalf("err = %v, want the topic-conflict error", err)
+	}
+
+	t.Run("empty contracts do not conflict", func(t *testing.T) {
+		// Producer publishes m with contract; external snapshot names the
+		// same channel without a contract — they agree silently.
+		if _, err := Assemble([]template.ScaffoldEntry{
+			publishesEntry("sink", "sink", "m", "M"),
+			blockEntry("loader", template.BlockKindLoader, map[string]any{
+				"appId": "loader",
+				"subscribe": map[string]any{
+					"message": "external", "pubsub": template.DefaultPubsub, "topic": "m",
+				},
+			}),
+		}, discardWarnf); err != nil {
+			t.Errorf("Assemble: %v", err)
+		}
+	})
+}
+
+func snapshotPublishesEntry(path, appID string) template.ScaffoldEntry {
+	return blockEntry(path, template.BlockKindExtractor, map[string]any{
+		"appId": appID,
+		"publishes": map[string]any{
+			"message":       "io.intropy.maxbo.product.export",
+			"contract":      "ProductExported",
+			"pubsub":        "product-distribution-pubsub",
+			"topic":         "sbt-test-product-extractor-001",
+			"dataschema":    "/schemagroups/io.intropy.maxbo.product/schemas/product-export.v1",
+			"dataschemaurl": "https://registry.example.com/schemagroups/io.intropy.maxbo.product/schemas/product-export.v1/versions/1",
+		},
+	})
+}
+
+// AE4: a registry-resolved publication and an internal subscriber of the
+// same message assemble onto the recorded channel, and the external
+// publication stays out of the internal messagegroup.
+func TestAssembleExternalPublishResolvesInternalSubscriber(t *testing.T) {
+	model, err := Assemble([]template.ScaffoldEntry{
+		snapshotPublishesEntry("erp-extractor", "erp-extractor"),
+		blockEntry("loader", template.BlockKindLoader, map[string]any{
+			"appId": "loader",
+			"subscribe": map[string]any{
+				"message": "io.intropy.maxbo.product.export",
+			},
+		}),
+	}, discardWarnf)
+	if err != nil {
+		t.Fatalf("Assemble: %v", err)
+	}
+
+	var extractor, loader Component
+	for _, c := range model.Components {
+		switch c.AppID {
+		case "erp-extractor":
+			extractor = c
+		case "loader":
+			loader = c
+		}
+	}
+	if extractor.Topic == nil || *extractor.Topic != (template.TopicKey{Pubsub: "product-distribution-pubsub", Name: "sbt-test-product-extractor-001"}) {
+		t.Errorf("publisher topic = %+v, want the recorded snapshot verbatim", extractor.Topic)
+	}
+	if loader.Topic == nil || *loader.Topic != (template.TopicKey{Pubsub: "product-distribution-pubsub", Name: "sbt-test-product-extractor-001"}) {
+		t.Errorf("subscriber topic = %+v, want the publisher's recorded channel", loader.Topic)
+	}
+	// The registry serves this message's definition; the internal
+	// messagegroup must not duplicate it.
+	if len(model.Messages) != 0 {
+		t.Errorf("messages = %+v, want none for an externally-published message", model.Messages)
+	}
+}
+
+// A snapshot publishes block naming a topic but no pubsub is a broken
+// record: assembly reports it, the reader alone never validated the pair.
+func TestAssembleExternalPublishRequiresPubsub(t *testing.T) {
+	_, err := Assemble([]template.ScaffoldEntry{
+		blockEntry("erp-extractor", template.BlockKindExtractor, map[string]any{
+			"appId": "erp-extractor",
+			"publishes": map[string]any{
+				"message": "io.intropy.maxbo.product.export",
+				"topic":   "sbt-test-product-extractor-001",
+			},
+		}),
+	}, discardWarnf)
+	if err == nil || !strings.Contains(err.Error(), "pubsub") {
+		t.Errorf("err = %v, want the pubsub-required error", err)
+	}
+}
+
+// Two producers of one message on different channels is the conflict
+// assembly has always refused; a snapshot publication must join that
+// comparison with its real channel, not a synthetic one.
+func TestAssembleExternalPublishChannelConflict(t *testing.T) {
+	a := snapshotPublishesEntry("extractor-a", "extractor-a")
+	a.Values["publishes"].(map[string]any)["topic"] = "sbt-test-extractor-a"
+	b := snapshotPublishesEntry("extractor-b", "extractor-b")
+	b.Values["publishes"].(map[string]any)["pubsub"] = "erp-distribution-pubsub"
+	b.Values["publishes"].(map[string]any)["topic"] = "sbt-test-extractor-b"
+
+	_, err := Assemble([]template.ScaffoldEntry{a, b}, discardWarnf)
+	if err == nil || !strings.Contains(err.Error(), "conflicting channels") {
+		t.Errorf("err = %v, want the conflicting-channels error", err)
+	}
+}
+
+// The mirror half-wire: a recorded pubsub without a topic is a channel the
+// system cannot assemble. Silently dropping the recorded half would
+// fabricate a different channel under the internal default.
+func TestAssembleExternalPublishRequiresTopic(t *testing.T) {
+	_, err := Assemble([]template.ScaffoldEntry{
+		blockEntry("erp-extractor", template.BlockKindExtractor, map[string]any{
+			"appId": "erp-extractor",
+			"publishes": map[string]any{
+				"message": "io.intropy.maxbo.product.export",
+				"pubsub":  "product-distribution-pubsub",
+			},
+		}),
+	}, discardWarnf)
+	if err == nil || !strings.Contains(err.Error(), "topic") {
+		t.Errorf("err = %v, want the topic-required error", err)
+	}
+}
+
+// A snapshot publication and a legacy-record publication declaring
+// different contracts on the same real channel conflict; the snapshot's
+// contract must join that comparison, not vanish with an unset topic
+// contract.
+func TestAssembleExternalPublishContractConflict(t *testing.T) {
+	_, err := Assemble([]template.ScaffoldEntry{
+		snapshotPublishesEntry("extractor-a", "extractor-a"),
+		blockEntry("extractor-b", template.BlockKindExtractor, map[string]any{
+			"appId":    "extractor-b",
+			"pubsub":   "product-distribution-pubsub",
+			"topic":    "sbt-test-product-extractor-001",
+			"contract": "OtherContract",
+		}),
+	}, discardWarnf)
+	if err == nil || !strings.Contains(err.Error(), "conflicting contracts") {
+		t.Errorf("err = %v, want the conflicting-contracts error", err)
+	}
+}

@@ -37,7 +37,7 @@ var releaseCreateCmd = &cobra.Command{
 		"which case it polls the registry until the images appear, and proceeds from there.\n\n" +
 		"Re-running for a version that already exists is safe: an identical release is recognised and only a missing " +
 		"git tag is repaired. A different one is refused.",
-	Args: cobra.ExactArgs(1),
+	Args: usageArgs(cobra.ExactArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validateOutputFlag(releaseCreateOpts.output, release.OutputPlain, release.OutputJSON); err != nil {
 			return err

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/integrio-intropy/intropy-cli/internal/command"
+	"github.com/spf13/cobra"
 )
 
 func main() {
@@ -30,8 +31,8 @@ func exitCode(err error) int {
 	if errors.As(err, &ue) {
 		return 2
 	}
-	// Cobra's built-in flag/argument errors don't wrap a typed error,
-	// so we fall back to message prefix detection for those.
+	// Unknown commands surface from cobra's Find before any command in the
+	// tree runs, so they fall back to message prefix detection.
 	if isCobraUsageError(err) {
 		return 2
 	}
@@ -48,20 +49,33 @@ func exitCode(err error) int {
 	return 1
 }
 
-// isCobraUsageError detects Cobra-generated flag and argument errors
-// that should map to exit code 2. These are errors from Cobra itself,
-// not from our RunE functions (which should use usageError).
+// usageArgs wraps a Cobra arg-count validator so its failure is a typed
+// usageError rather than an untyped message exitCode would have to sniff.
+// The returned validator refuses to wrap an error that already carries a
+// usageError, so it stays a no-op if it is ever applied twice (test-global
+// cobra state makes double-wrapping hard to rule out statically).
+func usageArgs(validate cobra.PositionalArgs) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if err := validate(cmd, args); err != nil {
+			var ue *usageError
+			if errors.As(err, &ue) {
+				return err
+			}
+			return &usageError{err: err}
+		}
+		return nil
+	}
+}
+
+// isCobraUsageError detects unknown commands, the one Cobra error class
+// that carries no typed marker and escapes the wrapping in rune.go and
+// usageArgs: cobra's Find fails before any command in the tree runs.
 func isCobraUsageError(err error) bool {
 	msg := err.Error()
 	prefixes := []string{
 		"unknown command",
 		"unknown flag",
 		"unknown shorthand flag",
-		"invalid argument",
-		"accepts ",
-		"requires ",
-		"required flag(s)",
-		"at least one of the flags",
 	}
 	for _, p := range prefixes {
 		if strings.HasPrefix(msg, p) {

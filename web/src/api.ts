@@ -17,12 +17,12 @@ export interface Integration {
   repo: string
   version: string
   /** Which way data crosses the system boundary, declared by the template
-   *  (intropy.dev/data-flow label) and recorded in scaffold.json. */
+   *  (intropy.io/data-flow label) and recorded in scaffold.json. */
   dataFlow?: 'in' | 'out' | 'both' | 'internal'
-  /** Topology block kind the template scaffolds (intropy.dev/block-kind
+  /** Topology block kind the template scaffolds (intropy.io/block-kind
    *  label), e.g. "extractor" or "loader". */
   blockKind?: string
-  /** Support-project role (intropy.dev/template-role label). Projects with a
+  /** Support-project role (intropy.io/template-role label). Projects with a
    *  role (system-host, shared-library) are filtered out of the catalog by
    *  the server; the field only appears on records read elsewhere. */
   role?: string
@@ -69,6 +69,43 @@ export interface IntegrationDetail extends Integration {
 export interface Health {
   status: string
   version: string
+  /** The served root's directory name — labels the workspace pseudo-system. */
+  workspace?: string
+}
+
+/** One declared system: the directory holding a system-host scaffold
+ *  (root-relative, the same identifier space as Integration.systemPath) and
+ *  the name the host declares. */
+export interface SystemInfo {
+  path: string
+  name: string
+}
+
+/** The POST /api/systems/{path} payload: what the host sync did. "update"
+ *  folded orphans into an existing host, "create" assembled a new one,
+ *  "none" found nothing to add and wrote nothing. */
+export interface SystemSyncResponse {
+  action: 'update' | 'create' | 'none'
+  hostDir?: string
+  system?: string
+  added?: string[]
+  /** Declared components whose scaffold is gone — kept as declared. */
+  kept?: string[]
+  diagnostics?: string[]
+}
+
+/** The /api/run/{path} payload: the dashboard's last known state of one
+ *  system's host process. `exitError` is set when the host exited on its own
+ *  (a crash) — a deliberate stop clears the entry and reports neither.
+ *  `logs` is a tail of the host's combined stdout/stderr, the only terminal
+ *  a dashboard-started host has. */
+export interface RunState {
+  system: string
+  running: boolean
+  pid?: number
+  startedAt?: string
+  exitError?: string
+  logs: string[]
 }
 
 // Deployment state (internal/deploy). The server obtains each record by running
@@ -343,6 +380,22 @@ export interface MessageDoc {
   body?: string
 }
 
+/** One port's development file resolution: the local folder that stands in
+ *  for the port on a developer machine, declared host-relative in the
+ *  development definition ("./test/erp-source"). */
+export interface FilePort {
+  port: string
+  rootPath: string
+}
+
+/** The development section of a topology record, emitted by
+ *  `graph --development`. Absent on hosts whose Intropy.Topology predates
+ *  the flag (< v0.4.2), on hosts without a development definition, and on
+ *  plain graph runs. */
+export interface Development {
+  files?: FilePort[]
+}
+
 export interface Topology {
   /** Root-relative system directory, same identifier space as Integration.path. */
   path: string
@@ -358,10 +411,32 @@ export interface Topology {
   contracts?: Contract[]
   /** Contract surfaces — parsed but not yet rendered (shape not finalized). */
   apis?: unknown[]
+  /** The host's local-run picture — where a port's dev inbox lives. */
+  development?: Development
   /** Authored port payload descriptions, keyed by port name. CLI-merged
    *  enrichment from messages/<port>.md — not part of the host-declared
    *  topology, and re-read on every request. */
   messageDocs?: Record<string, MessageDoc>
+}
+
+/** The GET /api/testdata/{systemPath} payload: the system's test-file
+ *  library, files keyed by port name (testdata/<port>/). */
+export interface TestDataLibrary {
+  ports: Record<string, string[]>
+}
+
+/** The POST /api/seed body. */
+export interface SeedRequest {
+  systemPath: string
+  port: string
+  component: string
+  file: string
+  force?: boolean
+}
+
+/** The 201 payload: the seeded file's root-relative destination. */
+export interface SeedResponse {
+  path: string
 }
 
 /** The /api/topology payload: every declared topology plus the per-host
@@ -370,6 +445,77 @@ export interface Topology {
 export interface TopologyReport {
   topologies: Topology[]
   errors?: string[]
+}
+
+// Tracing (internal/dashboard/telemetry.go). The dashboard proxies the
+// running system's Aspire dashboard telemetry API, which answers in OTLP
+// JSON; the types below are the OTLP trace data model as JSON.
+
+/** OTLP AnyValue — one typed value of a span or resource attribute. */
+export interface OtlpAnyValue {
+  stringValue?: string
+  intValue?: string
+  doubleValue?: number
+  boolValue?: boolean
+  arrayValue?: { values?: OtlpAnyValue[] }
+  kvlistValue?: { values?: OtlpKeyValue[] }
+}
+
+export interface OtlpKeyValue {
+  key: string
+  value?: OtlpAnyValue
+}
+
+export interface OtlpSpanStatus {
+  /** 0 unset, 1 ok, 2 error. */
+  code?: number
+  message?: string
+}
+
+export interface OtlpSpanEvent {
+  timeUnixNano?: string
+  name?: string
+  attributes?: OtlpKeyValue[]
+}
+
+export interface OtlpSpan {
+  traceId?: string
+  spanId?: string
+  parentSpanId?: string
+  name?: string
+  kind?: number
+  startTimeUnixNano?: string
+  endTimeUnixNano?: string
+  attributes?: OtlpKeyValue[]
+  events?: OtlpSpanEvent[]
+  status?: OtlpSpanStatus
+}
+
+export interface OtlpScopeSpans {
+  scope?: { name?: string; version?: string }
+  spans?: OtlpSpan[]
+}
+
+export interface OtlpResourceSpans {
+  resource?: { attributes?: OtlpKeyValue[] }
+  scopeSpans?: OtlpScopeSpans[]
+}
+
+/** The Aspire telemetry API response wrapper: OTLP data plus counts. */
+export interface TelemetryTracesResponse {
+  data?: { resourceSpans?: OtlpResourceSpans[] }
+  totalCount?: number
+  returnedCount?: number
+}
+
+/** One resource the Aspire dashboard has telemetry for. */
+export interface TelemetryResource {
+  name: string
+  instanceId?: string
+  displayName?: string
+  hasLogs?: boolean
+  hasTraces?: boolean
+  hasMetrics?: boolean
 }
 
 async function requestJSON<T>(url: string, init?: RequestInit): Promise<T> {
@@ -382,12 +528,28 @@ async function requestJSON<T>(url: string, init?: RequestInit): Promise<T> {
     } catch {
       // response had no JSON error body; keep the status line
     }
-    throw new Error(message)
+    // Carry the status so callers can branch on it — the create forms offer
+    // force on a 409 (non-empty output directory).
+    const err = new Error(message) as Error & { status?: number }
+    err.status = res.status
+    throw err
   }
   return (await res.json()) as T
 }
 
-const getJSON = <T,>(url: string) => requestJSON<T>(url)
+const getJSON = <T,>(url: string, signal?: AbortSignal) => requestJSON<T>(url, { signal })
+
+// setQuery encodes confirmed parameter values as the repeated `set` query
+// the suggestion endpoints chain off (?set=topic=orders&set=…). Booleans
+// and numbers encode in their YAML scalar spelling, as --set would carry
+// them; undefined entries (a cleared field) confirm nothing and drop out.
+function setQuery(confirmed?: Record<string, unknown>): string {
+  if (!confirmed) return ''
+  return Object.entries(confirmed)
+    .filter((e): e is [string, NonNullable<unknown>] => e[1] !== undefined && e[1] !== null)
+    .map(([k, v]) => `&set=${encodeURIComponent(`${k}=${String(v)}`)}`)
+    .join('')
+}
 
 export const api = {
   listIntegrations: () => getJSON<Integration[]>('/api/integrations'),
@@ -395,6 +557,27 @@ export const api = {
     getJSON<IntegrationDetail>(`/api/integrations/${path}`),
   /** Every integration enriched with pipeline steps + Dapr components for the flow canvas. */
   flow: () => getJSON<IntegrationDetail[]>('/api/flow'),
+  /** Every declared system — including hosts with no blocks yet, which
+   *  /api/flow cannot surface (it only carries systems through their blocks). */
+  systems: () => getJSON<SystemInfo[]>('/api/systems'),
+  /** Re-assemble one system's host the way the CLI would: `sys update` when
+   *  the directory has a host, `sys create` when it does not. Path "." is
+   *  the workspace root. */
+  syncSystem: (path: string, force = false) =>
+    requestJSON<SystemSyncResponse>(`/api/systems/${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force }),
+    }),
+  /** Run supervision for one system's host (internal/dashboard/run.go).
+   *  GET is the last known state; POST starts (a crashed run restarts, a
+   *  running one is a 409); DELETE stops and clears. Path "." is the
+   *  workspace root. */
+  runState: (path: string) => getJSON<RunState>(`/api/run/${path}`),
+  startSystem: (path: string) =>
+    requestJSON<RunState>(`/api/run/${path}`, { method: 'POST' }),
+  stopSystem: (path: string) =>
+    requestJSON<RunState>(`/api/run/${path}`, { method: 'DELETE' }),
   /** Every declared system topology, cached from the hosts' graph verbs. */
   topologies: () => getJSON<TopologyReport>('/api/topology'),
   /** Re-run every host's graph verb and return the fresh report. */
@@ -402,6 +585,30 @@ export const api = {
     requestJSON<TopologyReport>('/api/topology/refresh', { method: 'POST' }),
   /** One integration's catalog entry: header facts and graph-derived checks. */
   catalog: (path: string) => getJSON<CatalogEntry>(`/api/catalog/${path}`),
+
+  // Tracing proxy (internal/dashboard/telemetry.go): the running system's
+  // Aspire dashboard, per system path ("." is the workspace root). A 503
+  // names the missing prerequisite — the host is not running, or predates
+  // the dashboard — rather than a failure of the request itself.
+  telemetryResources: (systemPath: string) =>
+    getJSON<TelemetryResource[]>(`/api/telemetry/${systemPath}/resources`),
+  telemetryTraces: (
+    systemPath: string,
+    opts: { resource?: string; hasError?: boolean; search?: string; limit?: number } = {},
+  ) => {
+    const q = new URLSearchParams()
+    if (opts.resource) q.set('resource', opts.resource)
+    if (opts.hasError !== undefined) q.set('hasError', String(opts.hasError))
+    if (opts.search) q.set('search', opts.search)
+    q.set('limit', String(opts.limit ?? 100))
+    return getJSON<TelemetryTracesResponse>(
+      `/api/telemetry/${systemPath}/traces?${q.toString()}`,
+    )
+  },
+  telemetryTrace: (systemPath: string, traceId: string) =>
+    getJSON<TelemetryTracesResponse>(
+      `/api/telemetry/${systemPath}/traces/${encodeURIComponent(traceId)}`,
+    ),
   /** One integration's deployment state, read once and reused by the server. */
   deployState: (path: string) => getJSON<DeployState>(`/api/deploy/${path}`),
   /** Re-run `deploy status` for one integration and return the fresh result —
@@ -414,10 +621,42 @@ export const api = {
   // `template` and `int create` commands: the library release the server
   // fetched is the release the form renders against and the run creates from.
   listTemplates: () => getJSON<TemplateList>('/api/templates'),
-  getTemplate: (name: string) => getJSON<TemplateDetail>(`/api/templates/${name}`),
+  /** Re-resolve the library release and return the fresh listing. The server
+   *  holds one release for its lifetime so a form and the run it starts can
+   *  never disagree; this is how a release cut meanwhile is picked up. */
+  refreshTemplates: () =>
+    requestJSON<TemplateList>('/api/templates/refresh', { method: 'POST' }),
+  getTemplate: (name: string, dir?: string) =>
+    getJSON<TemplateDetail>(`/api/templates/${name}${dir ? `?dir=${encodeURIComponent(dir)}` : ''}`),
+  /** Suggestion lists only, chained off the confirmed values — the form's
+   *  mid-edit refresh when a picked parameter (topic) narrows another's
+   *  candidates (contract). */
+  getTemplateSuggestions: (
+    name: string,
+    dir: string,
+    confirmed?: Record<string, unknown>,
+    signal?: AbortSignal,
+  ) =>
+    getJSON<TemplateSuggestions>(
+      `/api/templates/suggestions/${name}?dir=${encodeURIComponent(dir)}${setQuery(confirmed)}`,
+      signal,
+    ),
   /** Render a template into the workspace — the Run button's `int create`. */
   createTemplate: (name: string, req: CreateRequest) =>
     requestJSON<CreateResponse>(`/api/templates/${name}/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+    }),
+
+  // Test-file seeding (internal/dashboard/testdata.go): one system's
+  // testdata/<port>/ library, and copying a chosen file into the port's dev
+  // inbox. A 409 from seedFile means the inbox file already exists — the
+  // caller offers force, as the create forms do.
+  listTestData: (systemPath: string) =>
+    getJSON<TestDataLibrary>(`/api/testdata/${systemPath}`),
+  seedFile: (req: SeedRequest) =>
+    requestJSON<SeedResponse>('/api/seed', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req),
@@ -428,16 +667,31 @@ export const api = {
 // JSON contract the endpoints serve: template.List, template.DescribeResult,
 // and template.CreateResult.
 
-/** The /api/templates payload: one library release's template names. */
+/** One list entry with the manifest metadata create surfaces filter on —
+ *  notably the intropy.io/* labels a flow-view slot selects templates by. */
+export interface TemplateSummary {
+  name: string
+  title?: string
+  description?: string
+  labels?: Record<string, string>
+}
+
+/** The /api/templates payload: one library release's template names, plus
+ *  per-template metadata in `entries` (additive beside the bare names). */
 export interface TemplateList {
   owner: string
   repo: string
   version: string
   templates: string[]
+  entries?: TemplateSummary[]
 }
 
 /** One parameter of a template's schema, in YAML declaration order. Mirrors
- *  template.FieldSpec — the form renders from these, never the raw schema. */
+ *  template.FieldSpec — the form renders from these, never the raw schema.
+ *  `suggestions` is present only when the request carried a `dir`:
+ *  workspace-derived candidates the field can offer, never values the form
+ *  may treat as chosen. Mid-form the hook replaces them from
+ *  /api/templates/suggestions, chained off the answers so far. */
 export interface TemplateField {
   name: string
   title?: string
@@ -447,6 +701,15 @@ export interface TemplateField {
   default?: unknown
   pattern?: string
   required: boolean
+  suggestions?: string[]
+}
+
+/** The /api/templates/suggestions/{name} payload: one entry per declared
+ *  parameter (absent or empty when the workspace offers nothing), chained
+ *  off the confirmed values the request carried. The form's refresh when an
+ *  answer changes what the workspace implies for the remaining fields. */
+export interface TemplateSuggestions {
+  suggestions: Record<string, string[] | undefined>
 }
 
 /** The /api/templates/{name} payload: the `template show -o json` document.
@@ -466,10 +729,15 @@ export interface TemplateDetail {
   fields: TemplateField[]
 }
 
-/** The POST body for create. `name` folds into values.name and becomes the
- *  output directory under the workspace root, as `int create --name` does. */
+/** The POST body for create. `name`, when sent, folds into values.name and
+ *  defaults the output directory to its kebab-cased form under `dir` (the
+ *  workspace root when omitted or "."), as `int create --name` does. The
+ *  forms omit it and let the resolved "name" parameter kebab-case into the
+ *  directory instead. `dir` must be an existing root-relative directory —
+ *  creating into a system, not inventing directory trees. */
 export interface CreateRequest {
-  name: string
+  name?: string
+  dir?: string
   values: Record<string, unknown>
   force?: boolean
 }

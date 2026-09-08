@@ -67,7 +67,7 @@ jobs:
       # config; CI runners do not.
       - name: Set git identity
         run: |
-          git config --global user.email "ci@intropy.dev"
+          git config --global user.email "ci@intropy.io"
           git config --global user.name "CI"
 
       # The deploy tests drive the real kustomize binary. Without it those tests

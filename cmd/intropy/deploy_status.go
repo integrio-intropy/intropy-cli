@@ -31,7 +31,7 @@ var deployStatusCmd = &cobra.Command{
 		"last row furthest downstream.\n\n" +
 		"Nothing is written to git, no sync is triggered, and the exit code is 0 even when environments " +
 		"disagree. Read `consistent` from --output json to gate on it.",
-	Args: cobra.ExactArgs(1),
+	Args: usageArgs(cobra.ExactArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validateOutputFlag(statusFlagValues.output, deploy.OutputPlain, deploy.OutputJSON); err != nil {
 			return err

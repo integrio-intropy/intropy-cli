@@ -1,25 +1,29 @@
 package dashboard
 
 import (
-	"archive/tar"
-	"bytes"
-	"compress/gzip"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/integrio-intropy/intropy-cli/internal/template"
+	"github.com/integrio-intropy/intropy-cli/internal/template/templatetest"
 )
 
 // testTemplateYAML declares two parameters in a known order so the detail
 // endpoint's `fields` can be asserted against declaration order.
-const testTemplateYAML = `apiVersion: intropy.dev/v1
+const testTemplateYAML = `apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: test-template
   title: Test
+  labels:
+    intropy.io/block-kind: extractor
+    intropy.io/data-flow: in
 spec:
   parameters:
     type: object
@@ -32,65 +36,33 @@ spec:
         default: default
 `
 
-// newTemplateLibraryServer fakes the GitHub endpoints the template provider
-// calls: the latest-release lookup and the tarball holding one template.
-func newTemplateLibraryServer(t *testing.T, tag string) *httptest.Server {
+// newTemplateLibrary builds a git-backed fixture holding the standard test
+// template.
+func newTemplateLibrary(t *testing.T, tag string) *templatetest.Library {
 	t.Helper()
-	tarball := buildTarGz(t, "owner-repo-abc123", map[string]string{
-		"test-template/template.yaml":           testTemplateYAML,
-		"test-template/skeleton/README.md.tmpl": "{{ .integrationName }} in {{ .namespace }}\n",
-	})
-	mux := http.NewServeMux()
-	mux.HandleFunc("/repos/o/r/releases/latest", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"tag_name":"` + tag + `"}`))
-	})
-	mux.HandleFunc("/repos/o/r/tarball/"+tag, func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write(tarball)
-	})
-	return httptest.NewServer(mux)
+	return newTemplateLibraryWith(t, tag, testTemplateYAML)
 }
 
-// buildTarGz packs entries (name → body) under a leading directory, the
-// layout GitHub tarball responses and ExtractTarGz both expect.
-func buildTarGz(t *testing.T, prefix string, entries map[string]string) []byte {
+// newTemplateLibraryWith builds a git-backed fixture holding one template with
+// the given manifest.
+func newTemplateLibraryWith(t *testing.T, tag, manifest string) *templatetest.Library {
 	t.Helper()
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	tw := tar.NewWriter(gz)
-	for name, body := range entries {
-		if err := tw.WriteHeader(&tar.Header{
-			Name: prefix + "/" + name,
-			Mode: 0o644,
-			Size: int64(len(body)),
-		}); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := tw.Write([]byte(body)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := tw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := gz.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return buf.Bytes()
+	return templatetest.NewLibrary(t, tag, map[string]string{
+		"test-template/template.yaml":           manifest,
+		"test-template/skeleton/README.md.tmpl": "{{ .integrationName }} in {{ .namespace }}\n",
+	})
 }
 
 // templateProviders returns providers wired at the fake library, with the
 // topology and deploy providers stubbed out — a test about templates should
 // not have to care what a host declares or GitOps pins.
-func templateProviders(baseURL string) providers {
+func templateProviders(source template.SourceOptions) providers {
 	return providers{
 		topology: emptyTopo,
 		deploy:   emptyDeploy,
 		templates: templatesProvider{
-			userAgent:     "test",
-			owner:         "o",
-			repo:          "r",
-			githubBaseURL: baseURL,
+			userAgent: "test",
+			source:    source,
 		},
 	}
 }
@@ -105,9 +77,8 @@ func postJSON(t *testing.T, h http.Handler, path, body string) *httptest.Respons
 }
 
 func TestListTemplates(t *testing.T) {
-	srv := newTemplateLibraryServer(t, "v1.2.3")
-	defer srv.Close()
-	h := testHandlerWith(t, t.TempDir(), templateProviders(srv.URL))
+	lib := newTemplateLibrary(t, "v1.2.3")
+	h := testHandlerWith(t, t.TempDir(), templateProviders(lib.Source(t)))
 
 	rec := get(t, h, "/api/templates")
 	if rec.Code != http.StatusOK {
@@ -122,8 +93,9 @@ func TestListTemplates(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Version != "v1.2.3" || got.Owner != "o" || got.Repo != "r" {
-		t.Errorf("library ref = %s/%s@%s", got.Owner, got.Repo, got.Version)
+	owner, repo := template.DefaultLibrary()
+	if got.Version != "v1.2.3" || got.Owner != owner || got.Repo != repo {
+		t.Errorf("library ref = %s/%s@%s, want the resolved defaults", got.Owner, got.Repo, got.Version)
 	}
 	if len(got.Templates) != 1 || got.Templates[0] != "test-template" {
 		t.Errorf("templates = %v", got.Templates)
@@ -131,9 +103,8 @@ func TestListTemplates(t *testing.T) {
 }
 
 func TestGetTemplateServesOrderedFields(t *testing.T) {
-	srv := newTemplateLibraryServer(t, "v1")
-	defer srv.Close()
-	h := testHandlerWith(t, t.TempDir(), templateProviders(srv.URL))
+	lib := newTemplateLibrary(t, "v1")
+	h := testHandlerWith(t, t.TempDir(), templateProviders(lib.Source(t)))
 
 	rec := get(t, h, "/api/templates/test-template")
 	if rec.Code != http.StatusOK {
@@ -170,9 +141,8 @@ func TestGetTemplateServesOrderedFields(t *testing.T) {
 }
 
 func TestGetTemplateNotFound(t *testing.T) {
-	srv := newTemplateLibraryServer(t, "v1")
-	defer srv.Close()
-	h := testHandlerWith(t, t.TempDir(), templateProviders(srv.URL))
+	lib := newTemplateLibrary(t, "v1")
+	h := testHandlerWith(t, t.TempDir(), templateProviders(lib.Source(t)))
 
 	rec := get(t, h, "/api/templates/no-such-template")
 	if rec.Code != http.StatusNotFound {
@@ -192,10 +162,9 @@ func TestGetTemplateRejectsPathSegments(t *testing.T) {
 }
 
 func TestCreateTemplate(t *testing.T) {
-	srv := newTemplateLibraryServer(t, "v1")
-	defer srv.Close()
+	lib := newTemplateLibrary(t, "v1")
 	root := t.TempDir()
-	h := testHandlerWith(t, root, templateProviders(srv.URL))
+	h := testHandlerWith(t, root, templateProviders(lib.Source(t)))
 
 	rec := postJSON(t, h, "/api/templates/test-template/create",
 		`{"name":"orders-erp","values":{"integrationName":"Orders ERP"}}`)
@@ -232,10 +201,94 @@ func TestCreateTemplate(t *testing.T) {
 	}
 }
 
+func TestCreateTemplatePascalNameKebabDir(t *testing.T) {
+	lib := newTemplateLibrary(t, "v1")
+	root := t.TempDir()
+	h := testHandlerWith(t, root, templateProviders(lib.Source(t)))
+
+	// The CLI's --name default: a PascalCase name scaffolds the kebab-cased
+	// directory while values.name keeps the verbatim spelling.
+	rec := postJSON(t, h, "/api/templates/test-template/create",
+		`{"name":"OrderSync","values":{"integrationName":"Order Sync"}}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body)
+	}
+	var got struct {
+		OutputDir string         `json:"outputDir"`
+		Values    map[string]any `json:"values"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.OutputDir != "order-sync" {
+		t.Errorf("outputDir = %q, want order-sync", got.OutputDir)
+	}
+	if got.Values["name"] != "OrderSync" {
+		t.Errorf("values.name = %v, want the verbatim name", got.Values["name"])
+	}
+}
+
+func TestCreateTemplateDerivesDirFromNameValue(t *testing.T) {
+	// The form sends no name; the resolved "name" parameter kebab-cases
+	// into the directory, the same convention the CLI's --name defaults by.
+	lib := newTemplateLibraryWith(t, "v1", `apiVersion: intropy.io/v1
+kind: Template
+metadata:
+  name: test-template
+spec:
+  parameters:
+    type: object
+    required: [name, integrationName]
+    properties:
+      name:
+        type: string
+      integrationName:
+        type: string
+      namespace:
+        type: string
+        default: default
+`)
+	root := t.TempDir()
+	h := testHandlerWith(t, root, templateProviders(lib.Source(t)))
+
+	rec := postJSON(t, h, "/api/templates/test-template/create",
+		`{"values":{"name":"OrderSync","integrationName":"Order Sync"}}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body)
+	}
+	var got struct {
+		OutputDir string `json:"outputDir"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.OutputDir != "order-sync" {
+		t.Errorf("outputDir = %q, want order-sync", got.OutputDir)
+	}
+	if _, err := os.Stat(filepath.Join(root, "order-sync", "README.md")); err != nil {
+		t.Fatalf("rendered file: %v", err)
+	}
+}
+
+func TestCreateTemplateNamelessWithoutNameParameter(t *testing.T) {
+	// The test template's parameters have no "name", so a nameless request
+	// has nothing to derive a directory from.
+	lib := newTemplateLibrary(t, "v1")
+	h := testHandlerWith(t, t.TempDir(), templateProviders(lib.Source(t)))
+
+	rec := postJSON(t, h, "/api/templates/test-template/create",
+		`{"values":{"integrationName":"A"}}`)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422: %s", rec.Code, rec.Body)
+	}
+	if !strings.Contains(rec.Body.String(), "name is required") {
+		t.Errorf("error should name the missing name: %s", rec.Body)
+	}
+}
+
 func TestCreateTemplateMissingRequired(t *testing.T) {
-	srv := newTemplateLibraryServer(t, "v1")
-	defer srv.Close()
-	h := testHandlerWith(t, t.TempDir(), templateProviders(srv.URL))
+	lib := newTemplateLibrary(t, "v1")
+	h := testHandlerWith(t, t.TempDir(), templateProviders(lib.Source(t)))
 
 	rec := postJSON(t, h, "/api/templates/test-template/create", `{"name":"x","values":{}}`)
 	if rec.Code != http.StatusUnprocessableEntity {
@@ -247,8 +300,7 @@ func TestCreateTemplateMissingRequired(t *testing.T) {
 }
 
 func TestCreateTemplateDirNotEmpty(t *testing.T) {
-	srv := newTemplateLibraryServer(t, "v1")
-	defer srv.Close()
+	lib := newTemplateLibrary(t, "v1")
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "taken"), 0o755); err != nil {
 		t.Fatal(err)
@@ -256,7 +308,7 @@ func TestCreateTemplateDirNotEmpty(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "taken", "file"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	h := testHandlerWith(t, root, templateProviders(srv.URL))
+	h := testHandlerWith(t, root, templateProviders(lib.Source(t)))
 
 	rec := postJSON(t, h, "/api/templates/test-template/create",
 		`{"name":"taken","values":{"integrationName":"A"}}`)
@@ -273,10 +325,9 @@ func TestCreateTemplateDirNotEmpty(t *testing.T) {
 }
 
 func TestCreateTemplateDecouplesNameValue(t *testing.T) {
-	srv := newTemplateLibraryServer(t, "v1")
-	defer srv.Close()
+	lib := newTemplateLibrary(t, "v1")
 	root := t.TempDir()
-	h := testHandlerWith(t, root, templateProviders(srv.URL))
+	h := testHandlerWith(t, root, templateProviders(lib.Source(t)))
 
 	// The CLI's --set name=X --out-dir y split: the schema's name parameter
 	// and the output directory are separate concerns and may differ.
@@ -301,10 +352,9 @@ func TestCreateTemplateDecouplesNameValue(t *testing.T) {
 }
 
 func TestCreateTemplateRejectsTraversal(t *testing.T) {
-	srv := newTemplateLibraryServer(t, "v1")
-	defer srv.Close()
+	lib := newTemplateLibrary(t, "v1")
 	root := t.TempDir()
-	h := testHandlerWith(t, root, templateProviders(srv.URL))
+	h := testHandlerWith(t, root, templateProviders(lib.Source(t)))
 
 	// JSON is decoded after URL decoding, so the handler sees the literal
 	// "../escape" — exactly what a crafted client would send.
@@ -319,9 +369,8 @@ func TestCreateTemplateRejectsTraversal(t *testing.T) {
 }
 
 func TestCreateTemplateRejectsReservedValue(t *testing.T) {
-	srv := newTemplateLibraryServer(t, "v1")
-	defer srv.Close()
-	h := testHandlerWith(t, t.TempDir(), templateProviders(srv.URL))
+	lib := newTemplateLibrary(t, "v1")
+	h := testHandlerWith(t, t.TempDir(), templateProviders(lib.Source(t)))
 
 	rec := postJSON(t, h, "/api/templates/test-template/create",
 		`{"name":"x","values":{"integrationName":"A","topology":{}}}`)
@@ -330,6 +379,113 @@ func TestCreateTemplateRejectsReservedValue(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "reserved") {
 		t.Errorf("error should say why: %s", rec.Body)
+	}
+}
+
+func TestListTemplatesIncludesLabels(t *testing.T) {
+	lib := newTemplateLibrary(t, "v1")
+	h := testHandlerWith(t, t.TempDir(), templateProviders(lib.Source(t)))
+
+	rec := get(t, h, "/api/templates")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	var got struct {
+		Entries []templateSummary `json:"entries"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Entries) != 1 || got.Entries[0].Name != "test-template" {
+		t.Fatalf("entries = %+v", got.Entries)
+	}
+	if got.Entries[0].Title != "Test" {
+		t.Errorf("title = %q", got.Entries[0].Title)
+	}
+	// The labels are what a flow-view slot filters the palette by.
+	if got.Entries[0].Labels["intropy.io/block-kind"] != "extractor" {
+		t.Errorf("labels = %v", got.Entries[0].Labels)
+	}
+}
+
+func TestCreateTemplateIntoDir(t *testing.T) {
+	lib := newTemplateLibrary(t, "v1")
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "acme", "erp"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	h := testHandlerWith(t, root, templateProviders(lib.Source(t)))
+
+	rec := postJSON(t, h, "/api/templates/test-template/create",
+		`{"name":"orders","dir":"acme/erp","values":{"integrationName":"Orders"}}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body)
+	}
+	var got struct {
+		OutputDir string `json:"outputDir"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	// The root-relative identifier the flow view joins ghost nodes on.
+	if got.OutputDir != "acme/erp/orders" {
+		t.Errorf("outputDir = %q, want %q", got.OutputDir, "acme/erp/orders")
+	}
+	if _, err := os.Stat(filepath.Join(root, "acme", "erp", "orders", "README.md")); err != nil {
+		t.Fatalf("rendered file: %v", err)
+	}
+	entries, _ := scanRoot(root)
+	if len(entries) != 1 || !strings.HasSuffix(filepath.ToSlash(entries[0].Path), "acme/erp/orders") {
+		t.Errorf("scaffolds = %+v", entries)
+	}
+}
+
+func TestCreateTemplateDirValidation(t *testing.T) {
+	lib := newTemplateLibrary(t, "v1")
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "sys"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	h := testHandlerWith(t, root, templateProviders(lib.Source(t)))
+
+	cases := []struct{ name, dir string }{
+		{"parent traversal", "../x"},
+		{"inner traversal", "sys/../sys"},
+		{"rooted", "/etc"},
+		{"backslash", `sys\x`},
+		{"empty segment", "sys//x"},
+		{"trailing slash", "sys/"},
+		{"hidden segment", ".hidden/x"},
+		{"missing dir", "missing-dir"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"name":"x","dir":` + strconv.Quote(tc.dir) + `,"values":{"integrationName":"A"}}`
+			rec := postJSON(t, h, "/api/templates/test-template/create", body)
+			if rec.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("dir %q: status = %d, want 422: %s", tc.dir, rec.Code, rec.Body)
+			}
+		})
+	}
+	// None of the rejected dirs left anything beside the workspace root.
+	if _, err := os.Stat(filepath.Join(filepath.Dir(root), "x")); !os.IsNotExist(err) {
+		t.Error("render escaped the workspace root")
+	}
+
+	// "." is the workspace root — byte-for-byte the no-dir behavior.
+	rec := postJSON(t, h, "/api/templates/test-template/create",
+		`{"name":"at-root","dir":".","values":{"integrationName":"A"}}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("dir \".\": status = %d, want 201: %s", rec.Code, rec.Body)
+	}
+	var got struct {
+		OutputDir string `json:"outputDir"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.OutputDir != "at-root" {
+		t.Errorf("outputDir = %q, want %q", got.OutputDir, "at-root")
 	}
 }
 
@@ -351,4 +507,419 @@ func scanRoot(root string) ([]scaffoldEntry, []string) {
 type scaffoldEntry struct {
 	Template string
 	Path     string
+}
+
+// topicTemplateYAML declares the wiring parameters a topic block prompts
+// for, so the dir-scoped detail response can be asserted against workspace
+// suggestions.
+const topicTemplateYAML = `apiVersion: intropy.io/v1
+kind: Template
+metadata:
+  name: topic-template
+spec:
+  parameters:
+    type: object
+    required: [topic, contract]
+    properties:
+      topic:
+        type: string
+      contract:
+        type: string
+      pubsub:
+        type: string
+        default: pubsub
+      organization:
+        type: string
+`
+
+// newTopicTemplateLibrary builds a git-backed fixture holding the topic
+// template, whose wiring parameters the dir-scoped suggestion tests assert on.
+func newTopicTemplateLibrary(t *testing.T, tag string) *templatetest.Library {
+	t.Helper()
+	return templatetest.NewLibrary(t, tag, map[string]string{
+		"topic-template/template.yaml":           topicTemplateYAML,
+		"topic-template/skeleton/README.md.tmpl": "{{ .topic }}",
+	})
+}
+
+func writeScaffoldRecord(t *testing.T, dir string, record string) {
+	t.Helper()
+	intropyDir := filepath.Join(dir, ".intropy")
+	if err := os.MkdirAll(intropyDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(intropyDir, "scaffold.json"), []byte(record), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+const extractorScaffoldRecord = `{
+  "schemaVersion": 1,
+  "template": "extractor",
+  "owner": "o",
+  "repo": "r",
+  "version": "v1",
+  "values": {"appId": "order-extractor", "topic": "orders", "contract": "Order"},
+  "blockKind": "extractor",
+  "dataFlow": "in"
+}`
+
+func TestGetTemplateWithDirServesWorkspaceSuggestions(t *testing.T) {
+	lib := newTopicTemplateLibrary(t, "v1")
+
+	root := t.TempDir()
+	systemDir := filepath.Join(root, "acme")
+	writeScaffoldRecord(t, filepath.Join(systemDir, "order-extractor"), extractorScaffoldRecord)
+	h := testHandlerWith(t, root, templateProviders(lib.Source(t)))
+
+	rec := get(t, h, "/api/templates/topic-template?dir=acme")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	var got struct {
+		Fields []struct {
+			Name        string   `json:"name"`
+			Suggestions []string `json:"suggestions"`
+		} `json:"fields"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	suggestions := map[string][]string{}
+	for _, f := range got.Fields {
+		suggestions[f.Name] = f.Suggestions
+	}
+	if len(suggestions["topic"]) != 1 || suggestions["topic"][0] != "orders" {
+		t.Errorf("topic suggestions = %v", suggestions["topic"])
+	}
+	if len(suggestions["contract"]) != 1 || suggestions["contract"][0] != "Order" {
+		t.Errorf("contract suggestions = %v", suggestions["contract"])
+	}
+	// pubsub's only candidate equals its schema default, so it is dropped
+	// rather than competing with the default bracket.
+	if len(suggestions["pubsub"]) != 0 {
+		t.Errorf("pubsub suggestions = %v", suggestions["pubsub"])
+	}
+}
+
+func TestGetTemplateServesSeededOrganization(t *testing.T) {
+	lib := newTopicTemplateLibrary(t, "v1")
+
+	root := t.TempDir()
+	systemDir := filepath.Join(root, "acme")
+	writeScaffoldRecord(t, filepath.Join(systemDir, "order-extractor"), extractorScaffoldRecord)
+	h := testHandlerWithOrg(t, root, templateProviders(lib.Source(t)), "integrio")
+
+	rec := get(t, h, "/api/templates/topic-template?dir=acme")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	var got struct {
+		Fields []struct {
+			Name        string   `json:"name"`
+			Suggestions []string `json:"suggestions"`
+		} `json:"fields"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range got.Fields {
+		if f.Name == "organization" {
+			if len(f.Suggestions) != 1 || f.Suggestions[0] != "integrio" {
+				t.Fatalf("organization suggestions = %v", f.Suggestions)
+			}
+			return
+		}
+	}
+	t.Fatal("no organization field in response")
+}
+
+func TestGetTemplateWorkspaceOrganizationBeatsSeeded(t *testing.T) {
+	lib := newTopicTemplateLibrary(t, "v1")
+
+	root := t.TempDir()
+	systemDir := filepath.Join(root, "acme")
+	record := strings.Replace(extractorScaffoldRecord,
+		`"contract": "Order"`, `"contract": "Order", "organization": "acme"`, 1)
+	writeScaffoldRecord(t, filepath.Join(systemDir, "order-extractor"), record)
+	h := testHandlerWithOrg(t, root, templateProviders(lib.Source(t)), "integrio")
+
+	rec := get(t, h, "/api/templates/topic-template?dir=acme")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	var got struct {
+		Fields []struct {
+			Name        string   `json:"name"`
+			Suggestions []string `json:"suggestions"`
+		} `json:"fields"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range got.Fields {
+		if f.Name == "organization" {
+			if len(f.Suggestions) != 1 || f.Suggestions[0] != "acme" {
+				t.Fatalf("organization suggestions = %v", f.Suggestions)
+			}
+			return
+		}
+	}
+	t.Fatal("no organization field in response")
+}
+
+func testHandlerWithOrg(t *testing.T, root string, p providers, org string) http.Handler {
+	t.Helper()
+	h, api, err := newHandler(root, "test", p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	api.organization = org
+	return h
+}
+
+func TestGetTemplateWithDirConflictingContractsSuggestNoContract(t *testing.T) {
+	lib := newTopicTemplateLibrary(t, "v1")
+
+	root := t.TempDir()
+	systemDir := filepath.Join(root, "acme")
+	writeScaffoldRecord(t, filepath.Join(systemDir, "order-extractor"), extractorScaffoldRecord)
+	writeScaffoldRecord(t, filepath.Join(systemDir, "order-loader"), `{
+  "schemaVersion": 1,
+  "template": "loader",
+  "owner": "o",
+  "repo": "r",
+  "version": "v1",
+  "values": {"appId": "order-loader", "topic": "orders", "contract": "OrderV2"},
+  "blockKind": "loader",
+  "dataFlow": "out"
+}`)
+	h := testHandlerWith(t, root, templateProviders(lib.Source(t)))
+
+	rec := get(t, h, "/api/templates/topic-template?dir=acme")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	var got struct {
+		Fields []struct {
+			Name        string   `json:"name"`
+			Suggestions []string `json:"suggestions"`
+		} `json:"fields"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range got.Fields {
+		if f.Name == "contract" && len(f.Suggestions) != 0 {
+			t.Errorf("conflicted contract should suggest nothing, got %v", f.Suggestions)
+		}
+	}
+}
+
+func TestGetTemplateDirValidation(t *testing.T) {
+	lib := newTopicTemplateLibrary(t, "v1")
+	root := t.TempDir()
+	h := testHandlerWith(t, root, templateProviders(lib.Source(t)))
+
+	for _, dir := range []string{"../outside", "no/such/dir"} {
+		rec := get(t, h, "/api/templates/topic-template?dir="+dir)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("dir=%q: status = %d, want 400: %s", dir, rec.Code, rec.Body)
+		}
+	}
+}
+
+// loaderScaffoldRecord declares a second topic so the confirmed-topic
+// chaining has something to narrow: with two topics known, an unchained
+// contract query suggests both contracts while set=topic=orders narrows to
+// the one the topic carries.
+const loaderScaffoldRecord = `{
+  "schemaVersion": 1,
+  "template": "loader",
+  "owner": "o",
+  "repo": "r",
+  "version": "v1",
+  "values": {"appId": "audit-loader", "topic": "audits", "contract": "Audit"},
+  "blockKind": "loader",
+  "dataFlow": "out"
+}`
+
+func TestGetTemplateWithConfirmedValuesChainsSuggestions(t *testing.T) {
+	lib := newTopicTemplateLibrary(t, "v1")
+
+	root := t.TempDir()
+	systemDir := filepath.Join(root, "acme")
+	writeScaffoldRecord(t, filepath.Join(systemDir, "order-extractor"), extractorScaffoldRecord)
+	writeScaffoldRecord(t, filepath.Join(systemDir, "audit-loader"), loaderScaffoldRecord)
+	h := testHandlerWith(t, root, templateProviders(lib.Source(t)))
+
+	suggestionsFor := func(url string) map[string][]string {
+		t.Helper()
+		rec := get(t, h, url)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: status = %d, want 200: %s", url, rec.Code, rec.Body)
+		}
+		var got struct {
+			Fields []struct {
+				Name        string   `json:"name"`
+				Suggestions []string `json:"suggestions"`
+			} `json:"fields"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		out := map[string][]string{}
+		for _, f := range got.Fields {
+			out[f.Name] = f.Suggestions
+		}
+		return out
+	}
+
+	// Unconfirmed: every known topic and contract is a candidate.
+	unchained := suggestionsFor("/api/templates/topic-template?dir=acme")
+	if len(unchained["contract"]) != 2 {
+		t.Errorf("contract suggestions without a confirmed topic = %v, want both known contracts", unchained["contract"])
+	}
+
+	// A confirmed topic narrows contract to the one that topic carries —
+	// the chaining the form's refresh round-trips for.
+	chained := suggestionsFor("/api/templates/topic-template?dir=acme&set=topic=orders")
+	if len(chained["contract"]) != 1 || chained["contract"][0] != "Order" {
+		t.Errorf("contract suggestions with set=topic=orders = %v, want [Order]", chained["contract"])
+	}
+
+	rec := get(t, h, "/api/templates/topic-template?dir=acme&set=not-a-pair")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("malformed set: status = %d, want 400: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestGetTemplateSuggestions(t *testing.T) {
+	lib := newTopicTemplateLibrary(t, "v1")
+
+	root := t.TempDir()
+	systemDir := filepath.Join(root, "acme")
+	writeScaffoldRecord(t, filepath.Join(systemDir, "order-extractor"), extractorScaffoldRecord)
+	writeScaffoldRecord(t, filepath.Join(systemDir, "audit-loader"), loaderScaffoldRecord)
+	h := testHandlerWith(t, root, templateProviders(lib.Source(t)))
+
+	suggestionsFor := func(url string) map[string][]string {
+		t.Helper()
+		rec := get(t, h, url)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: status = %d, want 200: %s", url, rec.Code, rec.Body)
+		}
+		var got struct {
+			Suggestions map[string][]string `json:"suggestions"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		return got.Suggestions
+	}
+
+	all := suggestionsFor("/api/templates/suggestions/topic-template?dir=acme")
+	if len(all["topic"]) != 2 || len(all["contract"]) != 2 {
+		t.Errorf("suggestions = topic %v, contract %v; want both topics and contracts", all["topic"], all["contract"])
+	}
+
+	chained := suggestionsFor("/api/templates/suggestions/topic-template?dir=acme&set=topic=audits")
+	if len(chained["contract"]) != 1 || chained["contract"][0] != "Audit" {
+		t.Errorf("contract suggestions with set=topic=audits = %v, want [Audit]", chained["contract"])
+	}
+	// The confirmed field itself keeps its candidates — the form still
+	// offers the other topics on the answered field.
+	if len(chained["topic"]) != 2 {
+		t.Errorf("topic suggestions = %v, want both topics still offered", chained["topic"])
+	}
+
+	for _, url := range []string{
+		"/api/templates/suggestions/topic-template",
+		"/api/templates/suggestions/topic-template?dir=../outside",
+		"/api/templates/suggestions/topic-template?dir=acme&set=oops",
+	} {
+		rec := get(t, h, url)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400: %s", url, rec.Code, rec.Body)
+		}
+	}
+
+	rec := get(t, h, "/api/templates/suggestions/no-such-template?dir=acme")
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("unknown template: status = %d, want 404: %s", rec.Code, rec.Body)
+	}
+}
+
+// TestTemplateEndpointsResolveReleaseOnce is the regression test for the
+// dashboard's GitHub traffic. The create form refreshes its suggestions as the
+// user types, so a latest-release lookup per request is what tripped GitHub's
+// secondary rate limits: one form could issue dozens. Every template endpoint
+// shares the release the first of them resolved.
+func TestTemplateEndpointsResolveReleaseOnce(t *testing.T) {
+	lib := newTemplateLibrary(t, "v1")
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "acme"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	h := testHandlerWith(t, root, templateProviders(lib.Source(t)))
+
+	if rec := get(t, h, "/api/templates"); rec.Code != http.StatusOK {
+		t.Fatalf("list: status = %d: %s", rec.Code, rec.Body)
+	}
+	if rec := get(t, h, "/api/templates/test-template"); rec.Code != http.StatusOK {
+		t.Fatalf("show: status = %d: %s", rec.Code, rec.Body)
+	}
+	// A twenty-character name, typed one character at a time.
+	for range 20 {
+		rec := get(t, h, "/api/templates/suggestions/test-template?dir=.")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("suggestions: status = %d: %s", rec.Code, rec.Body)
+		}
+	}
+	// The create that closes the session hands a version to another package;
+	// it must hand it the held one rather than resolve its own.
+	rec := postJSON(t, h, "/api/templates/test-template/create",
+		`{"dir":"acme","name":"OrderSync","values":{"integrationName":"Order Sync"}}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: status = %d: %s", rec.Code, rec.Body)
+	}
+
+	if n := lib.LatestRequests.Load(); n != 1 {
+		t.Errorf("latest-release lookups = %d, want 1 for the life of the server", n)
+	}
+}
+
+// TestRefreshTemplatesResolvesAgain pins the escape hatch: a release cut while
+// the dashboard runs is picked up by a refresh, not by a restart.
+func TestRefreshTemplatesResolvesAgain(t *testing.T) {
+	lib := newTemplateLibrary(t, "v1")
+	h := testHandlerWith(t, t.TempDir(), templateProviders(lib.Source(t)))
+
+	get(t, h, "/api/templates")
+	if rec := postJSON(t, h, "/api/templates/refresh", ""); rec.Code != http.StatusOK {
+		t.Fatalf("refresh: status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	get(t, h, "/api/templates")
+
+	if n := lib.LatestRequests.Load(); n != 2 {
+		t.Errorf("latest-release lookups = %d, want 2 (first use and the refresh)", n)
+	}
+}
+
+// TestPinnedVersionResolvesNothing pins the strongest guarantee: a dashboard
+// started against an explicit release never asks GitHub which one is latest.
+func TestPinnedVersionResolvesNothing(t *testing.T) {
+	lib := newTemplateLibrary(t, "v1")
+	p := templateProviders(lib.Source(t))
+	p.templates.version = "v1"
+	h := testHandlerWith(t, t.TempDir(), p)
+
+	if rec := get(t, h, "/api/templates"); rec.Code != http.StatusOK {
+		t.Fatalf("list: status = %d: %s", rec.Code, rec.Body)
+	}
+	get(t, h, "/api/templates/test-template")
+
+	if n := lib.LatestRequests.Load(); n != 0 {
+		t.Errorf("latest-release lookups = %d, want 0 for a pinned version", n)
+	}
 }
