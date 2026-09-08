@@ -1,0 +1,492 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "82bd7ab936c6",
+  "session_id": "35aef357-1a12-4bd0-9b20-616215feaaba",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-08T08:57:19.380248Z",
+  "branch": "feat/xregistry-message-integration",
+  "checkpoints_count": 23,
+  "save_step_count": 20,
+  "files_touched": [
+    "AGENTS.md",
+    "catalog/concepts/messages-and-subscriptions.md",
+    "cmd/intropy/int_create.go",
+    "cmd/intropy/int_create_test.go",
+    "internal/dashboard/templates.go",
+    "internal/message/resolve.go",
+    "internal/message/resolve_test.go",
+    "internal/system/real_contract_e2e_test.go",
+    "internal/template/create.go",
+    "internal/template/dependencies.go",
+    "internal/template/prepare.go",
+    "internal/template/reserved.go",
+    "internal/xregistry/client.go",
+    "internal/xregistry/resolve.go",
+    "internal/xregistry/types.go"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5[1m]",
+  "turn_id": "72568d5d5601",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 570,
+    "cache_creation_tokens": 1247164,
+    "cache_read_tokens": 93678121,
+    "output_tokens": 318352,
+    "api_call_count": 285
+  },
+  "session_metrics": {
+    "turn_count": 23
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-08T08:57:19.228581Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 3016,
+    "human_removed": 396,
+    "total_committed": 226,
+    "total_lines_changed": 3412,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 4250,
+      "user_lines_removed": 66,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "cmd/intropy/int_create.go": 9,
+        "cmd/intropy/int_create_contract_test.go": 435,
+        "cmd/intropy/int_create_test.go": 5,
+        "docs/brainstorms/2026-09-04-xregistry-message-integration-requirements.md": 279,
+        "docs/brainstorms/2026-09-04-xregistry-message-publishing-requirements.md": 278,
+        "docs/plans/2026-09-04-001-feat-xregistry-message-integration-plan.md": 428,
+        "docs/plans/2026-09-04-002-feat-xregistry-message-publishing-plan.md": 533,
+        "docs/plans/2026-09-04-003-feat-template-library-message-wiring-plan.md": 351,
+        "internal/contract/contract.go": 116,
+        "internal/contract/generate.go": 133,
+        "internal/contract/ident.go": 70,
+        "internal/contract/index.go": 176,
+        "internal/contract/index_test.go": 165,
+        "internal/contract/parse.go": 314,
+        "internal/contract/parse_test.go": 278,
+        "internal/contract/testdata/product-export.v2.json": 80,
+        "internal/contract/testdata/product-updated.v1.json": 34,
+        "internal/dashboard/templates.go": 4,
+        "internal/message/resolve.go": 33,
+        "internal/message/resolve_test.go": 8,
+        "internal/template/contracts.go": 192,
+        "internal/template/create.go": 33,
+        "internal/template/dependencies.go": 79,
+        "internal/template/prepare.go": 27,
+        "internal/template/reserved.go": 11,
+        "internal/template/wiring.go": 5,
+        "internal/xregistry/client.go": 37,
+        "internal/xregistry/resolve.go": 62,
+        "internal/xregistry/types.go": 15
+      },
+      "user_removed_per_file": {
+        "cmd/intropy/int_create.go": 4,
+        "cmd/intropy/int_create_test.go": 5,
+        "internal/dashboard/templates.go": 4,
+        "internal/message/resolve.go": 12,
+        "internal/message/resolve_test.go": 8,
+        "internal/template/create.go": 6,
+        "internal/template/dependencies.go": 3,
+        "internal/template/prepare.go": 6,
+        "internal/xregistry/client.go": 9,
+        "internal/xregistry/resolve.go": 9
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4190,
+      "agent_lines_removed": 66,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 100,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4208,
+      "agent_lines_removed": 67,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "cmd/intropy/int_create_contract_test.go": 40
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 100,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4208,
+      "agent_lines_removed": 67,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "cmd/intropy/int_create_contract_test.go": 40
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 100,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4208,
+      "agent_lines_removed": 67,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "cmd/intropy/int_create_contract_test.go": 40
+      }
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 100,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4208,
+      "agent_lines_removed": 67,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "cmd/intropy/int_create_contract_test.go": 40
+      }
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 100,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4208,
+      "agent_lines_removed": 67,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "cmd/intropy/int_create_contract_test.go": 40
+      }
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 100,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4208,
+      "agent_lines_removed": 67,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "cmd/intropy/int_create_contract_test.go": 40
+      }
+    },
+    {
+      "checkpoint_number": 9,
+      "user_lines_added": 288,
+      "user_lines_removed": 277,
+      "agent_lines_added": 3503,
+      "agent_lines_removed": 67,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "cmd/intropy/int_create_contract_test.go": 131,
+        "internal/contract/contract.go": 19,
+        "internal/contract/generate.go": 26,
+        "internal/contract/index.go": 4,
+        "internal/contract/index_test.go": 25,
+        "internal/template/contracts.go": 23
+      },
+      "user_removed_per_file": {
+        "cmd/intropy/int_create_contract_test.go": 90,
+        "internal/contract/contract.go": 79,
+        "internal/contract/generate.go": 50,
+        "internal/contract/index.go": 14,
+        "internal/contract/index_test.go": 14,
+        "internal/template/contracts.go": 30
+      }
+    },
+    {
+      "checkpoint_number": 10,
+      "user_lines_added": 288,
+      "user_lines_removed": 277,
+      "agent_lines_added": 3849,
+      "agent_lines_removed": 67,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "cmd/intropy/int_create_contract_test.go": 131,
+        "internal/contract/contract.go": 19,
+        "internal/contract/generate.go": 26,
+        "internal/contract/index.go": 4,
+        "internal/contract/index_test.go": 25,
+        "internal/template/contracts.go": 23
+      },
+      "user_removed_per_file": {
+        "cmd/intropy/int_create_contract_test.go": 90,
+        "internal/contract/contract.go": 79,
+        "internal/contract/generate.go": 50,
+        "internal/contract/index.go": 14,
+        "internal/contract/index_test.go": 14,
+        "internal/template/contracts.go": 30
+      }
+    },
+    {
+      "checkpoint_number": 11,
+      "user_lines_added": 288,
+      "user_lines_removed": 277,
+      "agent_lines_added": 3849,
+      "agent_lines_removed": 67,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "cmd/intropy/int_create_contract_test.go": 131,
+        "internal/contract/contract.go": 19,
+        "internal/contract/generate.go": 26,
+        "internal/contract/index.go": 4,
+        "internal/contract/index_test.go": 25,
+        "internal/template/contracts.go": 23
+      },
+      "user_removed_per_file": {
+        "cmd/intropy/int_create_contract_test.go": 90,
+        "internal/contract/contract.go": 79,
+        "internal/contract/generate.go": 50,
+        "internal/contract/index.go": 14,
+        "internal/contract/index_test.go": 14,
+        "internal/template/contracts.go": 30
+      }
+    },
+    {
+      "checkpoint_number": 12,
+      "user_lines_added": 288,
+      "user_lines_removed": 277,
+      "agent_lines_added": 3849,
+      "agent_lines_removed": 67,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "cmd/intropy/int_create_contract_test.go": 131,
+        "internal/contract/contract.go": 19,
+        "internal/contract/generate.go": 26,
+        "internal/contract/index.go": 4,
+        "internal/contract/index_test.go": 25,
+        "internal/template/contracts.go": 23
+      },
+      "user_removed_per_file": {
+        "cmd/intropy/int_create_contract_test.go": 90,
+        "internal/contract/contract.go": 79,
+        "internal/contract/generate.go": 50,
+        "internal/contract/index.go": 14,
+        "internal/contract/index_test.go": 14,
+        "internal/template/contracts.go": 30
+      }
+    },
+    {
+      "checkpoint_number": 13,
+      "user_lines_added": 288,
+      "user_lines_removed": 277,
+      "agent_lines_added": 3849,
+      "agent_lines_removed": 67,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "cmd/intropy/int_create_contract_test.go": 131,
+        "internal/contract/contract.go": 19,
+        "internal/contract/generate.go": 26,
+        "internal/contract/index.go": 4,
+        "internal/contract/index_test.go": 25,
+        "internal/template/contracts.go": 23
+      },
+      "user_removed_per_file": {
+        "cmd/intropy/int_create_contract_test.go": 90,
+        "internal/contract/contract.go": 79,
+        "internal/contract/generate.go": 50,
+        "internal/contract/index.go": 14,
+        "internal/contract/index_test.go": 14,
+        "internal/template/contracts.go": 30
+      }
+    },
+    {
+      "checkpoint_number": 14,
+      "user_lines_added": 288,
+      "user_lines_removed": 277,
+      "agent_lines_added": 3849,
+      "agent_lines_removed": 67,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "cmd/intropy/int_create_contract_test.go": 131,
+        "internal/contract/contract.go": 19,
+        "internal/contract/generate.go": 26,
+        "internal/contract/index.go": 4,
+        "internal/contract/index_test.go": 25,
+        "internal/template/contracts.go": 23
+      },
+      "user_removed_per_file": {
+        "cmd/intropy/int_create_contract_test.go": 90,
+        "internal/contract/contract.go": 79,
+        "internal/contract/generate.go": 50,
+        "internal/contract/index.go": 14,
+        "internal/contract/index_test.go": 14,
+        "internal/template/contracts.go": 30
+      }
+    },
+    {
+      "checkpoint_number": 15,
+      "user_lines_added": 288,
+      "user_lines_removed": 277,
+      "agent_lines_added": 3849,
+      "agent_lines_removed": 67,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "cmd/intropy/int_create_contract_test.go": 131,
+        "internal/contract/contract.go": 19,
+        "internal/contract/generate.go": 26,
+        "internal/contract/index.go": 4,
+        "internal/contract/index_test.go": 25,
+        "internal/template/contracts.go": 23
+      },
+      "user_removed_per_file": {
+        "cmd/intropy/int_create_contract_test.go": 90,
+        "internal/contract/contract.go": 79,
+        "internal/contract/generate.go": 50,
+        "internal/contract/index.go": 14,
+        "internal/contract/index_test.go": 14,
+        "internal/template/contracts.go": 30
+      }
+    },
+    {
+      "checkpoint_number": 16,
+      "user_lines_added": 288,
+      "user_lines_removed": 277,
+      "agent_lines_added": 3849,
+      "agent_lines_removed": 67,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "cmd/intropy/int_create_contract_test.go": 131,
+        "internal/contract/contract.go": 19,
+        "internal/contract/generate.go": 26,
+        "internal/contract/index.go": 4,
+        "internal/contract/index_test.go": 25,
+        "internal/template/contracts.go": 23
+      },
+      "user_removed_per_file": {
+        "cmd/intropy/int_create_contract_test.go": 90,
+        "internal/contract/contract.go": 79,
+        "internal/contract/generate.go": 50,
+        "internal/contract/index.go": 14,
+        "internal/contract/index_test.go": 14,
+        "internal/template/contracts.go": 30
+      }
+    },
+    {
+      "checkpoint_number": 17,
+      "user_lines_added": 288,
+      "user_lines_removed": 277,
+      "agent_lines_added": 4081,
+      "agent_lines_removed": 67,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "cmd/intropy/int_create_contract_test.go": 131,
+        "internal/contract/contract.go": 19,
+        "internal/contract/generate.go": 26,
+        "internal/contract/index.go": 4,
+        "internal/contract/index_test.go": 25,
+        "internal/template/contracts.go": 23
+      },
+      "user_removed_per_file": {
+        "cmd/intropy/int_create_contract_test.go": 90,
+        "internal/contract/contract.go": 79,
+        "internal/contract/generate.go": 50,
+        "internal/contract/index.go": 14,
+        "internal/contract/index_test.go": 14,
+        "internal/template/contracts.go": 30
+      }
+    },
+    {
+      "checkpoint_number": 18,
+      "user_lines_added": 288,
+      "user_lines_removed": 277,
+      "agent_lines_added": 4081,
+      "agent_lines_removed": 67,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "cmd/intropy/int_create_contract_test.go": 131,
+        "internal/contract/contract.go": 19,
+        "internal/contract/generate.go": 26,
+        "internal/contract/index.go": 4,
+        "internal/contract/index_test.go": 25,
+        "internal/template/contracts.go": 23
+      },
+      "user_removed_per_file": {
+        "cmd/intropy/int_create_contract_test.go": 90,
+        "internal/contract/contract.go": 79,
+        "internal/contract/generate.go": 50,
+        "internal/contract/index.go": 14,
+        "internal/contract/index_test.go": 14,
+        "internal/template/contracts.go": 30
+      }
+    },
+    {
+      "checkpoint_number": 19,
+      "user_lines_added": 288,
+      "user_lines_removed": 277,
+      "agent_lines_added": 4081,
+      "agent_lines_removed": 67,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "cmd/intropy/int_create_contract_test.go": 131,
+        "internal/contract/contract.go": 19,
+        "internal/contract/generate.go": 26,
+        "internal/contract/index.go": 4,
+        "internal/contract/index_test.go": 25,
+        "internal/template/contracts.go": 23
+      },
+      "user_removed_per_file": {
+        "cmd/intropy/int_create_contract_test.go": 90,
+        "internal/contract/contract.go": 79,
+        "internal/contract/generate.go": 50,
+        "internal/contract/index.go": 14,
+        "internal/contract/index_test.go": 14,
+        "internal/template/contracts.go": 30
+      }
+    },
+    {
+      "checkpoint_number": 20,
+      "user_lines_added": 308,
+      "user_lines_removed": 288,
+      "agent_lines_added": 4081,
+      "agent_lines_removed": 67,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "cmd/intropy/int_create_contract_test.go": 131,
+        "internal/contract/contract.go": 19,
+        "internal/contract/generate.go": 26,
+        "internal/contract/index.go": 4,
+        "internal/contract/index_test.go": 25,
+        "internal/system/real_contract_e2e_test.go": 20,
+        "internal/template/contracts.go": 23
+      },
+      "user_removed_per_file": {
+        "cmd/intropy/int_create_contract_test.go": 90,
+        "internal/contract/contract.go": 79,
+        "internal/contract/generate.go": 50,
+        "internal/contract/index.go": 14,
+        "internal/contract/index_test.go": 14,
+        "internal/system/real_contract_e2e_test.go": 11,
+        "internal/template/contracts.go": 30
+      }
+    }
+  ]
+}

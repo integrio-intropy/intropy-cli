@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "82bd7ab936c6",
+  "strategy": "manual-commit",
+  "branch": "feat/xregistry-message-integration",
+  "checkpoints_count": 23,
+  "files_touched": [
+    "AGENTS.md",
+    "catalog/concepts/messages-and-subscriptions.md",
+    "cmd/intropy/int_create.go",
+    "cmd/intropy/int_create_test.go",
+    "internal/dashboard/templates.go",
+    "internal/message/resolve.go",
+    "internal/message/resolve_test.go",
+    "internal/system/real_contract_e2e_test.go",
+    "internal/template/create.go",
+    "internal/template/dependencies.go",
+    "internal/template/prepare.go",
+    "internal/template/reserved.go",
+    "internal/xregistry/client.go",
+    "internal/xregistry/resolve.go",
+    "internal/xregistry/types.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/82/bd7ab936c6/0/metadata.json",
+      "transcript": "/82/bd7ab936c6/0/full.jsonl",
+      "compact_transcript": "/82/bd7ab936c6/0/transcript.jsonl",
+      "content_hash": "/82/bd7ab936c6/0/content_hash.txt",
+      "prompt": "/82/bd7ab936c6/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 570,
+    "cache_creation_tokens": 1247164,
+    "cache_read_tokens": 93678121,
+    "output_tokens": 318352,
+    "api_call_count": 285
+  }
+}
