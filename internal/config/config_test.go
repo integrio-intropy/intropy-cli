@@ -546,3 +546,100 @@ func TestRequireGitopsRepo(t *testing.T) {
 		}
 	}
 }
+
+func TestResolveRegistryURLPrecedence(t *testing.T) {
+	file := Config{RegistryURL: "https://registry.from-file.example.com"}
+
+	t.Run("file only", func(t *testing.T) {
+		t.Setenv(EnvRegistryURL, "")
+		if got := file.Resolve(Flags{}).RegistryURL; got != "https://registry.from-file.example.com" {
+			t.Errorf("RegistryURL = %q, want the file value", got)
+		}
+	})
+	t.Run("context beats file", func(t *testing.T) {
+		t.Setenv(EnvRegistryURL, "")
+		ctx := Config{
+			RegistryURL:    "https://registry.from-file.example.com",
+			CurrentContext: "acme",
+			Contexts:       map[string]Context{"acme": {RegistryURL: "https://registry.from-context.example.com"}},
+		}
+		if got := ctx.Resolve(Flags{}).RegistryURL; got != "https://registry.from-context.example.com" {
+			t.Errorf("RegistryURL = %q, want the context value", got)
+		}
+	})
+	t.Run("env beats context", func(t *testing.T) {
+		t.Setenv(EnvRegistryURL, "https://registry.from-env.example.com")
+		ctx := Config{
+			CurrentContext: "acme",
+			Contexts:       map[string]Context{"acme": {RegistryURL: "https://registry.from-context.example.com"}},
+		}
+		if got := ctx.Resolve(Flags{}).RegistryURL; got != "https://registry.from-env.example.com" {
+			t.Errorf("RegistryURL = %q, want the env value", got)
+		}
+	})
+	t.Run("flag beats env", func(t *testing.T) {
+		t.Setenv(EnvRegistryURL, "https://registry.from-env.example.com")
+		got := file.Resolve(Flags{RegistryURL: "https://registry.from-flag.example.com"}).RegistryURL
+		if got != "https://registry.from-flag.example.com" {
+			t.Errorf("RegistryURL = %q, want the flag value", got)
+		}
+	})
+	t.Run("settings layer independently", func(t *testing.T) {
+		t.Setenv(EnvRegistryURL, "https://registry.from-env.example.com")
+		got := file.Resolve(Flags{GitopsRepo: "from-flag"}).RegistryURL
+		if got != "https://registry.from-env.example.com" {
+			t.Errorf("RegistryURL = %q, want the env value while --gitops-repo wins its own layer", got)
+		}
+	})
+}
+
+// Empty everywhere resolves to the zero value, not a guessed host: the
+// unconfigured state is something callers detect and report.
+func TestResolveRegistryURLEmpty(t *testing.T) {
+	t.Setenv(EnvRegistryURL, "")
+	if got := (Config{}).Resolve(Flags{}).RegistryURL; got != "" {
+		t.Errorf("RegistryURL = %q, want empty (unconfigured)", got)
+	}
+}
+
+// The new key must load: KnownFields(true) rejects keys the Config struct
+// does not declare, so only a deliberate rename should turn this red.
+func TestLoadReadsRegistryURL(t *testing.T) {
+	path := withConfigDir(t)
+	writeConfig(t, path, "registryUrl: https://registry.example.com\n")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RegistryURL != "https://registry.example.com" {
+		t.Errorf("RegistryURL = %q, want the file value", cfg.RegistryURL)
+	}
+	t.Run("context carries registryUrl too", func(t *testing.T) {
+		path := withConfigDir(t)
+		writeConfig(t, path, "currentContext: acme\ncontexts:\n  acme:\n    registryUrl: https://registry.ctx.example.com\n")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := cfg.Resolve(Flags{}).RegistryURL; got != "https://registry.ctx.example.com" {
+			t.Errorf("RegistryURL = %q, want the context value", got)
+		}
+	})
+}
+
+func TestRequireRegistryURL(t *testing.T) {
+	if _, err := (Config{RegistryURL: "https://registry.example.com"}).RequireRegistryURL(); err != nil {
+		t.Errorf("RequireRegistryURL() with a value should succeed, got %v", err)
+	}
+
+	withConfigDir(t)
+	_, err := Config{}.RequireRegistryURL()
+	if err == nil {
+		t.Fatal("RequireRegistryURL() with no value should fail")
+	}
+	for _, want := range []string{"--registry-url", EnvRegistryURL, "registryUrl"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should mention %q", err, want)
+		}
+	}
+}

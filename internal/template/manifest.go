@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
 const (
-	APIVersionV1 = "intropy.dev/v1"
+	APIVersionV1 = "intropy.io/v1"
 	KindTemplate = "Template"
 )
 
@@ -199,6 +200,24 @@ type FieldSpec struct {
 
 // Fields returns the JSON Schema properties as FieldSpecs in YAML declaration
 // order.
+// MessageParameters returns the message-wiring parameter names declared by
+// the manifest's message label, in label order. Empty when the template
+// declares none — the gate --subscribe runs against.
+func (t *Template) MessageParameters() []string {
+	v, ok := t.Metadata.Labels[TemplateMessageParamsLabel]
+	if !ok || strings.TrimSpace(v) == "" {
+		return nil
+	}
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 func (t *Template) Fields() []FieldSpec {
 	props, _ := t.Spec.Parameters["properties"].(map[string]any)
 	if props == nil {

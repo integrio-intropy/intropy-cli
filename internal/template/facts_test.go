@@ -188,3 +188,102 @@ func TestBuildWorkspaceFacts(t *testing.T) {
 		}
 	})
 }
+
+func TestBuildWorkspaceFactsMessageBlocks(t *testing.T) {
+	t.Run("publishes blocks index internal messages with their contracts", func(t *testing.T) {
+		entries := []WorkspaceFactEntry{
+			factEntry(BlockKindExtractor, map[string]any{
+				"appId": "product-sink", "publishes": map[string]any{"message": "product-exported", "contract": "ProductExported"},
+			}),
+			factEntry(BlockKindExtractor, map[string]any{
+				"appId": "order-sink", "publishes": map[string]any{"message": "order-exported"},
+			}),
+		}
+		facts := BuildWorkspaceFacts(entries)
+		if got := facts.MessageCandidates(); len(got) != 2 || got[0] != "order-exported" || got[1] != "product-exported" {
+			t.Errorf("MessageCandidates() = %v, want both internal messages sorted", got)
+		}
+		if c, ok := facts.ContractForMessage("product-exported"); !ok || c != "ProductExported" {
+			t.Errorf("ContractForMessage = %q, %v", c, ok)
+		}
+	})
+
+	t.Run("external subscribe snapshots join the topic facts", func(t *testing.T) {
+		entries := []WorkspaceFactEntry{
+			factEntry(BlockKindLoader, map[string]any{
+				"appId": "loader", "subscribe": map[string]any{
+					"message": "io.intropy.maxbo.product.export",
+					"pubsub":  "product-distribution-pubsub",
+					"topic":   "sbt-test-product-extractor-001",
+				},
+			}),
+			factEntry(BlockKindExtractor, map[string]any{
+				"appId": "legacy", "topic": "orders", "contract": "Order",
+			}),
+		}
+		facts := BuildWorkspaceFacts(entries)
+		if len(facts.TopicKeys) != 2 {
+			t.Fatalf("topic keys = %+v, want the legacy key and the snapshot key", facts.TopicKeys)
+		}
+		if facts.TopicKeys[1].Name != "orders" || facts.TopicKeys[1].Pubsub != "pubsub" {
+			t.Errorf("legacy key = %+v, want (pubsub, orders)", facts.TopicKeys[1])
+		}
+	})
+
+	t.Run("internal subscribe without snapshot adds no topic", func(t *testing.T) {
+		entries := []WorkspaceFactEntry{
+			factEntry(BlockKindLoader, map[string]any{
+				"appId": "loader", "subscribe": map[string]any{"message": "product-exported"},
+			}),
+		}
+		facts := BuildWorkspaceFacts(entries)
+		if len(facts.TopicKeys) != 0 {
+			t.Errorf("topic keys = %+v, want none — the channel is assembly's answer", facts.TopicKeys)
+		}
+		if got := facts.MessageCandidates(); len(got) != 0 {
+			t.Errorf("candidates = %v, want none — a subscribe block declares no message", got)
+		}
+	})
+
+	t.Run("mixed old and new records union without duplicates", func(t *testing.T) {
+		entries := []WorkspaceFactEntry{
+			factEntry(BlockKindExtractor, map[string]any{
+				"appId": "legacy", "topic": "product-exported", "contract": "ProductExported",
+			}),
+			factEntry(BlockKindExtractor, map[string]any{
+				"appId": "new", "publishes": map[string]any{"message": "product-exported", "contract": "ProductExported"},
+			}),
+		}
+		facts := BuildWorkspaceFacts(entries)
+		got := facts.MessageCandidates()
+		if len(got) != 1 || got[0] != "product-exported" {
+			t.Errorf("MessageCandidates() = %v, want the message once", got)
+		}
+	})
+
+	t.Run("message parameter registry gates suggestions", func(t *testing.T) {
+		facts := BuildWorkspaceFacts(nil)
+		if facts.IsMessageParameter("message") {
+			t.Error("no parameters are message parameters before the manifest names them")
+		}
+		facts.SetMessageParameters([]string{"message"})
+		facts.AddMessageCandidates([]string{"io.intropy.maxbo.product.export"})
+		if !facts.IsMessageParameter("message") {
+			t.Error("the named parameter should be a message parameter")
+		}
+		if got := facts.MessageCandidates(); len(got) != 1 || got[0] != "io.intropy.maxbo.product.export" {
+			t.Errorf("candidates = %v", got)
+		}
+	})
+
+	t.Run("malformed blocks are skipped, not fatal", func(t *testing.T) {
+		entries := []WorkspaceFactEntry{
+			factEntry(BlockKindExtractor, map[string]any{"publishes": "not-a-map"}),
+			factEntry(BlockKindExtractor, map[string]any{"subscribe": map[string]any{}}),
+		}
+		facts := BuildWorkspaceFacts(entries)
+		if len(facts.MessageCandidates()) != 0 {
+			t.Errorf("candidates = %v, want none", facts.MessageCandidates())
+		}
+	})
+}

@@ -83,6 +83,7 @@ func TestHelpTextCommandVerbsAreDocumented(t *testing.T) {
 	notVerbs := map[string]bool{
 		"intropy": true, "int": true, "template": true,
 		"deploy": true, "manifests": true, "release": true, "sys": true,
+		"message": true,
 		"version": true, "dashboard": true,
 		// Command group for customer contexts; its subcommands (use, list,
 		// show) are documented verbs.

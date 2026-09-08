@@ -97,6 +97,16 @@ parsing. The two never share a stream.
 
 - **image digest**, not "bits", "artifacts", or "the images".
 - **environment** in prose, `--env` only when naming the flag.
+- A template's message **direction** is derived from its block kind: an
+  extractor publishes, a loader subscribes, a transactional integration
+  wires no messages. The flags follow it: `--publishes` for producing
+  templates, `--subscribe` for consuming templates.
+- **message** is a message definition: a registry entry (`message list`,
+  `message show <ref>`) or a producing component's `publishes` declaration.
+  A subscription is written to the record as a `subscribe` block; a
+  producer's as `publishes`. **event** is prose for the runtime occurrence
+  of a message, never a scaffold value. `contract` survives only where the
+  .NET shared-project type name is literally meant — transitional.
 - `->` for a transition (`1.0 -> 1.1`), ` @ ` for a pin (`api @ 1.2.0`).
   Never mix the two in one message.
 - A commit SHA is shown short (7 chars) unless the full value is the point.

@@ -43,11 +43,15 @@ type Topology struct {
 	Topics     []Topic     `json:"topics,omitempty"`
 	Ports      []Port      `json:"ports,omitempty"`
 	Contracts  []Contract  `json:"contracts,omitempty"`
-	// APIs, and each component's Provides/Consumes below, are the contract
-	// (request/response) surfaces. Their element shape is not yet finalized,
-	// so they are parsed opaquely: preserved for round-tripping to the
-	// frontend without asserting a schema the CLI does not yet render.
+	// APIs, each component's Provides/Consumes below, and MessageGroups
+	// are sections whose element shape is not yet finalized, so they are
+	// parsed opaquely: preserved for round-tripping to the frontend
+	// without asserting a schema the CLI does not yet render.
 	APIs []json.RawMessage `json:"apis,omitempty"`
+	// MessageGroups is the system's internal messagegroup section, emitted
+	// by hosts new enough to model messages by name. A nil section on an
+	// older host decodes identically to today.
+	MessageGroups []json.RawMessage `json:"messagegroups,omitempty"`
 	// Development is the host's local-run picture, present only when the
 	// graph verb ran with --development against a host whose Intropy.Topology
 	// is new enough to emit it. A nil Development means "no dev configuration

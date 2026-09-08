@@ -3,6 +3,8 @@ package system
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/integrio-intropy/intropy-cli/internal/template"
 )
 
 func testModel() *Model {
@@ -201,5 +203,54 @@ func TestBuildPayloadWithoutPorts(t *testing.T) {
 	}
 	if len(ports) != 0 {
 		t.Errorf("ports = %#v, want empty", ports)
+	}
+}
+
+func TestBuildPayloadMessagegroup(t *testing.T) {
+	m := &Model{
+		Name: "order-flow",
+		Components: []Component{
+			{AppID: "product-sink", Kind: template.BlockKindExtractor,
+				Topic:   &TopicKey{Pubsub: template.DefaultPubsub, Name: "product-exported"},
+				Message: &MessageWiring{Kind: MessagePublish, Name: "product-exported", Contract: "ProductExported"}},
+			{AppID: "product-loader", Kind: template.BlockKindLoader,
+				Topic:   &TopicKey{Pubsub: template.DefaultPubsub, Name: "product-exported"},
+				Message: &MessageWiring{Kind: MessageSubscribe, Name: "product-exported"}},
+			{AppID: "external-loader", Kind: template.BlockKindLoader,
+				Topic:   &TopicKey{Pubsub: "ext-pubsub", Name: "ext-topic"},
+				Message: &MessageWiring{Kind: MessageSubscribe, Name: "io.registry/export", Dataschema: "/schemagroups/g/schemas/s", External: true}},
+		},
+		Topics: []Topic{
+			{TopicKey: TopicKey{Pubsub: template.DefaultPubsub, Name: "product-exported"}, Contract: "ProductExported"},
+			{TopicKey: TopicKey{Pubsub: "ext-pubsub", Name: "ext-topic"}},
+		},
+		Messages: []Message{{Name: "product-exported", Type: "product-exported", Contract: "ProductExported", Publisher: "product-sink"}},
+		Ports:    []Port{},
+	}
+	payload, err := buildPayload(m, ".", "order-flow")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	msgs, ok := payload["messages"].([]any)
+	if !ok || len(msgs) != 1 {
+		t.Fatalf("messages = %#v, want one messagegroup entry", payload["messages"])
+	}
+	msg, _ := msgs[0].(map[string]any)
+	if msg["name"] != "product-exported" || msg["type"] != "product-exported" || msg["contract"] != "ProductExported" {
+		t.Errorf("message entry = %#v, want name/type/contract", msg)
+	}
+
+	// Component entries carry the message name so the template joins the
+	// two views; dataschema travels only on the external snapshot.
+	comps := payload["components"].([]any)
+	if m2, _ := comps[0].(map[string]any); m2["message"] != "product-exported" {
+		t.Errorf("publisher entry message = %#v", m2["message"])
+	}
+	if m3, _ := comps[2].(map[string]any); m3["dataschema"] != "/schemagroups/g/schemas/s" {
+		t.Errorf("external entry dataschema = %#v", m3["dataschema"])
+	}
+	if m2, _ := comps[1].(map[string]any); m2["dataschema"] != nil {
+		t.Errorf("internal subscriber carries no dataschema, got %#v", m2["dataschema"])
 	}
 }

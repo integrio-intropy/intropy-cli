@@ -36,12 +36,13 @@ type UpdateOptions struct {
 
 	// Template, Owner, Repo and Version override the pin the host's
 	// scaffold record carries. Zero values render with exactly what
-	// sys create pinned. GitHubBaseURL is a test-only seam.
-	Template      string
-	Owner         string
-	Repo          string
-	Version       string
-	GitHubBaseURL string
+	// sys create pinned. Source carries the fetch seams (GitHubBaseURL
+	// redirects the latest-release API call in tests).
+	Template string
+	Owner    string
+	Repo     string
+	Version  string
+	Source   template.SourceOptions
 }
 
 // UpdateResult is the machine-readable summary --output json writes.
@@ -132,19 +133,19 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 	// template override fetches what it renders and one download serves
 	// all three resolutions.
 	prep, err := template.PrepareCreate(ctx, template.CreateOptions{
-		Template:      orDefault(opts.Template, plan.hostRec.Template),
-		Version:       orDefault(opts.Version, plan.hostRec.Version),
-		SetValues:     merged,
-		NoInput:       true,
-		OnManifest:    requireFactsPayload,
-		Stdin:         strings.NewReader(""),
-		Stdout:        opts.Stdout,
-		Stderr:        opts.Stderr,
-		HTTP:          opts.HTTP,
-		UserAgent:     opts.UserAgent,
-		Owner:         orDefault(opts.Owner, plan.hostRec.Owner),
-		Repo:          orDefault(opts.Repo, plan.hostRec.Repo),
-		GitHubBaseURL: opts.GitHubBaseURL,
+		Template:   orDefault(opts.Template, plan.hostRec.Template),
+		Version:    orDefault(opts.Version, plan.hostRec.Version),
+		SetValues:  merged,
+		NoInput:    true,
+		OnManifest: requireFactsPayload,
+		Stdin:      strings.NewReader(""),
+		Stdout:     opts.Stdout,
+		Stderr:     opts.Stderr,
+		HTTP:       opts.HTTP,
+		UserAgent:  opts.UserAgent,
+		Owner:      orDefault(opts.Owner, plan.hostRec.Owner),
+		Repo:       orDefault(opts.Repo, plan.hostRec.Repo),
+		Source:     opts.Source,
 	})
 	if err != nil {
 		return err
@@ -154,9 +155,17 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 	// The baseline is what the host was last rendered from; the render
 	// decides per file whether a difference is the update itself (safe to
 	// write) or a genuine divergence (a conflict). A template override
-	// invalidates the baseline, so the strict comparison applies instead.
+	// invalidates the baseline, so the strict comparison applies instead —
+	// but an override naming exactly what the record already pins renders
+	// from the same template and keeps it. The dashboard's sync always
+	// passes its held release explicitly; without the equality check every
+	// dashboard-driven update would conflict on the files it must write.
+	matchesPin := (opts.Template == "" || opts.Template == plan.hostRec.Template) &&
+		(opts.Version == "" || opts.Version == plan.hostRec.Version) &&
+		(opts.Owner == "" || opts.Owner == plan.hostRec.Owner) &&
+		(opts.Repo == "" || opts.Repo == plan.hostRec.Repo)
 	var baseline map[string]any
-	if opts.Template == "" && opts.Version == "" && (opts.Owner == "" || opts.Owner == plan.hostRec.Owner) && (opts.Repo == "" || opts.Repo == plan.hostRec.Repo) {
+	if matchesPin {
 		baseline, err = template.Resolve(prep.Manifest, nil, strings.NewReader(""), plan.baseline, nil)
 		if err != nil {
 			fmt.Fprintf(opts.Stderr, "note: stored values do not re-resolve against %s@%s (%v) — treating every differing file as a conflict\n", prep.Template, prep.Version, err)
@@ -320,11 +329,12 @@ func mergedComponentEntries(plan *updatePlan) ([]any, error) {
 	return merged, nil
 }
 
-// mergeWiring folds the orphans' topics and ports into the record's stored
-// lists, deduplicating by (pubsub, name) and name respectively. A stored
-// entry passes through verbatim; only genuinely new names are appended.
-// Component payloads build their wiring against these lists, so an orphan
-// naming a topic or port the host never declared must add it here.
+// mergeWiring folds the orphans' topics, ports and messages into the
+// record's stored lists, deduplicating by (pubsub, name), name, and
+// message name respectively. A stored entry passes through verbatim; only
+// genuinely new names are appended. Component payloads build their wiring
+// against these lists, so an orphan naming a topic, port or message the
+// host never declared must add it here.
 func mergeWiring(plan *updatePlan, merged map[string]any) error {
 	recordPath := filepath.Join(plan.hostDir, filepath.FromSlash(template.ScaffoldRelPath))
 
@@ -356,11 +366,36 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 		ports = append(ports, p)
 	}
 
+	seenMessages := map[string]bool{}
+	storedMessages, _ := plan.baseline["messages"].([]any)
+	messages := make([]any, 0, len(storedMessages))
+	for _, msg := range storedMessages {
+		m, ok := msg.(map[string]any)
+		if !ok {
+			return fmt.Errorf("%s: values.messages entry has type %T, expected object", recordPath, msg)
+		}
+		name, _ := m[template.KeyName].(string)
+		if name == "" {
+			name, _ = m[template.KeyMessage].(string)
+		}
+		seenMessages[name] = true
+		messages = append(messages, msg)
+	}
+
 	// Each orphan contributes the wiring its scaffold record declared;
 	// Assemble already deduplicated and cross-checked these against every
 	// other scanned scaffold. The map literals are the stored shape the
-	// system-host template ranges over; the key constants name the same
-	// vocabulary the records carry.
+	// system-host template ranges over, and they must stay the shape
+	// internal/system/payload.go builds for sys create — one payload,
+	// two writers, one vocabulary.
+	//
+	// Repinning a host to an older template release re-renders these
+	// values through a template that may predate the messages section or
+	// its keys; the section's own comment in payload.go covers the
+	// predates-the-section case (the key is ignored), and a release that
+	// reads messages but not these keys renders without them. Template
+	// releases and CLI vocabulary move together — a repin across a
+	// vocabulary gap is a user-driven override, not a CLI decision.
 	for _, c := range plan.orphans {
 		if c.Topic != nil {
 			key := topicKey{c.Topic.Pubsub, c.Topic.Name}
@@ -379,10 +414,32 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 				ports = append(ports, map[string]any{template.KeyName: p})
 			}
 		}
+		// External publications are excluded here exactly as
+		// aggregateMessages excludes them from the payload: the registry
+		// serves the message's definition, and the host's internal
+		// messagegroup must not duplicate it. The publication's channel
+		// still joins the topics list above — the transport is real; the
+		// internal definition is not.
+		if c.Message != nil && c.Message.Kind == MessagePublish && !c.Message.External && !seenMessages[c.Message.Name] {
+			seenMessages[c.Message.Name] = true
+			e := map[string]any{
+				template.KeyName: c.Message.Name,
+				"type":           c.Message.Name,
+				"publisher":      c.AppID,
+			}
+			if c.Message.Contract != "" {
+				e[template.KeyContract] = c.Message.Contract
+			}
+			if c.Message.Dataschema != "" {
+				e[template.KeyDataschema] = c.Message.Dataschema
+			}
+			messages = append(messages, e)
+		}
 	}
 
 	merged["topics"] = topics
 	merged["ports"] = ports
+	merged["messages"] = messages
 	return nil
 }
 

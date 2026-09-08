@@ -76,3 +76,17 @@ func TestLoadScaffoldRejectsMalformedJSON(t *testing.T) {
 		t.Fatal("expected parse error, got nil")
 	}
 }
+
+func TestMessageDirection(t *testing.T) {
+	for kind, want := range map[string]string{
+		BlockKindExtractor:     MessageDirectionPublish,
+		BlockKindLoader:        MessageDirectionSubscribe,
+		BlockKindTransactional: MessageDirectionNone,
+		"aggregator":           MessageDirectionNone,
+		"":                     MessageDirectionNone,
+	} {
+		if got := MessageDirection(kind); got != want {
+			t.Errorf("MessageDirection(%q) = %q, want %q", kind, got, want)
+		}
+	}
+}

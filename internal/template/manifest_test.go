@@ -10,7 +10,7 @@ func TestLoadTemplate(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, templateManifestName)
 	body := `
-apiVersion: intropy.dev/v1
+apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: test-template
@@ -82,7 +82,7 @@ func TestLoadTemplateRejectsUnknownKind(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, templateManifestName)
 	body := `
-apiVersion: intropy.dev/v1
+apiVersion: intropy.io/v1
 kind: Widget
 metadata:
   name: x
@@ -103,7 +103,7 @@ func TestLoadTemplateRequiresName(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, templateManifestName)
 	body := `
-apiVersion: intropy.dev/v1
+apiVersion: intropy.io/v1
 kind: Template
 metadata: {}
 spec:
@@ -129,7 +129,7 @@ func TestFieldsPreservesYAMLOrder(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, templateManifestName)
 	body := `
-apiVersion: intropy.dev/v1
+apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: order-test
@@ -167,7 +167,7 @@ func TestLoadTemplateLocalFixturesRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, templateManifestName)
 	body := `
-apiVersion: intropy.dev/v1
+apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: local-test
@@ -203,7 +203,7 @@ func TestLoadTemplateGitOpsBindingKindsRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, templateManifestName)
 	body := `
-apiVersion: intropy.dev/v1
+apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: deploy-host
@@ -235,7 +235,7 @@ func TestLoadTemplateRejectsBadFixtureNames(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, templateManifestName)
 		body := `
-apiVersion: intropy.dev/v1
+apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: local-test

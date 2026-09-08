@@ -216,7 +216,7 @@ func promptForMissingRequired(fields []FieldSpec, values map[string]any, facts *
 	}
 	suggestions := suggestMissing(missing, facts, values)
 	if prompter == nil {
-		return missingRequiredError(missing, suggestions)
+		return missingRequiredError(missing, suggestions, facts)
 	}
 	for _, f := range missing {
 		f.Suggestions = suggestions[f.Name]
@@ -256,21 +256,35 @@ func suggestMissing(missing []FieldSpec, facts *WorkspaceFacts, values map[strin
 }
 
 // missingRequiredError reports unmet required parameters, appending one
-// hint line per field the workspace has candidates for. The hints name
-// what --set would accept so a CI failure documents the values the run
-// could not ask for.
-func missingRequiredError(missing []FieldSpec, suggestions map[string][]string) error {
+// hint line per field the run can still act on: the workspace candidates
+// the prompt would have offered, or — for a message parameter — the flag
+// that wires one without asking.
+func missingRequiredError(missing []FieldSpec, suggestions map[string][]string, facts *WorkspaceFacts) error {
 	names := make([]string, 0, len(missing))
 	for _, f := range missing {
 		names = append(names, f.Name)
 	}
 	err := fmt.Sprintf("missing required parameter(s): %s", strings.Join(names, ", "))
 	for _, f := range missing {
+		if facts.IsMessageParameter(f.Name) {
+			err += fmt.Sprintf("\npass %s <message-ref> to wire the %s parameter to a registry message", wiringFlagName(facts), f.Name)
+			continue
+		}
 		if c := suggestions[f.Name]; len(c) > 0 {
 			err += fmt.Sprintf("\nknown %s values in this workspace: %s", f.Name, strings.Join(c, ", "))
 		}
 	}
 	return fmt.Errorf("%s", err)
+}
+
+// wiringFlagName picks the message flag the hint names: the direction the
+// template's kind declares, or --subscribe when no direction is known —
+// the flag every template accepted before the gate existed.
+func wiringFlagName(facts *WorkspaceFacts) string {
+	if facts.WiringDirection() == MessageDirectionPublish {
+		return "--publishes"
+	}
+	return "--subscribe"
 }
 
 func renderDerivedValues(derived map[string]string, values map[string]any, byName map[string]FieldSpec) error {

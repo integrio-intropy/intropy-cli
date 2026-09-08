@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"sort"
+	"strings"
 )
 
 // ListOptions selects which template library release to list. Fields mirror
@@ -16,19 +18,14 @@ type ListOptions struct {
 	UserAgent string
 
 	// Owner and Repo select the template library; zero values target the
-	// official library. GitHubBaseURL is a test-only seam.
-	Owner         string
-	Repo          string
-	GitHubBaseURL string
+	// official library. Source carries the fetch seams (GitHubBaseURL
+	// redirects the latest-release API call in tests).
+	Owner  string
+	Repo   string
+	Source SourceOptions
 }
 
 func (o *ListOptions) applyDefaults() {
-	if o.Owner == "" {
-		o.Owner = defaultTemplateOwner
-	}
-	if o.Repo == "" {
-		o.Repo = defaultTemplateRepo
-	}
 	if o.UserAgent == "" {
 		o.UserAgent = "intropy-cli"
 	}
@@ -44,24 +41,46 @@ type ListResult struct {
 
 // List returns the names of the templates in the library at the requested
 // version (or latest). Names are the directory names accepted by Describe
-// and Create.
+// and Create. The listing reads the cached checkout rather than the GitHub
+// contents API, so it answers offline whenever the cache can.
 func List(ctx context.Context, opts ListOptions) (*ListResult, error) {
 	opts.applyDefaults()
 
-	gh := newConfiguredGitHub(opts.HTTP, opts.UserAgent, opts.GitHubBaseURL)
-	tag, err := resolveReleaseTag(ctx, gh, opts.Owner, opts.Repo, opts.Version)
+	s := opts.Source
+	s.Version, s.UserAgent = opts.Version, opts.UserAgent
+	if s.Owner == "" && s.Repo == "" {
+		s.Owner, s.Repo = libraryIdentity(opts.Owner, opts.Repo)
+	}
+	src, err := FetchSource(ctx, s)
 	if err != nil {
 		return nil, err
 	}
-	names, err := gh.ListTemplates(ctx, opts.Owner, opts.Repo, tag)
+	tag := src.Version
+	names, err := listTemplateDirs(src.root)
 	if err != nil {
 		return nil, fmt.Errorf("list templates in %s/%s@%s: %w", opts.Owner, opts.Repo, tag, err)
 	}
-	sort.Strings(names)
 	return &ListResult{
 		Owner:     opts.Owner,
 		Repo:      opts.Repo,
 		Version:   tag,
 		Templates: names,
 	}, nil
+}
+
+// listTemplateDirs returns the sorted non-hidden directory names under root —
+// the template names of one library checkout.
+func listTemplateDirs(root string) ([]string, error) {
+	ents, err := os.ReadDir(root)
+	if err != nil {
+		return nil, err
+	}
+	names := []string{}
+	for _, ent := range ents {
+		if ent.IsDir() && !strings.HasPrefix(ent.Name(), ".") {
+			names = append(names, ent.Name())
+		}
+	}
+	sort.Strings(names)
+	return names, nil
 }

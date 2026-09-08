@@ -75,7 +75,7 @@ func TestLocalTemplatesRenderAndBuild(t *testing.T) {
 	f := newInitFixtureWith(t, localTemplateEntries(t, root))
 
 	var stdout, stderr bytes.Buffer
-	opts := f.options(&stdout, &stderr)
+	opts := f.options(t, &stdout, &stderr)
 	if err := runManifestPipeline(context.Background(), opts); err != nil {
 		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
 	}
@@ -159,7 +159,7 @@ func TestLocalTemplatesRenderSelectedBindingAdapters(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	opts := f.options(&stdout, &stderr)
+	opts := f.options(t, &stdout, &stderr)
 	opts.Bindings = []string{"erp=sftp"}
 	if err := runManifestPipeline(context.Background(), opts); err != nil {
 		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
@@ -186,7 +186,7 @@ func TestLocalTemplatesAzureRendersServiceBusAndNoSecrets(t *testing.T) {
 	setPlatform(t, f, "provider: azure\n  pubsub: servicebus\n  secretStore: azure-keyvault\n")
 
 	var stdout, stderr bytes.Buffer
-	if err := runManifestPipeline(context.Background(), f.options(&stdout, &stderr)); err != nil {
+	if err := runManifestPipeline(context.Background(), f.options(t, &stdout, &stderr)); err != nil {
 		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
 	}
 

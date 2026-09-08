@@ -21,7 +21,7 @@ const (
 	// template's output plays in a system. Its value is copied into the
 	// scaffold record so later commands can tell support projects apart
 	// from system blocks.
-	TemplateRoleLabel = "intropy.dev/template-role"
+	TemplateRoleLabel = "intropy.io/template-role"
 
 	// RoleSharedLibrary marks a scaffolded project that exists to be
 	// referenced by sibling components (e.g. shared models). System
@@ -36,12 +36,19 @@ const (
 	// Intropy block a template scaffolds (e.g. "extractor"). Its value is
 	// copied into the scaffold record so `sys create` can assemble the
 	// system declaration from what each scaffold recorded.
-	TemplateBlockKindLabel = "intropy.dev/block-kind"
+	TemplateBlockKindLabel = "intropy.io/block-kind"
 
 	// TemplateDataFlowLabel names the manifest label that declares the
 	// block's data flow direction relative to the system ("in", "out",
 	// or "both"). Recorded alongside the block kind.
-	TemplateDataFlowLabel = "intropy.dev/data-flow"
+	TemplateDataFlowLabel = "intropy.io/data-flow"
+
+	// TemplateMessageParamsLabel names the manifest label that declares
+	// which parameters carry message wiring, as a comma-separated list of
+	// parameter names. A template without it declares no message
+	// parameters: --subscribe against it is a usage error (R4), and its
+	// parameters get no message suggestions however they are named.
+	TemplateMessageParamsLabel = "intropy.io/message-params"
 
 	// The BlockKind constants name the block kinds with a parse entry in
 	// internal/system's blockParsers registry — the set `sys create`
@@ -50,6 +57,14 @@ const (
 	BlockKindExtractor     = "extractor"
 	BlockKindLoader        = "loader"
 	BlockKindTransactional = "transactional-integration"
+
+	// Message direction values, derived from block kind. The mapping is
+	// boundary-relative data-flow inverted: an extractor flows data in
+	// from the external system and publishes messages, a loader flows out
+	// and subscribes. MessageDirection is the one home of that flip.
+	MessageDirectionPublish   = "publish"
+	MessageDirectionSubscribe = "subscribe"
+	MessageDirectionNone      = ""
 )
 
 var ErrScaffoldNotFound = errors.New("no " + ScaffoldRelPath + " found in current directory or any parent")
@@ -66,15 +81,15 @@ type Scaffold struct {
 	Version       string         `json:"version"`
 	Values        map[string]any `json:"values"`
 
-	// Role is the value of the template's intropy.dev/template-role label,
+	// Role is the value of the template's intropy.io/template-role label,
 	// if any (e.g. "shared-library").
 	Role string `json:"role,omitempty"`
 
-	// BlockKind is the value of the template's intropy.dev/block-kind
+	// BlockKind is the value of the template's intropy.io/block-kind
 	// label, if any (e.g. "extractor").
 	BlockKind string `json:"blockKind,omitempty"`
 
-	// DataFlow is the value of the template's intropy.dev/data-flow label,
+	// DataFlow is the value of the template's intropy.io/data-flow label,
 	// if any ("in" or "out").
 	DataFlow string `json:"dataFlow,omitempty"`
 
@@ -97,6 +112,24 @@ func roleFromLabels(labels map[string]string) string {
 
 func blockKindFromLabels(labels map[string]string) string {
 	return labels[TemplateBlockKindLabel]
+}
+
+// MessageDirection maps a template's block kind to the direction its
+// message parameters wire: publish for producers, subscribe for
+// consumers, None for kinds that talk with external systems directly
+// (transactional integrations) and for unknown or absent kinds — the
+// gate treats those as direction-neutral rather than guessing. A kind
+// with no messaging must carry no message parameters for the flags to
+// stay coherent; that check lives with the message-parameters gate.
+func MessageDirection(kind string) string {
+	switch kind {
+	case BlockKindExtractor:
+		return MessageDirectionPublish
+	case BlockKindLoader:
+		return MessageDirectionSubscribe
+	default:
+		return MessageDirectionNone
+	}
 }
 
 func dataFlowFromLabels(labels map[string]string) string {

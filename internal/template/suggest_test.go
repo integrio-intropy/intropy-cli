@@ -306,3 +306,45 @@ func TestResolveWithTypedTopicChainsContract(t *testing.T) {
 		t.Errorf("contract suggestions = %v", p.seen[1].Suggestions)
 	}
 }
+
+func TestSuggestMessageParameters(t *testing.T) {
+	facts := BuildWorkspaceFacts([]WorkspaceFactEntry{
+		factEntry(BlockKindExtractor, map[string]any{
+			"appId": "product-sink", "publishes": map[string]any{"message": "product-exported"},
+		}),
+	})
+	facts.AddMessageCandidates([]string{"io.intropy.maxbo.product.export"})
+	facts.SetMessageParameters([]string{"message"})
+	fields := []FieldSpec{{Name: "message", Required: true}, {Name: "topic", Required: true}}
+
+	got := Suggest(fields, facts, nil)
+	// The message parameter offers the union of internal and registry
+	// messages; the topic parameter is untouched by the message registry.
+	want := []string{"io.intropy.maxbo.product.export", "product-exported"}
+	if diff := !equalStrings(got["message"], want); diff {
+		t.Errorf("message suggestions = %v, want %v", got["message"], want)
+	}
+	if c := got["topic"]; len(c) != 0 {
+		t.Errorf("topic suggestions = %v, want none from the message registry", c)
+	}
+
+	// Without the manifest's parameter names, the same facts suggest
+	// nothing: the message pool never leaks into an unrelated parameter.
+	noParams := BuildWorkspaceFacts(nil)
+	noParams.AddMessageCandidates([]string{"io.intropy.maxbo.product.export"})
+	if s := Suggest(fields, noParams, nil)["message"]; len(s) != 0 {
+		t.Errorf("message suggestions = %v, want none while the template declares no message parameters", s)
+	}
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

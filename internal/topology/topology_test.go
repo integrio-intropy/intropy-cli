@@ -1,6 +1,8 @@
 package topology
 
 import (
+	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -170,4 +172,76 @@ func TestDecodeOldSchemaIsRejected(t *testing.T) {
 	if _, err := Decode(strings.NewReader(`{"schemaVersion": 1, "system": {"name": "x"}}`)); err == nil {
 		t.Fatal("expected error for old-schema record, got nil")
 	}
+}
+
+// The messagegroup section is preserved opaquely: decode and re-encode
+// must be lossless so the record reaches the frontend exactly as the host
+// emitted it.
+func TestDecodeMessagegroupsRoundTrip(t *testing.T) {
+	raw := `{
+  "apiVersion": "topology.intropy.io/v1",
+  "system": "order-flow",
+  "messagegroups": [
+    {"name": "product-exported", "type": "product-exported", "contract": "ProductExported"},
+    {"name": "external-event", "type": "io.registry/export", "dataschema": "/schemagroups/g/schemas/s"}
+  ],
+  "components": [{"name": "loader", "kind": "loader"}]
+}`
+	tt, err := Decode(strings.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tt.MessageGroups) != 2 {
+		t.Fatalf("messagegroups = %s", tt.MessageGroups)
+	}
+	var got []map[string]any
+	if err := json.Unmarshal([]byte("["+strings.Join(rawJSON(tt.MessageGroups), ",")+"]"), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got[0]["contract"] != "ProductExported" || got[1]["dataschema"] != "/schemagroups/g/schemas/s" {
+		t.Errorf("messagegroups decoded = %#v", got)
+	}
+
+	out, err := json.Marshal(tt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var again Topology
+	if err := json.Unmarshal(out, &again); err != nil {
+		t.Fatal(err)
+	}
+	var orig, rt []map[string]any
+	if err := json.Unmarshal([]byte("["+strings.Join(rawJSON(tt.MessageGroups), ",")+"]"), &orig); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte("["+strings.Join(rawJSON(again.MessageGroups), ",")+"]"), &rt); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(orig, rt) {
+		t.Errorf("round-trip changed the section: %#v vs %#v", orig, rt)
+	}
+}
+
+// A record without the section — every host older than message wiring —
+// decodes identically to before the field existed.
+func TestDecodeWithoutMessagegroups(t *testing.T) {
+	raw := `{"apiVersion": "topology.intropy.io/v1", "system": "s", "components": []}`
+	tt, err := Decode(strings.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tt.MessageGroups != nil {
+		t.Errorf("messagegroups = %s, want nil", tt.MessageGroups)
+	}
+	if len(tt.Components) != 0 {
+		t.Errorf("components = %+v", tt.Components)
+	}
+}
+
+func rawJSON(rs []json.RawMessage) []string {
+	out := make([]string, len(rs))
+	for i, r := range rs {
+		out[i] = string(r)
+	}
+	return out
 }

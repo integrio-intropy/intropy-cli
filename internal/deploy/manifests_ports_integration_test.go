@@ -11,7 +11,7 @@ import (
 
 func TestManifestCreateRequiresGitOpsBindingsWithoutASelector(t *testing.T) {
 	f := newInitFixture(t)
-	opts := f.options(nil, nil)
+	opts := f.options(t, nil, nil)
 	opts.Bindings = nil
 
 	_, _, err := runInit(t, opts)
@@ -30,7 +30,7 @@ func TestManifestCreateRequiresGitOpsBindingCatalog(t *testing.T) {
 	entries["deploy-host/template.yaml"] = strings.Replace(initHostTemplateYAML, "  gitops:\n    bindingKinds: [sftp, http]\n", "", 1)
 	f := newInitFixtureWith(t, entries)
 
-	_, _, err := runInit(t, f.options(nil, nil))
+	_, _, err := runInit(t, f.options(t, nil, nil))
 	if err == nil || !strings.Contains(err.Error(), "spec.gitops.bindingKinds on deploy-host") {
 		t.Fatalf("error = %v", err)
 	}
@@ -38,7 +38,7 @@ func TestManifestCreateRequiresGitOpsBindingCatalog(t *testing.T) {
 
 func TestManifestCreatePromptsForMissingGitOpsBindings(t *testing.T) {
 	f := newInitFixture(t)
-	opts := f.options(nil, nil)
+	opts := f.options(t, nil, nil)
 	opts.Bindings = []string{"erp=sftp"}
 	selector := &fakeBindingSelector{choices: map[string]string{"price-master": "http"}}
 	opts.Selector = selector
@@ -62,7 +62,7 @@ spec:
 `
 	f := newInitFixtureWith(t, entries)
 
-	if _, _, err := runInit(t, f.options(nil, nil)); err != nil {
+	if _, _, err := runInit(t, f.options(t, nil, nil)); err != nil {
 		t.Fatalf("manifest create: %v", err)
 	}
 
@@ -84,7 +84,7 @@ func TestManifestCreateExcludesLocalOverlays(t *testing.T) {
 	entries["deploy-component/skeleton/overlays/local/kustomization.yaml.tmpl"] = "resources: []\n"
 	f := newInitFixtureWith(t, entries)
 
-	if _, _, err := runInit(t, f.options(nil, nil)); err != nil {
+	if _, _, err := runInit(t, f.options(t, nil, nil)); err != nil {
 		t.Fatalf("manifest create: %v", err)
 	}
 
