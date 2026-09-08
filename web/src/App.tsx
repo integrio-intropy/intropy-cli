@@ -3,16 +3,18 @@ import { api, type DeployState, type Integration } from './api'
 import { Sidebar } from './components/Sidebar'
 import { Catalog } from './components/Catalog'
 import { FlowView } from './components/FlowView'
+import { Tracing } from './components/Tracing'
 import { DarkModeIcon, LightModeIcon, SystemThemeIcon } from './icons'
 
 const SIDEBAR_COLLAPSED_KEY = 'intropy.sidebar.collapsed'
 const THEME_KEY = 'intropy.theme'
 
-type View = 'catalog' | 'flow'
+type View = 'catalog' | 'flow' | 'tracing'
 
 const VIEWS: { id: View; label: string }[] = [
   { id: 'catalog', label: 'Integration Catalog' },
   { id: 'flow', label: 'Integration Flow' },
+  { id: 'tracing', label: 'Tracing' },
 ]
 
 // Theme preference cycles light → dark → system. "system" follows the OS,
@@ -191,6 +193,7 @@ export default function App() {
           {view === 'flow' && (
             <FlowView selected={selected} onSelect={setSelected} theme={resolvedTheme} />
           )}
+          {view === 'tracing' && <Tracing />}
         </main>
       </div>
     </div>

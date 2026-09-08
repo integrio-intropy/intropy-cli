@@ -196,6 +196,13 @@ func newHandler(root, version string, p providers) (http.Handler, *apiServer, er
 	// {path...} wildcard is the root-relative system path.
 	mux.HandleFunc("GET /api/testdata/{path...}", api.listTestData)
 	mux.HandleFunc("POST /api/seed", api.seedTestFile)
+	// Tracing proxy (telemetry.go): the running system's Aspire dashboard
+	// answers /api/telemetry/{resources,traces,traces/{id}}. The wildcard
+	// carries <system>/<upstream path> — system paths are slash-separated,
+	// so the split happens in the handler, not the pattern.
+	// No method in the pattern: non-GET methods must reach the handler's
+	// 405 rather than fall through to the SPA's index.html fallback.
+	mux.HandleFunc("/api/telemetry/{path...}", api.proxyTelemetry)
 	mux.Handle("/", static)
 	return mux, api, nil
 }

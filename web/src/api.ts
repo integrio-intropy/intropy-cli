@@ -447,6 +447,77 @@ export interface TopologyReport {
   errors?: string[]
 }
 
+// Tracing (internal/dashboard/telemetry.go). The dashboard proxies the
+// running system's Aspire dashboard telemetry API, which answers in OTLP
+// JSON; the types below are the OTLP trace data model as JSON.
+
+/** OTLP AnyValue — one typed value of a span or resource attribute. */
+export interface OtlpAnyValue {
+  stringValue?: string
+  intValue?: string
+  doubleValue?: number
+  boolValue?: boolean
+  arrayValue?: { values?: OtlpAnyValue[] }
+  kvlistValue?: { values?: OtlpKeyValue[] }
+}
+
+export interface OtlpKeyValue {
+  key: string
+  value?: OtlpAnyValue
+}
+
+export interface OtlpSpanStatus {
+  /** 0 unset, 1 ok, 2 error. */
+  code?: number
+  message?: string
+}
+
+export interface OtlpSpanEvent {
+  timeUnixNano?: string
+  name?: string
+  attributes?: OtlpKeyValue[]
+}
+
+export interface OtlpSpan {
+  traceId?: string
+  spanId?: string
+  parentSpanId?: string
+  name?: string
+  kind?: number
+  startTimeUnixNano?: string
+  endTimeUnixNano?: string
+  attributes?: OtlpKeyValue[]
+  events?: OtlpSpanEvent[]
+  status?: OtlpSpanStatus
+}
+
+export interface OtlpScopeSpans {
+  scope?: { name?: string; version?: string }
+  spans?: OtlpSpan[]
+}
+
+export interface OtlpResourceSpans {
+  resource?: { attributes?: OtlpKeyValue[] }
+  scopeSpans?: OtlpScopeSpans[]
+}
+
+/** The Aspire telemetry API response wrapper: OTLP data plus counts. */
+export interface TelemetryTracesResponse {
+  data?: { resourceSpans?: OtlpResourceSpans[] }
+  totalCount?: number
+  returnedCount?: number
+}
+
+/** One resource the Aspire dashboard has telemetry for. */
+export interface TelemetryResource {
+  name: string
+  instanceId?: string
+  displayName?: string
+  hasLogs?: boolean
+  hasTraces?: boolean
+  hasMetrics?: boolean
+}
+
 async function requestJSON<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
   if (!res.ok) {
@@ -514,6 +585,30 @@ export const api = {
     requestJSON<TopologyReport>('/api/topology/refresh', { method: 'POST' }),
   /** One integration's catalog entry: header facts and graph-derived checks. */
   catalog: (path: string) => getJSON<CatalogEntry>(`/api/catalog/${path}`),
+
+  // Tracing proxy (internal/dashboard/telemetry.go): the running system's
+  // Aspire dashboard, per system path ("." is the workspace root). A 503
+  // names the missing prerequisite — the host is not running, or predates
+  // the dashboard — rather than a failure of the request itself.
+  telemetryResources: (systemPath: string) =>
+    getJSON<TelemetryResource[]>(`/api/telemetry/${systemPath}/resources`),
+  telemetryTraces: (
+    systemPath: string,
+    opts: { resource?: string; hasError?: boolean; search?: string; limit?: number } = {},
+  ) => {
+    const q = new URLSearchParams()
+    if (opts.resource) q.set('resource', opts.resource)
+    if (opts.hasError !== undefined) q.set('hasError', String(opts.hasError))
+    if (opts.search) q.set('search', opts.search)
+    q.set('limit', String(opts.limit ?? 100))
+    return getJSON<TelemetryTracesResponse>(
+      `/api/telemetry/${systemPath}/traces?${q.toString()}`,
+    )
+  },
+  telemetryTrace: (systemPath: string, traceId: string) =>
+    getJSON<TelemetryTracesResponse>(
+      `/api/telemetry/${systemPath}/traces/${encodeURIComponent(traceId)}`,
+    ),
   /** One integration's deployment state, read once and reused by the server. */
   deployState: (path: string) => getJSON<DeployState>(`/api/deploy/${path}`),
   /** Re-run `deploy status` for one integration and return the fresh result —
