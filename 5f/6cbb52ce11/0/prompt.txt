@@ -1,0 +1,868 @@
+In just introduced xregistry functionality in this branch. The missing piece is generating the contract from the message definition / schema in xregistry. How should we implement this?
+
+---
+
+<task-notification>
+<task-id>a39c39434652a83ff</task-id>
+<tool-use-id>toolu_01TWrdBh9tPRHuxfSNtffJMz</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-integrio-intropy-intropy-cli/35aef357-1a12-4bd0-9b20-616215feaaba/tasks/a39c39434652a83ff.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore xregistry integration code" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## 1. Where xregistry code lives
+
+**Core package — `internal/xregistry/`** (new in `a70e40f8`, tweaked in `e044eba8`/`fe54527a`):
+- `client.go` (176 L) — HTTP client, `GET /export`, error-body condensing
+- `types.go` (97 L) — the decoded xRegistry document model
+- `resolve.go` (269 L) — in-memory resolution joins
+- `errors.go` (83 L) — typed resolution failures
+- `client_test.go` (330 L), `resolve_test.go` (104 L) — httptest fixtures, only `GET /export` is stubbed (`client_test.go:92`, `:272`)
+
+**Capability layer — `internal/message/`** (`message list` / `show` / `Subscribe` / `Publishes` / `Refs`):
+- `message.go` (Entry/Endpoint/EnvelopeAttribute + `resolveClient`), `registry.go` (export → Entry), `workspace.go` (publishes-block scan), `resolve.go` (Subscribe/Publishes/Refs), `list.go`, `show.go`
+- `registry.go` was moved here from `internal/template/registry.go` in `fe54527a`
+
+**Consumers:**
+- `cmd/intropy/message.go`, `message_list.go`, `message_show.go` — the `message` noun
+- `cmd/intropy/int_create.go` — `--subscribe`, `--publishes`, `--registry-url`
+- `cmd/intropy/flagtext.go:36-38` — `flagUsageRegistryURL`, `flagUsageSubscribe`, `flagUsagePublishes`
+- `internal/config/config.go:50,78-82,102,112,222,321-338` — `registryUrl` layering
+- `internal/template/wiring.go` — the block vocabulary + `SubscribeBlock`/`PublishesBlock`
+- `internal/template/create.go`, `facts.go`, `manifest.go`, `scaffold.go`, `suggest.go`, `values.go`
+- `internal/system/blocks.go`, `assemble.go`, `model.go`, `payload.go`, `update.go`
+- `internal/topology/topology.go:46-54` — opaque `MessageGroups []json.RawMessage`
+- `internal/dashboard/messages.go`, `wiring.go`, `handlers.go`, `templates.go`, `server.go`
+- `web/src/api.ts`, `components/FlowView.tsx`, `FlowDetail.tsx`, `CreateDrawer.tsx`
+- `catalog/concepts/messages-and-subscriptions.md`, `AGENTS.md:100-111`
+
+**Deliberately unrelated:** `internal/registry/` is the OCI client. `client.go:6-9` disowns the relation explicitly.
+
+## 2. What the xregistry client does
+
+**Exactly one endpoint: `GET /export`.** There is no per-entity path, no filtering, no pagination, no inlining query params — `client.go:11-16` states the registry declares those out of scope, so the client "sends only GET /export — no query params it did not see advertised."
+
+```go
+func New(baseURL string, opts ...Option) (*Client, error)   // client.go:64  — must be absolute
+func WithHTTPClient(c *http.Client) Option                  // client.go:53
+func WithUserAgent(ua string) Option                        // client.go:58
+func (c *Client) BaseURL() string                           // client.go:81
+func (c *Client) Export(ctx context.Context) (*Export, error) // client.go:143
+func (c *Client) Resolve(ctx, ref string) (*ResolvedMessage, error) // resolve.go:195
+```
+- 15 s default timeout (`client.go:41`), 64 MiB body cap (`client.go:117`), `Accept: application/json`
+- non-200 → error naming the URL plus a condensed `{code, detail}` error document (`client.go:105-138`)
+
+**Data model (`types.go`) — the doc view of xRegistry 1.0-rc2x:**
+```go
+type Export struct { SpecVersion, RegistryID string
+    MessageGroups map[string]MessageGroup    // "messagegroups"
+    Endpoints     map[string]Endpoint        // "endpoints"
+    SchemaGroups  map[string]SchemaGroup }   // "schemagroups"
+
+type MessageGroup struct { ID, Name string; Messages map[string]Message }
+type Message      struct { ID string; Versions map[string]*MessageVersion }
+type MessageVersion struct { VersionID string; IsDefault bool
+    Envelope, DataSchemaFormat, DataSchemaXID, DataContentType string
+    EnvelopeMetadata map[string]CEAttribute }
+type CEAttribute  struct { Value any; Type string; Required bool; Description string }
+type Endpoint     struct { ID, Name, Channel string; Usage, MessageGroups []string }
+type SchemaGroup  struct { ID, Name string; Schemas map[string]Schema }
+type Schema       struct { ID, Format string; Versions map[string]Version }
+type Version      struct { VersionID, XID string; IsDefault bool }
+```
+Key modelling note (`types.go:8-13`): messages are `maxversions: 1`, so every definition attribute lives on the single implicit version, never on the resource — hence `Message.DefaultMessage()` (`client.go:153`, sorted-id fallback so nothing depends on map order).
+
+**Resolution (`resolve.go`) — what it returns:**
+```go
+type Channel struct { Pubsub, Topic, Endpoint string }         // resolve.go:13
+type ResolvedMessage struct { Message, Type, Group string
+    Channels []Channel; DataSchema, DataSchemaURL string }     // resolve.go:22
+func ResolveMessage(doc *Export, ref string) (*ResolvedMessage, error)     // :51
+func (r *ResolvedMessage) SubscribeChannel() (Channel, error)              // :93
+func FindMessage(doc *Export, ref string) (*Message, *MessageGroup, error) // :108
+func SplitChannel(channel string) (pubsub, topic string, err error)        // :216
+func DefaultSchemaVersionXID(doc *Export, xid string) (string, error)      // :228
+```
+The join xRegistry does not provide (`client.go:11-14`): message → group → endpoints where `usage` contains `"producer"` and `messagegroups` contains `/messagegroups/&lt;gid&gt;` → split `&lt;pubsub&gt;/&lt;topic&gt;` (`producerChannels`, `resolve.go:166-189`, sorted for determinism). CloudEvents type comes from `envelopemetadata["type"].value` (`resolve.go:65-69`). Schema pin: `dataschemaxid` → the version with `isdefault` → its `xid`, made absolute against the base URL only in `Client.Resolve` (`resolve.go:204-208`) — `ResolveMessage` alone keeps the root-relative xid.
+
+Refs accepted: bare message id (unique across groups, else an ambiguity error listing group xids) or full `/messagegroups/&lt;gid&gt;/messages/&lt;mid&gt;` (`resolve.go:112-149`).
+
+**Typed errors (`errors.go`):** `MessageNotFoundError`, `NoProducerError{Group}`, `AmbiguousProducerError{Ref, Channels}` (message names endpoint + channel per candidate, `errors.go:35-48`), `ChannelFormatError{Endpoint, Channel}` (unwrappable), `SchemaNotFoundError{XID}`, `NoDefaultVersionError{Ref, Group}`.
+
+## 3. How message definitions/schemas are fetched and used
+
+**Nothing in the repo ever fetches a schema document.** The CLI records the pin and stops. `docs/brainstorms/…-integration-requirements.md:31-33` assigns that to "A2. External code-generation tool", and Scope Boundaries (`:197-199`) say "No code generation in the CLI — A2 is a separate tool; the CLI only writes the reference."
+
+What is read:
+- **Envelope/CloudEvents metadata** — `internal/message/registry.go:159-166` (`envelopeType`) and `:170-188` (`envelopeMetadata`, sorted, stringified). Surfaced by `message show` (`show.go:130-140`) and in JSON as `Entry.EnvelopeMeta`.
+- **Two schema fields, both references only:**
+  - `dataschema` = logical xid, e.g. `/schemagroups/&lt;gid&gt;/schemas/&lt;sid&gt;`
+  - `dataschemaurl` = base URL + the `isdefault` version's xid (immutable pin)
+  Produced at `registry.go:53-59` / `:90-96` and `xregistry/resolve.go:70-79`; written into records via `template.SubscribeBlockValue`/`PublishesBlockValue` (`wiring.go:290-333`).
+- **`dataschemaformat` is decoded (`types.go:50`) and never used anywhere.** There is no Avro, Protobuf, or JSON-Schema-of-a-message handling. `Schema.Format` is likewise decoded and unused.
+- The only actual JSON Schema machinery in the repo is unrelated: `internal/template/values.go:13,362` validates *template parameters* with `santhosh-tekuri/jsonschema/v5`, and `web/src/api.ts:353-380` + `components/ContractDetail.tsx`/`FlowDetail.tsx:201-290` render the **host-emitted `Contract.schema`** from the topology record (the .NET contract registry), not a registry message schema.
+- `message show &lt;ref&gt;` searches the workspace first and answers offline for local publishes (`internal/message/show.go:43-74`); only unmatched refs hit the export.
+
+## 4. How the three commits wired xregistry in
+
+### `a70e40f8` — the whole spine (42 files, +4098)
+
+**Client + config**
+- `internal/xregistry/*` created as described above.
+- `internal/config/config.go` — `RegistryURL` on `Config`/`Context`/`Flags`; precedence flag → `INTROPY_REGISTRY_URL` → context → file at `config.go:222`; `ErrNoRegistryURL` sentinel + `RequireRegistryURL()` at `config.go:321-338`, no default host.
+
+**Subscribe path (`int create --subscribe`)**
+- `cmd/intropy/int_create.go:78-89` resolves **before** the template fetch ("so a wrong or unconfigured registry is reported before a GitHub download", `:73-74`), via `message.Subscribe`.
+- Ambiguity → `channelPrompter` (`int_create.go:246-276`) builds a `message.PickChannel` that prompts with `pubsub/topic` suggestions; nil under `--no-input` or with no TTY, so the ambiguity stays `AmbiguousProducerError` listing candidates.
+- `internal/message/resolve.go:70-95` `Subscribe(ctx, SubscribeOptions) (*template.SubscribeBlock, error)` — one export, then channel pick, then the block including `Producer` (the resolving endpoint) and `Group`.
+- Gate + seed: `internal/template/create.go:237-247` — no `intropy.io/message-params` label → `ErrNoMessageParameters`; direction gate `gateMessageDirection` (`create.go:424-438`); every message parameter seeded with the resolved id (`seedMessageParameters`, `create.go:441+`); block written as `SetValues[KeySubscribe]`.
+- Exit-code mapping: `usageIfMessageGateError` (`int_create.go:315-324`) and `usageIfUnconfiguredRegistry` (`cmd/intropy/message.go:24-29`) → exit 2.
+
+**Discovery**
+- `cmd/intropy/message.go` + `message_list.go` + `message_show.go` (this commit also had `message_model.go`/`message_source.go`, both later deleted in `fe54527a` when the logic moved to `internal/message`).
+- `internal/template/facts.go:105-193` — `AddMessageCandidates`, `MessageCandidates`, `SetMessageParameters`, `IsMessageParameter`, `SetWiringDirection`, `ContractForMessage`; the workspace scan indexes publishes blocks at `facts.go:269-285`.
+- `internal/template/suggest.go:48-49` — a message parameter's suggestions come from `facts.MessageCandidates()` instead of the topic/contract heuristics.
+- `internal/template/values.go:269-270` — the missing-required hint names the right flag via `wiringFlagName` (`values.go:280-286`).
+
+**Vocabulary / blocks**
+- `internal/template/wiring.go:32-48` — `KeySubscribe`, `KeyPublishes`, `KeyMessage`, `KeyDataschema`, `KeyDataschemaURL`, `KeyProducer`, `KeyGroup`, `DefaultPubsub`.
+- `wiring.go:104-151` — `SubscribeBlock` / `PublishesBlock` + `External()` (= `Topic != ""`).
+- `wiring.go:156-333` — `HasSubscribeValue`/`HasPublishesValue`/`HasMessageBlocks`, strict `ReadSubscribeBlock`/`ReadPublishesBlock`, and the writers. Dual-read, never dual-write.
+- `internal/template/scaffold.go:54-76` — `intropy.io/message-params` (+ legacy `intropy.dev/…`), `MessageDirection*`; `MessageDirection(kind)` at `:161-169` is the one home of the data-flow→direction flip.
+
+**Assembly**
+- `internal/system/blocks.go:41-44` — block-shaped records branch to `parseMessageBlocks`; legacy flat records fall through to the topic/contract pair and get a derived direction via `legacyMessageWiring` (`blocks.go:86-95`).
+- `blocks.go:100-171` — at most one of subscribe/publishes (`:109-111`); half-wired snapshots are errors (`blocks.go:116-119`, `blockRequiredField` at `:175-180`); external publishes set `c.Topic` from the snapshot; subscribers take `contract` from the flat key because "it is the one typing fact the registry does not own" (`blocks.go:150-155`).
+- `internal/system/assemble.go:152-200` — `resolveSubscriptionChannels`: producers without a recorded topic default to `pubsub/&lt;message name&gt;` (`:165-172`); conflicting channels and conflicting contracts for one message are hard errors (`:174-182`); an internal subscription nobody publishes is a hard error with two remediations (`:194-196`).
+- `assemble.go:207-229` — `aggregateMessages` builds the internal messagegroup, **excluding external publications** so the registry stays the single source of truth.
+- `internal/system/model.go:24-39,63-96` — `MessagePublish`/`MessageSubscribe`, `Message{Name,Type,Contract,Dataschema,Publisher}`, `MessageWiring{Name,Kind,Contract,Dataschema,External}`; `Model.Messages` at `:123`.
+- `internal/system/payload.go:45-72` — new `"messages"` payload section; `ComponentEntry` adds `message` and `dataschema` (`:108-115`).
+- `internal/system/update.go:420-437` — `mergeWiring` round-trips the messages section with the same external exclusion.
+- `internal/topology/topology.go:46-54` — `MessageGroups []json.RawMessage` opaque passthrough.
+- Enforced by construction: `internal/system` never imports `internal/xregistry`.
+
+### `e044eba8` "pub sub from registry" — the publish side (29 files)
+
+- `cmd/intropy/int_create.go:70-72` — `--subscribe` + `--publishes` together is a usage error; `:90-101` resolves `--publishes` through `message.Publishes`; `:235-237` registers all three flags.
+- `internal/message/resolve.go:105-136` — `Publishes` deliberately reuses `ResolvedMessage.SubscribeChannel()` but **never** takes a picker: ambiguity and zero-producer both get publish-side remediation text ("register the endpoint for this component in the registry first"). The block records `Group` but no `Producer` — "the producing endpoint is this component".
+- `internal/template/create.go:249-259` — the mirrored gate (`ErrMessageParameterConflict`, `ErrMessageDirection`, `ErrMessageFlagsExclusive` at `create.go:392-416`).
+- `internal/template/wiring.go` — `PublishesBlock` grew `Pubsub`/`Topic`/`DataschemaURL`/`Group`, giving it `External()`.
+- `internal/system/blocks.go:120-139` + `assemble.go`/`update.go` — the external-publication branch and its messagegroup exclusion.
+- `internal/xregistry/{client,resolve,types}.go` shrank here (−51/−28/+13): per-entity fetch paths were dropped in favour of `/export`-only, and `Endpoint`/`ResolvedMessage` gained the endpoint identity carried into `Channel.Endpoint`.
+
+### `fe54527a` "xreg" — extraction + dashboard/web surface (42 files)
+
+- `internal/message/` becomes the owning package (`message.go`, `list.go`, `show.go`, `resolve.go`, `workspace.go`, `registry.go` moved from `internal/template/`); `cmd/intropy/message_*.go` shrink to flag shims and `message_model.go`/`message_source.go` are deleted.
+- `Entry` gains `Producers`/`Subscribers []Endpoint` replacing a flat channel list (`internal/message/message.go:45-97`); `groupEndpoints` splits by `usage` — `producer` vs `subscriber`/`consumer`, unknown roles reported on neither side (`registry.go:120-141`).
+- Dashboard: `internal/dashboard/messages.go` (new) serves `GET /api/messages` and `POST /api/messages/refresh` (`handlers.go:196-197`) by **running `message.List` with a JSON writer and decoding it** (`messages.go:36-62`) rather than re-reading the registry; cached under `msgMu` (`handlers.go:89-97`, `messages.go:106-114`).
+- `internal/dashboard/wiring.go` (new) — `messageWiring` JSON shape + lenient `readMessageWiring` (a misshapen or self-contradictory record reports no wiring instead of failing the whole response).
+- `internal/dashboard/templates.go:476-516` — `wireMessage` picks Subscribe vs Publishes from the template's block kind, **passes no channel picker** (a server answers with candidates, it does not choose); `messageWiringStatus` (`:522-530`) maps unconfigured → 503, unresolvable/ambiguous → 4xx; `:550-556` refuses `subscribe`/`publishes` as a supplied parameter value ("name the message in \"message\" instead"); `:319-332` seeds `registryRefs` into facts for the create form.
+- `internal/dashboard/server.go:56-59,93,103` — `RegistryURL` option.
+- Web: `api.ts:62-98` (`MessageWiring`), `:479-527` (`MessageEndpoint`/`MessageEntry`/`MessageReport`), `:603` (`messages()` client); `FlowView.tsx:189-260,357-378,813-1104,1251-1261` draws registry producers/consumers outside the system boundary (registry-derived side dashed); `FlowDetail.tsx:150-175` shows schema + version rows.
+- `catalog/concepts/messages-and-subscriptions.md` and `AGENTS.md:100-111` carry the vocabulary rules.
+
+## 5. Docs in docs/brainstorms/ and docs/plans/ (both untracked)
+
+**`docs/brainstorms/2026-09-04-xregistry-message-integration-requirements.md`** — the subscribe-side requirements doc. 13 requirements: `--subscribe` resolution (R1), the growable single-map block shape (R2), recording both logical `dataschema` and pinned `dataschemaurl` "for A2's reproducible fetches" (R3), usage error for message-incapable templates (R4), the `message` noun (R5-R6), interactive pick list (R7), the `contract`→`message` rename (R8), producer-declared internal messages (R9-R10), assembly stays fully offline (R11), `registryUrl` with no default (R12), and the degradation contract (R13). Key decisions: `/export`-only, reference+snapshot+pin in the record, a `message` noun rather than `registry` because "registry" is already taken by OCI, and no implicit production URL because named customer contexts would send users at the wrong registry. F4 is explicitly the codegen flow, and it is A2's, not the CLI's.
+
+**`docs/brainstorms/2026-09-04-xregistry-message-publishing-requirements.md`** — the mirror for `--publishes`. Registry-first and endpoint-first: `--publishes` references an existing message and never authors one; the registry operator registers the producer endpoint *before* scaffolding, and F3's hard error is the contract when they haven't. R2 is the unique-producer rule (zero → register first, several → hard ambiguity, never an interactive pick, because picking would make this component a second producer on someone else's channel). R6 derives direction from `block-kind` rather than a new label or the inverse-semantics `data-flow` label. R10 makes snapshot-carrying publishes *external*: internal subscribers resolve off them, but the message is excluded from the host's internal messagegroup.
+
+**`docs/plans/2026-09-04-001-…-message-integration-plan.md`** (428 L, status active) — 7 units U1-U7 mapping exactly onto what `a70e40f8` shipped: xregistry client, `registryUrl` config, wiring vocabulary + dual-read, the `message` noun, `int create --subscribe`, assembly, topology + docs. Includes the resolution mermaid flow and the literal record shape. Explicitly defers template-library changes and the host `graph` messagegroup emission to other repos.
+
+**`docs/plans/2026-09-04-002-…-message-publishing-plan.md`** (533 L, active) — the `--publishes` plan matching `e044eba8`. Notable decisions: reuse `ResolveMessage` but *not* the subscribe picker; keep xregistry errors as neutral data carriers and do verb-aware wrapping at the command layer; tolerate an absent `block-kind`; make the gate symmetric (so `--subscribe` on an extractor now errors too — "a CLI that knows direction cannot let either flag vanish silently"); and **`contract` stays a template parameter** because the registry has no contract concept.
+
+**`docs/plans/2026-09-04-003-…-template-library-message-wiring-plan.md`** (351 L, active) — **this is the contract-generation-adjacent one, and it targets a different repo (intropy-templates), not this one.** The CLI side has shipped a contract the template library cannot yet receive: loader/extractor lack `intropy.io/message-params` (so both flags are usage errors against the real v0.9.0 templates), `Constants.cs` still renders `EventType` from a topic-derived guess `&lt;org&gt;.&lt;first&gt;.&lt;last&gt;`, and `system-host` has no `messages` payload parameter, so the CLI's `messages` key is silently dropped on render. Five units: T1 add the label + an optional `message` parameter and make `topic` optional; T2 skeleton precedence `block &gt; override params (topic/eventType/eventSource) &gt; derivation &gt; convention (topic = message name)`; T3 `system-host` `messages` parameter + a message-registry render artifact + the `messagegroups` section on the graph verb (open seam: extend `Intropy.Topology`'s model/Generation vs a host-side graph wrapper — decide by reading `IntropyGenerate.Run`'s discovery contract); T4 document that `spec.values` must never write `subscribe`/`publishes` (the CLI is the sole block writer); T5 tag `v0.10.0-rc.1` and re-run the CLI's e2e subscribe/publishes scenarios against it. Scope boundary `:92-93`: **"No codegen of types from `dataschema` (an external tool's job, per the subscribe doc's A2) — the producer only records the pin."**
+
+## Notable gaps / observations
+
+- `MessageVersion.DataSchemaFormat` and `Schema.Format` are decoded but read nowhere — the format of a pinned schema is invisible to every CLI surface today. Anything doing contract generation would need to either use them or re-derive format from the fetched document.
+- `Client` has no cache; every `message list`, `Subscribe`, `Publishes`, and `Refs` call is a fresh full `/export`. `int create --subscribe` plus prompt refs can mean two exports in one run (the loader in `int_create.go:294-298` memoizes only within itself). Plan 001 explicitly deferred cache policy.
+- `Endpoint.Usage` recognizes `producer`, `subscriber`, `consumer`; anything else lands on no side (`internal/message/registry.go:113-116`).
+- `internal/message/registry.go:56` and `:93` swallow `DefaultSchemaVersionXID` errors (`if xid, err := …; err == nil`), so a listing shows `dataschema` with an empty `dataschemaurl` rather than reporting a broken pin — deliberate for listing, but it means a bad schema reference is only surfaced by `--subscribe`/`--publishes`.</result>
+<usage><subagent_tokens>146307</subagent_tokens><tool_uses>54</tool_uses><duration_ms>234696</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a03f10e470ab9d1c7</task-id>
+<tool-use-id>toolu_01KrnuwxwV8DwFzuB92KFoab</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-integrio-intropy-intropy-cli/35aef357-1a12-4bd0-9b20-616215feaaba/tasks/a03f10e470ab9d1c7.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore contract generation today" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Headline finding
+
+**There is no contract-generation machinery in `intropy-cli`.** The CLI is a generic template *engine*: it fetches a git-tagged template library, resolves a flat `map[string]any` of scalar values, and renders `.tmpl` files through `text/template` + sprig. Every C# contract record is a **hand-written `.cs.tmpl` file with hardcoded sample fields** living in a *separate repo* — `integrio-intropy/intropy-templates`, checked out locally at `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-templates`.
+
+Default library identity: `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/template/github.go:16-19` (`defaultTemplateOwner = "integrio-intropy"`, `defaultTemplateRepo = "intropy-templates"`, `templateManifestName = "template.yaml"`, `templateSkeletonDir = "skeleton"`).
+
+---
+
+## 1. Where contract templates live and how a record is emitted
+
+### The render engine (CLI side)
+
+- `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/template/render.go:28` — `func Render(srcDir, destDir string, values map[string]any) error`
+- `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/template/render.go:37` — `func RenderFiltered(srcDir, destDir string, values map[string]any, rules []FileRule) error` — the one used by create. Walks `skeleton/`, renders **path segments** and, for `*.tmpl` basenames, **file contents**; strips `.tmpl` from the destination.
+- `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/template/render.go:16` — `const tmplSuffix = ".tmpl"`
+- `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/template/render.go:261` — `renderTemplate` — `sprig.TxtFuncMap()` + `Option("missingkey=error")`
+- `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/template/render.go:243` — `renderPath` (same funcs/options; this is why a file can be named `{{ .contract }}.cs.tmpl`)
+- `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/template/render.go:293` — `writeAtomically` (temp file + rename)
+- **No `embed.FS` anywhere.** No `.tmpl` files in the CLI repo at all (verified with `find`).
+
+### The create flow
+
+- `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/template/create.go:121` — `func Create(ctx context.Context, opts CreateOptions) error`. Sequence: `FetchSource` (:127) → `templateDir` (:133) → `prepareCreateTemplate` (:138, loads manifest + resolves values) → `renderCreateOutput` (:143) → `processDependencies` (:150) → `WriteScaffold` (:164) → `maybeWriteCreateResult` (:179).
+- `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/template/create.go:281` — `renderCreateOutput` → `RenderFiltered(skelRoot, outputDir, values, tmpl.Spec.Files)` (:288)
+- Split variant for the dashboard: `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/template/prepare.go:54` `PrepareCreate` and `:97` `RunCreate`.
+
+### The `Contracts/` project is a **dependency render**, not part of the component skeleton
+
+`extractor/template.yaml:131-137` (templates repo):
+
+```yaml
+dependencies:
+  - template: shared-contracts
+    output: '{{ .contracts }}'          # values.contracts == 'Contracts'  (line 89)
+    values:
+      name:     '{{ .contracts }}'
+      contract: '{{ .contract }}'
+      empty:    '{{ .empty }}'
+```
+
+Handled by:
+- `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/template/dependencies.go:44` — `processDependencies(...)` — renders the sibling *once* per workspace; skips if `.intropy/scaffold.json` already names the same template (`dependencyDirScaffold`, :184), warns on value drift (`warnDependencyDrift`, :222).
+- `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/template/dependencies.go:117` — `renderDependency` — note `Resolve(depTmpl, nil, nil, sets, nil)` at :126: **no prompter**, so a schema-generation step must not require interactive input on the dependency path.
+- `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/template/dependencies.go:167` — `renderDependencyValues` — every dependency value is a **rendered string** (`out[k] = rendered`). This is a hard constraint: you cannot pass a structured field list down the dependency edge today.
+
+### The actual contract template files (templates repo, branch `feat/template-library-message-wiring`)
+
+| File | What it emits |
+|---|---|
+| `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-templates/shared-contracts/skeleton/{{ .contract }}.cs.tmpl:1-16` | The canonical record. `namespace {{ .name }};` then either `public record {{ .contract }}();` (`empty`) or the hardcoded 4-field Order shape |
+| `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-templates/shared-contracts/skeleton/OrderLine.cs.tmpl:1-8` | Nested `OrderLine(string Sku, int Quantity, decimal UnitPrice)` — filename **and fields hardcoded**, guarded by `{{- if not .empty -}}` |
+| `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-templates/extractor/skeleton/src/Model/Source{{ .contract }}.cs.tmpl:1-15` | `Source&lt;Contract&gt;` in `{{ .name }}.Model`, `using {{ .contracts }};` |
+| `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-templates/loader/skeleton/src/Model/Out.cs.tmpl:1-13` | `Out(...)` — fixed name, hardcoded fields |
+| `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-templates/transactional/skeleton/src/Model/In.cs.tmpl`, `Out.cs.tmpl`, `Line.cs.tmpl` | Same pattern, all hardcoded |
+
+Exact current body of the canonical contract (`shared-contracts/skeleton/{{ .contract }}.cs.tmpl`):
+
+```
+namespace {{ .name }};
+{{- if .empty }}
+
+public record {{ .contract }}();
+{{- else }}
+
+// The canonical order contract: ...
+public record {{ .contract }}(
+    string OrderId,
+    string CustomerId,
+    DateTimeOffset OrderDate,
+    IReadOnlyList&lt;OrderLine&gt; Lines);
+{{- end }}
+```
+
+Note: the `.cs.tmpl` files also live at `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-templates/.worktrees/feat/{unit-first-components,gitops-binding-selection}/...` — ignore those, they're worktrees.
+
+---
+
+## 2. Template data model — fields are 100% hardcoded
+
+**There is no field-list support.** The value model is deliberately scalar-only:
+
+- `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/template/manifest.go:41-61` — `type Spec` with `Parameters map[string]any` (raw JSON Schema), `Values map[string]string` (derived Go-template expressions), `Files []FileRule`, `Dependencies []DependencySpec`.
+- `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/template/manifest.go:189-205` — `type FieldSpec` — `Name/Title/Description/Type/Enum/Default/Pattern/Required/Suggestions`. `Type` is `"string" | "boolean" | "integer" | "number"` only.
+- `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/template/values.go:93` — `func ResolveWith(t *Template, opts ResolveOptions) (map[string]any, error)` — layer order at :98-116: defaults → `Base` → `--values` files → `--set` → workspace prefill → prompts → **JSON Schema validation** (:111 → `validateSchema`, :357) → `renderDerivedValues` (:114).
+- `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/template/values.go:357-371` — `validateSchema` compiles `spec.parameters` with `santhosh-tekuri/jsonschema/v5` and validates the whole values map. **This is the only current use of JSON Schema in the repo, and it's for CLI parameters, not for message payloads.**
+
+### The escape hatch for structured data — the key extension point
+
+`/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/template/reserved.go`:
+
+```go
+const (
+    ReservedTopologyKey  = "topology"   // :17
+    ReservedComponentKey = "component"  // :18
+    ReservedGitopsKey    = "gitops"     // :19
+    ReservedScaffoldKey  = "scaffold"   // :20
+    ReservedEnvKey       = "env"        // :26
+    ReservedLocalKey     = "local"      // :30
+)
+func InjectReserved(t *Template, values map[string]any, reserved map[string]any) error // :43
+```
+
+Doc comment at :9-15 states the intent verbatim: *"spec.parameters is scalar-only by design, so a skeleton cannot declare 'the list of ports' as a parameter. These keys are how it gets one anyway: the caller injects the structures after validation, and the skeleton ranges over them."* **This is exactly the mechanism a `contractFields` / `schema` reserved key would use.** Must be called *after* `Resolve` (schema validation would reject nested data), and it refuses collisions with declared parameters or `spec.values` entries (:55-61).
+
+Consumers of the pattern for reference: `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/system/payload.go:29` and `:74-79` (the system-host template gets `topics`, `ports`, `components`, `sharedContracts` as nested structures), and `internal/system/model.go:12-17` (`type Topic { ...; Contract string }`).
+
+### `contract` in the value vocabulary
+
+`/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/template/wiring.go:14-49` is the single home of the CLI-owned value names:
+
+```go
+KeyAppID = "appId"; KeyTopic = "topic"; KeyContract = "contract"; KeyPubsub = "pubsub"
+KeyPort/KeyFromPort/KeyToPort/KeyName/KeyOrganization/KeyProjectName/KeySystemClass
+KeySubscribe = "subscribe"; KeyPublishes = "publishes"; KeyMessage = "message"
+KeyDataschema = "dataschema"; KeyDataschemaURL = "dataschemaurl"
+KeyProducer = "producer"; KeyGroup = "group"
+```
+
+`PublishesBlock.Contract` (`wiring.go:127-140`) carries a doc note worth reading before you design: *"Contract is the .NET shared-project type name, carried during the transition while host templates render Topics.cs from it; it is not the CloudEvents type."*
+
+---
+
+## 3. `intropy int create` flags → template params
+
+`/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/cmd/intropy/int_create.go`
+
+- `type createFlags` — `:23-36`
+- `RunE` — `:45-154`
+- Flag registration — `:223-239`:
+
+| Flag | Var | Note |
+|---|---|---|
+| `-o/--out-dir` | `outDir` | `:225` |
+| `--output` | `output` | `:226`, only `json` accepted (`:50-56`) |
+| `-n/--name` | `name` | `:228` |
+| `--template-version` / `--template-repo` | | `:229-230` |
+| `-f/--values` | `values` | `:231` (repeatable YAML/JSON files) |
+| `-s/--set` | `sets` | `:232` |
+| `--force`, `--no-input` | | `:233-234` |
+| `--subscribe`, `--publishes`, `--registry-url` | | `:235-237` |
+
+**There is no `--topic` and no `--contract` flag.** `topic` and `contract` are ordinary template parameters, set one of four ways:
+1. `--set contract=Order` → `template.ParseSets` (`internal/template/values.go:402`)
+2. `--values file.yaml`
+3. Interactive prompt (`internal/template/prompt.go`, prompter selected at `create.go:373` / `AutoPrompter` `:381`)
+4. **Workspace-fact prefill/suggestion** — `internal/template/suggest.go:76-91` (`case KeyContract:`): with a confirmed `topic`, contract is constrained via `facts.ContractFor(TopicKey{...})`; otherwise `knownContracts(facts)` (`:97`). Single candidate → silent prefill (`values.go:155` `applyPrefill`); several → pick list.
+
+`-n` is sugar: `resolveCreateName` (`int_create.go:191`) folds it into `sets["name"]` and kebab-cases it for the output dir. With neither `-n` nor `-o`, `deriveOutDir` (`:210`) runs `PrepareCreate` just to read `values["name"]`.
+
+Message flags resolve **before** the template fetch (`:75-101`) via `message.Subscribe` / `message.Publishes`, then land in `opts.Subscribe` / `opts.Publishes` → seeded into `SetValues` by `prepareCreateTemplate` (`internal/template/create.go:237-260`) → `seedMessageParameters` (`:454`). Gates: `gateMessageDirection` (`:424`), `ErrNoMessageParameters` (`:396`), `ErrMessageFlagsExclusive` (`:416`); mapped to exit-2 usage errors by `usageIfMessageGateError` (`int_create.go:315`).
+
+Second call site (same options struct, keep in sync): `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/dashboard/templates.go:437` (`PrepareCreate`) and `:451` (`RunCreate`).
+
+---
+
+## 4. Existing schema → C# generation: **none**
+
+Searched for `jsonschema|avro|openapi|quicktype|proto|csharp|\.cs` across all Go files:
+
+- `github.com/santhosh-tekuri/jsonschema/v5` appears **once**, at `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/template/values.go:13` + `:362`, and only validates CLI parameters.
+- No Avro, no OpenAPI, no protobuf, no quicktype, no type-mapping table, no identifier sanitizer, no pluralizer.
+- `go.mod` (lines 6-17): nothing that could generate types. `github.com/huandu/xstrings v1.5.0` and `github.com/Masterminds/sprig/v3` are the only string-casing tools.
+
+Naming/casing helpers that *do* exist:
+- `xstrings.ToKebabCase` — `cmd/intropy/int_create.go:200,220`; `internal/system/create.go:104`; `internal/dashboard/systems.go:126`, `templates.go:589`; `internal/deploy/manifests_engine.go:527`
+- Inside templates: sprig's `kebabcase`, `camelcase`, `lower`, `regexSplit`, `replace` (e.g. `extractor/template.yaml:81,122,129-130`)
+- Path/name sanitization (not C# identifiers): `validateTemplateName` (`internal/template/create.go:360`), `validateDependencyOutput` (`internal/template/dependencies.go:241`), `fixtureNamePattern` (`internal/template/manifest.go:124`)
+- PascalCase is enforced only as a **JSON Schema `pattern`** in the manifests, e.g. `shared-contracts/template.yaml:30` → `"^[A-Z][A-Za-z0-9]*$"` for `contract`, and `"^[A-Z][A-Za-z0-9]*(\\.[A-Z][A-Za-z0-9]*)*$"` for `name`.
+- `plural(n int)` at `internal/deploy/publish.go:262` is English pluralization of the word "attempt" for log lines — not a naming utility.
+
+### xRegistry side: schema *pin* only, never the schema *document*
+
+- `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/xregistry/types.go:85-97` — `type Schema { ID, Format, Versions }`, `type Version { VersionID, XID, IsDefault }`. **No field carries the schema body.**
+- `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/xregistry/client.go:143` — `func (c *Client) Export(ctx) (*Export, error)` — the **only** request the client makes is `GET /export`. Package doc (`client.go:14-16`) says filtering/inlining/entity-path lookups are out of scope, so fetching a schema document is a new capability.
+- `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/xregistry/resolve.go:228` — `func DefaultSchemaVersionXID(doc *Export, xid string) (string, error)` → the immutable version xid.
+- `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/xregistry/resolve.go:195-210` — `(*Client).Resolve` joins the xid with the base URL into `ResolvedMessage.DataSchemaURL` — **that absolute URL is your fetch target.**
+- `ResolvedMessage` — `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/xregistry/resolve.go:22-42` (`Message, Type, Group, Channels, DataSchema, DataSchemaURL`).
+- The pin then flows into the scaffold record: `internal/message/resolve.go:83-94` (`SubscribeBlock`) and `:126-136` (`PublishesBlock`); block shape in `internal/template/wiring.go:104-140`; serialized by `SubscribeBlockValue` (`:290`) / `PublishesBlockValue` (`:315`).
+- Templates already *render* the pin but explicitly don't generate from it — `extractor/template.yaml:111-116`: *"Rendered into the docs, never used to generate types — that is an external tool's job."*
+- Also relevant: `internal/message/registry.go:190` `schemaName(xid)` extracts the schema resource tail (e.g. `product-export.v1`) — the closest thing to a name-derivation helper, currently used only for a table column (`Entry.DataSchemaName`, `internal/message/message.go:66`).
+
+**Recorded non-goal you'd be reversing:** `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/docs/plans/2026-09-04-003-feat-template-library-message-wiring-plan.md:92` — *"No codegen of types from `dataschema` (an external tool's job, per the subscribe doc's A2) — the producer only records the pin."* Prior plans/brainstorms for the xregistry work: `docs/plans/2026-09-04-001-*.md`, `-002-*.md`, `docs/brainstorms/2026-09-04-xregistry-message-{integration,publishing}-requirements.md`.
+
+---
+
+## 5. The scaffold record
+
+`/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/template/scaffold.go`
+
+- `:15` `ScaffoldSchemaVersion = 1` (additive fields need no bump)
+- `:18` `ScaffoldRelPath = ".intropy/scaffold.json"`
+- `:85-109` `type Scaffold { SchemaVersion, Template, Owner, Repo, Version, Values map[string]any, Role, BlockKind, DataFlow, DependsOn []DependencyRecord }`
+- `:113-116` `type DependencyRecord { Template, Dir }` (e.g. `"../Contracts"`)
+- `:177` `func WriteScaffold(projectRoot string, s Scaffold) error`
+- `:194` `LoadScaffold`, `:209` `FindScaffold` (walks up), `:79` `ErrScaffoldNotFound`
+- Labels the record copies from the manifest: `:29-60` (`intropy.io/template-role`, `/block-kind`, `/data-flow`, `/message-params`, each with a legacy `intropy.dev/` twin resolved by `LabelValue`, `:122`)
+- Block kinds: `:66-68`; `MessageDirection(kind)` at `:161`
+
+**Written at three sites** (all must stay consistent if you add anything):
+1. `internal/template/create.go:164` — the component itself
+2. `internal/template/prepare.go:126` — `RunCreate` (dashboard path)
+3. `internal/template/dependencies.go:143` — the `Contracts/` sibling
+
+`Values` in the record is the **full resolved value map**, which is how `sys create`, `deploy`, and prompt suggestions read wiring back. Read paths: `internal/template/facts.go:222` `BuildWorkspaceFacts`, `:97` `ContractFor`, `:188` `ContractForMessage`; strict readers `RecordValue` / `ReadSubscribeBlock` / `ReadPublishesBlock` in `internal/template/wiring.go:56,219,256`.
+
+Also machine-readable per-run output: `CreateResult` at `internal/template/create.go:86-98` (`--output json`), `DependencyResult` at `internal/template/dependencies.go:20-24`.
+
+---
+
+## 6. Test patterns
+
+**No golden files, no snapshot tests, no `testdata/` directories anywhere in the repo** (verified: `find` for `testdata`/`golden` returns nothing).
+
+The house pattern is a **real git-backed template library built inside the test**, rendered through the production engine, then assertions on the produced files:
+
+- `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/template/templatetest/templatetest.go` — exported fixture for *other* packages. `NewLibrary(t, tag, files map[string]string) *Library` (`:36`) commits repo-relative paths, tags, and starts an `httptest` stub for the latest-release API; `(*Library).Source(t)` (`:63`) returns `template.SourceOptions{RepoURL: "file://"+repo, CacheRoot: t.TempDir(), GitHubBaseURL: server.URL}`. Package doc (`:8-9`) explains the choice: *"Real git rather than a tarball server: clone is exactly the operation where a mock encodes our assumptions."*
+- `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/gittest/` — the git-repo helpers (`NewRepo`, `WriteFile`, `Run`).
+- In-package equivalents: `newTestLibrary` / `lib.sourceOpts(...)` and `newTemplateLibrary` at `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/template/create_test.go:15-37` (inline `testTemplateYAML` const + `"test-template/skeleton/README.md.tmpl"`).
+- Test inventories: `internal/template/create_test.go` (28 tests, `:42`–`:1114`), `render_test.go` (`:10`–`:242`), `dependencies_test.go` (`:84`–`:383`), `scaffold_test.go`, `values_test.go`, `manifest_test.go`, `suggest_test.go`, `facts_test.go`, `filter_test.go`, `reserved_test.go`, `wiring_test.go`.
+- CLI-level: `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/cmd/intropy/int_create_test.go` — `TestIntCreateSubscribeEndToEnd` (`:323`) is the model for your feature's end-to-end test: `httptest` xRegistry fixture (`messageRegistryFixture`) + `t.Setenv("INTROPY_REGISTRY_URL", ...)` + `templatetest` library + `template.Create(...)` into `t.TempDir()` + `LoadScaffold` + struct-equality assertion on the block.
+- **E2E against the real templates repo**, behind a build tag: `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/system/real_template_e2e_test.go:1` `//go:build e2e`, driven by `INTROPY_TEMPLATES_DIR` (`:22-28`). Tests: `TestRealSystemHostTransactionalOnly` (`:59`), `TestRealSystemHostTopicSystemWithContracts` (`:98`), `TestRealSystemHostFieldCollisionFails` (`:133`), `TestRealSystemHostDependencyWhen` (`:158`). Run: `INTROPY_TEMPLATES_DIR=... go test -tags e2e ./internal/system/ -run TestRealSystemHost -v`. **This is where a "render a real contract from a real schema" test belongs.**
+- Assertions on rendered C# are plain `strings.Contains` on the file bytes — no golden comparison.
+
+---
+
+## Implications for the feature you're planning
+
+1. **The contract body must be generated on the CLI side and handed to the template as structured data.** The template-side `.cs.tmpl` would `range` over a field list. The mechanism already exists and is named: a new reserved key via `InjectReserved` (`internal/template/reserved.go:43`), injected *after* `ResolveWith` returns.
+2. **The dependency edge is the blocker.** `Contracts/` is rendered by `renderDependency` (`internal/template/dependencies.go:117`), whose values come from `renderDependencyValues` (`:167`) — a `map[string]string` of rendered Go-template expressions. Structured field data cannot cross that edge today; `Resolve` is also called there with a nil prompter (`:126`). Either extend the dependency-values plumbing to carry a reserved block, or inject the reserved key into the dependency render explicitly.
+3. **Schema fetching is net-new.** `xregistry.Client` only does `GET /export` (`client.go:143`), and `types.Schema` (`types.go:85`) carries no document. You already get an absolute, immutable pin in `ResolvedMessage.DataSchemaURL` (`resolve.go:204-208`) and it's recorded in the scaffold blocks — that's the input.
+4. **The record is forward-compatible.** `Scaffold` is additive-only with no version bump needed (`scaffold.go:12-15`), so recording the generated field set / schema digest is cheap. Three write sites though (`create.go:164`, `prepare.go:126`, `dependencies.go:143`).
+5. **You'd be writing new type-mapping and C#-identifier code from scratch** — nothing exists to extend. PascalCase is currently only a regex `pattern` in template manifests, not a transform.
+6. `missingkey=error` on every render (`render.go:231,249,268`) means any new value a `.cs.tmpl` references must be present in *every* code path that renders that template, or the render fails loudly.</result>
+<usage><subagent_tokens>149173</subagent_tokens><tool_uses>50</tool_uses><duration_ms>275721</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a3ec0b13f11ef939f</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-integrio-intropy-intropy-cli/35aef357-1a12-4bd0-9b20-616215feaaba/tasks/a3ec0b13f11ef939f.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore templates and framework contracts" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## 1. intropy-templates — the templates and where the contract lives
+
+Repo root: `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-templates`
+
+| Template | `template.yaml` | Role label |
+|---|---|---|
+| `extractor` | `/…/intropy-templates/extractor/template.yaml` | `intropy.io/block-kind: extractor` |
+| `loader` | `/…/intropy-templates/loader/template.yaml` | `intropy.io/block-kind: loader` |
+| `transactional` (the "transactional-integration" kind) | `/…/intropy-templates/transactional/template.yaml` | `intropy.io/block-kind: transactional-integration` |
+| `system-host` | `/…/intropy-templates/system-host/template.yaml` | `intropy.io/template-role: system-host` |
+| `shared-contracts` | `/…/intropy-templates/shared-contracts/template.yaml` | `intropy.io/template-role: shared-library` |
+| `deploy-component` | `/…/intropy-templates/deploy-component/template.yaml` | kustomize overlay for one component |
+| `deploy-host` | `/…/intropy-templates/deploy-host/template.yaml` | kustomize overlay + Dapr components/bindings |
+| `hello-world` | `/…/intropy-templates/hello-world/template.yaml` | teaching sample |
+
+### shared-contracts — the whole template is 4 emitted files
+
+`/Users/robinhultman/dev/intropy/integrio-intropy/intropy-templates/shared-contracts/skeleton/`
+- `{{ .contract }}.cs.tmpl` → e.g. `ProductExported.cs` / `Order.cs`
+- `OrderLine.cs.tmpl` → `OrderLine.cs` (hardcoded name, not parameterized)
+- `{{ .name }}.csproj` (plain file, not `.tmpl`) → `Contracts.csproj`
+- `AGENTS.md.tmpl`, `README.md.tmpl`, `.gitignore`
+
+There is **no folder** — the record file sits at the project root. `Contracts/ProductExported.cs` is the path *within the system directory*: the project dir is named `Contracts`, so the file is `&lt;system&gt;/Contracts/ProductExported.cs`.
+
+Parameter block, `/…/intropy-templates/shared-contracts/template.yaml:15-36`:
+
+```yaml
+spec:
+  parameters:
+    type: object
+    required:
+      - name
+    properties:
+      name:            # PascalCase project/namespace/assembly; conventionally "Contracts"
+        pattern: "^[A-Z][A-Za-z0-9]*(\\.[A-Z][A-Za-z0-9]*)*$"
+      contract:        # PascalCase name of the canonical record
+        pattern: "^[A-Z][A-Za-z0-9]*$"
+        default: Order
+      empty:           # strip the sample fields, keep an empty shell
+        type: boolean
+        default: false
+```
+
+**There is no field/property list anywhere in the template data.** The record's shape is hardcoded sample text. `/…/shared-contracts/skeleton/{{ .contract }}.cs.tmpl:1-16`:
+
+```gotemplate
+namespace {{ .name }};
+{{- if .empty }}
+
+public record {{ .contract }}();
+{{- else }}
+
+// The canonical order contract: the extractor publishes exactly this shape …
+public record {{ .contract }}(
+    string OrderId,
+    string CustomerId,
+    DateTimeOffset OrderDate,
+    IReadOnlyList&lt;OrderLine&gt; Lines);
+{{- end }}
+```
+
+`/…/shared-contracts/skeleton/OrderLine.cs.tmpl:1-8` is the same idea (`Sku`, `Quantity`, `UnitPrice`), gated entirely on `not .empty`. So today the only two outcomes are **the Order sample** or **`public record X();`** — an empty shell whose only job is to make the pipeline generics compile (`template.yaml:35`). That empty shell is exactly the hole a schema-driven generator would fill.
+
+The csproj is fixed and dependency-free (`/…/shared-contracts/skeleton/{{ .name }}.csproj:1-9`): `net10.0`, `Nullable`, `ImplicitUsings`. No `PackageReference` at all — nothing to hang a generator/analyzer off of yet.
+
+### How it gets scaffolded (once per system)
+
+Component templates declare it as a dependency rather than the user rendering it. `/…/intropy-templates/extractor/template.yaml:131-137` (loader is identical at `:113-119`):
+
+```yaml
+  dependencies:
+    - template: shared-contracts
+      output: '{{ .contracts }}'
+      values:
+        name: '{{ .contracts }}'
+        contract: '{{ .contract }}'
+        empty: '{{ .empty }}'
+```
+
+with `contracts: 'Contracts'` hardcoded as a derived value at `extractor/template.yaml:89`. `system-host` has the same dependency, conditional, at `/…/system-host/template.yaml:85-90` — and note it seeds the contract from the *first topic*: `contract: '{{ (index .topics 0).contract }}'`.
+
+Dependencies render as a **sibling of the component output dir** and are skipped if already scaffolded — `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/template/dependencies.go:56` (`parentDir := filepath.Dir(absOut)`), `:78` (`depDir := filepath.Join(parentDir, name)`), `:94-102` (existing `.intropy/scaffold.json` → `action: exists`, skipped). `--force` deliberately does not propagate (`:131-134`).
+
+## 2. How a component's pipeline references the contract
+
+**Shared project, not per-component.** The contract type is a `ProjectReference`, and there is a second, *local* per-component model beside it.
+
+`/…/intropy-templates/extractor/skeleton/src/{{ .name }}.csproj.tmpl:26-30`:
+
+```xml
+  &lt;ItemGroup&gt;
+    &lt;!-- The shared contracts sibling is scaffolded by this template's
+         spec.dependencies entry, so it exists whenever this project does. --&gt;
+    &lt;ProjectReference Include="../../{{ .contracts }}/{{ .contracts }}.csproj" /&gt;
+  &lt;/ItemGroup&gt;
+```
+
+Layout: `&lt;system&gt;/&lt;Component&gt;/src/&lt;Component&gt;.csproj` → `&lt;system&gt;/Contracts/Contracts.csproj`. Namespace is the bare `Contracts`, imported as `using {{ .contracts }};`.
+
+Two-model split per component:
+- **Shared**: `{{ .contract }}` (e.g. `ProductExported`) from `Contracts` — the wire shape.
+- **Local**: `src/Model/Source{{ .contract }}.cs` for the extractor (`/…/extractor/skeleton/src/Model/Source{{ .contract }}.cs.tmpl:1-15`, and note it *reuses* `OrderLine` from the shared project via `using {{ .contracts }};`), `src/Model/Out.cs` for the loader (`/…/loader/skeleton/src/Model/Out.cs.tmpl`).
+
+Generic type args flow through every step. `/…/extractor/skeleton/src/Process/Transformer.cs.tmpl:9`:
+
+```csharp
+public class Transformer : TransformStep&lt;Source{{ .contract }}, {{ .contract }}, Context&gt;
+```
+
+and the pipeline factory, `/…/extractor/skeleton/src/Composition/Composition.cs.tmpl:147-149`:
+
+```csharp
+    public static Extractor&lt;Source{{ .contract }}, {{ .contract }}, Context&gt; BuildPipeline(IServiceProvider provider)
+    {
+        return ExtractorBuilder&lt;Source{{ .contract }}, {{ .contract }}, Context&gt;.Create("{{ .name }}.Process", provider)
+```
+
+plus `CloudEventSerializeStep&lt;{{ .contract }}, Context&gt;` at `:170`. Loader side deserializes straight into it — `/…/loader/skeleton/src/Process/Deserializer.cs.tmpl:11,31`:
+
+```csharp
+public class Deserializer : DeserializeStep&lt;{{ .contract }}, Context&gt;
+…
+        var order = JsonSerializer.Deserialize&lt;{{ .contract }}&gt;(json,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+```
+
+`TopicRef&lt;T&gt;` is the system-host side. `/…/system-host/skeleton/Topics.cs.tmpl:32`:
+
+```gotemplate
+    public static readonly TopicRef&lt;{{ $contract }}&gt; {{ $field }} = TopicRef&lt;{{ $contract }}&gt;.Define("{{ $t.pubsub }}", "{{ $t.name }}");
+```
+
+with a `using {{ .sharedContracts.name }};` at `:3-5`, a hard `fail` if a topic carries no contract (`:11-13`), and — important for a codegen design — support for a sub-namespace via `contractNamespace` per topic (`:19-28`), used for adopted components whose contract is not at the contracts project root.
+
+`Messages.cs.tmpl:5-11` already models the message ↔ contract ↔ schema triple in generated C#:
+
+```csharp
+public sealed record MessageDefinition(
+    string Name,
+    string Type,
+    string? Contract = null,
+    string? Dataschema = null,
+    string? Publisher = null);
+```
+
+**The `dataschemaurl` pin already reaches the templates and is deliberately not used for codegen.** `/…/extractor/template.yaml:111-116`:
+
+```yaml
+    # The schema pin a registry-resolved publication carries: the immutable
+    # URL of the message's default schema version at resolve time. Rendered
+    # into the docs, never used to generate types — that is an external
+    # tool's job.
+    schemaUrl: '{{ if and (hasKey . "publishes") (hasKey .publishes "dataschemaurl") }}{{ .publishes.dataschemaurl }}{{ end }}'
+```
+
+`schemaUrl` is consumed in exactly four places, all documentation: `extractor/skeleton/README.md.tmpl:40-41`, `extractor/skeleton/AGENTS.md.tmpl:35-39`, `loader/skeleton/README.md.tmpl:12-13`, `loader/skeleton/AGENTS.md.tmpl:29-33`. The AGENTS text spells out the current contract explicitly (`extractor/skeleton/AGENTS.md.tmpl:35-38`):
+
+&gt; `- Payload schema: {{ .schemaUrl }} — the schema version pinned when the message was resolved. A pin, not a codegen input: the contract types in ../{{ .contracts }} are hand-written`
+
+Render fixture showing the real end-to-end shape, `/…/intropy-templates/extractor/examples/message.yaml:6-17`:
+
+```yaml
+name: Extractor.Perfion
+organization: Maxbo
+contract: ExportEvent
+empty: true
+message: io.intropy.maxbo.product.export
+publishes:
+  message: io.intropy.maxbo.product.export
+  contract: ExportEvent
+  pubsub: product-distribution-pubsub
+  topic: sbt-test-product-extractor-001
+  dataschema: /schemagroups/io.intropy.maxbo.product/schemas/io.intropy.maxbo.product.export
+  dataschemaurl: https://registry.intropy.io/schemagroups/io.intropy.maxbo.product/schemas/io.intropy.maxbo.product.export/versions/2
+```
+
+Note `contract: ExportEvent` matches the registry schema's `"title": "Export Event"` — the naming convention a generator would need to either honour or override.
+
+For reference, the hand-written target shape lives in `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-topology/examples/OrderFlow.Contracts/Contracts.cs:12,18` (`sealed record` + XML doc per parameter) — a better output model than the scaffold's plain `record`.
+
+## 3. intropy-framework — no schema/codegen infrastructure exists
+
+Repo: `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-framework`
+
+- **No JSON Schema validation.** `grep -rni 'json schema|jsonschema|source generat|codegen'` over `src/` and `docs/` returns **zero hits**. No `NJsonSchema`, `JsonSchema.Net`, or `FluentValidation` in `Directory.Packages.props`.
+- **No System.Text.Json source generation.** No `JsonSerializerContext` anywhere. All serialization is reflection-based `JsonSerializer.Serialize/Deserialize` — e.g. `src/Intropy.Framework.Blocks/Shared/Steps/External/ExternalIdempotencyChecker.cs:109`, `src/Intropy.Framework.Adapters/File/LocalFileAdapter.cs:35`. Generated skeleton code constructs ad-hoc options inline (`new JsonSerializerOptions { PropertyNameCaseInsensitive = true }`) rather than using a shared policy — relevant, since the registry schema is explicitly written against the camelCase policy (see §4).
+- **No MSBuild codegen.** The only build files are `Directory.Build.props`, `Directory.Packages.props`, `test/Directory.Build.props`. Zero `.targets` files, zero custom `Target`/`Exec`/`WriteLinesToFile`. `Directory.Build.props:1-34` is packaging metadata + analyzers (`TreatWarningsAsErrors`, `AnalysisMode=All`) only.
+- **No `IntropyGenerate` here.** `grep -rn IntropyGenerate` in intropy-framework → nothing. It lives in the sibling repo: `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-topology/src/Intropy.Topology.Generation/IntropyGenerate.cs:13-39` — a runtime `check | graph | generate` dispatcher over a reflected `ISystemDefinition` (emits Dapr YAML/runtime config, not C#), invoked by `dotnet run -- check` from the system host. It is not an MSBuild task and has no schema awareness.
+- **Nothing fetches remote artifacts at build time** in either repo. The only remote fetching is in the CLI at *scaffold* time (registry `GET /export`, template checkout).
+
+Packages produced (from `src/*/*.csproj` `Description`/`PackageTags`): `Intropy.Framework.Core`, `.Blocks`, `.Adapters`, `.Hosting`, `.EventDispatcher`, `.Testing`. Note `src/Intropy.Framework.Streaming`, `.Adapters.Azure`, `.Adapters.Dapr` are **stale `bin`/`obj` only** — no csproj, not in `Intropy.Framework.slnx`, though `nupkg-local/` still holds `0.3.0-local.2` artifacts for them.
+
+Generated components consume these as `PackageReference` (`/…/extractor/skeleton/src/{{ .name }}.csproj.tmpl:11-23`): `Intropy.Framework.Adapters|Blocks|Hosting` at `0.3.0-beta.4`, plus `Intropy.Contracts 0.1.0`, `Intropy.IdempotencyService.Client`, `Intropy.BusinessIncidentService.Client`, `Intropy.Telemetry.ConsoleApp`. The system host adds `Intropy.Topology.Aspire` / `Intropy.Topology.Generation` at `0.4.5` (`/…/system-host/skeleton/{{ .projectName }}.SystemHost.csproj.tmpl:17-19`).
+
+## 4. intropy-registry — how a schema document is served
+
+Repo: `/Users/robinhultman/dev/intropy/intropy-registry`. Read-only xRegistry 1.0-rc4 on Cloudflare Workers; definitions authored in git under `registry/`, built to `dist/tree.json`, served by a single 240-line worker.
+
+### Raw JSON Schema body endpoints
+
+The **normal** resource/version URL returns the document (no `$details`, no `/doc` suffix). `docs/api.md:80-97`:
+
+```bash
+# default version document
+curl https://registry.intropy.io/schemagroups/io.intropy.maxbo.product/schemas/product-export.v1
+
+# immutable version document — the form used in CloudEvent dataschema
+curl https://registry.intropy.io/schemagroups/io.intropy.maxbo.product/schemas/product-export.v1/versions/1
+```
+
+Path shape: `/schemagroups/&lt;schemagroupid&gt;/schemas/&lt;schemaid&gt;/versions/&lt;versionid&gt;`. Implementation is `/Users/robinhultman/dev/intropy/intropy-registry/worker/index.ts:112-126` (`documentResponse`) reached from `:229-234`; `resourceTarget` at `:88-100` accepts exactly 4 or 6 segments. Content type comes from the stored `contenttype`, `application/schema+json`. `$details` (stripped at `:171-177`) flips the same URL to xRegistry metadata; `/meta` (`:155`) gives `defaultversionid` / `defaultversionurl`.
+
+The document response also carries every metadata attribute as percent-encoded `xregistry-*` headers (`worker/index.ts:102-110`) — so a fetcher gets `xregistry-versionid`, `xregistry-format`, `xregistry-schemaid` for free alongside the body.
+
+### `format` values
+
+Exactly one is allowed. `/…/intropy-registry/src/registry/model.ts:26-35`:
+
+```ts
+export const NARROWING = {
+  envelopes: ['CloudEvents/1.0'],
+  /** Only JSON Schema 2020-12. */
+  formats: ['JsonSchema/draft/2020-12'],
+  protocols: ['AMQP/1.0', 'HTTP'],
+} as const;
+```
+
+Enforced as a Zod enum at `src/registry/schema.ts:49`, defaulted at `:109-110` (`contenttype: 'application/schema+json'`, `format: 'JsonSchema/draft/2020-12'`). **No Avro, no Protobuf, and no draft-07** — it is 2020-12 only. Widening is documented as a one-object edit. `dataschemaformat: JsonSchema/draft/2020-12` on the message side, `registry/messagegroups/io.intropy.maxbo.product.yaml:45`.
+
+### Inline in `/export` or fetched separately? — **both**
+
+`/export` inlines the schema bodies. `src/registry/query.ts:5-6`:
+
+```ts
+/** /export includes all entity collections and documents, but not unavailable model source. */
+export const exportInline: InlineSpec = { wildcard: true, paths: [], excluded: ['model', 'modelsource'] };
+```
+
+which reaches `attachDocument` in `src/registry/serialize.ts:105-115` and attaches the parsed document under the resource's singular — `schema` (`spec/schema-model.json:25-26`). So `GET /export` contains `schemagroups.&lt;gid&gt;.schemas.&lt;sid&gt;.versions.&lt;v&gt;.schema` = the JSON Schema object. Confirmed by `docs/api.md:155` ("including all entity collections, schema documents, and capabilities") and negatively by `tests/api.test.ts:86` (`expect(resource.schema).toBeUndefined()` on the non-export `$details` path).
+
+Caveat for your design: **the CLI currently discards it.** `/Users/robinhultman/dev/intropy/integrio-intropy/intropy-cli/internal/xregistry/types.go:93-97`:
+
+```go
+type Version struct {
+	VersionID string `json:"versionid"`
+	XID       string `json:"xid,omitempty"`
+	IsDefault bool   `json:"isdefault"`
+}
+```
+
+No `Schema json.RawMessage` field. Adding one would let `intropy int create --publishes …` generate the record with **zero extra HTTP round-trips**, since `client.go:145` already does `c.get(ctx, "/export", &amp;doc)` and `resolve.go:204-208` already absolutizes the pin into `dataschemaurl`.
+
+### Sample schema documents
+
+Seed files: `registry/schemagroups/&lt;group&gt;/&lt;schemaid&gt;/schema.yaml` (metadata) + `&lt;versionid&gt;.json` (the document; version id *is* the filename — `src/registry/load.ts:117,179-184`).
+
+Here is the smaller of the two verbatim — `/Users/robinhultman/dev/intropy/intropy-registry/registry/schemagroups/io.intropy.maxbo.catalog/product-updated.v1/1.json`:
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://registry.intropy.io/schemagroups/io.intropy.maxbo.catalog/schemas/product-updated.v1/versions/1",
+  "title": "New or updated product",
+  "description": "One product record from the KAT product service.",
+  "type": "object",
+  "required": ["id", "modifiedDate"],
+  "properties": {
+    "id": { "type": "string", "description": "Canonical product id." },
+    "modifiedDate": { "type": "string", "format": "date-time" },
+    "vendorProductNo": { "type": "string", "description": "The vendor's own article number." },
+    "imageGuids": {
+      "type": "array",
+      "description": "References to images used for this item.",
+      "items": { "type": "string", "format": "uuid" }
+    },
+    "unitConversions": {
+      "type": "array",
+      "description": "Factors for converting between units.",
+      "items": { "$ref": "#/$defs/UnitConversion" }
+    }
+  },
+  "$defs": {
+    "UnitConversion": {
+      "type": "object",
+      "required": ["fromUnit", "toUnit", "factor"],
+      "properties": {
+        "fromUnit": { "type": "string" },
+        "toUnit": { "type": "string" },
+        "factor": { "type": "number", "description": "Multiply the from-unit quantity by this." }
+      }
+    }
+  }
+}
+```
+
+Its metadata sibling, `registry/schemagroups/io.intropy.maxbo.catalog/product-updated.v1/schema.yaml`:
+
+```yaml
+name: Product update payload
+description: &gt;-
+  One product record, carried inline. Ported from the KAT product service
+  AsyncAPI contract.
+format: JsonSchema/draft/2020-12
+compatibility: backward
+```
+
+The other one (`io.intropy.maxbo.product/product-export.v1/1.json`, plus a `2.json`) exercises `additionalProperties: false`, `required`, `enum`, `integer`, and a `$defs` + `$ref` array item — i.e. everything a first-cut generator has to handle. Its `schema.yaml:2-5` also states the C# naming assumption you'd have to reverse:
+
+&gt; *"Property names follow the System.Text.Json camelCase policy — first character lowercased only, so GTIN becomes gTIN — and nulls are omitted."*
+
+## Summary for the generation design
+
+- **Physical target**: one file per record at `&lt;system&gt;/Contracts/&lt;Contract&gt;.cs`, namespace `Contracts`, flat `net10.0` class library with no package references. Nested types (`$defs`) go as sibling records in the same namespace — `OrderLine.cs` is the existing precedent.
+- **Name source**: the `contract` param, currently required and hand-typed (`extractor/template.yaml:50-54`), and echoed into the `publishes`/`subscribe` block. The schema's `title` is the natural derivation (`"Export Event"` → `ExportEvent`, which is already what the fixture passes by hand).
+- **The seam already exists**: `empty: true` renders `public record X();` — an intentional placeholder — and `schemaUrl` already carries the pin into the render context, with the template comments explicitly reserving codegen for "an external tool".
+- **Cheapest data path**: `/export` already inlines every schema document; the CLI already fetches it and just needs a `schema` field on `internal/xregistry/types.go:93`. Falling back to `GET &lt;dataschemaurl&gt;` works too and returns `application/schema+json` directly.
+- **Two constraints to respect**: `$defs`/`$ref` and `additionalProperties: false` in the real seed schemas; and `contractNamespace` in `system-host/skeleton/Topics.cs.tmpl:19-28`, which already anticipates contracts living in a sub-namespace of the contracts project.</result>
+<usage><subagent_tokens>109117</subagent_tokens><tool_uses>38</tool_uses><duration_ms>311724</duration_ms></usage>
+</task-notification>
+
+---
+
+Not sure if you resolved the issues yourself? Would the document mean we create something like an .xreg.json in the contracts project? Would you advice against the msbuild option?
+
+---
+
+What do you recommend here?
+
+---
+
+I think cli writes .cs is to give the cli more knowledge than it should have. We have tried to push as much of this to the templates because I customer can fork the template library and make modifications there. We do not want them to fork the cli. Regarding drift I am not so afraid of that. The registry contains released messages and updates should be versioned and upgrading a message should be a very deliberate thing
+
+---
+
+Wu798&G00q
+
+---
+
+Continue. I pressed by misstake
+
+---
+
+I am having second thoughts. Would it be better to point another tool (that already exists) at the message file and have that generate the pocos? That would be something the developer did after scaffold
+
+---
+
+No I havent selected a tool but I agree that we must. What would you recommend?
+
+---
+
+<task-notification>
+<task-id>bibtlvmrq</task-id>
+<tool-use-id>toolu_01Sgv9AY5uX4KC2S9tY74pWh</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-robinhultman-dev-intropy-integrio-intropy-intropy-cli/35aef357-1a12-4bd0-9b20-616215feaaba/tasks/bibtlvmrq.output</output-file>
+<status>completed</status>
+<summary>Background command "Compare quicktype output" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+I now xregistry/codegen is so much more but would it be worth using?
+
+---
+
+and not avrotize in isolation?
+
+---
+
+ok and it is not that i have defined my schemas in a bad way?
+
+---
+
+Ok then quicktype it is
+
+---
+
+Can you create a plan for the template changes?
+
+---
+
+Would it be benificial to update the framework so that the serializer isnt pre-defined?
+
+---
+
+Can you specify more detailed what needs to change in the framework by showing code? Before and after
+
+---
+
+quicktype wont explicitly be coded in in any component or tool, right?
+
+---
+
+Does this PR have an effect on this seam? https://github.com/integrio-intropy/intropy-framework/pull/7
+
+---
+
+I think we need to go back to the drawing board because the idea was that we should go this way with registry, schemas and everything for external events. events that travel between systems. A loader might be consuming an internal event (originating from within the system) and atleast the initial thought was to not bother about json schemas and such for those. What do you think?
+
+---
+
+I think I need to play around with it to understand all the bits and pieces. How far can I get without updating the framework?
+
+---
+
+So implement the plan for the template changes and release that under a new preview-tag and I will be able to verify a lot of the functionality atleast?
+
+---
+
+Robins-MacBook-Pro domains/order-management/message on  main [✘!?] ✖ i int create loader -n Loader.Product --template-version v0.10.0-preview.1 \                                       08:39
+  --registry-url http://localhost:8787
+  --subscribe io.intropy.maxbo.product.export \
+  -s contract=ExportEvent --no-input
+fetching integrio-intropy/intropy-templates@v0.10.0-preview.1
+organization: Fluxia (from workspace; override with --set organization=<value>)
+contract: O (from workspace; override with --set contract=<value>)
+error: spec.values.topicName: template: expr:1:321: executing "expr" at <fail "no channel to subscribe to: pass --subscribe <message-ref>, or set message=<message-id>, or set topic=<topic>">: error calling fail: no channel to subscribe to: pass --subscribe <message-ref>, or set message=<message-id>, or set topic=<topic>
+zsh: command not found: --subscribe
+
+---
+
+Why did you pull in powershell?
+
+---
+
+I think even though powershell is available on both macos and linux that is mostly familiar among windows developers and we are already excluding windows sort of by forcing them to use wsl to use the cli. If it is just an npx command perhaps it will do with documentation?
+
+---
+
+This will never generate the Deserialization code? And perhaps it shouldnt?

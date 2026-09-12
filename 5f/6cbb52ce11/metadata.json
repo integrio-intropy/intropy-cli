@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "5f6cbb52ce11",
+  "strategy": "manual-commit",
+  "branch": "feat/ws-1-3-message-first-verification",
+  "checkpoints_count": 23,
+  "files_touched": [
+    "internal/template/wiring.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/5f/6cbb52ce11/0/metadata.json",
+      "transcript": "/5f/6cbb52ce11/0/full.jsonl",
+      "compact_transcript": "/5f/6cbb52ce11/0/transcript.jsonl",
+      "content_hash": "/5f/6cbb52ce11/0/content_hash.txt",
+      "prompt": "/5f/6cbb52ce11/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 570,
+    "cache_creation_tokens": 1247164,
+    "cache_read_tokens": 93678121,
+    "output_tokens": 318352,
+    "api_call_count": 285
+  }
+}
