@@ -779,3 +779,139 @@ func TestAssembleExternalPublishContractConflict(t *testing.T) {
 		t.Errorf("err = %v, want the conflicting-contracts error", err)
 	}
 }
+
+func TestAssembleMessageOnlyRecordsDeriveTopicAndType(t *testing.T) {
+	model, err := Assemble([]template.ScaffoldEntry{
+		blockEntry("sales-flow/extractor", template.BlockKindExtractor, map[string]any{
+			"appId": "order-extractor", "message": "orders",
+		}),
+		blockEntry("sales-flow/loader", template.BlockKindLoader, map[string]any{
+			"appId": "order-loader", "message": "orders",
+		}),
+	}, discardWarnf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var extractor, loader *Component
+	for i := range model.Components {
+		switch model.Components[i].Kind {
+		case template.BlockKindExtractor:
+			extractor = &model.Components[i]
+		case template.BlockKindLoader:
+			player := model.Components[i]
+			loader = &player
+		}
+	}
+	if extractor == nil || loader == nil {
+		t.Fatalf("components = %+v, want an extractor and a loader", model.Components)
+	}
+
+	// Both halves derive the same channel from the shared message identity.
+	want := TopicKey{Pubsub: template.DefaultPubsub, Name: "orders"}
+	if *extractor.Topic != want || *loader.Topic != want {
+		t.Errorf("topics = %v / %v, want both %v", *extractor.Topic, *loader.Topic, want)
+	}
+	// The payload type derives from the message identity, halving the
+	// pairing convention: both records project "Orders" without naming it.
+	if extractor.topicContract != "Orders" || loader.topicContract != "Orders" {
+		t.Errorf("contracts = %q / %q, want both derived from the message", extractor.topicContract, loader.topicContract)
+	}
+	// The publish half registers as a message; the internal messagegroup
+	// carries it with the derived contract.
+	if len(model.Messages) != 1 || model.Messages[0].Name != "orders" || model.Messages[0].Contract != "Orders" {
+		t.Errorf("messages = %+v, want orders/Orders", model.Messages)
+	}
+	if len(model.Topics) != 1 || model.Topics[0].Contract != "Orders" {
+		t.Errorf("topics = %+v, want one orders topic typed Orders", model.Topics)
+	}
+}
+
+func TestAssembleRecordedOverridesWinDerivation(t *testing.T) {
+	// Topic override: both halves route the message over an existing broker
+	// topic; the derivation (topic = message name) loses to the record.
+	model, err := Assemble([]template.ScaffoldEntry{
+		blockEntry("sales-flow/extractor", template.BlockKindExtractor, map[string]any{
+			"appId": "order-extractor", "message": "orders", "topic": "legacy-order-topic",
+		}),
+		blockEntry("sales-flow/loader", template.BlockKindLoader, map[string]any{
+			"appId": "order-loader", "message": "orders", "topic": "legacy-order-topic",
+		}),
+	}, discardWarnf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range model.Components {
+		want := TopicKey{Pubsub: template.DefaultPubsub, Name: "legacy-order-topic"}
+		if *c.Topic != want {
+			t.Errorf("%s topic = %v, want the recorded override %v", c.AppID, *c.Topic, want)
+		}
+	}
+
+	// Contract override: both halves pin the type name; it wins over the
+	// derivation and types the topic.
+	model, err = Assemble([]template.ScaffoldEntry{
+		blockEntry("sales-flow/extractor", template.BlockKindExtractor, map[string]any{
+			"appId": "order-extractor", "message": "orders", "contract": "Order",
+		}),
+		blockEntry("sales-flow/loader", template.BlockKindLoader, map[string]any{
+			"appId": "order-loader", "message": "orders", "contract": "Order",
+		}),
+	}, discardWarnf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(model.Topics) != 1 || model.Topics[0].Name != "orders" || model.Topics[0].Contract != "Order" {
+		t.Errorf("topics = %+v, want orders typed by the override Order", model.Topics)
+	}
+
+	// The derivation's integrity property: an extractor whose derived name
+	// disagrees with a loader's pinned name on one channel is a conflict,
+	// exactly as two hand-set contracts always were.
+	_, err = Assemble([]template.ScaffoldEntry{
+		blockEntry("sales-flow/extractor", template.BlockKindExtractor, map[string]any{
+			"appId": "order-extractor", "message": "orders",
+		}),
+		blockEntry("sales-flow/loader", template.BlockKindLoader, map[string]any{
+			"appId": "order-loader", "message": "orders", "contract": "Order",
+		}),
+	}, discardWarnf)
+	if err == nil || !strings.Contains(err.Error(), "conflicting contracts") {
+		t.Fatalf("err = %v, want the contract conflict", err)
+	}
+}
+
+func TestAssemblePreMessageFirstRecordKeepsStrictErrors(t *testing.T) {
+	// A record naming neither message nor topic predates the single-message
+	// declaration and keeps the old errors verbatim.
+	_, err := Assemble([]template.ScaffoldEntry{
+		blockEntry("w/extractor", template.BlockKindExtractor, map[string]any{"appId": "x"}),
+	}, discardWarnf)
+	if err == nil || !strings.Contains(err.Error(), "values.topic is missing") {
+		t.Fatalf("err = %v, want the values.topic missing error", err)
+	}
+
+	// contract missing with no message keeps the re-scaffold guidance.
+	_, err = Assemble([]template.ScaffoldEntry{
+		blockEntry("w/extractor", template.BlockKindExtractor, map[string]any{"appId": "x", "topic": "orders"}),
+	}, discardWarnf)
+	if err == nil || !strings.Contains(err.Error(), "Re-scaffold this integration") {
+		t.Fatalf("err = %v, want the re-scaffold guidance", err)
+	}
+}
+
+func TestPascalCaseDerivation(t *testing.T) {
+	cases := map[string]string{
+		"orders":                   "Orders",
+		"order-events":             "OrderEvents",
+		"io.intropy.maxbo.product": "IoIntropyMaxboProduct",
+		"order_events":             "OrderEvents",
+		"---":                      "",
+		"":                         "",
+	}
+	for in, want := range cases {
+		if got := template.PascalCase(in); got != want {
+			t.Errorf("PascalCase(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

@@ -36,22 +36,24 @@ func supportedKinds() []string {
 
 // parseTopicBlock parses the wiring of a topic block (extractor, loader).
 // A block-shaped record reads its message wiring from subscribe/publishes
-// blocks and its transport from the resolution rules below; a legacy flat
-// record keeps the topic+contract pair that always paired the halves.
+// blocks and its transport from the resolution rules below; a flat record
+// declares its message and derives the rest: the topic defaults to the
+// message name (the convention the topology's two-argument MessageRef.Define
+// states) and the payload type derives from the message identity
+// (template.PascalCase). An explicitly recorded topic or contract wins over
+// the derivation — older workspaces record both, so the strict regime and
+// its errors hold for them; a record naming neither message nor topic
+// predates message-first and fails with the old guidance.
 func parseTopicBlock(e template.ScaffoldEntry, c *Component) error {
 	if template.HasMessageBlocks(e.Values) {
 		return parseMessageBlocks(e, c)
 	}
 
-	// Legacy flat-key record. Directionless: the shared topic key pairs the
-	// halves, so the direction comes from the block kind — the same rule
-	// the host template applies today — and the message name is the topic
-	// name, the only message identity this vocabulary had.
-	topic, err := template.RecordValue(e, template.KeyTopic)
+	topic, err := template.ResolveFlatTopic(e)
 	if err != nil {
 		return err
 	}
-	contract, err := template.RecordValue(e, template.KeyContract)
+	contract, err := template.ResolveFlatContract(e)
 	if err != nil {
 		return fmt.Errorf("%w\nRe-scaffold this integration with a template release that records the contract type, or add \"contract\": \"<TypeName>\" to the record's values", err)
 	}

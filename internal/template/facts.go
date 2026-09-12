@@ -284,9 +284,26 @@ func BuildWorkspaceFacts(entries []WorkspaceFactEntry) *WorkspaceFacts {
 				break
 			}
 
-			// Legacy flat-key record: topic and contract pair the halves.
+			// Flat record: the message is the declaration; topic and payload
+			// type are projections of it — recorded values win, then the
+			// payloadType projection, then the derivation from the message.
+			// Suggestions mirror the parser's resolution so a message-first
+			// record contributes its topic pair; assembly stays the surface
+			// that reports broken records.
 			topic, tok := SoftValue(e.Values, KeyTopic)
 			contract, cok := SoftValue(e.Values, KeyContract)
+			if !cok {
+				contract, cok = SoftValue(e.Values, KeyPayloadType)
+			}
+			message, mok := SoftValue(e.Values, KeyMessage)
+			if !tok && mok {
+				topic, tok = message, true
+			}
+			if !cok && mok {
+				if name := PascalCase(message); name != "" {
+					contract, cok = name, true
+				}
+			}
 			// Default on the zero result, not on key absence: a present but
 			// mistyped pubsub degrades to the default, the same regime as
 			// before the accessors consolidated.

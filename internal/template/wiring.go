@@ -301,3 +301,47 @@ func PublishesBlockValue(b *PublishesBlock) map[string]any {
 	}
 	return m
 }
+
+// ResolveFlatTopic resolves the channel name of a flat message-first
+// record: the recorded topic when one is present (an override, or an older
+// record that still declares it), otherwise the message name — the same
+// convention the topology's two-argument MessageRef.Define states. A record
+// naming neither fails with the strict-regime values.topic error, which the
+// caller surfaces verbatim.
+func ResolveFlatTopic(e ScaffoldEntry) (string, error) {
+	topic, ok := SoftValue(e.Values, KeyTopic)
+	if ok {
+		return topic, nil
+	}
+	message, ok := SoftValue(e.Values, KeyMessage)
+	if ok {
+		return message, nil
+	}
+	return RecordValue(e, KeyTopic)
+}
+
+// ResolveFlatContract resolves the payload type of a flat record: the
+// recorded contract (an override, or an older record that still declares
+// it), then the template's recorded payloadType projection, then the
+// derivation from the message identity. A record with none of the three
+// fails like the strict regime did; the caller adds the re-scaffold
+// guidance.
+func ResolveFlatContract(e ScaffoldEntry) (string, error) {
+	contract, _ := SoftValue(e.Values, KeyContract)
+	if contract != "" {
+		return contract, nil
+	}
+	projected, _ := SoftValue(e.Values, KeyPayloadType)
+	if projected != "" {
+		return projected, nil
+	}
+	message, ok := SoftValue(e.Values, KeyMessage)
+	if ok {
+		if name := PascalCase(message); name != "" {
+			return name, nil
+		}
+		record := filepath.Join(e.Path, filepath.FromSlash(ScaffoldRelPath))
+		return "", fmt.Errorf("%s: message %q yields no payload type name; set values.contract to the type name", record, message)
+	}
+	return RecordValue(e, KeyContract)
+}
