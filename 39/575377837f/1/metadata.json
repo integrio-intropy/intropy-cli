@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "39575377837f",
+  "session_id": "35aef357-1a12-4bd0-9b20-616215feaaba",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-12T06:23:33.127835Z",
+  "branch": "feat/ws-1-3-message-first-verification",
+  "checkpoints_count": 23,
+  "save_step_count": 1,
+  "files_touched": [
+    "docs/plans/2026-09-04-004-feat-template-contract-generation-plan.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5[1m]",
+  "turn_id": "72568d5d5601",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 570,
+    "cache_creation_tokens": 1247164,
+    "cache_read_tokens": 93678121,
+    "output_tokens": 318352,
+    "api_call_count": 285
+  },
+  "session_metrics": {
+    "turn_count": 23
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-12T06:23:32.972518Z",
+    "agent_lines": 346,
+    "agent_removed": 0,
+    "human_added": 2144,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 2490,
+    "total_lines_changed": 2490,
+    "agent_percentage": 13.895582329317268,
+    "metric_version": 2
+  }
+}
