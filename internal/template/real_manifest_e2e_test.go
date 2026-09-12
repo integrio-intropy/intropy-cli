@@ -338,7 +338,10 @@ func TestRealManifestSeedConflict(t *testing.T) {
 // tolerance path the templates keep — but only with an explicit eventType
 // override: the extractor render refuses to guess event identity from the
 // topic name, so the flat path now carries one more hand-set value.
-func TestRealManifestLegacyFlatRenders(t *testing.T) {
+// The hand-typed path with a single required message: topic and contract
+// are overrides when set, everything else derives. No message blocks — the
+// flat shape stays block-free, and the overrides ride the record verbatim.
+func TestRealManifestFlatPathRenders(t *testing.T) {
 	src, version := realTemplatesSource(t)
 	outDir := filepath.Join(t.TempDir(), "order-sweep")
 	var stderr bytes.Buffer
@@ -353,9 +356,9 @@ func TestRealManifestLegacyFlatRenders(t *testing.T) {
 		SetValues: map[string]any{
 			"name":         "OrderSweep",
 			"organization": "Maxbo",
-			"topic":        "orders",
-			"contract":     "Order",
-			"eventType":    "maxbo.order-swept",
+			"message":      "orders",
+			"topic":        "legacy-orders", // override: existing broker channel
+			"contract":     "Order",         // override: pinned payload type
 		},
 	})
 	if err != nil {
@@ -367,16 +370,49 @@ func TestRealManifestLegacyFlatRenders(t *testing.T) {
 		t.Fatal(err)
 	}
 	if HasMessageBlocks(record.Values) {
-		t.Errorf("legacy scaffold grew message blocks: %v", record.Values)
+		t.Errorf("flat scaffold grew message blocks: %v", record.Values)
 	}
-	if got := record.Values[KeyTopic]; got != "orders" {
-		t.Errorf("values.topic = %v, want the flat topic", got)
+	if got := record.Values[KeyTopic]; got != "legacy-orders" {
+		t.Errorf("values.topic = %v, want the override", got)
+	}
+	if got := record.Values[KeyPayloadType]; got != "Order" {
+		t.Errorf("values.payloadType = %v, want the override Order", got)
 	}
 	constants, err := os.ReadFile(filepath.Join(outDir, "src", "Constants.cs"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(constants), `public const string EventType = "maxbo.order-swept";`) {
-		t.Errorf("Constants.cs missing the eventType override:\n%s", constants)
+	for _, want := range []string{
+		`public const string TopicName = "legacy-orders";`,
+		`public const string EventType = "orders";`,
+	} {
+		if !strings.Contains(string(constants), want) {
+			t.Errorf("Constants.cs missing %q:\n%s", want, constants)
+		}
+	}
+}
+
+// The message identity must be a lowercase DNS-1123 subdomain: it defaults
+// the endpoint channel and the topology validates the name at Build. The
+// scaffold is where that fails loud, not `dotnet run -- graph`.
+func TestRealManifestMessagePatternRejected(t *testing.T) {
+	src, version := realTemplatesSource(t)
+	var stderr bytes.Buffer
+
+	err := Create(context.Background(), CreateOptions{
+		Template:  "extractor",
+		OutputDir: filepath.Join(t.TempDir(), "bad-name"),
+		Version:   version,
+		NoInput:   true,
+		Stderr:    &stderr,
+		Source:    src,
+		SetValues: map[string]any{
+			"name":         "OrderSweep",
+			"organization": "Maxbo",
+			"message":      "OrderCreated", // PascalCase: not a DNS-1123 subdomain
+		},
+	})
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()+"\n"+strings.ToLower(stderr.String())), "pattern") {
+		t.Fatalf("err = %v, want the manifest pattern rejection\nstderr: %s", err, stderr.String())
 	}
 }
