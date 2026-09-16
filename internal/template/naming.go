@@ -2,21 +2,15 @@ package template
 
 import "strings"
 
-// KeyPayloadType names the derived value a template stores alongside the
-// message: the PascalCase projection of the message identity. The message
-// is the declaration; the payload type is generated from it, not declared
-// alongside it. "contract" remains the override key (older records and
-// hand-tuned names); the parser's priority is contract, payloadType, then
-// the derivation below.
-const KeyPayloadType = "payloadType"
-
 // PascalCase derives the payload type name an internal message's schema
 // projects to: strips the message to its letter-and-digit runs, drops
 // separators (dots, dashes, underscores), and capitalizes each run.
 // "orders" -> "Orders", "order-events" -> "OrderEvents". No singularization:
-// the name is generated, and an explicit contract override wins wherever a
-// derived name would read poorly. Returns "" for an input with no letters
-// or digits; callers gate on that and keep the strict regime.
+// the name is generated, never declared — the message is the only
+// declaration. Returns "" for an input with no letters or digits; callers
+// gate on that. The template library applies the same derivation at render
+// time (payloadType), so the generated record and assembly can never
+// disagree.
 func PascalCase(message string) string {
 	var b strings.Builder
 	capitalize := true

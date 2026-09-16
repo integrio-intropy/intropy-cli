@@ -267,7 +267,7 @@ func missingRequiredError(missing []FieldSpec, suggestions map[string][]string, 
 	err := fmt.Sprintf("missing required parameter(s): %s", strings.Join(names, ", "))
 	for _, f := range missing {
 		if facts.IsMessageParameter(f.Name) {
-			err += fmt.Sprintf("\npass %s <message-ref> to wire the %s parameter to a registry message", wiringFlagName(facts), f.Name)
+			err += fmt.Sprintf("\npass %s <message> to wire the %s parameter", wiringFlagName(facts), f.Name)
 			continue
 		}
 		if c := suggestions[f.Name]; len(c) > 0 {

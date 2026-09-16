@@ -216,13 +216,9 @@ func TestBuildPayloadMessagegroup(t *testing.T) {
 			{AppID: "product-loader", Kind: template.BlockKindLoader,
 				Topic:   &TopicKey{Pubsub: template.DefaultPubsub, Name: "product-exported"},
 				Message: &MessageWiring{Kind: MessageSubscribe, Name: "product-exported"}},
-			{AppID: "external-loader", Kind: template.BlockKindLoader,
-				Topic:   &TopicKey{Pubsub: "ext-pubsub", Name: "ext-topic"},
-				Message: &MessageWiring{Kind: MessageSubscribe, Name: "io.registry/export", Dataschema: "/schemagroups/g/schemas/s", External: true}},
 		},
 		Topics: []Topic{
 			{TopicKey: TopicKey{Pubsub: template.DefaultPubsub, Name: "product-exported"}, Contract: "ProductExported"},
-			{TopicKey: TopicKey{Pubsub: "ext-pubsub", Name: "ext-topic"}},
 		},
 		Messages: []Message{{Name: "product-exported", Type: "product-exported", Contract: "ProductExported", Publisher: "product-sink"}},
 		Ports:    []Port{},
@@ -241,16 +237,12 @@ func TestBuildPayloadMessagegroup(t *testing.T) {
 		t.Errorf("message entry = %#v, want name/type/contract", msg)
 	}
 
-	// Component entries carry the message name so the template joins the
-	// two views; dataschema travels only on the external snapshot.
+	// Component entries carry scalar direction-specific message wiring.
 	comps := payload["components"].([]any)
-	if m2, _ := comps[0].(map[string]any); m2["message"] != "product-exported" {
-		t.Errorf("publisher entry message = %#v", m2["message"])
+	if m2, _ := comps[0].(map[string]any); m2["publishes"] != "product-exported" {
+		t.Errorf("publisher entry publishes = %#v", m2["publishes"])
 	}
-	if m3, _ := comps[2].(map[string]any); m3["dataschema"] != "/schemagroups/g/schemas/s" {
-		t.Errorf("external entry dataschema = %#v", m3["dataschema"])
-	}
-	if m2, _ := comps[1].(map[string]any); m2["dataschema"] != nil {
-		t.Errorf("internal subscriber carries no dataschema, got %#v", m2["dataschema"])
+	if m2, _ := comps[1].(map[string]any); m2["subscribes"] != "product-exported" {
+		t.Errorf("subscriber entry subscribes = %#v", m2["subscribes"])
 	}
 }

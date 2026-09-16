@@ -89,10 +89,7 @@ func Assemble(entries []template.ScaffoldEntry, warnf func(format string, args .
 		}
 		key := *c.Topic
 		if seen, ok := byTopic[key]; ok {
-			// A block-shaped record may name a channel its contract says
-			// nothing about — an external snapshot and a producer on one
-			// topic agree without either saying so. Only two non-empty,
-			// differing contracts are a real conflict.
+			// Only two non-empty, differing contracts are a real conflict.
 			if seen.Contract != "" && c.topicContract != "" && seen.Contract != c.topicContract {
 				return nil, fmt.Errorf("topic %q on pubsub %q has conflicting contracts: %q (%s) vs %q (%s)", key.Name, key.Pubsub, seen.Contract, firstDir[key], c.topicContract, c.Path)
 			}
@@ -142,13 +139,12 @@ func Assemble(entries []template.ScaffoldEntry, warnf func(format string, args .
 }
 
 // resolveSubscriptionChannels gives every component a concrete channel:
-// an internal subscription takes its producer's, and a producer without a
-// recorded topic defaults to the system pubsub on a topic named after the
-// message. Legacy records arrive with their own topic and are untouched.
+// a publisher uses the system pubsub on a topic named after the message, and
+// a subscriber takes its producer's channel.
 //
-// A half-wired internal subscription — nothing publishes the message — is
-// a hard error naming the message and the subscribing record: the system
-// would render a loader listening to nothing.
+// A half-wired subscription — nothing publishes the message — is a hard
+// error naming the message and the subscribing record: the system would
+// render a loader listening to nothing.
 func resolveSubscriptionChannels(components []Component) error {
 	type publisher struct {
 		key      TopicKey
@@ -163,10 +159,6 @@ func resolveSubscriptionChannels(components []Component) error {
 			continue
 		}
 		if c.Topic == nil {
-			// A producer without a recorded topic defaults to the system
-			// pubsub on a topic named after the message — the only
-			// deterministic channel assembly can make offline, and the one
-			// an internal subscriber resolves to in the pass below.
 			c.topicContract = c.Message.Contract
 			c.Topic = &TopicKey{Pubsub: template.DefaultPubsub, Name: c.Message.Name}
 		}
@@ -187,36 +179,33 @@ func resolveSubscriptionChannels(components []Component) error {
 
 	for i := range components {
 		c := &components[i]
-		if c.Message == nil || c.Message.Kind != MessageSubscribe || c.Message.External || c.Topic != nil {
+		if c.Message == nil || c.Message.Kind != MessageSubscribe || c.Topic != nil {
 			continue
 		}
 		r, ok := channels[c.Message.Name]
 		if !ok {
-			return fmt.Errorf("message %q is subscribed by %s but no component in this workspace publishes it\ndeclare it with a publishes block in the producing record, or add pubsub/topic to the subscribe block to subscribe externally", c.Message.Name, c.Path)
+			return fmt.Errorf("message %q is subscribed by %s but no component in this workspace publishes it\ndeclare it with values.publishes in the producing record", c.Message.Name, c.Path)
 		}
 		c.Topic = &TopicKey{Pubsub: r.key.Pubsub, Name: r.key.Name}
 	}
 	return nil
 }
 
-// aggregateMessages builds the internal messagegroup from the components'
-// publish declarations, first seen wins, sorted by name. Subscribers name
-// the same message; the subscription is visible through ComponentEntry.
-// External publications are excluded: the registry serves their
-// definition, and duplicating it here would fork the source of truth.
+// aggregateMessages builds the system message list from publish declarations,
+// first seen wins, sorted by name. Subscribers name the same message; the
+// subscription is visible through ComponentEntry.
 func aggregateMessages(components []Component) []Message {
 	seen := map[string]bool{}
 	var out []Message
 	for _, c := range components {
-		if c.Message == nil || c.Message.Kind != MessagePublish || c.Message.External {
+		if c.Message == nil || c.Message.Kind != MessagePublish {
 			continue
 		}
 		m := Message{
-			Name:       c.Message.Name,
-			Type:       c.Message.Name,
-			Contract:   c.Message.Contract,
-			Dataschema: c.Message.Dataschema,
-			Publisher:  c.AppID,
+			Name:      c.Message.Name,
+			Type:      c.Message.Name,
+			Contract:  c.Message.Contract,
+			Publisher: c.AppID,
 		}
 		if seen[m.Name] {
 			continue

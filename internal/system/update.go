@@ -375,9 +375,6 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 			return fmt.Errorf("%s: values.messages entry has type %T, expected object", recordPath, msg)
 		}
 		name, _ := m[template.KeyName].(string)
-		if name == "" {
-			name, _ = m[template.KeyMessage].(string)
-		}
 		seenMessages[name] = true
 		messages = append(messages, msg)
 	}
@@ -414,13 +411,7 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 				ports = append(ports, map[string]any{template.KeyName: p})
 			}
 		}
-		// External publications are excluded here exactly as
-		// aggregateMessages excludes them from the payload: the registry
-		// serves the message's definition, and the host's internal
-		// messagegroup must not duplicate it. The publication's channel
-		// still joins the topics list above — the transport is real; the
-		// internal definition is not.
-		if c.Message != nil && c.Message.Kind == MessagePublish && !c.Message.External && !seenMessages[c.Message.Name] {
+		if c.Message != nil && c.Message.Kind == MessagePublish && !seenMessages[c.Message.Name] {
 			seenMessages[c.Message.Name] = true
 			e := map[string]any{
 				template.KeyName: c.Message.Name,
@@ -429,9 +420,6 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 			}
 			if c.Message.Contract != "" {
 				e[template.KeyContract] = c.Message.Contract
-			}
-			if c.Message.Dataschema != "" {
-				e[template.KeyDataschema] = c.Message.Dataschema
 			}
 			messages = append(messages, e)
 		}

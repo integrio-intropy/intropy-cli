@@ -11,11 +11,11 @@ import (
 
 // messageCmd groups the read-only discovery surface for messages: what the
 // read-only xRegistry serves, plus what the workspace's scaffold records
-// declare through publishes blocks. It never writes anything.
+// declare through scalar publishes values. It never writes anything.
 var messageCmd = &cobra.Command{
 	Use:   "message",
 	Short: "Discover registry and workspace messages",
-	Long: "Discover messages. 'message list' merges the read-only xRegistry with the messages the workspace's scaffold records declare through publishes blocks; " +
+	Long: "Discover messages. 'message list' merges the read-only xRegistry with the messages the workspace's scaffold records declare through scalar publishes values; " +
 		"'message show <ref>' prints one message's definition. Reading the registry requires registryUrl to be configured — there is no default",
 }
 
@@ -59,23 +59,22 @@ func workspaceMessages(dir string, warnf func(error)) []MessageEntry {
 	seen := map[string]bool{}
 	var out []MessageEntry
 	for _, e := range entries {
-		pub, err := template.ReadPublishesBlock(e)
-		if err != nil || pub == nil {
-			// Malformed block: skipped here — listing must show what is
+		message, err := template.ReadPublishesMessage(e)
+		if err != nil {
+			// Malformed records are skipped here — listing must show what is
 			// resolvable; assembly is the surface that reports the record.
 			continue
 		}
-		if seen[pub.Message] {
+		if seen[message] {
 			continue
 		}
-		seen[pub.Message] = true
+		seen[message] = true
 		out = append(out, MessageEntry{
-			Message:    pub.Message,
-			Source:     messageSourceWorkspace,
-			Type:       pub.Message,
-			DataSchema: pub.Dataschema,
-			Contract:   pub.Contract,
-			Path:       e.Path,
+			Message:  message,
+			Source:   messageSourceWorkspace,
+			Type:     message,
+			Contract: template.PascalCase(message),
+			Path:     e.Path,
 		})
 	}
 	sortMessageEntries(out)
