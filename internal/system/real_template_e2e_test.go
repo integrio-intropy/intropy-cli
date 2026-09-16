@@ -4,20 +4,18 @@ package system
 
 // Renders the real system-host template from a local intropy-templates
 // checkout through the production engine (values resolution, spec.files,
-// conditional dependencies, skeleton rendering), plus the real-template
-// update flow. This is the WS-1.3 harness Gate G1 stands on.
+// skeleton rendering), plus the real-template update flow. This is the
+// WS-1.3 harness Gate G1 stands on.
 //
 // Run with:
 //
 //	INTROPY_TEMPLATES_DIR=</path/to/intropy-templates> go test -tags e2e ./internal/system/ -run TestReal -v
 //
-// The suite is built for the message-first system-host template (the
-// checkout's branch): Messages.cs renders from the payload's `messages`
-// section, the system class wires .Publishes/.Subscribes(Messages.*), and a
-// topics-only payload fails loudly with a re-scaffold instruction. The
-// legacy-tolerance expectation of the rollout plan (a fallback render) is
-// deliberately asserted as the fail-loud behavior the templates chose —
-// see docs/plans/2026-09-12-003-ws13-message-first-drift-report.md.
+// The suite pins the scalar message-first system-host template: extractors
+// carry `publishes`, loaders carry `subscribes`, Messages.cs declares
+// single-argument MessageRefs, and every pre-scalar payload shape fails the
+// render loudly — old workspaces migrate by re-scaffolding, never by a
+// fallback guess.
 
 import (
 	"bytes"
@@ -71,19 +69,26 @@ func renderRealHost(t *testing.T, payload map[string]any) (outDir, parent string
 	return outDir, parent
 }
 
-// A message-free system renders ports and skip files, and no contracts
-// reference: nothing to type.
+// The shared message and its derived channel: one identity, pubsub/<name>.
 const (
-	msgName = "orders"
-	msgPub  = "pubsub"
+	msgName     = "orders"
+	msgPub      = "pubsub"
+	msgContract = "Order"
 )
 
+// msgEntry is one message declaration as buildPayload assembles it from a
+// publishing component: the identity, its self-typed type, and the payload
+// type derived from the name.
+func msgEntry(name, contract, publisher string) map[string]any {
+	return map[string]any{"name": name, "type": name, "contract": contract, "publisher": publisher}
+}
+
 func payloadExtractor(appID, port string) map[string]any {
-	return map[string]any{"appId": appID, "kind": "extractor", "message": msgName, "port": port}
+	return map[string]any{"appId": appID, "kind": "extractor", "publishes": msgName, "port": port}
 }
 
 func payloadLoader(appID, port string) map[string]any {
-	return map[string]any{"appId": appID, "kind": "loader", "message": msgName, "port": port}
+	return map[string]any{"appId": appID, "kind": "loader", "subscribes": msgName, "port": port}
 }
 
 // messageFirstPayload is one extractor and one loader sharing one internal
@@ -92,10 +97,10 @@ func payloadLoader(appID, port string) map[string]any {
 func messageFirstPayload() map[string]any {
 	return map[string]any{
 		"name":   "order-flow",
-		"topics": []any{map[string]any{"pubsub": msgPub, "name": msgName, "contract": "Order"}},
-		"messages": []any{map[string]any{
-			"name": msgName, "type": msgName, "contract": "Order", "publisher": "order-sweep",
-		}},
+		"topics": []any{map[string]any{"pubsub": msgPub, "name": msgName, "contract": msgContract}},
+		"messages": []any{
+			msgEntry(msgName, msgContract, "order-sweep"),
+		},
 		"ports": []any{
 			map[string]any{"name": "order-sweep-source"},
 			map[string]any{"name": "order-file-loader-destination"},
@@ -126,7 +131,7 @@ func TestRealSystemHostMessageFirstDeclaration(t *testing.T) {
 	}
 	for _, want := range []string{
 		"using Contracts;",
-		`public static readonly MessageRef<Order> Orders = MessageRef<Order>.Define("orders", "pubsub");`,
+		`public static readonly MessageRef<Order> Orders = MessageRef<Order>.Define("orders");`,
 	} {
 		if !strings.Contains(string(messages), want) {
 			t.Errorf("Messages.cs missing %q:\n%s", want, messages)
@@ -162,8 +167,8 @@ func TestRealSystemHostMessageFirstDeclaration(t *testing.T) {
 	}
 }
 
-// The topic-ordered contract type and channel: the payload's contracts
-// travel from the messages section, not the topics list.
+// A transactional-integration-only system renders ports and skip files, and
+// no contracts reference: nothing to type.
 func TestRealSystemHostTransactionalOnly(t *testing.T) {
 	outDir, _ := renderRealHost(t, map[string]any{
 		"name":       "trans",
@@ -211,12 +216,12 @@ func TestRealSystemHostMessageFieldCollisionFails(t *testing.T) {
 	values, err := template.Resolve(tmpl, nil, nil, map[string]any{
 		"name": "collide",
 		"topics": []any{
-			map[string]any{"pubsub": msgPub, "name": "order-events", "contract": "Order"},
-			map[string]any{"pubsub": msgPub, "name": "order.events", "contract": "Order"},
+			map[string]any{"pubsub": msgPub, "name": "order-events", "contract": msgContract},
+			map[string]any{"pubsub": msgPub, "name": "order.events", "contract": msgContract},
 		},
 		"messages": []any{
-			map[string]any{"name": "order-events", "type": "order-events", "contract": "Order", "publisher": "a"},
-			map[string]any{"name": "order.events", "type": "order.events", "contract": "Order", "publisher": "b"},
+			msgEntry("order-events", msgContract, "a"),
+			msgEntry("order.events", msgContract, "b"),
 		},
 		"ports":      []any{},
 		"components": []any{},
@@ -230,19 +235,19 @@ func TestRealSystemHostMessageFieldCollisionFails(t *testing.T) {
 	}
 }
 
-// The contract C4 vocabulary promises a topics-only payload is transitional,
-// but the templates branch removed the fallback render on purpose: such a
-// payload now fails loudly with a re-scaffold instruction. The pinned
-// expectation is the fail-loud behavior — Wire the drift through the report,
-// not a tolerated render.
+// A pre-scalar payload — components carrying legacy topic wiring instead of
+// the scalar message keys — fails the render loudly. Old workspaces migrate
+// by re-scaffolding; the render never guesses a message view from topics.
 func TestRealSystemHostTopicOnlyPayloadFailsLoudly(t *testing.T) {
 	tmpl := loadRealHostTemplate(t)
 	values, err := template.Resolve(tmpl, nil, nil, map[string]any{
 		"name": "order-flow",
 		"topics": []any{
-			map[string]any{"pubsub": msgPub, "name": msgName, "contract": "Order"},
+			map[string]any{"pubsub": msgPub, "name": msgName, "contract": msgContract},
 		},
-		// A legacy payload: flat component entries, no messages section.
+		"messages": []any{
+			msgEntry(msgName, msgContract, "order-extractor"),
+		},
 		"ports": []any{
 			map[string]any{"name": "order-extractor-source"},
 			map[string]any{"name": "order-loader-destination"},
@@ -256,8 +261,8 @@ func TestRealSystemHostTopicOnlyPayloadFailsLoudly(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = template.RenderFiltered(filepath.Join(templatesDir(t), "system-host", "skeleton"), t.TempDir(), values, tmpl.Spec.Files)
-	if err == nil || !strings.Contains(err.Error(), "re-scaffold") {
-		t.Fatalf("err = %v, want a loud failure with a re-scaffold instruction", err)
+	if err == nil || !strings.Contains(err.Error(), "declares no publishes message") {
+		t.Fatalf("err = %v, want the pre-scalar payload refusal", err)
 	}
 }
 
@@ -272,7 +277,7 @@ func TestRealSystemHostUnknownKindFails(t *testing.T) {
 		"messages": messageFirstPayload()["messages"],
 		"ports":    []any{},
 		"components": []any{
-			map[string]any{"appId": "order-api", "kind": "api-service", "message": msgName},
+			map[string]any{"appId": "order-api", "kind": "api-service", "publishes": msgName},
 		},
 	}, nil)
 	if err != nil {
@@ -284,25 +289,22 @@ func TestRealSystemHostUnknownKindFails(t *testing.T) {
 	}
 }
 
-// A registry-resolved (external) publication reaches the payload without a
-// contract type, and the template refuses to invent one. The loud failure
-// names the remedy — tracked as boundary-message drift for WS-1.4.
-func TestRealSystemHostExternalPublicationFailsWithoutContract(t *testing.T) {
+// A component whose message has no entry in the payload's messages section —
+// and therefore no payload-contract type — fails the render: the host cannot
+// type a MessageRef<T> from nothing.
+func TestRealSystemHostUntypedMessageFails(t *testing.T) {
 	tmpl := loadRealHostTemplate(t)
 	values, err := template.Resolve(tmpl, nil, nil, map[string]any{
 		"name": "order-flow",
 		"topics": []any{
-			map[string]any{"pubsub": "product-distribution-pubsub", "name": "external-topic", "contract": ""},
+			map[string]any{"pubsub": msgPub, "name": msgName, "contract": msgContract},
 		},
-		// The external message is excluded from the internal messagegroup,
-		// so the payload's messages section does not carry it.
+		// The message section deliberately omits the wired message, so it
+		// carries no contract anywhere in the payload.
 		"messages": []any{},
-		"ports":    []any{},
+		"ports":    []any{map[string]any{"name": "order-extractor-source"}},
 		"components": []any{
-			map[string]any{
-				"appId": "erp-extractor", "kind": "extractor",
-				"message": "io.intropy.maxbo.product.export", "dataschema": "/schemagroups/io.intropy.maxbo.product/schemas/product-export.v1",
-			},
+			payloadExtractor("order-extractor", "order-extractor-source"),
 		},
 	}, nil)
 	if err != nil {
@@ -310,7 +312,7 @@ func TestRealSystemHostExternalPublicationFailsWithoutContract(t *testing.T) {
 	}
 	err = template.RenderFiltered(filepath.Join(templatesDir(t), "system-host", "skeleton"), t.TempDir(), values, tmpl.Spec.Files)
 	if err == nil || !strings.Contains(err.Error(), "carries no contract for it") {
-		t.Fatalf("err = %v, want the external-publication contract failure", err)
+		t.Fatalf("err = %v, want the untyped-message contract failure", err)
 	}
 }
 
@@ -361,8 +363,8 @@ func TestRealSystemHostSharedContractsWhen(t *testing.T) {
 	if got := eval(msgPayload); got == "false" || got == "" {
 		t.Errorf("message-bearing system without contracts should render the dependency, when = %q", got)
 	}
-	if got := contract(msgPayload); got != "Order" {
-		t.Errorf("dependency contract = %q, want Order", got)
+	if got := contract(msgPayload); got != msgContract {
+		t.Errorf("dependency contract = %q, want %q", got, msgContract)
 	}
 	withContracts := messageFirstPayload()
 	withContracts["sharedContracts"] = map[string]any{"name": "Contracts", "include": "../Contracts/Contracts.csproj"}
@@ -378,9 +380,9 @@ func TestRealSystemHostSharedContractsWhen(t *testing.T) {
 	}
 }
 
-// The update flow against the real template. The baseline is a
-// message-first host record rendered by this same checkout; the orphan is a
-// block-shaped loader whose subscription resolves to the declared message.
+// The update flow against the real template. The baseline is a message-first
+// host record rendered by this same checkout; the orphan is a scalar loader
+// whose subscription resolves to the declared message.
 func TestRealSystemUpdateFoldsBlockOrphan(t *testing.T) {
 	src, version := realTemplatesSource(t)
 	tmpl := loadRealHostTemplate(t)
@@ -412,7 +414,8 @@ func TestRealSystemUpdateFoldsBlockOrphan(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// The declaring sibling: the extractor's own scaffold record, block-shaped.
+	// The declaring sibling: the extractor's own scaffold record with the
+	// scalar publish wiring.
 	writeRecord(t, filepath.Join(ws, "order-sweep"), template.Scaffold{
 		Template: "extractor",
 		Owner:    "o", Repo: "r", Version: version,
@@ -420,14 +423,14 @@ func TestRealSystemUpdateFoldsBlockOrphan(t *testing.T) {
 		DataFlow:  "in",
 		Values: map[string]any{
 			"appId": "order-sweep", "name": "OrderSweep", "organization": "Maxbo",
-			"contract": "Order", "message": msgName, "pubsub": msgPub,
+			"payloadType": msgContract, "channel": msgName,
 			"port": "order-sweep-source", "projectName": "OrderSweep",
-			"publishes": template.PublishesBlockValue(&template.PublishesBlock{Message: msgName, Contract: "Order"}),
+			template.KeyPublishes: msgName,
 		},
 	})
 
 	// The orphan: a loader scaffolded after the host was created, subscribing
-	// the already-declared message internally.
+	// the already-declared message.
 	orphanDir := filepath.Join(ws, "order-file-loader")
 	writeRecord(t, orphanDir, template.Scaffold{
 		Template: "loader",
@@ -436,9 +439,9 @@ func TestRealSystemUpdateFoldsBlockOrphan(t *testing.T) {
 		DataFlow:  "out",
 		Values: map[string]any{
 			"appId": "order-file-loader", "name": "OrderFileLoader", "organization": "Maxbo",
-			"contract": "Order", "message": msgName, "topic": msgName, "pubsub": msgPub,
+			"payloadType": msgContract, "channel": msgName,
 			"port": "order-file-loader-destination", "projectName": "OrderFileLoader",
-			"subscribe": template.SubscribeBlockValue(&template.SubscribeBlock{Message: msgName}),
+			template.KeySubscribes: msgName,
 		},
 	})
 
@@ -535,9 +538,9 @@ func TestRealSystemUpdateConflictKeepsBaseline(t *testing.T) {
 		DataFlow:  "in",
 		Values: map[string]any{
 			"appId": "order-sweep", "name": "OrderSweep", "organization": "Maxbo",
-			"contract": "Order", "message": msgName, "pubsub": msgPub,
+			"payloadType": msgContract, "channel": msgName,
 			"port": "order-sweep-source", "projectName": "OrderSweep",
-			"publishes": template.PublishesBlockValue(&template.PublishesBlock{Message: msgName, Contract: "Order"}),
+			template.KeyPublishes: msgName,
 		},
 	})
 	orphanDir := filepath.Join(ws, "order-file-loader")
@@ -548,9 +551,9 @@ func TestRealSystemUpdateConflictKeepsBaseline(t *testing.T) {
 		DataFlow:  "out",
 		Values: map[string]any{
 			"appId": "order-file-loader", "name": "OrderFileLoader", "organization": "Maxbo",
-			"contract": "Order", "message": msgName, "topic": msgName, "pubsub": msgPub,
+			"payloadType": msgContract, "channel": msgName,
 			"port": "order-file-loader-destination", "projectName": "OrderFileLoader",
-			"subscribe": template.SubscribeBlockValue(&template.SubscribeBlock{Message: msgName}),
+			template.KeySubscribes: msgName,
 		},
 	})
 
@@ -600,8 +603,8 @@ func TestRealSystemUpdateConflictKeepsBaseline(t *testing.T) {
 	}
 }
 
-// A legacy topics-only baseline moves onto the message-first template the
-// documented way: the render refuses it with a re-scaffold instruction and
+// A legacy pre-scalar baseline moves onto the message-first template the
+// documented way: assembly refuses the record with the migration error and
 // the record stays un-rewritten — the honest-baseline contract means the
 // next run (after the workspace is migrated) starts from the same state.
 func TestRealSystemUpdateLegacyBaselineFailsLoudly(t *testing.T) {
@@ -613,7 +616,7 @@ func TestRealSystemUpdateLegacyBaselineFailsLoudly(t *testing.T) {
 		"name":        "order-flow",
 		"projectName": "OrderFlow",
 		"systemClass": "OrderFlowSystem",
-		"topics":      []any{map[string]any{"pubsub": msgPub, "name": msgName, "contract": "Order"}},
+		"topics":      []any{map[string]any{"pubsub": msgPub, "name": msgName, "contract": msgContract}},
 		"ports":       []any{map[string]any{"name": "order-extractor-source"}},
 		"components": []any{
 			map[string]any{"appId": "order-extractor", "kind": "extractor", "topic": map[string]any{"pubsub": msgPub, "name": msgName}, "port": "order-extractor-source"},
@@ -631,22 +634,17 @@ func TestRealSystemUpdateLegacyBaselineFailsLoudly(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// An external orphan — the subscribe carries its own channel snapshot, so
-	// assembly succeeds offline and the render is what refuses the payload.
-	writeRecord(t, filepath.Join(ws, "report-file-loader"), template.Scaffold{
-		Template: "loader",
+	// A legacy extractor sibling: topic wiring, no scalar publishes value.
+	writeRecord(t, filepath.Join(ws, "order-extractor"), template.Scaffold{
+		Template: "extractor",
 		Owner:    "o", Repo: "r", Version: version,
-		BlockKind: template.BlockKindLoader,
-		DataFlow:  "out",
+		BlockKind: template.BlockKindExtractor,
+		DataFlow:  "in",
 		Values: map[string]any{
-			"appId": "report-file-loader", "name": "ReportFileLoader", "organization": "Maxbo",
-			"contract": "Report", "message": "io.intropy.maxbo.report.exported", "topic": "report-export", "pubsub": "product-distribution-pubsub",
-			"port": "report-file-loader-destination", "projectName": "ReportFileLoader",
-			"subscribe": template.SubscribeBlockValue(&template.SubscribeBlock{
-				Message: "io.intropy.maxbo.report.exported",
-				Pubsub:  "product-distribution-pubsub",
-				Topic:   "report-export",
-			}),
+			"appId": "order-extractor", "name": "OrderExtractor", "organization": "Maxbo",
+			"payloadType": msgContract, "channel": msgName,
+			"port": "order-extractor-source", "projectName": "OrderExtractor",
+			"message": msgName, "topic": msgName, "pubsub": msgPub, "contract": msgContract,
 		},
 	})
 
@@ -656,15 +654,15 @@ func TestRealSystemUpdateLegacyBaselineFailsLoudly(t *testing.T) {
 	}
 	var stderr bytes.Buffer
 	err = Update(t.Context(), UpdateOptions{StartDir: ws, Stderr: &stderr, Stdout: io.Discard, Source: src, Version: version})
-	if err == nil || !strings.Contains(err.Error(), "re-scaffold") {
-		t.Fatalf("err = %v, want the legacy-payload re-scaffold refusal\nstderr: %s", err, stderr.String())
+	if err == nil || !strings.Contains(err.Error(), "predates the scalar message DSL") {
+		t.Fatalf("err = %v, want the pre-scalar migration refusal\nstderr: %s", err, stderr.String())
 	}
 	recordAfter, err := os.ReadFile(filepath.Join(hostDir, filepath.FromSlash(template.ScaffoldRelPath)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(recordBefore, recordAfter) {
-		t.Error("failed render rewrote the scaffold record")
+		t.Error("failed update rewrote the scaffold record")
 	}
 }
 
@@ -682,7 +680,7 @@ func renderResolvedRealHost(t *testing.T, tmpl *template.Template, values map[st
 }
 
 // writeRecord writes a sibling scaffold record the way `int create` leaves
-// one (block-shaped values included).
+// one.
 func writeRecord(t *testing.T, dir string, s template.Scaffold) {
 	t.Helper()
 	if err := template.WriteScaffold(dir, s); err != nil {
@@ -693,17 +691,6 @@ func writeRecord(t *testing.T, dir string, s template.Scaffold) {
 func jsonOf(t *testing.T, v any) string {
 	t.Helper()
 	data, err := json.Marshal(v)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(data)
-}
-
-func renderPortsCS(t *testing.T) string {
-	t.Helper()
-	// The baseline Ports.cs as the checkin renders it, for restoring the
-	// conflicted file between runs.
-	data, err := os.ReadFile(filepath.Join(templatesDir(t), "system-host", "skeleton", "Ports.cs.tmpl"))
 	if err != nil {
 		t.Fatal(err)
 	}

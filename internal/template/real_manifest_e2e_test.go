@@ -4,13 +4,13 @@ package template
 
 // Gate proofs against the real template library (WS-1.3): the shipped
 // message flags must pass the message-parameters gate, seed correctly, and
-// write block-shaped records against the actual extractor/loader manifests,
+// write scalar-shaped records against the actual extractor/loader manifests,
 // not the fixtures that pin the contract. Fixtures stay for the same reason
 // — they are the contract's own test.
 //
 // Run with:
 //
-//	INTROPY_TEMPLATES_DIR=</path/to/intropy-templates> go test -tags e2e ./internal/template/ -run RealManifest -v
+//	INTROPY_TEMPLATES_DIR=</path/to/intropy-templates> go test -tags e2e ./internal/template/ -run TestReal -v
 //
 // The fetch resolves through the same seams Create uses in production: the
 // local checkout is cloned as the library at its current branch, so the run
@@ -70,51 +70,23 @@ func realTemplatesSource(t *testing.T) (SourceOptions, string) {
 	}, pin
 }
 
-// publishesFixture is a resolved --publishes value as the CLI's registry
-// resolution mints it: full channel snapshot, contract deliberately absent
-// (the .NET type stays a template parameter).
-func publishesFixture() *PublishesBlock {
-	return &PublishesBlock{
-		Message:       "io.intropy.maxbo.product.export",
-		Pubsub:        "product-distribution-pubsub",
-		Topic:         "sbt-test-product-extractor-001",
-		Dataschema:    "/schemagroups/io.intropy.maxbo.product/schemas/product-export.v1",
-		DataschemaURL: "https://registry.example.com/schemagroups/io.intropy.maxbo.product/schemas/product-export.v1/versions/1",
-	}
-}
-
-func subscribeFixture() *SubscribeBlock {
-	return &SubscribeBlock{
-		Message:       "io.intropy.maxbo.product.export",
-		Pubsub:        "product-distribution-pubsub",
-		Topic:         "sbt-test-product-extractor-001",
-		Dataschema:    "/schemagroups/io.intropy.maxbo.product/schemas/product-export.v1",
-		DataschemaURL: "https://registry.example.com/schemagroups/io.intropy.maxbo.product/schemas/product-export.v1/versions/1",
-	}
-}
-
 // Happy path, producer side: --publishes against the real extractor manifest
-// passes the gate, seeds the message parameter, and lands a block-shaped
-// record whose flat keys ride along alongside it.
+// passes the gate, seeds the message parameter, and lands a record whose
+// scalar wiring matches the rendered constants.
 func TestRealManifestPublishesExtractor(t *testing.T) {
 	src, version := realTemplatesSource(t)
 	outDir := filepath.Join(t.TempDir(), "order-sweep")
 	var stderr bytes.Buffer
 
 	err := Create(context.Background(), CreateOptions{
-		Template:  "extractor",
-		OutputDir: outDir,
-		Version:   version,
-		NoInput:   true,
-		Stderr:    &stderr,
-		Source:    src,
-		SetValues: map[string]any{
-			"name":         "OrderSweep",
-			"organization": "Maxbo",
-			"topic":        "orders",
-			"contract":     "Order",
-		},
-		Publishes: publishesFixture(),
+		Template:         "extractor",
+		OutputDir:        outDir,
+		Version:          version,
+		NoInput:          true,
+		Stderr:           &stderr,
+		Source:           src,
+		SetValues:        map[string]any{"name": "OrderSweep", "organization": "Maxbo"},
+		PublishesMessage: "orders",
 	})
 	if err != nil {
 		t.Fatalf("Create: %v\nstderr: %s", err, stderr.String())
@@ -124,16 +96,11 @@ func TestRealManifestPublishesExtractor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry := ScaffoldEntry{Path: outDir, Scaffold: *record}
-	b, err := ReadPublishesBlock(entry)
-	if err != nil {
-		t.Fatalf("scaffold record is not the block shape: %v (values: %v)", err, record.Values)
+	if got := record.Values[KeyPublishes]; got != "orders" {
+		t.Errorf("values.publishes = %v, want the --publishes message", got)
 	}
-	if *b != *publishesFixture() {
-		t.Errorf("record publishes block = %+v, want %+v", *b, *publishesFixture())
-	}
-	if got := record.Values[KeyMessage]; got != publishesFixture().Message {
-		t.Errorf("values.message = %v, want the resolved message", got)
+	if _, has := record.Values["subscribe"]; has {
+		t.Errorf("scaffold record grew a legacy subscribe block: %v", record.Values)
 	}
 	if record.BlockKind != BlockKindExtractor || record.DataFlow != "in" {
 		t.Errorf("record kind/data-flow = %q/%q, want extractor/in", record.BlockKind, record.DataFlow)
@@ -144,9 +111,9 @@ func TestRealManifestPublishesExtractor(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		`public const string EventType = "io.intropy.maxbo.product.export";`,
-		`public const string PubSubName = "product-distribution-pubsub";`,
-		`public const string TopicName = "sbt-test-product-extractor-001";`,
+		`public const string EventType = "orders";`,
+		`public const string PubSubName = "pubsub";`,
+		`public const string TopicName = "orders";`,
 	} {
 		if !strings.Contains(string(constants), want) {
 			t.Errorf("Constants.cs missing %q:\n%s", want, constants)
@@ -155,27 +122,20 @@ func TestRealManifestPublishesExtractor(t *testing.T) {
 }
 
 // Happy path, consumer side: --subscribe against the real loader manifest.
-// The channel snapshot rides in the block; topic stays a hand-set parameter
-// (the surface the seeds-conflict test pins).
 func TestRealManifestSubscribeLoader(t *testing.T) {
 	src, version := realTemplatesSource(t)
 	outDir := filepath.Join(t.TempDir(), "order-file-loader")
 	var stderr bytes.Buffer
 
 	err := Create(context.Background(), CreateOptions{
-		Template:  "loader",
-		OutputDir: outDir,
-		Version:   version,
-		NoInput:   true,
-		Stderr:    &stderr,
-		Source:    src,
-		SetValues: map[string]any{
-			"name":         "OrderFileLoader",
-			"organization": "Maxbo",
-			"topic":        "sbt-test-product-extractor-001",
-			"contract":     "Order",
-		},
-		Subscribe: subscribeFixture(),
+		Template:         "loader",
+		OutputDir:        outDir,
+		Version:          version,
+		NoInput:          true,
+		Stderr:           &stderr,
+		Source:           src,
+		SetValues:        map[string]any{"name": "OrderFileLoader", "organization": "Maxbo"},
+		SubscribeMessage: "orders",
 	})
 	if err != nil {
 		t.Fatalf("Create: %v\nstderr: %s", err, stderr.String())
@@ -185,16 +145,11 @@ func TestRealManifestSubscribeLoader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry := ScaffoldEntry{Path: outDir, Scaffold: *record}
-	b, err := ReadSubscribeBlock(entry)
-	if err != nil {
-		t.Fatalf("scaffold record is not the block shape: %v (values: %v)", err, record.Values)
+	if got := record.Values[KeySubscribes]; got != "orders" {
+		t.Errorf("values.subscribes = %v, want the --subscribe message", got)
 	}
-	if *b != *subscribeFixture() {
-		t.Errorf("record subscribe block = %+v, want %+v", *b, *subscribeFixture())
-	}
-	if got := record.Values[KeyMessage]; got != subscribeFixture().Message {
-		t.Errorf("values.message = %v, want the resolved message", got)
+	if _, has := record.Values[KeyPublishes]; has {
+		t.Errorf("loader record grew a publishes value: %v", record.Values)
 	}
 
 	constants, err := os.ReadFile(filepath.Join(outDir, "src", "Constants.cs"))
@@ -202,9 +157,9 @@ func TestRealManifestSubscribeLoader(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		`public const string MessageName = "io.intropy.maxbo.product.export";`,
-		`public const string PubSubName = "product-distribution-pubsub";`,
-		`public const string SubscriptionRoute = "/events/sbt-test-product-extractor-001";`,
+		`public const string MessageName = "orders";`,
+		`public const string PubSubName = "pubsub";`,
+		`public const string SubscriptionRoute = "/events/" + TopicName;`,
 	} {
 		if !strings.Contains(string(constants), want) {
 			t.Errorf("Constants.cs missing %q:\n%s", want, constants)
@@ -221,40 +176,27 @@ func TestRealManifestDirectionGates(t *testing.T) {
 	runs := []struct {
 		name      string
 		tmpl      string
-		setValues map[string]any
-		subscribe *SubscribeBlock
-		publishes *PublishesBlock
+		subscribe string
+		publishes string
 		hint      string
 	}{
-		{
-			name:      "subscribe against extractor",
-			tmpl:      "extractor",
-			setValues: map[string]any{"name": "OrderSweep", "organization": "Maxbo", "topic": "orders", "contract": "Order"},
-			subscribe: subscribeFixture(),
-			hint:      "use --publishes",
-		},
-		{
-			name:      "publishes against loader",
-			tmpl:      "loader",
-			setValues: map[string]any{"name": "OrderFileLoader", "organization": "Maxbo", "topic": "orders", "contract": "Order"},
-			publishes: publishesFixture(),
-			hint:      "use --subscribe",
-		},
+		{name: "subscribe against extractor", tmpl: "extractor", subscribe: "orders", hint: "use --publishes"},
+		{name: "publishes against loader", tmpl: "loader", publishes: "orders", hint: "use --subscribe"},
 	}
 	for _, r := range runs {
 		t.Run(r.name, func(t *testing.T) {
 			outDir := filepath.Join(t.TempDir(), "out")
 			var stderr bytes.Buffer
 			err := Create(context.Background(), CreateOptions{
-				Template:  r.tmpl,
-				OutputDir: outDir,
-				Version:   version,
-				NoInput:   true,
-				Stderr:    &stderr,
-				Source:    src,
-				SetValues: r.setValues,
-				Subscribe: r.subscribe,
-				Publishes: r.publishes,
+				Template:         r.tmpl,
+				OutputDir:        outDir,
+				Version:          version,
+				NoInput:          true,
+				Stderr:           &stderr,
+				Source:           src,
+				SetValues:        map[string]any{"name": "OrderSweep", "organization": "Maxbo"},
+				SubscribeMessage: r.subscribe,
+				PublishesMessage: r.publishes,
 			})
 			if !strings.Contains(err.Error(), ErrMessageDirection.Error()) {
 				t.Fatalf("err = %v, want %v", err, ErrMessageDirection)
@@ -279,14 +221,14 @@ func TestRealManifestNoMessageParameters(t *testing.T) {
 	var stderr bytes.Buffer
 
 	err := Create(context.Background(), CreateOptions{
-		Template:  "hello-world",
-		OutputDir: outDir,
-		Version:   version,
-		NoInput:   true,
-		Stderr:    &stderr,
-		Source:    src,
-		SetValues: map[string]any{"name": "HelloWorld"},
-		Subscribe: subscribeFixture(),
+		Template:         "hello-world",
+		OutputDir:        outDir,
+		Version:          version,
+		NoInput:          true,
+		Stderr:           &stderr,
+		Source:           src,
+		SetValues:        map[string]any{"name": "HelloWorld"},
+		SubscribeMessage: "orders",
 	})
 	if !strings.Contains(err.Error(), ErrNoMessageParameters.Error()) {
 		t.Fatalf("err = %v, want %v", err, ErrNoMessageParameters)
@@ -318,76 +260,16 @@ func TestRealManifestSeedConflict(t *testing.T) {
 		SetValues: map[string]any{
 			"name":         "OrderSweep",
 			"organization": "Maxbo",
-			"topic":        "orders",
-			"contract":     "Order",
-			"message":      "io.intropy.maxbo.catalog.updated",
+			"publishes":    "catalog-updated",
 		},
-		Publishes: publishesFixture(),
+		PublishesMessage: "orders",
 	})
 	if !strings.Contains(err.Error(), ErrMessageParameterConflict.Error()) {
 		t.Fatalf("err = %v, want %v", err, ErrMessageParameterConflict)
 	}
-	for _, want := range []string{"io.intropy.maxbo.product.export", "io.intropy.maxbo.catalog.updated"} {
+	for _, want := range []string{"orders", "catalog-updated"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q should name %q", err, want)
-		}
-	}
-}
-
-// Legacy flat scaffolding against the real manifest still renders — the
-// tolerance path the templates keep — but only with an explicit eventType
-// override: the extractor render refuses to guess event identity from the
-// topic name, so the flat path now carries one more hand-set value.
-// The hand-typed path with a single required message: topic and contract
-// are overrides when set, everything else derives. No message blocks — the
-// flat shape stays block-free, and the overrides ride the record verbatim.
-func TestRealManifestFlatPathRenders(t *testing.T) {
-	src, version := realTemplatesSource(t)
-	outDir := filepath.Join(t.TempDir(), "order-sweep")
-	var stderr bytes.Buffer
-
-	err := Create(context.Background(), CreateOptions{
-		Template:  "extractor",
-		OutputDir: outDir,
-		Version:   version,
-		NoInput:   true,
-		Stderr:    &stderr,
-		Source:    src,
-		SetValues: map[string]any{
-			"name":         "OrderSweep",
-			"organization": "Maxbo",
-			"message":      "orders",
-			"topic":        "legacy-orders", // override: existing broker channel
-			"contract":     "Order",         // override: pinned payload type
-		},
-	})
-	if err != nil {
-		t.Fatalf("Create: %v\nstderr: %s", err, stderr.String())
-	}
-
-	record, err := LoadScaffold(filepath.Join(outDir, ScaffoldRelPath))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if HasMessageBlocks(record.Values) {
-		t.Errorf("flat scaffold grew message blocks: %v", record.Values)
-	}
-	if got := record.Values[KeyTopic]; got != "legacy-orders" {
-		t.Errorf("values.topic = %v, want the override", got)
-	}
-	if got := record.Values[KeyPayloadType]; got != "Order" {
-		t.Errorf("values.payloadType = %v, want the override Order", got)
-	}
-	constants, err := os.ReadFile(filepath.Join(outDir, "src", "Constants.cs"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{
-		`public const string TopicName = "legacy-orders";`,
-		`public const string EventType = "orders";`,
-	} {
-		if !strings.Contains(string(constants), want) {
-			t.Errorf("Constants.cs missing %q:\n%s", want, constants)
 		}
 	}
 }
@@ -400,17 +282,14 @@ func TestRealManifestMessagePatternRejected(t *testing.T) {
 	var stderr bytes.Buffer
 
 	err := Create(context.Background(), CreateOptions{
-		Template:  "extractor",
-		OutputDir: filepath.Join(t.TempDir(), "bad-name"),
-		Version:   version,
-		NoInput:   true,
-		Stderr:    &stderr,
-		Source:    src,
-		SetValues: map[string]any{
-			"name":         "OrderSweep",
-			"organization": "Maxbo",
-			"message":      "OrderCreated", // PascalCase: not a DNS-1123 subdomain
-		},
+		Template:         "extractor",
+		OutputDir:        filepath.Join(t.TempDir(), "bad-name"),
+		Version:          version,
+		NoInput:          true,
+		Stderr:           &stderr,
+		Source:           src,
+		SetValues:        map[string]any{"name": "OrderSweep", "organization": "Maxbo"},
+		PublishesMessage: "OrderCreated", // PascalCase: not a DNS-1123 subdomain
 	})
 	if err == nil || !strings.Contains(strings.ToLower(err.Error()+"\n"+strings.ToLower(stderr.String())), "pattern") {
 		t.Fatalf("err = %v, want the manifest pattern rejection\nstderr: %s", err, stderr.String())
