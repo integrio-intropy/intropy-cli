@@ -27,7 +27,9 @@ func NewRepo(t *testing.T, branch string) string {
 
 // Init initialises an empty repository with the identity and settings tests
 // need: commit signing off, and pushes to the checked-out branch permitted so a
-// non-bare directory can serve as an origin.
+// non-bare directory can serve as an origin. Automatic gc and maintenance are
+// off: a push can otherwise leave a detached gc writing into .git after the
+// test returns, and t.TempDir's cleanup then fails with "directory not empty".
 func Init(t *testing.T, dir, branch string) {
 	t.Helper()
 	Run(t, dir, "init", "--quiet", "--initial-branch="+branch)
@@ -35,6 +37,9 @@ func Init(t *testing.T, dir, branch string) {
 	Run(t, dir, "config", "user.name", "Test")
 	Run(t, dir, "config", "commit.gpgsign", "false")
 	Run(t, dir, "config", "receive.denyCurrentBranch", "ignore")
+	Run(t, dir, "config", "receive.autogc", "false")
+	Run(t, dir, "config", "gc.auto", "0")
+	Run(t, dir, "config", "maintenance.auto", "false")
 }
 
 // Run executes git in dir, failing the test on error.

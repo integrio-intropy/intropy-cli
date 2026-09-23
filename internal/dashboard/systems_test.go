@@ -23,10 +23,18 @@ func writeHostRecord(t *testing.T, dir, name string, componentJSON string) {
 	}
 }
 
+// syncHandler wires the handler at a local template library: syncing resolves
+// the held release before anything else, and without a fixture that would be
+// a live GitHub releases call.
+func syncHandler(t *testing.T, root string) http.Handler {
+	t.Helper()
+	return testHandlerWith(t, root, templateProviders(newTemplateLibrary(t, "v1").Source(t)))
+}
+
 func TestSyncSystemNoOrphansIsNoop(t *testing.T) {
 	root := t.TempDir()
 	writeHostRecord(t, filepath.Join(root, "acme", "erp", "erp-host"), "erp", "")
-	h := testHandler(t, root)
+	h := syncHandler(t, root)
 
 	rec := postJSON(t, h, "/api/systems/acme/erp", `{}`)
 	if rec.Code != http.StatusOK {
@@ -54,7 +62,7 @@ func TestSyncSystemCreateBranchWithoutScaffolds(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "acme", "crm"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	h := testHandler(t, root)
+	h := syncHandler(t, root)
 
 	// No host and nothing assemblable: the create branch is taken and sys
 	// create's local validation refuses before any network I/O.
