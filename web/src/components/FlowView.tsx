@@ -478,9 +478,12 @@ export function FlowView({ selected, onSelect, theme }: Props) {
           </button>
         )}
         {hasHost && run?.running && (
-          <span className="flow-run-status" title={`pid ${run.pid} · started ${run.startedAt}`}>
+          <span
+            className={`flow-run-status${run.ready ? '' : ' starting'}`}
+            title={`pid ${run.pid} · started ${run.startedAt}`}
+          >
             <span className="flow-run-dot" />
-            running
+            {run.ready ? 'running' : 'starting'}
           </span>
         )}
         {hasHost && run && !run.running && run.exitError && (

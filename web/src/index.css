@@ -1051,6 +1051,23 @@ body {
   background: #d64545;
 }
 
+.flow-run-status.starting .flow-run-dot {
+  background: #d29922;
+  animation: flow-run-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes flow-run-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-run-status.starting .flow-run-dot {
+    animation: none;
+  }
+}
+
 .flow-logs-toggle {
   padding: 6px 12px;
   font: inherit;
