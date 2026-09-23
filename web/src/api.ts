@@ -98,10 +98,13 @@ export interface SystemSyncResponse {
  *  system's host process. `exitError` is set when the host exited on its own
  *  (a crash) — a deliberate stop clears the entry and reports neither.
  *  `logs` is a tail of the host's combined stdout/stderr, the only terminal
- *  a dashboard-started host has. */
+ *  a dashboard-started host has. `running` means the process is alive;
+ *  `ready` means it has also printed its startup banner — until then the
+ *  host is still building or bringing up its resources. */
 export interface RunState {
   system: string
   running: boolean
+  ready: boolean
   pid?: number
   startedAt?: string
   exitError?: string

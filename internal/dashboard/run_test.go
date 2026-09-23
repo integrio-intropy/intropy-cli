@@ -345,3 +345,57 @@ func del(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, path, nil))
 	return rec
 }
+
+func TestRunStartingUntilStartupBanner(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake starter uses unix sh")
+	}
+	root := t.TempDir()
+	writeHostRecord(t, filepath.Join(root, "acme", "erp", "erp-host"), "erp", "")
+	h, s, shutdown := runAPI(t, root)
+	defer shutdown()
+
+	// The gate file stands in for the build: the fake host prints the
+	// banner only once the test has seen it report "starting".
+	gate := filepath.Join(t.TempDir(), "gate")
+	s.start = fakeStart(t, "sh", "-c",
+		"echo building; while [ ! -f "+gate+" ]; do sleep 0.02; done; "+
+			"echo 'info: Aspire.Hosting.DistributedApplication[0] Distributed application started. Press Ctrl+C to shut down.'; sleep 60")
+	if rec := post(t, h, "/api/run/acme/erp"); rec.Code != http.StatusOK {
+		t.Fatalf("start: %d: %s", rec.Code, rec.Body)
+	}
+
+	status := func() runStatus {
+		var st runStatus
+		if err := json.Unmarshal(get(t, h, "/api/run/acme/erp").Body.Bytes(), &st); err != nil {
+			t.Fatal(err)
+		}
+		return st
+	}
+	waitFor := func(what string, ok func(runStatus) bool) runStatus {
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			st := status()
+			if ok(st) {
+				return st
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%s never happened: %+v", what, st)
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+
+	st := waitFor("pre-banner output", func(st runStatus) bool { return len(st.Logs) > 0 })
+	if !st.Running || st.Ready {
+		t.Errorf("before the banner: %+v, want running and not ready", st)
+	}
+
+	if err := os.WriteFile(gate, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st = waitFor("ready", func(st runStatus) bool { return st.Ready })
+	if !st.Running {
+		t.Errorf("after the banner: %+v, want running", st)
+	}
+}

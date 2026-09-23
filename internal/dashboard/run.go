@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -30,6 +31,10 @@ import (
 //     listening. This is Unix process-group semantics (Setpgid + a negative
 //     pid) — supported platforms are macOS, Linux, and Windows through WSL;
 //     a native Windows build fails to compile here, which is the intent.
+//   - A launched host is "starting" until its console prints the startup
+//     banner (readyLine): `dotnet run` builds first, and the AppHost then
+//     brings up its resources, so a live pid alone says nothing about
+//     whether the system answers yet.
 //   - A host that exits on its own keeps its entry so the flow view can show
 //     the exit error and the logs — the run panel is the only terminal a
 //     dashboard-started host has.
@@ -70,26 +75,41 @@ type systemRun struct {
 }
 
 // runStatus is the GET /api/run/{path} payload, returned by POST and DELETE
-// as well so a button click lands on fresh state.
+// as well so a button click lands on fresh state. Running means the process
+// is alive; Ready means it has also printed its startup banner.
 type runStatus struct {
 	System    string   `json:"system"`
 	Running   bool     `json:"running"`
+	Ready     bool     `json:"ready"`
 	PID       int      `json:"pid,omitempty"`
 	StartedAt string   `json:"startedAt,omitempty"`
 	ExitError string   `json:"exitError,omitempty"`
 	Logs      []string `json:"logs"`
 }
 
+// readyLine matches the startup banner the .NET host lifetime prints once
+// startup completes: "Distributed application started." from an Aspire
+// AppHost, "Application started." from a plain generic host. Matched on the
+// pumped lines rather than a port probe — the ports are the host's launch
+// profile's business, and telemetry.go reads the same console output.
+var readyLine = regexp.MustCompile(`(?i)\bapplication started\b`)
+
 // logPump is a bounded ring of the run's combined stdout/stderr, filled by a
-// pumpLines goroutine off the process pipes.
+// pumpLines goroutine off the process pipes. ready latches the first
+// readyLine and is never cleared: the ring may drop the banner, the fact
+// that startup finished stays.
 type logPump struct {
 	mu    sync.Mutex
 	lines []string
+	ready bool
 }
 
 func (p *logPump) add(line string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if !p.ready && readyLine.MatchString(line) {
+		p.ready = true
+	}
 	if len(p.lines) >= logLinesMax {
 		p.lines = p.lines[1:]
 	}
@@ -106,6 +126,12 @@ func (p *logPump) tail() []string {
 	out := make([]string, len(lines))
 	copy(out, lines)
 	return out
+}
+
+func (p *logPump) isReady() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.ready
 }
 
 // dotnetStart is the real starter: `dotnet run --project <hostDir>`. Unlike
@@ -212,6 +238,7 @@ func statusOf(sysDir string, run *systemRun, exited error) runStatus {
 		st.Logs = h.pump.tail()
 		if err == nil {
 			st.Running = true
+			st.Ready = h.pump.isReady()
 			st.PID = h.pid
 			return st
 		}
