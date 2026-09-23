@@ -1,0 +1,1 @@
+Currently when you press the run button in the dashboard integration flow view the state is switched to running immediately, before everything is started. Is it possible to have status "Starting" while it is running and only switch to "Running" when it is actually running?

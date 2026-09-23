@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "6a7a4909cb53",
+  "strategy": "manual-commit",
+  "branch": "feat/accurate-run-status",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "internal/dashboard/run.go",
+    "internal/dashboard/run_test.go",
+    "web/src/api.ts",
+    "web/src/components/FlowView.tsx",
+    "web/src/index.css"
+  ],
+  "sessions": [
+    {
+      "metadata": "/6a/7a4909cb53/0/metadata.json",
+      "transcript": "/6a/7a4909cb53/0/full.jsonl",
+      "compact_transcript": "/6a/7a4909cb53/0/transcript.jsonl",
+      "content_hash": "/6a/7a4909cb53/0/content_hash.txt",
+      "prompt": "/6a/7a4909cb53/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 28,
+    "cache_creation_tokens": 42682,
+    "cache_read_tokens": 769620,
+    "output_tokens": 7181,
+    "api_call_count": 14
+  }
+}
