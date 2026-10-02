@@ -278,11 +278,28 @@ func (s *apiServer) suggestForDir(result *template.DescribeResult, dir string, c
 	if err != nil {
 		return err
 	}
+	facts.SetMessageParameters(messageParametersFromLabels(result.Labels))
+	facts.SetWiringDirection(template.MessageDirection(result.Labels[template.TemplateBlockKindLabel]))
 	suggestions := template.Suggest(result.Fields, facts, confirmed)
 	for i := range result.Fields {
 		result.Fields[i].Suggestions = suggestions[result.Fields[i].Name]
 	}
 	return nil
+}
+
+func messageParametersFromLabels(labels map[string]string) []string {
+	v := labels[template.TemplateMessageParamsLabel]
+	if strings.TrimSpace(v) == "" {
+		return nil
+	}
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if name := strings.TrimSpace(p); name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // parseConfirmedQuery decodes the repeated `set` query parameter

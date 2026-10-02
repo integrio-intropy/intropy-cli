@@ -20,7 +20,7 @@ var messageShowCmd = &cobra.Command{
 	Use:   "show <ref> [dir]",
 	Short: "Show one message's definition",
 	Long: "Show one message's definition by reference — the bare message id or a /messagegroups/<gid>/messages/<mid> xid. " +
-		"A workspace publish (a publishes block in a scaffold record under dir, default current directory) resolves locally; everything else reads the xRegistry export. " +
+		"A workspace publish (a scalar publishes value in a scaffold record under dir, default current directory) resolves locally; everything else reads the xRegistry export. " +
 		"The definition covers the envelope metadata, the producing channels, and the schema pin (the immutable default-version URL a CloudEvent dataschema references). " +
 		"Use --output json for the same document machine-readable.",
 	Args: usageArgs(cobra.RangeArgs(1, 2)),

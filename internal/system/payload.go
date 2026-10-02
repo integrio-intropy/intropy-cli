@@ -54,9 +54,6 @@ func buildPayload(m *Model, outputDir, kebab string) (map[string]any, error) {
 		if msg.Contract != "" {
 			e["contract"] = msg.Contract
 		}
-		if msg.Dataschema != "" {
-			e["dataschema"] = msg.Dataschema
-		}
 		if msg.Publisher != "" {
 			e["publisher"] = msg.Publisher
 		}
@@ -106,11 +103,11 @@ func ComponentEntry(c Component) map[string]any {
 		}
 	}
 	if c.Message != nil {
-		// The template joins the two message views by name; the direction
-		// is already the kind. Dataschema only exists on external snapshots.
-		entry[template.KeyMessage] = c.Message.Name
-		if c.Message.Dataschema != "" {
-			entry[template.KeyDataschema] = c.Message.Dataschema
+		switch c.Message.Kind {
+		case MessagePublish:
+			entry[template.KeyPublishes] = c.Message.Name
+		case MessageSubscribe:
+			entry[template.KeySubscribes] = c.Message.Name
 		}
 	}
 	switch len(c.Ports) {
