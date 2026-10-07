@@ -66,19 +66,30 @@ type CatalogEntry struct {
 	Checks []Check `json:"checks,omitempty"`
 }
 
-// ContractEdge is one end of a pub/sub wire a component sits on.
+// ContractEdge is one end of a pub/sub wire a component sits on: one message
+// it publishes or routes, or — for a record older than message wiring — one
+// topic.
 type ContractEdge struct {
 	Pubsub string `json:"pubsub"`
 	Topic  string `json:"topic"`
 
-	// Contract is the topic's contract shortName when the registry carries it,
-	// and the topic's raw contract name otherwise — the same lookup the flow
-	// view's detail panel makes.
+	// Message is the message the component publishes or routes on the topic.
+	// Absent for a record older than message wiring.
+	Message string `json:"message,omitempty"`
+
+	// Contract is the message's contract (the topic's, for an older record):
+	// its shortName when the registry carries it, its raw name otherwise —
+	// the same lookup the flow view's detail panel makes.
 	Contract string `json:"contract,omitempty"`
 
-	// Publishers and Subscribers are every component the topic declares on each
-	// end of the wire, so a contract can be inspected as the connection between
-	// components rather than as a name. Absent when the topic declares neither.
+	// When is the content filter the component's route applies to the
+	// message's events. Absent on publishes and on unfiltered routes.
+	When string `json:"when,omitempty"`
+
+	// Publishers and Subscribers are every component on each end of the wire —
+	// the message's when it is known, the topic's otherwise — so a contract can
+	// be inspected as the connection between components rather than as a
+	// name. Absent when the wire declares neither.
 	Publishers  []string `json:"publishers,omitempty"`
 	Subscribers []string `json:"subscribers,omitempty"`
 }
@@ -209,10 +220,16 @@ func joinTopology(entry *CatalogEntry, sum integrationSummary, topo *topology.En
 	entry.Component = comp.Name
 	entry.Kind = comp.Kind
 	for _, p := range comp.Publishes {
-		entry.Publishes = append(entry.Publishes, contractEdge(topo, p.PubSub, p.Topic))
+		entry.Publishes = append(entry.Publishes, contractEdge(topo, p.PubSub, p.Topic, p.Message, ""))
 	}
 	for _, sub := range comp.Subscribes {
-		entry.Subscribes = append(entry.Subscribes, contractEdge(topo, sub.PubSub, sub.Topic))
+		if len(sub.Routes) == 0 {
+			entry.Subscribes = append(entry.Subscribes, contractEdge(topo, sub.PubSub, sub.Topic, "", ""))
+			continue
+		}
+		for _, r := range sub.Routes {
+			entry.Subscribes = append(entry.Subscribes, contractEdge(topo, sub.PubSub, sub.Topic, r.Message, r.When))
+		}
 	}
 }
 
@@ -228,31 +245,40 @@ func appendCheck(checks []Check, c Check) []Check {
 	return append(checks[:n], append([]Check{c}, checks[n:]...)...)
 }
 
-// contractEdge resolves one (pubsub, topic) reference against the topology's
-// topics and contracts registry: the contract is the registry entry's
-// shortName when the topic names a contract and the registry carries it, and
-// the raw contract name otherwise — the same lookup the flow view makes. The
-// topic's declared publishers and subscribers ride along, so a contract can
-// be shown as the connection between components rather than as a name.
-func contractEdge(topo *topology.Entry, pubsub, topic string) ContractEdge {
-	edge := ContractEdge{Pubsub: pubsub, Topic: topic}
+// contractEdge resolves one wire against the topology. With a message, the
+// contract and both ends are the message's, from the messagegroups section;
+// without one — a record older than message wiring — they are the topic's.
+// The contract is shown as its registry shortName when the registry carries
+// it, its raw name otherwise — the same lookup the flow view makes.
+func contractEdge(topo *topology.Entry, pubsub, topic, message, when string) ContractEdge {
+	edge := ContractEdge{Pubsub: pubsub, Topic: topic, Message: message, When: when}
+	if m, ok := topo.Message(message); message != "" && ok {
+		edge.Contract = displayContract(topo, m.Contract)
+		edge.Publishers = m.Publishers
+		edge.Subscribers = m.Subscribers
+		return edge
+	}
 	for _, t := range topo.Topics {
-		if t.PubSub != pubsub || t.Topic != topic {
-			continue
-		}
-		edge.Publishers = t.Publishers
-		edge.Subscribers = t.Subscribers
-		if t.Contract == "" {
+		if t.PubSub == pubsub && t.Topic == topic {
+			edge.Publishers = t.Publishers
+			edge.Subscribers = t.Subscribers
 			break
 		}
-		edge.Contract = t.Contract
-		for _, c := range topo.Contracts {
-			if c.Name == t.Contract && c.ShortName != "" {
-				edge.Contract = c.ShortName
-				break
-			}
-		}
-		break
+	}
+	// A topic with several contracts has no one contract to show.
+	if contracts := topo.TopicContracts(pubsub, topic); len(contracts) == 1 {
+		edge.Contract = displayContract(topo, contracts[0])
 	}
 	return edge
+}
+
+// displayContract is a contract's registry shortName when the registry carries
+// one, its raw name otherwise.
+func displayContract(topo *topology.Entry, name string) string {
+	for _, c := range topo.Contracts {
+		if c.Name == name && c.ShortName != "" {
+			return c.ShortName
+		}
+	}
+	return name
 }

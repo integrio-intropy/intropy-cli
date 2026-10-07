@@ -11,7 +11,7 @@ import {
 import { Section } from './chrome'
 import { CatalogEnvironments } from './CatalogEnvironments'
 import { ContractDetail } from './ContractDetail'
-import { CategoryIcon, OpenInNewIcon } from '../icons'
+import { CategoryIcon, FilterIcon, OpenInNewIcon } from '../icons'
 
 export interface DeployProps {
   state: DeployState | null
@@ -205,15 +205,20 @@ function ContractGroup({
       ) : (
         <ul className="chips">
           {edges.map((e) => (
-            <li key={`${e.pubsub}/${e.topic}`}>
+            <li key={`${e.pubsub}/${e.topic}/${e.message ?? ''}`}>
               <button
                 type="button"
                 className="chip chip-button"
-                title={`${e.pubsub}/${e.topic} — inspect the contract`}
+                title={[
+                  `${e.pubsub}/${e.topic}${e.message ? ` · ${e.message}` : ''}`,
+                  e.when && `when ${e.when}`,
+                  'inspect the contract',
+                ].filter(Boolean).join('\n')}
                 onClick={() => onSelect(e)}
               >
                 {e.topic}
                 {e.contract && <span className="chip-sub">{e.contract}</span>}
+                {e.when && <FilterIcon className="chip-icon" aria-label="content-filtered route" />}
               </button>
             </li>
           ))}

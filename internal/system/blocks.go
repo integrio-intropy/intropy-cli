@@ -44,20 +44,40 @@ func parseExtractor(e template.ScaffoldEntry, c *Component) error {
 	if contract == "" {
 		return nil
 	}
-	c.Topic = &TopicKey{Pubsub: template.DefaultPubsub, Name: message}
+	channel, err := template.ReadChannel(e)
+	if err != nil {
+		return err
+	}
+	if channel == "" {
+		channel = message
+	}
+	c.channel = channel
+	c.Topic = &TopicKey{Pubsub: template.DefaultPubsub, Name: channel}
 	c.topicContract = contract
 	c.Message = &MessageWiring{Kind: MessagePublish, Name: message, Contract: contract}
 	return parseSinglePort(e, c)
 }
 
-// parseLoader reads the one message a loader subscribes to. Assembly resolves
-// the channel from a producing sibling and fails if no producer exists.
+// parseLoader reads the messages a loader routes — its routes, or the one
+// message a record without routes subscribes to — what it does with the rest
+// of its topic, and the topic it declares. Assembly checks every routed
+// message's producer publishes on that topic and fails if one does not.
 func parseLoader(e template.ScaffoldEntry, c *Component) error {
-	message, err := template.ReadSubscribesMessage(e)
+	routes, err := template.ReadRoutes(e)
 	if err != nil {
+		if _, routed := e.Values[template.KeyRoutes]; routed {
+			return err
+		}
 		return preScalarMessageRecord(err)
 	}
-	c.Message = &MessageWiring{Kind: MessageSubscribe, Name: message}
+	if c.Default, err = template.ReadDefault(e); err != nil {
+		return err
+	}
+	if c.channel, err = template.ReadChannel(e); err != nil {
+		return err
+	}
+	c.Routes = routes
+	c.Message = &MessageWiring{Kind: MessageSubscribe, Name: routes[0].Message}
 	return parseSinglePort(e, c)
 }
 

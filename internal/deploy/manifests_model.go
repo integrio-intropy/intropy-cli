@@ -69,6 +69,36 @@ type ManifestComponent struct {
 
 	Topics []string `json:"topics,omitempty"`
 	Ports  []string `json:"ports,omitempty"`
+
+	// Subscription is the declarative Dapr Subscription the component needs to
+	// receive anything: a subscribing block's app callback announces none of
+	// its own. Absent for a component that subscribes to nothing, and for a
+	// record too old to carry the rendered resource.
+	Subscription *ManifestSubscription `json:"subscription,omitempty"`
+}
+
+// ManifestSubscription is one declarative Dapr Subscription, taken verbatim
+// from the topology record — the resource a local run loads — so a deployment
+// and a local run route a message identically.
+type ManifestSubscription struct {
+	Name        string         `json:"name"`
+	PubSub      string         `json:"pubsub"`
+	Topic       string         `json:"topic"`
+	Rules       []ManifestRule `json:"rules"`
+	DefaultPath string         `json:"defaultPath"`
+	Bulk        *ManifestBulk  `json:"bulk,omitempty"`
+}
+
+// ManifestRule is one routing rule: the CEL match and the path it delivers on.
+type ManifestRule struct {
+	Match string `json:"match"`
+	Path  string `json:"path"`
+}
+
+// ManifestBulk is a bulk subscription's batching.
+type ManifestBulk struct {
+	MaxMessagesCount   int   `json:"maxMessagesCount"`
+	MaxAwaitDurationMs int64 `json:"maxAwaitDurationMs"`
 }
 
 // ManifestPubSub is one Dapr pub/sub component the system needs.
@@ -82,9 +112,12 @@ type ManifestPubSub struct {
 }
 
 // ManifestTopic is a declared topic, with the ends resolved to app-ids.
+// Messages names the messages it carries; Contract is set when they all share
+// one contract (always, for a record older than message wiring).
 type ManifestTopic struct {
 	PubSub      string   `json:"pubsub"`
 	Topic       string   `json:"topic"`
+	Messages    []string `json:"messages,omitempty"`
 	Contract    string   `json:"contract,omitempty"`
 	Publishers  []string `json:"publishers,omitempty"`
 	Subscribers []string `json:"subscribers,omitempty"`
@@ -112,7 +145,7 @@ func newManifestModel(t *topology.Topology, scaffolds []template.ScaffoldEntry) 
 
 	m := ManifestModel{System: t.System}
 	m.Components = buildComponents(t.Components, appIDs, dirs)
-	m.Topics = buildTopics(t.Topics, appIDs)
+	m.Topics = buildTopics(t, appIDs)
 	m.PubSubs = buildPubSubs(t, appIDs)
 	m.Ports = buildPorts(t.Ports, appIDs)
 	return m
@@ -237,11 +270,46 @@ func buildComponents(components []topology.Component, appIDs, dirs map[string]st
 			ports[u.Port] = true
 		}
 		ic.Ports = sortedKeys(ports)
+		ic.Subscription = subscriptionFor(c)
 
 		out = append(out, ic)
 	}
 	slices.SortFunc(out, func(a, b ManifestComponent) int { return strings.Compare(a.Name, b.Name) })
 	return out
+}
+
+// subscriptionFor takes a component's declarative Subscription from its record:
+// a loader's (it subscribes to exactly one topic), or a transactional
+// integration's internal hop (no rules, every event on the default path). A
+// record that does not carry the rendered resource (a host older than the
+// field) yields none, and the render fails loudly in the template rather than
+// guess the rules.
+func subscriptionFor(c topology.Component) *ManifestSubscription {
+	if len(c.Subscribes) == 0 {
+		if q := c.InternalQueue; q != nil && q.Resource != "" && q.DefaultPath != "" {
+			return &ManifestSubscription{Name: q.Resource, PubSub: q.PubSub, Topic: q.Topic,
+				Rules: []ManifestRule{}, DefaultPath: q.DefaultPath}
+		}
+		return nil
+	}
+	s := c.Subscribes[0]
+	if s.Resource == "" || s.DefaultPath == "" {
+		return nil
+	}
+	sub := &ManifestSubscription{
+		Name:        s.Resource,
+		PubSub:      s.PubSub,
+		Topic:       s.Topic,
+		Rules:       make([]ManifestRule, 0, len(s.Routes)),
+		DefaultPath: s.DefaultPath,
+	}
+	for _, r := range s.Routes {
+		sub.Rules = append(sub.Rules, ManifestRule{Match: r.Match, Path: r.Path})
+	}
+	if s.Bulk != nil {
+		sub.Bulk = &ManifestBulk{MaxMessagesCount: s.Bulk.MaxMessagesCount, MaxAwaitDurationMs: s.Bulk.MaxAwaitDurationMs}
+	}
+	return sub
 }
 
 // workloadFor maps a block kind to its Kubernetes workload. Anything that is not
@@ -254,13 +322,18 @@ func workloadFor(kind string) string {
 	return WorkloadDeployment
 }
 
-func buildTopics(topics []topology.Topic, appIDs map[string]string) []ManifestTopic {
-	out := make([]ManifestTopic, 0, len(topics))
-	for _, t := range topics {
+func buildTopics(topo *topology.Topology, appIDs map[string]string) []ManifestTopic {
+	out := make([]ManifestTopic, 0, len(topo.Topics))
+	for _, t := range topo.Topics {
+		var contract string
+		if contracts := topo.TopicContracts(t.PubSub, t.Topic); len(contracts) == 1 {
+			contract = contracts[0]
+		}
 		out = append(out, ManifestTopic{
 			PubSub:      t.PubSub,
 			Topic:       t.Topic,
-			Contract:    t.Contract,
+			Messages:    t.Messages,
+			Contract:    contract,
 			Publishers:  sortedAppIDs(appIDs, t.Publishers),
 			Subscribers: sortedAppIDs(appIDs, t.Subscribers),
 		})

@@ -158,6 +158,16 @@ func Create(ctx context.Context, opts CreateOptions) error {
 	return maybeWriteCreateResult(opts, tmpl, values, src, depResults)
 }
 
+// routesMessage reports whether a route list names message.
+func routesMessage(routes []any, message string) bool {
+	for _, r := range routes {
+		if m, ok := r.(map[string]any); ok && m[KeyMessage] == message {
+			return true
+		}
+	}
+	return false
+}
+
 func validateCreateOptions(opts CreateOptions) error {
 	if err := validateTemplateName(opts.Template); err != nil {
 		return err
@@ -200,7 +210,7 @@ func prepareCreateTemplate(_ context.Context, templateRoot string, opts CreateOp
 		if err := gateMessageDirection(tmpl, MessageDirectionSubscribe); err != nil {
 			return nil, nil, err
 		}
-		if err := seedMessageParameters(tmpl.Metadata.Name, messageParams, opts.SetValues, "--subscribe", ErrSubscribeMessageConflict, opts.SubscribeMessage); err != nil {
+		if err := seedMessageParameters(tmpl, messageParams, opts.SetValues, "--subscribe", ErrSubscribeMessageConflict, opts.SubscribeMessage); err != nil {
 			return nil, nil, err
 		}
 		opts.SetValues[KeySubscribes] = MessageValue(opts.SubscribeMessage)
@@ -212,7 +222,7 @@ func prepareCreateTemplate(_ context.Context, templateRoot string, opts CreateOp
 		if err := gateMessageDirection(tmpl, MessageDirectionPublish); err != nil {
 			return nil, nil, err
 		}
-		if err := seedMessageParameters(tmpl.Metadata.Name, messageParams, opts.SetValues, "--publishes", ErrMessageParameterConflict, opts.PublishesMessage); err != nil {
+		if err := seedMessageParameters(tmpl, messageParams, opts.SetValues, "--publishes", ErrMessageParameterConflict, opts.PublishesMessage); err != nil {
 			return nil, nil, err
 		}
 		opts.SetValues[KeyPublishes] = MessageValue(opts.PublishesMessage)
@@ -408,12 +418,31 @@ func gateMessageDirection(tmpl *Template, flagDirection string) error {
 // it is a question the flag cannot answer. The label accepts a comma list
 // for template-side rendering; the multi-message wiring is the shape a
 // list-shaped flag grows into.
-func seedMessageParameters(templateName string, params []string, sets map[string]any, flag string, conflictErr error, message string) error {
+//
+// A list-shaped message parameter (a loader's routes) is seeded with one
+// route for the message; a pre-set list must already route it.
+func seedMessageParameters(tmpl *Template, params []string, sets map[string]any, flag string, conflictErr error, message string) error {
+	templateName := tmpl.Metadata.Name
 	if len(params) > 1 {
 		return fmt.Errorf("template %q: %s wires one message, but the manifest declares %d message parameters (%s)", templateName, flag, len(params), strings.Join(params, ", "))
 	}
+	fields := indexFields(tmpl.Fields())
 	for _, name := range params {
 		value, present := sets[name]
+		if fields[name].Type == "array" {
+			list, _ := value.([]any)
+			if text, ok := value.(string); ok {
+				list, _ = coerce(text, "array").([]any)
+			}
+			if !present || isEmpty(value) {
+				sets[name] = []any{map[string]any{KeyMessage: message}}
+				continue
+			}
+			if !routesMessage(list, message) {
+				return fmt.Errorf("template %q: %w\n%s resolved %q, but %s does not route it; remove the conflicting value or add the message", templateName, conflictErr, flag, message, name)
+			}
+			continue
+		}
 		if !present || isEmpty(value) {
 			sets[name] = message
 			continue

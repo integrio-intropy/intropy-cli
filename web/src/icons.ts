@@ -1,6 +1,7 @@
 // Material Symbols (outlined, weight 400) as React components via svgr.
 // Import icons here so the rest of the app has one place to see which
 // glyphs are in use; each import adds only that SVG to the bundle.
+export { default as AsteriskIcon } from '@material-symbols/svg-400/outlined/asterisk.svg?react'
 export { default as CategoryIcon } from '@material-symbols/svg-400/outlined/category.svg?react'
 export { default as ChevronRightIcon } from '@material-symbols/svg-400/outlined/chevron_right.svg?react'
 export { default as CloudIcon } from '@material-symbols/svg-400/outlined/cloud.svg?react'
@@ -11,6 +12,7 @@ export { default as DescriptionIcon } from '@material-symbols/svg-400/outlined/d
 export { default as DomainIcon } from '@material-symbols/svg-400/outlined/domain.svg?react'
 export { default as ExpandMoreIcon } from '@material-symbols/svg-400/outlined/keyboard_arrow_down.svg?react'
 export { default as ExtensionIcon } from '@material-symbols/svg-400/outlined/extension.svg?react'
+export { default as FilterIcon } from '@material-symbols/svg-400/outlined/filter_alt.svg?react'
 export { default as HardDriveIcon } from '@material-symbols/svg-400/outlined/hard_drive.svg?react'
 export { default as HubIcon } from '@material-symbols/svg-400/outlined/hub.svg?react'
 export { default as FileUploadIcon } from '@material-symbols/svg-400/outlined/upload_file.svg?react'

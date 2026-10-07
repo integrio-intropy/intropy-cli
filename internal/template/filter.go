@@ -28,22 +28,68 @@ func newSkeletonFilter(rules []FileRule, values map[string]any) *skeletonFilter 
 // broader one placed after it. A path no rule matches is included, which is
 // what keeps a template without spec.files rendering exactly as before.
 func (f *skeletonFilter) include(rel string) (bool, error) {
+	renders, err := f.expand(rel)
+	return len(renders) > 0, err
+}
+
+// expand returns the value sets rel renders with: none when a rule excludes
+// it, the render's own values when it is included, and one set per element
+// when the deciding rule expands over a list (Each), each binding its element
+// and index. The first rule whose Path matches decides, as for include.
+func (f *skeletonFilter) expand(rel string) ([]map[string]any, error) {
 	for i, rule := range f.rules {
 		if !matchSkeletonPath(rule.Path, rel) {
 			continue
 		}
-		if got, ok := f.cache[i]; ok {
-			return got, nil
+		if rule.When != "" {
+			got, ok := f.cache[i]
+			if !ok {
+				rendered, err := renderExpr(rule.When, f.values)
+				if err != nil {
+					return nil, fmt.Errorf("spec.files[%d] (%s): evaluate when: %w", i, rule.Path, err)
+				}
+				got = truthy(rendered)
+				f.cache[i] = got
+			}
+			if !got {
+				return nil, nil
+			}
 		}
-		rendered, err := renderExpr(rule.When, f.values)
-		if err != nil {
-			return false, fmt.Errorf("spec.files[%d] (%s): evaluate when: %w", i, rule.Path, err)
+		if rule.Each == "" {
+			return []map[string]any{f.values}, nil
 		}
-		got := truthy(rendered)
-		f.cache[i] = got
-		return got, nil
+		return f.eachRenders(i, rule)
 	}
-	return true, nil
+	return []map[string]any{f.values}, nil
+}
+
+// eachRenders binds every element of the rule's list parameter into its own
+// copy of the values. A missing or empty list yields no renders; a value
+// that is not a list is an error naming the rule.
+func (f *skeletonFilter) eachRenders(i int, rule FileRule) ([]map[string]any, error) {
+	as := rule.As
+	if as == "" {
+		as = "item"
+	}
+	raw, ok := f.values[rule.Each]
+	if !ok || raw == nil {
+		return nil, nil
+	}
+	items, ok := raw.([]any)
+	if !ok {
+		return nil, fmt.Errorf("spec.files[%d] (%s): each %q is a %T, not a list", i, rule.Path, rule.Each, raw)
+	}
+	renders := make([]map[string]any, len(items))
+	for n, item := range items {
+		v := make(map[string]any, len(f.values)+2)
+		for k, val := range f.values {
+			v[k] = val
+		}
+		v[as] = item
+		v[as+"Index"] = n
+		renders[n] = v
+	}
+	return renders, nil
 }
 
 // matchSkeletonPath matches a slash-separated skeleton-relative path against a

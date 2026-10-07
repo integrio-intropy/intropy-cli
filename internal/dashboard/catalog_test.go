@@ -343,3 +343,57 @@ func containsAll(s string, subs ...string) bool {
 	}
 	return true
 }
+
+// With message wiring, a component's wires are its messages: a routing loader
+// lists each message it routes, with that message's contract, its route's
+// filter and the components on that message — not the whole topic's.
+func TestCatalogResolvesEachRoutedMessage(t *testing.T) {
+	tmp := t.TempDir()
+	t.Chdir(tmp)
+	writeScaffold(t, filepath.Join(tmp, "order-flow", "order-loader"), "loader", "v0.2.0")
+	writeSystemHost(t, filepath.Join(tmp, "order-flow", "host"), "order-flow")
+
+	group, err := json.Marshal(map[string]any{"name": "order-flow", "messages": []topology.Message{
+		{Name: "fluxia.orders.order-placed", Contract: "Contracts.Order",
+			Channel:    topology.Channel{PubSub: "pubsub", Topic: "orders"},
+			Publishers: []string{"order-extractor"}, Subscribers: []string{"order-loader"}},
+		{Name: "fluxia.orders.order-cancelled", Contract: "Contracts.OrderCancellation",
+			Channel:    topology.Channel{PubSub: "pubsub", Topic: "orders"},
+			Publishers: []string{"cancellation-extractor"}, Subscribers: []string{"cancellation-loader", "order-loader"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	topo := topology.Entry{Path: "order-flow", Topology: topology.Topology{
+		APIVersion: topology.APIVersion,
+		Kind:       topology.Kind,
+		System:     "order-flow",
+		Components: []topology.Component{{
+			Name: "order-loader",
+			Kind: "loader",
+			Subscribes: []topology.TopicRef{{PubSub: "pubsub", Topic: "orders", Routes: []topology.Route{
+				{Message: "fluxia.orders.order-placed"},
+				{Message: "fluxia.orders.order-cancelled", When: "event.data.reason != 'fraud-review'"},
+			}, Default: topology.DefaultIgnore}},
+		}},
+		Topics: []topology.Topic{{PubSub: "pubsub", Topic: "orders",
+			Messages: []string{"fluxia.orders.order-cancelled", "fluxia.orders.order-placed"}}},
+		MessageGroups: []json.RawMessage{group},
+	}}
+
+	h := testHandlerWithTopo(t, ".", topoOnce([]topology.Entry{topo}, nil))
+	entry := warmCatalog(t, h, "order-flow/order-loader")
+
+	if len(entry.Subscribes) != 2 {
+		t.Fatalf("subscribes = %+v, want one per routed message", entry.Subscribes)
+	}
+	placed, cancelled := entry.Subscribes[0], entry.Subscribes[1]
+	if placed.Message != "fluxia.orders.order-placed" || placed.Contract != "Contracts.Order" || placed.When != "" {
+		t.Errorf("order-placed = %+v", placed)
+	}
+	if cancelled.Message != "fluxia.orders.order-cancelled" || cancelled.Contract != "Contracts.OrderCancellation" ||
+		cancelled.When != "event.data.reason != 'fraud-review'" ||
+		strings.Join(cancelled.Publishers, ",") != "cancellation-extractor" {
+		t.Errorf("order-cancelled = %+v", cancelled)
+	}
+}

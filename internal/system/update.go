@@ -413,15 +413,11 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 		}
 		if c.Message != nil && c.Message.Kind == MessagePublish && !seenMessages[c.Message.Name] {
 			seenMessages[c.Message.Name] = true
-			e := map[string]any{
-				template.KeyName: c.Message.Name,
-				"type":           c.Message.Name,
-				"publisher":      c.AppID,
+			msg := Message{Name: c.Message.Name, Type: c.Message.Name, Contract: c.Message.Contract, Publisher: c.AppID}
+			if c.Topic != nil {
+				msg.Pubsub, msg.Topic = c.Topic.Pubsub, c.Topic.Name
 			}
-			if c.Message.Contract != "" {
-				e[template.KeyContract] = c.Message.Contract
-			}
-			messages = append(messages, e)
+			messages = append(messages, MessageEntry(msg))
 		}
 	}
 

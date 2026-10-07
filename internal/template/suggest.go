@@ -25,6 +25,14 @@ func Suggest(fields []FieldSpec, facts *WorkspaceFacts, confirmed map[string]any
 	}
 	out := map[string][]string{}
 	for _, f := range fields {
+		if f.Type == "array" {
+			for _, item := range f.Items {
+				if c := suggestItem(f, item, facts); len(c) > 0 {
+					out[ItemSuggestionKey(f.Name, item.Name)] = c
+				}
+			}
+			continue
+		}
 		candidates := suggestField(f, facts, confirmed)
 		candidates = dropDefaultCandidate(candidates, f)
 		if len(candidates) > 0 {
@@ -32,6 +40,29 @@ func Suggest(fields []FieldSpec, facts *WorkspaceFacts, confirmed map[string]any
 		}
 	}
 	return out
+}
+
+// ItemSuggestionKey is the key Suggest files an array element field's
+// candidates under: the array's name and the element field's, dot-joined.
+func ItemSuggestionKey(array, item string) string { return array + "." + item }
+
+// AttachSuggestions copies a Suggest result onto a field and, for an array,
+// onto its element fields.
+func AttachSuggestions(f *FieldSpec, suggestions map[string][]string) {
+	f.Suggestions = suggestions[f.Name]
+	for i := range f.Items {
+		f.Items[i].Suggestions = suggestions[ItemSuggestionKey(f.Name, f.Items[i].Name)]
+	}
+}
+
+// suggestItem is the registry for an array element field: the message of a
+// list-shaped message parameter (a loader's routes) takes the workspace's
+// message candidates, as a scalar message parameter does.
+func suggestItem(array, item FieldSpec, facts *WorkspaceFacts) []string {
+	if facts.IsMessageParameter(array.Name) && item.Name == KeyMessage {
+		return facts.MessageCandidates()
+	}
+	return nil
 }
 
 // suggestField is the convention registry: parameter name -> candidates

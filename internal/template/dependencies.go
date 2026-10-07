@@ -96,7 +96,15 @@ func processDependencies(tmpl *Template, values map[string]any, outputDir string
 		}
 		if existing != nil {
 			warnDependencyDrift(dc.stderr, name, dep, depValues, existing.Values)
-			fmt.Fprintf(dc.stderr, "dependency %s already scaffolded from %s — skipped\n", name, dep.Template)
+			added, err := fillDependency(dep, depDir, depValues, dc)
+			if err != nil {
+				return nil, nil, err
+			}
+			if len(added) == 0 {
+				fmt.Fprintf(dc.stderr, "dependency %s already scaffolded from %s — skipped\n", name, dep.Template)
+			} else {
+				fmt.Fprintf(dc.stderr, "dependency %s already scaffolded from %s — added %s\n", name, dep.Template, strings.Join(added, ", "))
+			}
 			results = append(results, DependencyResult{Template: dep.Template, OutputDir: depDir, Action: "exists"})
 			continue
 		}
@@ -158,6 +166,37 @@ func renderDependency(dep DependencySpec, name, depDir string, sets map[string]a
 	fmt.Fprintf(dc.stderr, "created dependency %s from template %s\n", name, dep.Template)
 	own := DependencyResult{Template: dep.Template, OutputDir: depDir, Action: "created"}
 	return append([]DependencyResult{own}, subResults...), nil
+}
+
+// fillDependency renders an already scaffolded dependency create-only: a
+// file its skeleton would produce for this component's values but the
+// directory lacks is added — a shared-contracts project gains the record of
+// a second message's payload type — and every existing file is left as it
+// is, however it differs. It returns the added paths.
+func fillDependency(dep DependencySpec, depDir string, sets map[string]any, dc *depContext) ([]string, error) {
+	depRoot := filepath.Join(dc.repoRoot, dep.Template)
+	depTmpl, err := LoadTemplate(filepath.Join(depRoot, templateManifestName))
+	if err != nil {
+		return nil, fmt.Errorf("dependency %s: %w", dep.Template, err)
+	}
+	values, err := Resolve(depTmpl, nil, nil, sets, nil)
+	if err != nil {
+		return nil, fmt.Errorf("dependency %s: %w", dep.Template, err)
+	}
+	// Without a baseline or Force, an update render writes only what is
+	// absent: a differing file is a conflict, and a conflict is never written.
+	outcomes, err := RenderUpdate(filepath.Join(depRoot, templateSkeletonDir), depDir, values, depTmpl.Spec.Files,
+		RenderUpdateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("dependency %s: %w", dep.Template, err)
+	}
+	var added []string
+	for _, o := range outcomes {
+		if o.Outcome == OutcomeCreated {
+			added = append(added, o.Path)
+		}
+	}
+	return added, nil
 }
 
 // renderDependencyValues renders the dependency's values map against the

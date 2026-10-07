@@ -47,7 +47,7 @@ interface Props {
  *  look like. */
 export function ContractDetail({ entry, edge, contract, onClose }: Props) {
   const schema = contract?.schema
-  const name = edge.contract ?? edge.topic
+  const name = edge.contract ?? edge.message ?? edge.topic
 
   return (
     <aside className="flow-detail contract-detail">
@@ -66,6 +66,8 @@ export function ContractDetail({ entry, edge, contract, onClose }: Props) {
       <Section title="Wire" icon={CategoryIcon}>
         <div className="meta-grid">
           <Wire label="Topic" value={`${edge.pubsub}/${edge.topic}`} />
+          {edge.message && <Wire label="Message" value={edge.message} />}
+          {edge.when && <Wire label="Route filter" value={edge.when} />}
           <Wire label="Published by" value={list(edge.publishers, entry.component)} />
           <Wire label="Subscribed by" value={list(edge.subscribers, entry.component)} />
         </div>

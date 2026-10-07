@@ -47,17 +47,7 @@ func buildPayload(m *Model, outputDir, kebab string) (map[string]any, error) {
 	// the section ignore the key; message-aware templates render from it.
 	messages := make([]any, len(m.Messages))
 	for i, msg := range m.Messages {
-		e := map[string]any{
-			"name": msg.Name,
-			"type": msg.Type,
-		}
-		if msg.Contract != "" {
-			e["contract"] = msg.Contract
-		}
-		if msg.Publisher != "" {
-			e["publisher"] = msg.Publisher
-		}
-		messages[i] = e
+		messages[i] = MessageEntry(msg)
 	}
 
 	payload := map[string]any{
@@ -78,6 +68,28 @@ func buildPayload(m *Model, outputDir, kebab string) (map[string]any, error) {
 		}
 	}
 	return payload, nil
+}
+
+// MessageEntry is one message as the system-host template consumes it, in
+// the sys create payload and in the message list sys update stores. The
+// channel rides along so the host declares a message on a topic other than
+// its name — what lets several messages share the one topic a loader routes.
+func MessageEntry(msg Message) map[string]any {
+	e := map[string]any{
+		"name": msg.Name,
+		"type": msg.Type,
+	}
+	if msg.Contract != "" {
+		e["contract"] = msg.Contract
+	}
+	if msg.Publisher != "" {
+		e["publisher"] = msg.Publisher
+	}
+	if msg.Topic != "" {
+		e[template.KeyPubsub] = msg.Pubsub
+		e[template.KeyTopic] = msg.Topic
+	}
+	return e
 }
 
 // ComponentEntry is one component's wiring as the system-host template
@@ -109,6 +121,18 @@ func ComponentEntry(c Component) map[string]any {
 		case MessageSubscribe:
 			entry[template.KeySubscribes] = c.Message.Name
 		}
+	}
+	if len(c.Routes) > 0 {
+		routes := make([]any, len(c.Routes))
+		for i, r := range c.Routes {
+			route := map[string]any{template.KeyMessage: r.Message}
+			if r.When != "" {
+				route[template.KeyWhen] = r.When
+			}
+			routes[i] = route
+		}
+		entry[template.KeyRoutes] = routes
+		entry[template.KeyDefault] = c.Default
 	}
 	switch len(c.Ports) {
 	case 0:

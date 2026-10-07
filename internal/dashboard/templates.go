@@ -282,7 +282,7 @@ func (s *apiServer) suggestForDir(result *template.DescribeResult, dir string, c
 	facts.SetWiringDirection(template.MessageDirection(result.Labels[template.TemplateBlockKindLabel]))
 	suggestions := template.Suggest(result.Fields, facts, confirmed)
 	for i := range result.Fields {
-		result.Fields[i].Suggestions = suggestions[result.Fields[i].Name]
+		template.AttachSuggestions(&result.Fields[i], suggestions)
 	}
 	return nil
 }

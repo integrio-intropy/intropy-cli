@@ -52,6 +52,10 @@ type Spec struct {
 	// spec.parameters.properties, since Go maps don't preserve YAML order.
 	// Populated by UnmarshalYAML.
 	parameterOrder []string
+
+	// itemOrder is parameterOrder for the element fields of each array
+	// parameter whose items are objects, keyed by the parameter's name.
+	itemOrder map[string][]string
 }
 
 // FileRule conditionally includes part of a skeleton, so one template can serve
@@ -69,9 +73,17 @@ type Spec struct {
 // The first rule whose Path matches decides, and a path no rule matches is
 // included — so a template without spec.files renders exactly as it did before
 // this field existed.
+//
+// Each names a list parameter: a matched path renders once per element, with
+// the element bound under As ("item" when unset) and its index under
+// As+"Index", so the path itself can name the element — for example
+// src/Routes/{{ pascal .route.message }}/Deserializer.cs.tmpl. An empty list
+// renders nothing. When, if also set, gates the whole expansion.
 type FileRule struct {
 	Path string `yaml:"path" json:"path"`
-	When string `yaml:"when" json:"when"`
+	When string `yaml:"when" json:"when,omitempty"`
+	Each string `yaml:"each" json:"each,omitempty"`
+	As   string `yaml:"as" json:"as,omitempty"`
 }
 
 // DependencySpec declares another template in the same library that must
@@ -141,7 +153,41 @@ func (s *Spec) UnmarshalYAML(node *yaml.Node) error {
 	s.Local = r.Local
 	s.GitOps = r.GitOps
 	s.parameterOrder = extractPropertyOrder(node)
+	s.itemOrder = extractItemOrder(node)
 	return nil
+}
+
+// extractItemOrder reads, for every array parameter whose items are objects,
+// the declaration order of the element's properties.
+func extractItemOrder(specNode *yaml.Node) map[string][]string {
+	params := childByKeyOrEmpty(specNode, "parameters")
+	props := childByKeyOrEmpty(params, "properties")
+	if props.Kind != yaml.MappingNode {
+		return nil
+	}
+	out := map[string][]string{}
+	for i := 0; i+1 < len(props.Content); i += 2 {
+		itemProps := childByKeyOrEmpty(childByKeyOrEmpty(props.Content[i+1], "items"), "properties")
+		if itemProps.Kind != yaml.MappingNode {
+			continue
+		}
+		order := make([]string, 0, len(itemProps.Content)/2)
+		for j := 0; j < len(itemProps.Content); j += 2 {
+			order = append(order, itemProps.Content[j].Value)
+		}
+		out[props.Content[i].Value] = order
+	}
+	return out
+}
+
+// childByKeyOrEmpty is childByKey that never returns nil, so lookups chain.
+func childByKeyOrEmpty(mapping *yaml.Node, key string) *yaml.Node {
+	if mapping != nil {
+		if n := childByKey(mapping, key); n != nil {
+			return n
+		}
+	}
+	return &yaml.Node{}
 }
 
 func extractPropertyOrder(specNode *yaml.Node) []string {
@@ -184,11 +230,19 @@ type FieldSpec struct {
 	Name        string `json:"name"`
 	Title       string `json:"title,omitempty"`
 	Description string `json:"description,omitempty"`
-	Type        string `json:"type"` // "string" | "boolean" | "integer" | "number"
+	Type        string `json:"type"` // "string" | "boolean" | "integer" | "number" | "array"
 	Enum        []any  `json:"enum,omitempty"`
 	Default     any    `json:"default,omitempty"`
 	Pattern     string `json:"pattern,omitempty"`
 	Required    bool   `json:"required"`
+
+	// Items are the element fields of an array parameter whose items are
+	// objects, in declaration order — each element is an object with these
+	// keys. MinItems and MaxItems bound the element count when the schema
+	// declares them.
+	Items    []FieldSpec `json:"items,omitempty"`
+	MinItems *int        `json:"minItems,omitempty"`
+	MaxItems *int        `json:"maxItems,omitempty"`
 
 	// Suggestions carries prompt-time candidate values derived from the
 	// workspace the create runs in (see Suggest). It is populated by
@@ -234,7 +288,11 @@ func (t *Template) Fields() []FieldSpec {
 	out := make([]FieldSpec, 0, len(t.Spec.parameterOrder))
 	for _, name := range t.Spec.parameterOrder {
 		raw, _ := props[name].(map[string]any)
-		out = append(out, fieldFromSchema(name, raw, required[name]))
+		f := fieldFromSchema(name, raw, required[name])
+		if f.Type == "array" {
+			f.Items, f.MinItems, f.MaxItems = itemFields(raw, t.Spec.itemOrder[name])
+		}
+		out = append(out, f)
 	}
 	return out
 }
@@ -253,6 +311,46 @@ func fieldFromSchema(name string, schema map[string]any, required bool) FieldSpe
 		f.Enum = e
 	}
 	return f
+}
+
+// identifierPattern is the shape of a value name a spec.files expansion binds
+// or reads: a Go template field name.
+var identifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// itemFields reads an array parameter's element fields — when its items are
+// objects — and its element-count bounds.
+func itemFields(schema map[string]any, order []string) (items []FieldSpec, minItems, maxItems *int) {
+	minItems, maxItems = schemaInt(schema["minItems"]), schemaInt(schema["maxItems"])
+	itemSchema, _ := schema["items"].(map[string]any)
+	props, _ := itemSchema["properties"].(map[string]any)
+	if props == nil {
+		return nil, minItems, maxItems
+	}
+	required := map[string]bool{}
+	if list, ok := itemSchema["required"].([]any); ok {
+		for _, r := range list {
+			if s, ok := r.(string); ok {
+				required[s] = true
+			}
+		}
+	}
+	for _, name := range order {
+		raw, _ := props[name].(map[string]any)
+		items = append(items, fieldFromSchema(name, raw, required[name]))
+	}
+	return items, minItems, maxItems
+}
+
+// schemaInt reads a JSON Schema count, which YAML decodes as an int.
+func schemaInt(v any) *int {
+	switch n := v.(type) {
+	case int:
+		return &n
+	case float64:
+		i := int(n)
+		return &i
+	}
+	return nil
 }
 
 // LoadTemplate reads and validates a template.yaml file.
@@ -291,15 +389,23 @@ func (t *Template) validate() error {
 		if rule.Path == "" {
 			return fmt.Errorf("spec.files[%d]: path is required", i)
 		}
-		// A rule with no condition either does nothing or means the author
-		// forgot the condition; neither deserves to render.
-		if rule.When == "" {
-			return fmt.Errorf("spec.files[%d] (%s): when is required", i, rule.Path)
+		// A rule with neither a condition nor an expansion does nothing, or
+		// means the author forgot the condition; neither deserves to render.
+		if rule.When == "" && rule.Each == "" {
+			return fmt.Errorf("spec.files[%d] (%s): when or each is required", i, rule.Path)
+		}
+		if rule.Each != "" && !identifierPattern.MatchString(rule.Each) {
+			return fmt.Errorf("spec.files[%d] (%s): each must name a parameter, got %q", i, rule.Path, rule.Each)
+		}
+		if rule.As != "" && !identifierPattern.MatchString(rule.As) {
+			return fmt.Errorf("spec.files[%d] (%s): as must be an identifier, got %q", i, rule.Path, rule.As)
 		}
 		// Parsed here so a syntax error surfaces at load time rather than
 		// partway through a render.
-		if _, err := compileExpr(rule.When); err != nil {
-			return fmt.Errorf("spec.files[%d] (%s): invalid when: %w", i, rule.Path, err)
+		if rule.When != "" {
+			if _, err := compileExpr(rule.When); err != nil {
+				return fmt.Errorf("spec.files[%d] (%s): invalid when: %w", i, rule.Path, err)
+			}
 		}
 	}
 	for i, dep := range t.Spec.Dependencies {

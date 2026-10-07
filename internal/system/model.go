@@ -31,6 +31,9 @@ type Message struct {
 	Type      string `json:"type,omitempty"`
 	Contract  string `json:"contract,omitempty"`
 	Publisher string `json:"publisher,omitempty"`
+	// Pubsub and Topic are the channel the message travels: its producer's.
+	Pubsub string `json:"pubsub,omitempty"`
+	Topic  string `json:"topic,omitempty"`
 }
 
 // Component is one assembled system block. Its wiring is shape-driven:
@@ -52,8 +55,17 @@ type Component struct {
 	Path  string   `json:"path"`            // scaffold directory, for error messages
 
 	// Message carries the component's message wiring: what it publishes or
-	// subscribes by name.
+	// subscribes by name. A routing subscriber's Message is its first route.
 	Message *MessageWiring
+
+	// Routes are a subscriber's rules in the order the sidecar evaluates
+	// them, and Default what becomes of the events none of them matches.
+	Routes  []template.Route
+	Default string
+
+	// channel is the topic the record declares it publishes or subscribes
+	// on; empty for a record that predates the value.
+	channel string
 
 	// topicContract is the contract type of Topic, carried on the
 	// component because topics dedupe across components: the model's

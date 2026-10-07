@@ -9,7 +9,6 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/Masterminds/sprig/v3"
 	"github.com/santhosh-tekuri/jsonschema/v5"
 	"gopkg.in/yaml.v3"
 )
@@ -219,7 +218,7 @@ func promptForMissingRequired(fields []FieldSpec, values map[string]any, facts *
 		return missingRequiredError(missing, suggestions, facts)
 	}
 	for _, f := range missing {
-		f.Suggestions = suggestions[f.Name]
+		AttachSuggestions(&f, suggestions)
 		ans, _, err := prompter.Prompt(f)
 		if err != nil {
 			return err
@@ -377,7 +376,7 @@ func validateSchema(schema map[string]any, values map[string]any) error {
 // once values exist.
 func compileExpr(expr string) (*template.Template, error) {
 	return template.New("expr").
-		Funcs(sprig.TxtFuncMap()).
+		Funcs(templateFuncs()).
 		Option("missingkey=error").
 		Parse(expr)
 }
@@ -417,6 +416,8 @@ func isEmpty(v any) bool {
 		return true
 	case string:
 		return t == ""
+	case []any:
+		return len(t) == 0
 	default:
 		return false
 	}

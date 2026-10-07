@@ -25,6 +25,22 @@ const (
 	KeyPublishes  = "publishes"
 	KeySubscribes = "subscribes"
 
+	// The routed subscription keys. A consuming block that routes several
+	// messages records routes — a list of {message, when?}, in the order the
+	// sidecar evaluates them — instead of subscribes, and default for what
+	// becomes of the events no route matches. Channel overrides the topic a
+	// block publishes or subscribes on, which otherwise is the message name;
+	// messages sharing one topic is what lets one loader route them.
+	KeyRoutes  = "routes"
+	KeyMessage = "message"
+	KeyWhen    = "when"
+	KeyDefault = "default"
+	KeyChannel = "channel"
+
+	// The values of KeyDefault.
+	DefaultDeadLetter = "dead-letter"
+	DefaultIgnore     = "ignore"
+
 	// DefaultPubsub is the pub/sub component used for every internal message.
 	DefaultPubsub = "pubsub"
 )
@@ -85,6 +101,75 @@ func ReadPublishesMessage(e ScaffoldEntry) (string, error) {
 // sibling component in the same workspace.
 func ReadSubscribesMessage(e ScaffoldEntry) (string, error) {
 	return RecordValue(e, KeySubscribes)
+}
+
+// Route is one rule of a routed subscription: the message it takes and the
+// content filter (a Dapr CEL expression) its events must also match, if any.
+type Route struct {
+	Message string
+	When    string
+}
+
+// ReadRoutes strictly reads a consuming record's routes: a non-empty list of
+// objects, each naming a message, no message twice. A record without routes
+// subscribes one message through the scalar subscribes value — one route
+// with no filter.
+func ReadRoutes(e ScaffoldEntry) ([]Route, error) {
+	raw, ok := e.Values[KeyRoutes]
+	if !ok {
+		message, err := ReadSubscribesMessage(e)
+		if err != nil {
+			return nil, err
+		}
+		return []Route{{Message: message}}, nil
+	}
+	record := filepath.Join(e.Path, filepath.FromSlash(ScaffoldRelPath))
+	list, ok := raw.([]any)
+	if !ok || len(list) == 0 {
+		return nil, fmt.Errorf("%s: values.%s must be a non-empty list of routes", record, KeyRoutes)
+	}
+	routes := make([]Route, 0, len(list))
+	seen := map[string]bool{}
+	for i, item := range list {
+		m, ok := item.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("%s: values.%s[%d] has type %T, expected an object", record, KeyRoutes, i, item)
+		}
+		message, _ := m[KeyMessage].(string)
+		if message == "" {
+			return nil, fmt.Errorf("%s: values.%s[%d].%s is missing", record, KeyRoutes, i, KeyMessage)
+		}
+		if seen[message] {
+			return nil, fmt.Errorf("%s: values.%s routes message %q twice; give it one route, with one filter", record, KeyRoutes, message)
+		}
+		seen[message] = true
+		when, _ := m[KeyWhen].(string)
+		routes = append(routes, Route{Message: message, When: when})
+	}
+	return routes, nil
+}
+
+// ReadDefault reads what a routed record does with the events no route
+// matches: DefaultDeadLetter unless the record says otherwise.
+func ReadDefault(e ScaffoldEntry) (string, error) {
+	v, err := RecordValueDefault(e, KeyDefault, DefaultDeadLetter)
+	if err != nil {
+		return "", err
+	}
+	if v != DefaultDeadLetter && v != DefaultIgnore {
+		return "", fmt.Errorf("%s: values.%s is %q, expected %q or %q",
+			filepath.Join(e.Path, filepath.FromSlash(ScaffoldRelPath)), KeyDefault, v, DefaultDeadLetter, DefaultIgnore)
+	}
+	return v, nil
+}
+
+// ReadChannel reads the topic a record publishes or subscribes on, when it
+// overrides the default (the message name); empty when it does not.
+func ReadChannel(e ScaffoldEntry) (string, error) {
+	if _, ok := e.Values[KeyChannel]; !ok {
+		return "", nil
+	}
+	return RecordValue(e, KeyChannel)
 }
 
 // MessageValue is the scalar message value as writers store it in the
