@@ -416,8 +416,6 @@ func isEmpty(v any) bool {
 		return true
 	case string:
 		return t == ""
-	case []any:
-		return len(t) == 0
 	default:
 		return false
 	}
