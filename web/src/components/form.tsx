@@ -252,7 +252,7 @@ function ElementField({
         className={filter ? 'form-cel' : undefined}
         value={text}
         pattern={item.pattern || undefined}
-        placeholder={filter ? "event.data.reason != 'fraud-review'" : undefined}
+        placeholder={filter ? "event.data.status == '0'" : undefined}
         spellCheck={filter ? false : undefined}
         list={item.suggestions && item.suggestions.length > 0 ? listId : undefined}
         onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}

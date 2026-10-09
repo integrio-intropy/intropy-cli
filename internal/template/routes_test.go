@@ -177,6 +177,31 @@ func TestReadRoutes(t *testing.T) {
 		t.Errorf("scalar routes = %+v, %v", got, err)
 	}
 
+	empty := ScaffoldEntry{Path: "l", Scaffold: Scaffold{Values: map[string]any{KeySubscribes: "order-placed", KeyRoutes: []any{}}}}
+	if got, err := ReadRoutes(empty); err != nil || !reflect.DeepEqual(got, []Route{{Message: "order-placed"}}) {
+		t.Errorf("empty routes = %+v, %v; want the subscribed message, unfiltered", got, err)
+	}
+
+	// The subscribed message may route anywhere in the list, filtered or not.
+	several := ScaffoldEntry{Path: "l", Scaffold: Scaffold{Values: map[string]any{
+		KeySubscribes: "order-placed",
+		KeyRoutes: []any{
+			map[string]any{KeyMessage: "order-cancelled"},
+			map[string]any{KeyMessage: "order-placed", KeyWhen: "event.data.total > 0"},
+		},
+	}}}
+	if got, err := ReadRoutes(several); err != nil || len(got) != 2 || got[1].When != "event.data.total > 0" {
+		t.Errorf("several routes = %+v, %v", got, err)
+	}
+
+	unrouted := ScaffoldEntry{Path: "l", Scaffold: Scaffold{Values: map[string]any{
+		KeySubscribes: "order-placed",
+		KeyRoutes:     []any{map[string]any{KeyMessage: "order-cancelled"}},
+	}}}
+	if _, err := ReadRoutes(unrouted); err == nil || !strings.Contains(err.Error(), `does not route the subscribed message "order-placed"`) {
+		t.Errorf("err = %v, want a missing-subscribed-route error", err)
+	}
+
 	twice := ScaffoldEntry{Path: "l", Scaffold: Scaffold{Values: map[string]any{KeyRoutes: []any{
 		map[string]any{KeyMessage: "order-placed"}, map[string]any{KeyMessage: "order-placed"},
 	}}}}

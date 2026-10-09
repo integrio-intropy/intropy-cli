@@ -388,9 +388,11 @@ func TestRealSystemUpdateFoldsBlockOrphan(t *testing.T) {
 	tmpl := loadRealHostTemplate(t)
 
 	// Baseline: extractor-only message-first record, fully rendered — the
-	// state sys create leaves behind.
+	// state sys create leaves behind, the extractor's channel included.
 	base := messageFirstPayload()
-	base["components"] = []any{payloadExtractor("order-sweep", "order-sweep-source")}
+	sweep := payloadExtractor("order-sweep", "order-sweep-source")
+	sweep["topic"] = map[string]any{"pubsub": msgPub, "name": msgName}
+	base["components"] = []any{sweep}
 	base["ports"] = []any{map[string]any{"name": "order-sweep-source"}}
 	baseValues, err := template.Resolve(tmpl, nil, nil, base, nil)
 	if err != nil {
@@ -450,7 +452,7 @@ func TestRealSystemUpdateFoldsBlockOrphan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Update: %v\nstderr: %s", err, stderr.String())
 	}
-	for _, want := range []string{"updating " + hostDir, "added 1 component(s)"} {
+	for _, want := range []string{"updating " + hostDir, "added 1, refreshed 0 component(s)"} {
 		if !strings.Contains(stderr.String(), want) {
 			t.Errorf("stderr missing %q:\n%s", want, stderr.String())
 		}
@@ -463,7 +465,8 @@ func TestRealSystemUpdateFoldsBlockOrphan(t *testing.T) {
 	for _, want := range []string{
 		`.Publishes(Messages.Orders)`,
 		`builder.AddLoader("order-file-loader")`,
-		`.Subscribes(Messages.Orders)`,
+		`.Subscribes(Messages.Orders,`,
+		`.IgnoreOthers())`,
 		`.To(Ports.OrderFileLoaderDestination)`,
 	} {
 		if !strings.Contains(string(system), want) {
@@ -497,8 +500,36 @@ func TestRealSystemUpdateFoldsBlockOrphan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Update: %v\nstderr: %s", err, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "no orphaned components found") {
+	if !strings.Contains(stderr.String(), "no orphaned or changed components found") {
 		t.Errorf("second run stderr = %q, want the empty state", stderr.String())
+	}
+
+	// The loader owns its subscription: a filter added to its own record
+	// reaches the declaration on the next update.
+	loaderRec, err := template.LoadScaffold(filepath.Join(orphanDir, filepath.FromSlash(template.ScaffoldRelPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaderRec.Values[template.KeyRoutes] = []any{map[string]any{
+		template.KeyMessage: msgName,
+		template.KeyWhen:    "event.data.total > 0",
+	}}
+	writeRecord(t, orphanDir, *loaderRec)
+
+	stderr.Reset()
+	err = Update(t.Context(), UpdateOptions{StartDir: ws, Stderr: &stderr, Stdout: io.Discard, Source: src, Version: version})
+	if err != nil {
+		t.Fatalf("refresh Update: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "refreshing components order-file-loader\n") {
+		t.Errorf("refresh stderr missing the refreshed loader:\n%s", stderr.String())
+	}
+	system, err = os.ReadFile(filepath.Join(hostDir, "OrderFlowSystem.cs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `when: "event.data.total > 0"`; !strings.Contains(string(system), want) {
+		t.Errorf("OrderFlowSystem.cs missing %q:\n%s", want, system)
 	}
 }
 

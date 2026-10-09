@@ -77,7 +77,13 @@ func parseLoader(e template.ScaffoldEntry, c *Component) error {
 		return err
 	}
 	c.Routes = routes
-	c.Message = &MessageWiring{Kind: MessageSubscribe, Name: routes[0].Message}
+	// The pipeline's message is subscribes; a record routing without it
+	// predates the key and is typed by its first route.
+	message, ok := template.SoftValue(e.Values, template.KeySubscribes)
+	if !ok {
+		message = routes[0].Message
+	}
+	c.Message = &MessageWiring{Kind: MessageSubscribe, Name: message}
 	return parseSinglePort(e, c)
 }
 

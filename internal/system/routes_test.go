@@ -74,6 +74,30 @@ func TestAssembleRoutesMessagesSharingATopic(t *testing.T) {
 	}
 }
 
+// The pipeline's message is the record's subscribes, wherever it sits in the
+// routes the sidecar evaluates.
+func TestAssembleTypesTheLoaderBySubscribes(t *testing.T) {
+	l := routingLoader("order-loader", "orders", "",
+		template.Route{Message: "order-placed"},
+		template.Route{Message: "order-cancelled", When: "event.data.total > 0"})
+	l.Values[template.KeySubscribes] = "order-cancelled"
+	model, err := Assemble([]template.ScaffoldEntry{
+		channeled("order-extractor", "order-placed", "orders"),
+		channeled("cancellation-extractor", "order-cancelled", "orders"),
+		l,
+	}, discardWarnf)
+	if err != nil {
+		t.Fatalf("Assemble: %v", err)
+	}
+	entry := ComponentEntry(model.Components[2])
+	if entry[template.KeySubscribes] != "order-cancelled" {
+		t.Errorf("subscribes = %v, want the pipeline's message", entry[template.KeySubscribes])
+	}
+	if routes := entry[template.KeyRoutes].([]any); len(routes) != 2 {
+		t.Errorf("routes = %#v", routes)
+	}
+}
+
 // A loader cannot route a message published on another topic than the one
 // it consumes; the error names both topics and how to fix it.
 func TestAssembleRefusesARoutedMessageOnAnotherTopic(t *testing.T) {
@@ -95,8 +119,8 @@ func TestAssembleRefusesARoutedMessageOnAnotherTopic(t *testing.T) {
 }
 
 // Without a recorded channel a loader consumes its first route's producer's
-// topic; a scalar subscribes record is one route that dead-letters the rest.
-func TestAssembleScalarSubscriberIsOneDeadLetteringRoute(t *testing.T) {
+// topic; a scalar subscribes record is one route that ignores the rest.
+func TestAssembleScalarSubscriberIsOneIgnoringRoute(t *testing.T) {
 	model, err := Assemble([]template.ScaffoldEntry{
 		extractor("order-extractor", "order-extractor", "order-created"),
 		loader("order-loader", "order-loader", "order-created"),
@@ -105,7 +129,7 @@ func TestAssembleScalarSubscriberIsOneDeadLetteringRoute(t *testing.T) {
 		t.Fatalf("Assemble: %v", err)
 	}
 	l := model.Components[1]
-	if l.Topic == nil || l.Topic.Name != "order-created" || l.Default != template.DefaultDeadLetter ||
+	if l.Topic == nil || l.Topic.Name != "order-created" || l.Default != template.DefaultIgnore ||
 		!reflect.DeepEqual(l.Routes, []template.Route{{Message: "order-created"}}) {
 		t.Errorf("loader = %+v", l)
 	}

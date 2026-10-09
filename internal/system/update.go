@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -16,10 +17,10 @@ import (
 	"github.com/integrio-intropy/intropy-cli/internal/topology"
 )
 
-// ErrNoOrphans reports an update that found nothing to add. Callers can
-// match it to suppress the message; the update itself prints the empty
-// state and returns nil.
-var ErrNoOrphans = errors.New("no orphaned components found")
+// ErrNoOrphans reports an update that found nothing to add or refresh.
+// Callers can match it to suppress the message; the update itself prints
+// the empty state and returns nil.
+var ErrNoOrphans = errors.New("no orphaned or changed components found")
 
 // UpdateOptions configures Update. StartDir is the invocation directory —
 // the workspace root, by the command's contract — and every writer has the
@@ -48,27 +49,29 @@ type UpdateOptions struct {
 // UpdateResult is the machine-readable summary --output json writes.
 // Field names are stable and additive-only.
 type UpdateResult struct {
-	HostDir  string                 `json:"hostDir"`
-	System   string                 `json:"system"`
-	Added    []string               `json:"added"`
-	Kept     []string               `json:"kept,omitempty"` // declared components whose scaffold is gone
-	Files    []template.FileOutcome `json:"files,omitempty"`
-	DryRun   bool                   `json:"dryRun"`
-	Template string                 `json:"template,omitempty"`
-	Owner    string                 `json:"owner,omitempty"`
-	Repo     string                 `json:"repo,omitempty"`
-	Version  string                 `json:"version,omitempty"`
+	HostDir   string                 `json:"hostDir"`
+	System    string                 `json:"system"`
+	Added     []string               `json:"added"`
+	Refreshed []string               `json:"refreshed,omitempty"` // declared components rewritten from their scaffold
+	Kept      []string               `json:"kept,omitempty"`      // declared components whose scaffold is gone
+	Files     []template.FileOutcome `json:"files,omitempty"`
+	DryRun    bool                   `json:"dryRun"`
+	Template  string                 `json:"template,omitempty"`
+	Owner     string                 `json:"owner,omitempty"`
+	Repo      string                 `json:"repo,omitempty"`
+	Version   string                 `json:"version,omitempty"`
 }
 
 // updatePlan is the pure half of an update: the located host, the baseline
 // the host record stores, the orphans a workspace scan found, and the
 // merged values a re-render consumes.
 type updatePlan struct {
-	hostDir  string             // host project directory, as located
-	hostRec  *template.Scaffold // the host's own record
-	baseline map[string]any     // the record's values, preserved verbatim
-	orphans  []Component        // assemblable scaffolds the record does not declare
-	kept     []string           // baseline appIds with no scaffold left
+	hostDir   string             // host project directory, as located
+	hostRec   *template.Scaffold // the host's own record
+	baseline  map[string]any     // the record's values, preserved verbatim
+	orphans   []Component        // assemblable scaffolds the record does not declare
+	refreshed []Component        // declared components whose scaffold now says something else
+	kept      []string           // baseline appIds with no scaffold left
 }
 
 func (o *UpdateOptions) applyDefaults() {
@@ -87,11 +90,12 @@ func (o *UpdateOptions) applyDefaults() {
 }
 
 // Update folds orphaned components — scaffolded integrations the host's
-// record does not declare — into the workspace's system host. The declared
-// baseline is the host record's stored values, never a re-scan, so a
-// component whose scaffold disappeared stays declared. The record is
-// rewritten last, after every declaration file landed, and never on a
-// conflict, so a failed update retries against an honest baseline.
+// record does not declare — into the workspace's system host, and rewrites
+// declared components whose scaffold records changed: a component owns its
+// wiring, its subscription rules included. The baseline is the host record's
+// stored values, so a component whose scaffold disappeared stays declared.
+// The record is rewritten last, after every declaration file landed, and
+// never on a conflict, so a failed update retries against an honest baseline.
 func Update(ctx context.Context, opts UpdateOptions) error {
 	opts.applyDefaults()
 
@@ -99,7 +103,7 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 	if err != nil {
 		return err
 	}
-	if len(plan.orphans) == 0 {
+	if len(plan.orphans) == 0 && len(plan.refreshed) == 0 {
 		fmt.Fprintln(opts.Stderr, ErrNoOrphans.Error())
 		return nil
 	}
@@ -122,11 +126,14 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 		return err
 	}
 
-	names := make([]string, len(plan.orphans))
-	for i, c := range plan.orphans {
-		names[i] = c.AppID
+	names := appIDs(plan.orphans)
+	refreshed := appIDs(plan.refreshed)
+	if len(names) > 0 {
+		fmt.Fprintf(opts.Stderr, "updating %s: adding components %s\n", plan.hostDir, strings.Join(names, ", "))
 	}
-	fmt.Fprintf(opts.Stderr, "updating %s: adding components %s\n", plan.hostDir, strings.Join(names, ", "))
+	if len(refreshed) > 0 {
+		fmt.Fprintf(opts.Stderr, "updating %s: refreshing components %s\n", plan.hostDir, strings.Join(refreshed, ", "))
+	}
 
 	// The fetch resolves once against the merged payload; the baseline and
 	// override payloads re-resolve against the same extracted library, so a
@@ -192,11 +199,19 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 		if err := template.WriteScaffold(plan.hostDir, updated); err != nil {
 			return err
 		}
-		fmt.Fprintf(opts.Stderr, "updated %s: added %d component(s)\n", plan.hostDir, len(plan.orphans))
+		fmt.Fprintf(opts.Stderr, "updated %s: added %d, refreshed %d component(s)\n", plan.hostDir, len(plan.orphans), len(plan.refreshed))
 		warnTopologyDrift(ctx, opts, plan, mergedComponents)
 	}
 
-	return maybeWriteUpdateResult(opts, plan, names, outcomes, prep)
+	return maybeWriteUpdateResult(opts, plan, names, refreshed, outcomes, prep)
+}
+
+func appIDs(components []Component) []string {
+	ids := make([]string, len(components))
+	for i, c := range components {
+		ids[i] = c.AppID
+	}
+	return ids
 }
 
 // planUpdate locates the workspace's single system host and computes the
@@ -247,7 +262,7 @@ func planUpdate(opts UpdateOptions) (*updatePlan, error) {
 	if !ok {
 		return nil, fmt.Errorf("%s: values.components is missing or not a list — the record does not match what sys create writes", recordPath)
 	}
-	declared := map[string]bool{}
+	declared := map[string]map[string]any{}
 	for _, c := range rawComponents {
 		m, ok := c.(map[string]any)
 		if !ok {
@@ -257,7 +272,7 @@ func planUpdate(opts UpdateOptions) (*updatePlan, error) {
 		if appID == "" {
 			return nil, fmt.Errorf("%s: values.components entry has no appId", recordPath)
 		}
-		declared[appID] = true
+		declared[appID] = m
 	}
 
 	// Candidates come from the sibling scan; the host's parent is the
@@ -275,10 +290,14 @@ func planUpdate(opts UpdateOptions) (*updatePlan, error) {
 		return nil, err
 	}
 
-	var orphans []Component
+	var orphans, refreshed []Component
 	for _, c := range model.Components {
-		if !declared[c.AppID] {
+		stored, ok := declared[c.AppID]
+		switch {
+		case !ok:
 			orphans = append(orphans, c)
+		case !reflect.DeepEqual(stored, refreshedEntry(stored, c)):
+			refreshed = append(refreshed, c)
 		}
 	}
 	var kept []string
@@ -294,11 +313,12 @@ func planUpdate(opts UpdateOptions) (*updatePlan, error) {
 	sort.Strings(kept)
 
 	return &updatePlan{
-		hostDir:  host.Path,
-		hostRec:  &host.Scaffold,
-		baseline: host.Values,
-		orphans:  orphans,
-		kept:     kept,
+		hostDir:   host.Path,
+		hostRec:   &host.Scaffold,
+		baseline:  host.Values,
+		orphans:   orphans,
+		refreshed: refreshed,
+		kept:      kept,
 	}, nil
 }
 
@@ -313,24 +333,64 @@ func assembleCandidates(entries []template.ScaffoldEntry, warnf func(format stri
 	return model, err
 }
 
-// mergedComponentEntries appends each orphan's payload entry to the
-// record's stored component list. The stored entries pass through
+// wiringKeys are the component entry keys ComponentEntry owns. A refresh
+// replaces exactly these, so keys recorded by hand survive it, and a key the
+// scaffold no longer implies (a filter-free loader's old routes) goes.
+var wiringKeys = []string{
+	template.KeyAppID, "kind", template.KeyTopic, template.KeyPublishes, template.KeySubscribes,
+	template.KeyRoutes, template.KeyDefault, template.KeyPort, template.KeyFromPort, template.KeyToPort,
+}
+
+// refreshedEntry is a stored component entry with its wiring rewritten from
+// the component's scaffold. The fresh entry is JSON round-tripped so it
+// compares equal to a stored entry that says the same thing.
+func refreshedEntry(stored map[string]any, c Component) map[string]any {
+	entry := make(map[string]any, len(stored))
+	for k, v := range stored {
+		entry[k] = v
+	}
+	for _, k := range wiringKeys {
+		delete(entry, k)
+	}
+	var fresh map[string]any
+	data, _ := json.Marshal(ComponentEntry(c))
+	_ = json.Unmarshal(data, &fresh)
+	for k, v := range fresh {
+		entry[k] = v
+	}
+	return entry
+}
+
+// mergedComponentEntries rewrites each refreshed component's stored entry
+// and appends each orphan's payload entry. Other stored entries pass through
 // untouched — that is what makes a vanished scaffold unable to remove its
-// component. New entries come from ComponentEntry, the same builder the
-// sys create payload uses, so the stored shape and the payload shape can
-// never drift apart.
+// component. Entries come from ComponentEntry, the same builder the sys
+// create payload uses, so the stored shape and the payload shape can never
+// drift apart.
 func mergedComponentEntries(plan *updatePlan) ([]any, error) {
 	stored, _ := plan.baseline["components"].([]any)
+	byID := make(map[string]Component, len(plan.refreshed))
+	for _, c := range plan.refreshed {
+		byID[c.AppID] = c
+	}
 	merged := make([]any, 0, len(stored)+len(plan.orphans))
-	merged = append(merged, stored...)
+	for _, e := range stored {
+		m, _ := e.(map[string]any)
+		appID, _ := m[template.KeyAppID].(string)
+		if c, ok := byID[appID]; ok {
+			merged = append(merged, refreshedEntry(m, c))
+			continue
+		}
+		merged = append(merged, e)
+	}
 	for _, c := range plan.orphans {
 		merged = append(merged, ComponentEntry(c))
 	}
 	return merged, nil
 }
 
-// mergeWiring folds the orphans' topics, ports and messages into the
-// record's stored lists, deduplicating by (pubsub, name), name, and
+// mergeWiring folds the orphans' and refreshed components' topics, ports
+// and messages into the record's stored lists, deduplicating by (pubsub, name), name, and
 // message name respectively. A stored entry passes through verbatim; only
 // genuinely new names are appended. Component payloads build their wiring
 // against these lists, so an orphan naming a topic, port or message the
@@ -379,7 +439,8 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 		messages = append(messages, msg)
 	}
 
-	// Each orphan contributes the wiring its scaffold record declared;
+	// Each orphan or refreshed component contributes the wiring its scaffold
+	// record declared;
 	// Assemble already deduplicated and cross-checked these against every
 	// other scanned scaffold. The map literals are the stored shape the
 	// system-host template ranges over, and they must stay the shape
@@ -393,7 +454,7 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 	// reads messages but not these keys renders without them. Template
 	// releases and CLI vocabulary move together — a repin across a
 	// vocabulary gap is a user-driven override, not a CLI decision.
-	for _, c := range plan.orphans {
+	for _, c := range append(append([]Component{}, plan.orphans...), plan.refreshed...) {
 		if c.Topic != nil {
 			key := topicKey{c.Topic.Pubsub, c.Topic.Name}
 			if !seenTopics[key] {
@@ -466,7 +527,7 @@ func warnTopologyDrift(ctx context.Context, opts UpdateOptions, plan *updatePlan
 	}
 }
 
-func maybeWriteUpdateResult(opts UpdateOptions, plan *updatePlan, added []string, outcomes []template.FileOutcome, prep *template.PreparedCreate) error {
+func maybeWriteUpdateResult(opts UpdateOptions, plan *updatePlan, added, refreshed []string, outcomes []template.FileOutcome, prep *template.PreparedCreate) error {
 	if opts.OutputJSON == "" {
 		return nil
 	}
@@ -478,16 +539,17 @@ func maybeWriteUpdateResult(opts UpdateOptions, plan *updatePlan, added []string
 	// command — by the time it runs, the host record is already rewritten.
 	systemName, _ := template.SoftValue(prep.Values, template.KeyName)
 	result := UpdateResult{
-		HostDir:  absHost,
-		System:   systemName,
-		Added:    added,
-		Kept:     plan.kept,
-		Files:    outcomes,
-		DryRun:   opts.DryRun,
-		Template: prep.Template,
-		Owner:    prep.Owner,
-		Repo:     prep.Repo,
-		Version:  prep.Version,
+		HostDir:   absHost,
+		System:    systemName,
+		Added:     added,
+		Refreshed: refreshed,
+		Kept:      plan.kept,
+		Files:     outcomes,
+		DryRun:    opts.DryRun,
+		Template:  prep.Template,
+		Owner:     prep.Owner,
+		Repo:      prep.Repo,
+		Version:   prep.Version,
 	}
 	data, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {

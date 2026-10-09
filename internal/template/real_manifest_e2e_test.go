@@ -156,13 +156,14 @@ func TestRealManifestSubscribeLoader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{
-		`public const string MessageName = "orders";`,
-		`public const string PubSubName = "pubsub";`,
-		`public const string SubscriptionRoute = "/events/" + TopicName;`,
-	} {
-		if !strings.Contains(string(constants), want) {
-			t.Errorf("Constants.cs missing %q:\n%s", want, constants)
+	if want := `public const string Organization = "Maxbo";`; !strings.Contains(string(constants), want) {
+		t.Errorf("Constants.cs missing %q:\n%s", want, constants)
+	}
+	// The subscription's pub/sub and topic belong to the record the topology
+	// renders; the loader code takes whatever its Subscription delivers.
+	for _, unwanted := range []string{"PubSubName", "TopicName"} {
+		if strings.Contains(string(constants), unwanted) {
+			t.Errorf("Constants.cs names the subscription's %s; it belongs to the topology:\n%s", unwanted, constants)
 		}
 	}
 }

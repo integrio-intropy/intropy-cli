@@ -110,12 +110,16 @@ type Route struct {
 	When    string
 }
 
-// ReadRoutes strictly reads a consuming record's routes: a non-empty list of
-// objects, each naming a message, no message twice. A record without routes
-// subscribes one message through the scalar subscribes value — one route
-// with no filter.
+// ReadRoutes strictly reads a consuming record's routes — its subscription:
+// a list of objects, each naming a message, no message twice, the record's
+// subscribes message among them. A record without routes, or with an empty
+// list, subscribes one message through the scalar subscribes value — one
+// route with no filter.
 func ReadRoutes(e ScaffoldEntry) ([]Route, error) {
 	raw, ok := e.Values[KeyRoutes]
+	if list, isList := raw.([]any); isList && len(list) == 0 {
+		ok = false
+	}
 	if !ok {
 		message, err := ReadSubscribesMessage(e)
 		if err != nil {
@@ -125,8 +129,8 @@ func ReadRoutes(e ScaffoldEntry) ([]Route, error) {
 	}
 	record := filepath.Join(e.Path, filepath.FromSlash(ScaffoldRelPath))
 	list, ok := raw.([]any)
-	if !ok || len(list) == 0 {
-		return nil, fmt.Errorf("%s: values.%s must be a non-empty list of routes", record, KeyRoutes)
+	if !ok {
+		return nil, fmt.Errorf("%s: values.%s must be a list of routes", record, KeyRoutes)
 	}
 	routes := make([]Route, 0, len(list))
 	seen := map[string]bool{}
@@ -146,13 +150,19 @@ func ReadRoutes(e ScaffoldEntry) ([]Route, error) {
 		when, _ := m[KeyWhen].(string)
 		routes = append(routes, Route{Message: message, When: when})
 	}
+	// The pipeline is typed by subscribes, so a subscription leaving it out
+	// would deliver only messages the code was not written for.
+	if subscribes, ok := SoftValue(e.Values, KeySubscribes); ok && !seen[subscribes] {
+		return nil, fmt.Errorf("%s: values.%s does not route the subscribed message %q\nadd a route for it, or change subscribes to the message the pipeline handles", record, KeyRoutes, subscribes)
+	}
 	return routes, nil
 }
 
-// ReadDefault reads what a routed record does with the events no route
-// matches: DefaultDeadLetter unless the record says otherwise.
+// ReadDefault reads what a subscribing record does with the events no route
+// matches. The loader's code acknowledges them, so a record without the key
+// means DefaultIgnore; a record that carries it states what its code does.
 func ReadDefault(e ScaffoldEntry) (string, error) {
-	v, err := RecordValueDefault(e, KeyDefault, DefaultDeadLetter)
+	v, err := RecordValueDefault(e, KeyDefault, DefaultIgnore)
 	if err != nil {
 		return "", err
 	}
