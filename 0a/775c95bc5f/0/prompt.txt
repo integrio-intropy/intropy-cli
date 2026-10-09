@@ -1,6 +1,1 @@
-1. Yes that is right. Add a model flag
-2. Yes go with your plan
-
----
-
 Should we create something similar to a system prompt that we always add to make sure it picks up the right context from the template etc?
