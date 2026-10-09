@@ -245,3 +245,129 @@ func rawJSON(rs []json.RawMessage) []string {
 	}
 	return out
 }
+
+func TestDecodeSubscriptionRoutes(t *testing.T) {
+	got, err := Decode(strings.NewReader(routedRecord))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	want := TopicRef{
+		PubSub: "pubsub",
+		Topic:  "orders",
+		Routes: []Route{
+			{Message: "fluxia.orders.order-placed",
+				Match: "event.type == 'fluxia.orders.order-placed'", Path: "/fluxia.orders.order-placed"},
+			{Message: "fluxia.orders.order-cancelled", When: "event.data.reason != 'fraud-review'",
+				Match: "event.type == 'fluxia.orders.order-cancelled' && (event.data.reason != 'fraud-review')",
+				Path:  "/fluxia.orders.order-cancelled"},
+		},
+		Default:     DefaultIgnore,
+		Resource:    "order-loader-subscription",
+		DefaultPath: "/unhandled",
+		Bulk:        &Bulk{MaxMessagesCount: 100, MaxAwaitDurationMs: 2000},
+	}
+	if s := got.Components[1].Subscribes[0]; !reflect.DeepEqual(s, want) {
+		t.Errorf("subscribe = %+v, want %+v", s, want)
+	}
+	if p := got.Components[0].Publishes[0]; p.Message != "fluxia.orders.order-placed" {
+		t.Errorf("publish message = %q", p.Message)
+	}
+	if tp := got.Topics[0]; !reflect.DeepEqual(tp.Messages,
+		[]string{"fluxia.orders.order-cancelled", "fluxia.orders.order-placed"}) || tp.Contract != "" {
+		t.Errorf("topic = %+v", tp)
+	}
+}
+
+func TestMessagesReadsEveryGroup(t *testing.T) {
+	got, err := Decode(strings.NewReader(routedRecord))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	msgs := got.Messages()
+	if len(msgs) != 2 {
+		t.Fatalf("messages = %+v", msgs)
+	}
+	m, ok := got.Message("fluxia.orders.order-cancelled")
+	if !ok || m.Contract != "Contracts.OrderCancellation" ||
+		m.Channel != (Channel{PubSub: "pubsub", Topic: "orders"}) ||
+		!reflect.DeepEqual(m.Subscribers, []string{"cancellation-loader", "order-loader"}) {
+		t.Errorf("message = %+v, %v", m, ok)
+	}
+	if _, ok := got.Message("fluxia.orders.order-shipped"); ok {
+		t.Error("found an undeclared message")
+	}
+}
+
+func TestTopicContracts(t *testing.T) {
+	routed, err := Decode(strings.NewReader(routedRecord))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if got := routed.TopicContracts("pubsub", "orders"); !reflect.DeepEqual(got,
+		[]string{"Contracts.Order", "Contracts.OrderCancellation"}) {
+		t.Errorf("routed contracts = %v", got)
+	}
+	if got := routed.TopicContracts("pubsub", "other"); got != nil {
+		t.Errorf("unknown topic contracts = %v", got)
+	}
+
+	// A record older than message wiring gives the topic its one contract.
+	older, err := Decode(strings.NewReader(validRecord))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if got := older.TopicContracts("price-pubsub", "price-b2b"); !reflect.DeepEqual(got,
+		[]string{"Price.Contracts.B2BPrice"}) {
+		t.Errorf("older contracts = %v", got)
+	}
+}
+
+// routedRecord is a host's record with message wiring: publications name their
+// message, subscriptions route by message, topics list their messages, and
+// each message's contract is in messagegroups.
+const routedRecord = `{
+  "apiVersion": "topology.intropy.io/v1",
+  "kind": "SystemTopology",
+  "system": "order-flow",
+  "components": [
+    {
+      "name": "order-extractor",
+      "kind": "extractor",
+      "publishes": [{"pubsub": "pubsub", "topic": "orders", "message": "fluxia.orders.order-placed"}]
+    },
+    {
+      "name": "order-loader",
+      "kind": "loader",
+      "subscribes": [{
+        "pubsub": "pubsub", "topic": "orders",
+        "routes": [
+          {"message": "fluxia.orders.order-placed",
+           "match": "event.type == 'fluxia.orders.order-placed'", "path": "/fluxia.orders.order-placed"},
+          {"message": "fluxia.orders.order-cancelled", "when": "event.data.reason != 'fraud-review'",
+           "match": "event.type == 'fluxia.orders.order-cancelled' && (event.data.reason != 'fraud-review')",
+           "path": "/fluxia.orders.order-cancelled"}
+        ],
+        "default": "ignore",
+        "resource": "order-loader-subscription",
+        "defaultPath": "/unhandled",
+        "bulk": {"maxMessagesCount": 100, "maxAwaitDurationMs": 2000}
+      }]
+    }
+  ],
+  "topics": [
+    {"pubsub": "pubsub", "topic": "orders",
+     "messages": ["fluxia.orders.order-cancelled", "fluxia.orders.order-placed"],
+     "publishers": ["cancellation-extractor", "order-extractor"],
+     "subscribers": ["cancellation-loader", "order-loader"]}
+  ],
+  "messagegroups": [
+    {"name": "order-flow", "messages": [
+      {"name": "fluxia.orders.order-cancelled", "contract": "Contracts.OrderCancellation",
+       "channel": {"pubsub": "pubsub", "topic": "orders"},
+       "publishers": ["cancellation-extractor"], "subscribers": ["cancellation-loader", "order-loader"]},
+      {"name": "fluxia.orders.order-placed", "contract": "Contracts.Order",
+       "channel": {"pubsub": "pubsub", "topic": "orders"},
+       "publishers": ["order-extractor"], "subscribers": ["order-loader"]}
+    ]}
+  ]
+}`

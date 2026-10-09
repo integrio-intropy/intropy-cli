@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, type TemplateField } from '../api'
-import { isEmpty, isResolved, resolvedValue } from './form'
+import { isIncomplete, isResolved, resolvedValue } from './form'
 
 // useTemplateFields partitions a template's parameters the way the CLI's
 // resolution treats them:
@@ -90,9 +90,19 @@ export function useTemplateFields(
 
   const live = useMemo(
     () =>
-      fields.map((f) =>
-        f.name in liveSuggestions ? { ...f, suggestions: liveSuggestions[f.name] } : f,
-      ),
+      fields.map((f) => {
+        const own = f.name in liveSuggestions ? { ...f, suggestions: liveSuggestions[f.name] } : f
+        // A list's element fields take the suggestions filed under
+        // "<list>.<field>", as the server keys them.
+        if (!own.items) return own
+        return {
+          ...own,
+          items: own.items.map((it) => {
+            const key = `${f.name}.${it.name}`
+            return key in liveSuggestions ? { ...it, suggestions: liveSuggestions[key] } : it
+          }),
+        }
+      }),
     [fields, liveSuggestions],
   )
 
@@ -105,7 +115,7 @@ export function useTemplateFields(
     [live],
   )
   const missing = useMemo(
-    () => visible.filter((f) => isEmpty(values[f.name])).map((f) => f.name),
+    () => visible.filter((f) => isIncomplete(f, values[f.name])).map((f) => f.name),
     [visible, values],
   )
   const setValue = useCallback((key: string, v: unknown) => {
@@ -125,6 +135,9 @@ function seed(fields: TemplateField[]): Record<string, unknown> {
 
 function indexSuggestions(fields: TemplateField[]): Record<string, string[] | undefined> {
   const out: Record<string, string[] | undefined> = {}
-  for (const f of fields) out[f.name] = f.suggestions
+  for (const f of fields) {
+    out[f.name] = f.suggestions
+    for (const it of f.items ?? []) out[`${f.name}.${it.name}`] = it.suggestions
+  }
   return out
 }

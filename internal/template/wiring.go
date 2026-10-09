@@ -5,12 +5,8 @@ import (
 	"path/filepath"
 )
 
-// The wiring vocabulary: the parameter names block templates record in
-// their scaffold values and later commands (sys create/update, deploy,
-// prompt suggestions) read back. They are CLI-owned convention, not
-// manifest schema — a template that names its parameters otherwise simply
-// gets no assembly or suggestions. One home so a vocabulary change has
-// one diff, not a scavenger hunt.
+// The wiring vocabulary: the parameter names templates record in scaffold
+// values and later commands read back. One home keeps DSL changes local.
 const (
 	KeyAppID        = "appId"
 	KeyTopic        = "topic"
@@ -24,19 +20,28 @@ const (
 	KeyProjectName  = "projectName"
 	KeySystemClass  = "systemClass"
 
-	// The message wiring blocks. The flat topic/contract/pubsub keys above
-	// are superseded by these: a scaffold carries either a subscribe block
-	// (what the component consumes, from the registry or a producing
-	// sibling) or a publishes block (what it declares). Both shapes are
-	// read everywhere; writers emit only the blocks.
-	KeySubscribe     = "subscribe"
-	KeyPublishes     = "publishes"
-	KeyMessage       = "message"
-	KeyDataschema    = "dataschema"
-	KeyDataschemaURL = "dataschemaurl"
+	// The scalar message wiring keys. A producing block records publishes; a
+	// consuming block records subscribes. The value is the message identity.
+	KeyPublishes  = "publishes"
+	KeySubscribes = "subscribes"
 
-	// DefaultPubsub is the pub/sub component a record belongs to when it
-	// predates the pubsub value being recorded.
+	// The routed subscription keys. A consuming block that routes several
+	// messages records routes — a list of {message, when?}, in the order the
+	// sidecar evaluates them — instead of subscribes, and default for what
+	// becomes of the events no route matches. Channel overrides the topic a
+	// block publishes or subscribes on, which otherwise is the message name;
+	// messages sharing one topic is what lets one loader route them.
+	KeyRoutes  = "routes"
+	KeyMessage = "message"
+	KeyWhen    = "when"
+	KeyDefault = "default"
+	KeyChannel = "channel"
+
+	// The values of KeyDefault.
+	DefaultDeadLetter = "dead-letter"
+	DefaultIgnore     = "ignore"
+
+	// DefaultPubsub is the pub/sub component used for every internal message.
 	DefaultPubsub = "pubsub"
 )
 
@@ -84,220 +89,99 @@ func SoftValue(values map[string]any, key string) (string, bool) {
 	return s, true
 }
 
-// The message wiring blocks. A subscribe block names the message the
-// component consumes; without pubsub/topic it is an internal subscription
-// whose channel assembly resolves from the producing component. With the
-// snapshot fields it is an external subscription — the registry is never
-// contacted again for it.
-//
-// A publishes block declares what its component produces; internal and
-// registry-resolved publications differ only in which fields they carry,
-// and PublishesBlock's doc comment owns that split.
-type SubscribeBlock struct {
-	Message       string
-	Pubsub        string
-	Topic         string
-	Dataschema    string
-	DataschemaURL string
+// ReadPublishesMessage strictly reads the scalar publishes value from a
+// producing scaffold record. The value is the message identity; the channel
+// and payload type derive from it during system assembly.
+func ReadPublishesMessage(e ScaffoldEntry) (string, error) {
+	return RecordValue(e, KeyPublishes)
 }
 
-// PublishesBlock is a producer's message declaration. A registry-resolved
-// publish carries the full channel snapshot (pubsub, topic) and the schema
-// pin; a producer-declared internal publish carries only the message.
-// Contract is the .NET shared-project type name, carried during the
-// transition while host templates render Topics.cs from it; it is not the
-// CloudEvents type.
-// Contract is the .NET shared-project type name, carried during the
-// transition while host templates render Topics.cs from it; it is not the
-// CloudEvents type.
-type PublishesBlock struct {
-	Message       string
-	Contract      string
-	Dataschema    string
-	DataschemaURL string
-	Pubsub        string
-	Topic         string
+// ReadSubscribesMessage strictly reads the scalar subscribes value from a
+// consuming scaffold record. The value must name a message published by a
+// sibling component in the same workspace.
+func ReadSubscribesMessage(e ScaffoldEntry) (string, error) {
+	return RecordValue(e, KeySubscribes)
 }
 
-// External reports whether the declaration carries its own channel
-// snapshot. External publications assemble their channel from the record
-// alone; internal publications default to the system pubsub on a topic
-// named after the message.
-func (b *PublishesBlock) External() bool { return b.Topic != "" }
-
-// External reports whether the subscription carries its own channel
-// snapshot. External subscriptions assemble without a producer and without
-// touching the registry.
-func (b *SubscribeBlock) External() bool { return b.Topic != "" }
-
-// HasSubscribeValue reports whether values carry a subscribe block. Block
-// presence wins over the legacy flat keys wherever both appear — the dual
-// read is a fallback, never a merge.
-func HasSubscribeValue(values map[string]any) bool {
-	_, ok := values[KeySubscribe]
-	return ok
+// Route is one rule of a routed subscription: the message it takes and the
+// content filter (a Dapr CEL expression) its events must also match, if any.
+type Route struct {
+	Message string
+	When    string
 }
 
-// HasPublishesValue reports whether values carry a publishes block.
-func HasPublishesValue(values map[string]any) bool {
-	_, ok := values[KeyPublishes]
-	return ok
-}
-
-// HasMessageBlocks reports whether values use the block wiring shape at
-// all. Assembly and facts treat such records as block-shaped and ignore
-// their legacy flat keys.
-func HasMessageBlocks(values map[string]any) bool {
-	return HasSubscribeValue(values) || HasPublishesValue(values)
-}
-
-// blockMap reads one block value as the map the writers produce. The
-// strict regime applies: a present block must be an object, so a mistyped
-// block is an error naming the record and the block, never a silent skip.
-func blockMap(e ScaffoldEntry, block string) (map[string]any, error) {
-	v, ok := e.Values[block]
-	if !ok {
-		return nil, nil // absent is not an error; the caller decides
+// ReadRoutes strictly reads a consuming record's routes — its subscription:
+// a list of objects, each naming a message, no message twice, the record's
+// subscribes message among them. A record without routes, or with an empty
+// list, subscribes one message through the scalar subscribes value — one
+// route with no filter.
+func ReadRoutes(e ScaffoldEntry) ([]Route, error) {
+	raw, ok := e.Values[KeyRoutes]
+	if list, isList := raw.([]any); isList && len(list) == 0 {
+		ok = false
 	}
-	m, ok := v.(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("%s: values.%s has type %T, expected object", recordPath(e), block, v)
+		message, err := ReadSubscribesMessage(e)
+		if err != nil {
+			return nil, err
+		}
+		return []Route{{Message: message}}, nil
 	}
-	return m, nil
+	record := filepath.Join(e.Path, filepath.FromSlash(ScaffoldRelPath))
+	list, ok := raw.([]any)
+	if !ok {
+		return nil, fmt.Errorf("%s: values.%s must be a list of routes", record, KeyRoutes)
+	}
+	routes := make([]Route, 0, len(list))
+	seen := map[string]bool{}
+	for i, item := range list {
+		m, ok := item.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("%s: values.%s[%d] has type %T, expected an object", record, KeyRoutes, i, item)
+		}
+		message, _ := m[KeyMessage].(string)
+		if message == "" {
+			return nil, fmt.Errorf("%s: values.%s[%d].%s is missing", record, KeyRoutes, i, KeyMessage)
+		}
+		if seen[message] {
+			return nil, fmt.Errorf("%s: values.%s routes message %q twice; give it one route, with one filter", record, KeyRoutes, message)
+		}
+		seen[message] = true
+		when, _ := m[KeyWhen].(string)
+		routes = append(routes, Route{Message: message, When: when})
+	}
+	// The pipeline is typed by subscribes, so a subscription leaving it out
+	// would deliver only messages the code was not written for.
+	if subscribes, ok := SoftValue(e.Values, KeySubscribes); ok && !seen[subscribes] {
+		return nil, fmt.Errorf("%s: values.%s does not route the subscribed message %q\nadd a route for it, or change subscribes to the message the pipeline handles", record, KeyRoutes, subscribes)
+	}
+	return routes, nil
 }
 
-// blockString reads a strict non-empty string field out of a block: mistyped
-// or empty names the record and the full key path.
-func blockString(e ScaffoldEntry, block, key string) (string, error) {
-	m, err := blockMap(e, block)
+// ReadDefault reads what a subscribing record does with the events no route
+// matches. The loader's code acknowledges them, so a record without the key
+// means DefaultIgnore; a record that carries it states what its code does.
+func ReadDefault(e ScaffoldEntry) (string, error) {
+	v, err := RecordValueDefault(e, KeyDefault, DefaultIgnore)
 	if err != nil {
 		return "", err
 	}
-	v, ok := m[key]
-	if !ok {
+	if v != DefaultDeadLetter && v != DefaultIgnore {
+		return "", fmt.Errorf("%s: values.%s is %q, expected %q or %q",
+			filepath.Join(e.Path, filepath.FromSlash(ScaffoldRelPath)), KeyDefault, v, DefaultDeadLetter, DefaultIgnore)
+	}
+	return v, nil
+}
+
+// ReadChannel reads the topic a record publishes or subscribes on, when it
+// overrides the default (the message name); empty when it does not.
+func ReadChannel(e ScaffoldEntry) (string, error) {
+	if _, ok := e.Values[KeyChannel]; !ok {
 		return "", nil
 	}
-	s, ok := v.(string)
-	if !ok {
-		return "", fmt.Errorf("%s: values.%s.%s has type %T, expected string", recordPath(e), block, key, v)
-	}
-	if s == "" {
-		return "", fmt.Errorf("%s: values.%s.%s is empty", recordPath(e), block, key)
-	}
-	return s, nil
+	return RecordValue(e, KeyChannel)
 }
 
-// recordPath names the record in error messages, matching RecordValue.
-func recordPath(e ScaffoldEntry) string {
-	return filepath.Join(e.Path, filepath.FromSlash(ScaffoldRelPath))
-}
-
-// ReadSubscribeBlock strictly reads the subscribe block. The message name
-// is required; the snapshot fields are each required to be non-empty
-// strings when present. A record with the block and empty message is a
-// broken record, not a wireless one.
-func ReadSubscribeBlock(e ScaffoldEntry) (*SubscribeBlock, error) {
-	if !HasSubscribeValue(e.Values) {
-		return nil, nil
-	}
-	message, err := blockString(e, KeySubscribe, KeyMessage)
-	if err != nil {
-		return nil, err
-	}
-	if message == "" {
-		return nil, fmt.Errorf("%s: values.%s.%s is missing", recordPath(e), KeySubscribe, KeyMessage)
-	}
-	b := &SubscribeBlock{Message: message}
-	for _, f := range []struct {
-		key string
-		dst *string
-	}{
-		{KeyPubsub, &b.Pubsub},
-		{KeyTopic, &b.Topic},
-		{KeyDataschema, &b.Dataschema},
-		{KeyDataschemaURL, &b.DataschemaURL},
-	} {
-		s, err := blockString(e, KeySubscribe, f.key)
-		if err != nil {
-			return nil, err
-		}
-		*f.dst = s
-	}
-	return b, nil
-}
-
-// ReadPublishesBlock strictly reads the publishes block. The message name
-// is required; contract, dataschema, and the channel snapshot stay optional
-// for internal declarations. The pubsub/topic pair is validated by system
-// assembly, not here — the block reader stays a shape reader, matching how
-// the subscribe branch splits concerns.
-func ReadPublishesBlock(e ScaffoldEntry) (*PublishesBlock, error) {
-	if !HasPublishesValue(e.Values) {
-		return nil, nil
-	}
-	message, err := blockString(e, KeyPublishes, KeyMessage)
-	if err != nil {
-		return nil, err
-	}
-	if message == "" {
-		return nil, fmt.Errorf("%s: values.%s.%s is missing", recordPath(e), KeyPublishes, KeyMessage)
-	}
-	b := &PublishesBlock{Message: message}
-	for _, f := range []struct {
-		key string
-		dst *string
-	}{
-		{KeyContract, &b.Contract},
-		{KeyDataschema, &b.Dataschema},
-		{KeyDataschemaURL, &b.DataschemaURL},
-		{KeyPubsub, &b.Pubsub},
-		{KeyTopic, &b.Topic},
-	} {
-		s, err := blockString(e, KeyPublishes, f.key)
-		if err != nil {
-			return nil, err
-		}
-		*f.dst = s
-	}
-	return b, nil
-}
-
-// SubscribeBlockValue renders the block as the values-map entry writers
-// emit. Writers never add the legacy flat keys alongside it.
-func SubscribeBlockValue(b *SubscribeBlock) map[string]any {
-	m := map[string]any{KeyMessage: b.Message}
-	if b.Pubsub != "" {
-		m[KeyPubsub] = b.Pubsub
-	}
-	if b.Topic != "" {
-		m[KeyTopic] = b.Topic
-	}
-	if b.Dataschema != "" {
-		m[KeyDataschema] = b.Dataschema
-	}
-	if b.DataschemaURL != "" {
-		m[KeyDataschemaURL] = b.DataschemaURL
-	}
-	return m
-}
-
-// PublishesBlockValue renders a publishes declaration as the values-map
-// entry writers emit.
-func PublishesBlockValue(b *PublishesBlock) map[string]any {
-	m := map[string]any{KeyMessage: b.Message}
-	for _, f := range []struct {
-		key   string
-		value string
-	}{
-		{KeyContract, b.Contract},
-		{KeyDataschema, b.Dataschema},
-		{KeyDataschemaURL, b.DataschemaURL},
-		{KeyPubsub, b.Pubsub},
-		{KeyTopic, b.Topic},
-	} {
-		if f.value != "" {
-			m[f.key] = f.value
-		}
-	}
-	return m
-}
+// MessageValue is the scalar message value as writers store it in the
+// scaffold record: the message identity verbatim, no snapshot fields.
+func MessageValue(message string) string { return message }

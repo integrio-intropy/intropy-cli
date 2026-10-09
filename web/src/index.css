@@ -1673,6 +1673,137 @@ body {
   fill: var(--text-muted);
 }
 
+/* Subscription legend: a chip on each topic → subscriber edge whose routing
+ * rules open on hover or focus. The label layer is lifted above the nodes so
+ * an open popover is never hidden behind a component it overlaps. */
+.flow-canvas .react-flow__edgelabel-renderer {
+  z-index: 1001;
+}
+
+.rf-sub-legend {
+  position: absolute;
+  pointer-events: all;
+}
+
+/* An open legend rises above the other edges' chips it may overlap. */
+.rf-sub-legend:hover,
+.rf-sub-legend:focus-within {
+  z-index: 1;
+}
+
+.rf-sub-chip {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: help;
+}
+
+.rf-sub-chip svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+
+.rf-sub-chip.filtered {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.rf-sub-popover {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 240px;
+  max-width: 420px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.12);
+  /* A tooltip, not a panel: the pointer passes through to the chips under it. */
+  pointer-events: none;
+}
+
+.rf-sub-legend:hover .rf-sub-popover,
+.rf-sub-legend:focus-within .rf-sub-popover {
+  display: block;
+}
+
+.rf-sub-popover-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.rf-sub-rules {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.chip .chip-icon {
+  width: 13px;
+  height: 13px;
+  margin-left: 4px;
+  vertical-align: -2px;
+  fill: var(--accent);
+}
+
+.flow-detail-message + .flow-detail-message {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.flow-detail-message-name {
+  margin: 0 0 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.rf-sub-rules li {
+  display: grid;
+  gap: 2px;
+}
+
+.rf-sub-message {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+
+.rf-sub-condition {
+  font-size: 11px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 4px;
+  padding: 1px 4px;
+  overflow-wrap: anywhere;
+}
+
+.rf-sub-rule-all,
+.rf-sub-unhandled {
+  color: var(--text-muted);
+}
+
+.rf-sub-unhandled {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
 /* Template form controls shared by every create surface (the flow view's
  * create drawer, the seed drawer). All colors are theme tokens, so dark
  * mode needs no overrides. */
@@ -1692,6 +1823,83 @@ body {
   display: flex;
   flex-direction: column;
   gap: 5px;
+}
+
+/* A list parameter (a loader's routes): numbered, ordered rows of element
+ * fields. The order is part of the value — routes are evaluated in order. */
+.form-list {
+  margin: 0;
+  padding: 0;
+  border: none;
+  min-width: 0;
+}
+
+.form-list > legend {
+  padding: 0;
+  margin-bottom: 5px;
+}
+
+.form-list-rows {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.form-list-row {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.form-list-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.form-list-index {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.form-list-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.form-list-actions button,
+.form-list-add {
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 8px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.form-list-actions button:disabled,
+.form-list-add:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.form-list-add {
+  justify-self: start;
+  margin-top: 8px;
+  padding: 4px 10px;
+}
+
+.form-field input.form-cel {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
 }
 
 .form-label {

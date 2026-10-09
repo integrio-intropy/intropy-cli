@@ -15,6 +15,7 @@ import {
   TuneIcon,
 } from '../icons'
 import { Meta, Section } from './chrome'
+import { topicMessages } from '../topology'
 
 /** What the flow canvas has put under inspection: a pub/sub topic (internal
  *  message) or a port (external message). */
@@ -67,9 +68,9 @@ function TopicDetail({
   const topic: TopologyTopic | undefined = topology.topics?.find(
     (t) => t.pubsub === selection.pubsub && t.topic === selection.topic,
   )
-  const contract: Contract | undefined = topic?.contract
-    ? topology.contracts?.find((c) => c.name === topic.contract)
-    : undefined
+  // A topic carries messages, each with its own contract; a record older than
+  // message wiring gives the topic one contract of its own instead.
+  const carried = topicMessages(topology, selection.pubsub, selection.topic)
 
   return (
     <>
@@ -85,31 +86,48 @@ function TopicDetail({
         </Section>
       ) : null}
 
-      <Section title="Contract" icon={CategoryIcon}>
-        {!topic?.contract ? (
-          <p className="muted">This topic declares no contract.</p>
-        ) : (
-          <>
-            <p className="flow-detail-contract" title={topic.contract}>
-              {contract?.shortName ?? topic.contract}
-            </p>
-            {contract?.schema ? (
-              <SchemaTree schema={contract.schema} />
-            ) : (
-              <p className="muted">
-                No schema published by this host — rebuild it with an
-                intropy-topology release that emits the contract registry to
-                see the contract's fields here.
-              </p>
-            )}
-            {contract?.fingerprint && (
-              <p className="flow-detail-fingerprint" title="Schema fingerprint">
-                {contract.fingerprint}
-              </p>
-            )}
-          </>
-        )}
-      </Section>
+      {carried.length > 0 ? (
+        <Section title={carried.length === 1 ? 'Message' : 'Messages'} icon={CategoryIcon}>
+          {carried.map((m) => (
+            <div key={m.name} className="flow-detail-message">
+              <p className="flow-detail-message-name">{m.name}</p>
+              <ContractBlock name={m.contract} topology={topology} />
+            </div>
+          ))}
+        </Section>
+      ) : (
+        <Section title="Contract" icon={CategoryIcon}>
+          <ContractBlock name={topic?.contract} topology={topology} />
+        </Section>
+      )}
+    </>
+  )
+}
+
+/** ContractBlock renders one contract: its name, and its field tree when the
+ *  host published the registry entry's schema. */
+function ContractBlock({ name, topology }: { name?: string; topology: Topology }) {
+  if (!name) return <p className="muted">No contract declared.</p>
+  const contract: Contract | undefined = topology.contracts?.find((c) => c.name === name)
+  return (
+    <>
+      <p className="flow-detail-contract" title={name}>
+        {contract?.shortName ?? name}
+      </p>
+      {contract?.schema ? (
+        <SchemaTree schema={contract.schema} />
+      ) : (
+        <p className="muted">
+          No schema published by this host — rebuild it with an
+          intropy-topology release that emits the contract registry to
+          see the contract's fields here.
+        </p>
+      )}
+      {contract?.fingerprint && (
+        <p className="flow-detail-fingerprint" title="Schema fingerprint">
+          {contract.fingerprint}
+        </p>
+      )}
     </>
   )
 }

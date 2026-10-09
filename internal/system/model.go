@@ -17,38 +17,32 @@ type Topic struct {
 	Contract string `json:"contract"`
 }
 
-// The two directions a message wiring can take. Publish/subscribe come
-// from the record's block when it has one, and from the block kind for
-// legacy records (an extractor publishes, a loader subscribes) — the same
-// rule the host template applies today.
+// The two directions a message wiring can take. Extractors publish; loaders subscribe.
 const (
 	MessagePublish   = "publish"
 	MessageSubscribe = "subscribe"
 )
 
-// Message is one message declaration in the system's internal messagegroup.
-// Name doubles as the CloudEvents type for internal messages; Contract is
-// the transitional .NET shared-project type; Dataschema is the optional
-// logical schema reference a producing record declares.
+// Message is one message declaration in the system. Name doubles as the
+// CloudEvents type; Contract is the .NET shared-project payload type derived
+// from the message identity.
 type Message struct {
-	Name       string `json:"name"`
-	Type       string `json:"type,omitempty"`
-	Contract   string `json:"contract,omitempty"`
-	Dataschema string `json:"dataschema,omitempty"`
-	Publisher  string `json:"publisher,omitempty"`
+	Name      string `json:"name"`
+	Type      string `json:"type,omitempty"`
+	Contract  string `json:"contract,omitempty"`
+	Publisher string `json:"publisher,omitempty"`
+	// Pubsub and Topic are the channel the message travels: its producer's.
+	Pubsub string `json:"pubsub,omitempty"`
+	Topic  string `json:"topic,omitempty"`
 }
 
 // Component is one assembled system block. Its wiring is shape-driven:
 // Topic is nil for kinds without one, and Ports carries the named ports in
 // the kind's order (From before To for transactional blocks).
 //
-// Topic subsumes the message channel: a legacy record pairs on its flat
-// topic keys, and a block-shaped record gets its channel resolved during
-// assembly — an external subscribe block carries its own snapshot, an
-// internal subscription takes the producer's, and a producer without a
-// recorded topic defaults to the system pubsub on a topic named after the
-// message. Every component therefore renders against concrete transport
-// wiring even in a fully message-shaped workspace.
+// Topic is the derived transport channel for the component's message: the
+// system pubsub and a topic named after the message. Subscribers receive the
+// producer's channel during assembly.
 type Component struct {
 	AppID string    `json:"name"` // the Add<Kind> argument in the generated system class
 	Kind  string    `json:"kind"` // a key of the blockParsers registry
@@ -61,9 +55,17 @@ type Component struct {
 	Path  string   `json:"path"`            // scaffold directory, for error messages
 
 	// Message carries the component's message wiring: what it publishes or
-	// subscribes by name, and whether a subscription is external (its own
-	// channel snapshot) or internal (resolved against a producer here).
+	// subscribes by name. A routing subscriber's Message is its first route.
 	Message *MessageWiring
+
+	// Routes are a subscriber's rules in the order the sidecar evaluates
+	// them, and Default what becomes of the events none of them matches.
+	Routes  []template.Route
+	Default string
+
+	// channel is the topic the record declares it publishes or subscribes
+	// on; empty for a record that predates the value.
+	channel string
 
 	// topicContract is the contract type of Topic, carried on the
 	// component because topics dedupe across components: the model's
@@ -83,16 +85,6 @@ type MessageWiring struct {
 	// alongside the message name; empty when the template no longer
 	// records one.
 	Contract string
-
-	// Dataschema carries the logical schema xid of an external
-	// subscription's snapshot; internal declarations have none.
-	Dataschema string
-
-	// External marks a record whose block carries its own channel
-	// snapshot — a subscription that assembles without a producer, or a
-	// publication that assembles from its recorded channel instead of the
-	// system-default convention. Assembly stays offline by construction.
-	External bool
 }
 
 // Port is one assembled port: the named edge a block reaches the outside

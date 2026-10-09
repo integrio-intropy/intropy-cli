@@ -18,15 +18,15 @@ type TopicKey struct {
 }
 
 // WorkspaceFacts is the prompt-time view of what a workspace's scaffold
-// records already declare: the topics in use, the contract each carries,
+// records already declare: derived topics, the contract each carries,
 // the external ports already named, the internal messages declared by
-// publishes blocks, plus the one organization the records agree on. Create
+// scalar publishes values, plus the one organization the records agree on. Create
 // flows derive parameter suggestions from it; it is built by callers that
 // scan workspaces (internal/system) and consumed read-only by value
 // resolution.
 //
 // Two fields are ambient inputs a caller seeds for the run rather than
-// facts a scan derived: messageCandidates (registry refs offered next to
+// facts a scan derived: messageCandidates (external refs offered next to
 // the internal messages) and messageParams (the template's message
 // parameters, identified from the fetched manifest). Both live here so
 // Suggest stays a single flat registry keyed by parameter name.
@@ -50,11 +50,11 @@ type WorkspaceFacts struct {
 	// fact, and callers treat absence as "no suggestion".
 	contracts map[TopicKey]string
 
-	// messages maps an internal message name (from publishes blocks) to its
+	// messages maps an internal message name (from scalar publishes values) to its
 	// declared contract, when one was recorded.
 	messages map[string]string
 
-	// messageCandidates are registry message refs offered as prompt
+	// messageCandidates are external message refs offered as prompt
 	// suggestions for message parameters, seeded by the caller.
 	messageCandidates []string
 
@@ -66,7 +66,7 @@ type WorkspaceFacts struct {
 	// wiringDirection is the template's message direction, seeded by the
 	// create flow from the template's block kind. It shades the candidate
 	// pool and the wiring hint: a publishing template's pool carries only
-	// registry refs, since workspace-internal messages already have
+	// external refs, since workspace-internal messages already have
 	// producers (offering them would invite scaffolding a second
 	// producer). The zero value — unknown direction — keeps the full pool
 	// and the subscribe hint, matching direction-neutral behavior.
@@ -102,10 +102,9 @@ func (f *WorkspaceFacts) ContractFor(key TopicKey) (string, bool) {
 	return c, ok
 }
 
-// AddMessageCandidates seeds the registry message candidates offered as
-// prompt suggestions for message parameters. Internal message names come
-// from the workspace's publishes blocks; these join them, and callers
-// normally pass every ref the registry serves.
+// AddMessageCandidates seeds external message candidates offered as prompt
+// suggestions for message parameters. Internal message names come from the
+// workspace's scalar publishes values; these join them.
 func (f *WorkspaceFacts) AddMessageCandidates(refs []string) {
 	if f == nil {
 		return
@@ -114,8 +113,8 @@ func (f *WorkspaceFacts) AddMessageCandidates(refs []string) {
 }
 
 // MessageCandidates returns the deduplicated suggestion pool for message
-// parameters: internal messages declared by the workspace's publishes
-// blocks plus the seeded registry refs, merged and sorted. A publishing
+// parameters: internal messages declared by the workspace's scalar publishes
+// values plus the seeded external refs, merged and sorted. A publishing
 // template's pool drops the internal messages — every one of them already
 // has a producer, and a new producer is exactly what a publishing
 // scaffold must not become.
@@ -260,43 +259,20 @@ func BuildWorkspaceFacts(entries []WorkspaceFactEntry) *WorkspaceFacts {
 			}
 		}
 		switch e.BlockKind {
-		case BlockKindExtractor, BlockKindLoader:
-			// Block-shaped records ignore the legacy flat keys: the block is
-			// the wiring when present, and reading both would invent a merge
-			// the record never declared. Errors from misshaped blocks stay
-			// out of suggestions — a suggestion aid never fails; assembly is
-			// the surface that reports them.
-			if HasMessageBlocks(e.Values) {
-				if sub, err := ReadSubscribeBlock(entry(e)); err == nil && sub != nil {
-					if sub.External() {
-						indexTopic(TopicKey{Pubsub: sub.Pubsub, Name: sub.Topic}, "")
-					}
+		case BlockKindExtractor:
+			message, mok := SoftValue(e.Values, KeyPublishes)
+			if mok {
+				contract := PascalCase(message)
+				indexTopic(TopicKey{Pubsub: DefaultPubsub, Name: message}, contract)
+				if _, seen := facts.messages[message]; !seen {
+					facts.messages[message] = contract
 				}
-				if pub, err := ReadPublishesBlock(entry(e)); err == nil && pub != nil {
-					if _, seen := facts.messages[pub.Message]; !seen {
-						facts.messages[pub.Message] = pub.Contract
-					}
-				}
-				if port, ok := SoftValue(e.Values, KeyPort); ok && !seenPort[port] {
-					seenPort[port] = true
-					facts.Ports = append(facts.Ports, port)
-				}
-				break
 			}
-
-			// Legacy flat-key record: topic and contract pair the halves.
-			topic, tok := SoftValue(e.Values, KeyTopic)
-			contract, cok := SoftValue(e.Values, KeyContract)
-			// Default on the zero result, not on key absence: a present but
-			// mistyped pubsub degrades to the default, the same regime as
-			// before the accessors consolidated.
-			pubsub, _ := SoftValue(e.Values, KeyPubsub)
-			if pubsub == "" {
-				pubsub = DefaultPubsub
+			if port, ok := SoftValue(e.Values, KeyPort); ok && !seenPort[port] {
+				seenPort[port] = true
+				facts.Ports = append(facts.Ports, port)
 			}
-			if tok && cok {
-				indexTopic(TopicKey{Pubsub: pubsub, Name: topic}, contract)
-			}
+		case BlockKindLoader:
 			if port, ok := SoftValue(e.Values, KeyPort); ok && !seenPort[port] {
 				seenPort[port] = true
 				facts.Ports = append(facts.Ports, port)
@@ -309,6 +285,7 @@ func BuildWorkspaceFacts(entries []WorkspaceFactEntry) *WorkspaceFacts {
 				}
 			}
 		}
+
 	}
 
 	if orgConflicted {

@@ -1,0 +1,117 @@
+{
+  "apiVersion": "topology.intropy.io/v1",
+  "kind": "SystemTopology",
+  "system": "order-flow",
+  "components": [
+    {
+      "name": "order-extractor",
+      "kind": "extractor",
+      "publishes": [
+        {
+          "pubsub": "pubsub",
+          "topic": "orders"
+        }
+      ],
+      "ports": [
+        {
+          "port": "order-extractor-source",
+          "direction": "in"
+        }
+      ],
+      "uses": [
+        "idempotency-service",
+        "business-incident-service"
+      ]
+    },
+    {
+      "name": "order-loader",
+      "kind": "loader",
+      "subscribes": [
+        {
+          "pubsub": "pubsub",
+          "topic": "orders"
+        }
+      ],
+      "ports": [
+        {
+          "port": "order-loader-destination",
+          "direction": "out"
+        }
+      ],
+      "uses": [
+        "idempotency-service",
+        "business-incident-service"
+      ]
+    }
+  ],
+  "topics": [
+    {
+      "pubsub": "pubsub",
+      "topic": "orders",
+      "contract": "Contracts.Order",
+      "publishers": [
+        "order-extractor"
+      ],
+      "subscribers": [
+        "order-loader"
+      ]
+    }
+  ],
+  "messagegroups": [
+    {
+      "name": "order-flow",
+      "messages": [
+        {
+          "name": "orders",
+          "contract": "Contracts.Order",
+          "channel": {
+            "pubsub": "pubsub",
+            "topic": "orders"
+          },
+          "publishers": [
+            "order-extractor"
+          ],
+          "subscribers": [
+            "order-loader"
+          ]
+        }
+      ]
+    }
+  ],
+  "ports": [
+    {
+      "name": "order-extractor-source",
+      "directions": [
+        "in"
+      ],
+      "usedBy": [
+        "order-extractor"
+      ]
+    },
+    {
+      "name": "order-loader-destination",
+      "directions": [
+        "out"
+      ],
+      "usedBy": [
+        "order-loader"
+      ]
+    }
+  ],
+  "services": [
+    {
+      "appId": "business-incident-service",
+      "consumers": [
+        "order-extractor",
+        "order-loader"
+      ]
+    },
+    {
+      "appId": "idempotency-service",
+      "consumers": [
+        "order-extractor",
+        "order-loader"
+      ]
+    }
+  ]
+}

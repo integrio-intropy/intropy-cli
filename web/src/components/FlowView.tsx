@@ -27,6 +27,8 @@ import {
 } from '../api'
 import { CreateDrawer, type SlotKind } from './CreateDrawer'
 import { SeedDrawer } from './SeedDrawer'
+import { SubscriptionEdge, type SubscriptionEdgeData } from './SubscriptionEdge'
+import { topicContracts, topicMessages } from '../topology'
 import {
   CloudIcon,
   CycleIcon,
@@ -138,8 +140,10 @@ interface TopicNodeData extends Record<string, unknown> {
   pubsub?: string
   /** Data entity carried on the topic, e.g. "RawProduct". */
   entity?: string
-  /** Contract ref when the topic is a declared API (contract surface). */
+  /** The topic's contract, or a count when its messages carry several. */
   contract?: string
+  /** Tooltip lines past the name: each message with its contract. */
+  detail?: string
 }
 
 // systemKey identifies a system by its root directory, the one grouping key
@@ -683,6 +687,7 @@ function FlowCanvas({
         edges={edges}
         onNodesChange={onNodesChange}
         nodeTypes={NODE_TYPES}
+        edgeTypes={EDGE_TYPES}
         colorMode={theme}
         minZoom={0.3}
         proOptions={{ hideAttribution: true }}
@@ -734,11 +739,8 @@ function buildDeclaredGraph(
 ): { nodes: Node[]; edges: Edge[]; ghosts: IntegrationDetail[] } {
   const comps = topo.components ?? []
 
-  // Metadata lookups: topics carry the contract, ports the external
-  // system a component's inline reference resolves against.
-  const topicMeta = new Map(
-    (topo.topics ?? []).map((t) => [`${t.pubsub}/${t.topic}`, t]),
-  )
+  // Metadata lookup: ports carry the external system a component's inline
+  // reference resolves against. A topic's contracts come from its messages.
   const portMeta = new Map((topo.ports ?? []).map((c) => [c.name, c]))
 
   // A topic node is identified by its (pubsub, topic) pair; a component by ref.
@@ -921,7 +923,8 @@ function buildDeclaredGraph(
 
   for (const [tid, ref] of topicRefs) {
     const pos = place(depth.get(tid) ?? 0)
-    const meta = topicMeta.get(`${ref.pubsub}/${ref.topic}`)
+    const contracts = topicContracts(topo, ref.pubsub, ref.topic)
+    const carried = topicMessages(topo, ref.pubsub, ref.topic)
     nodes.push({
       id: nodeId.get(tid)!,
       type: 'topic',
@@ -935,7 +938,8 @@ function buildDeclaredGraph(
       data: {
         name: ref.topic,
         pubsub: ref.pubsub,
-        contract: meta?.contract,
+        contract: contracts.length > 1 ? `${carried.length} messages` : contracts[0],
+        detail: carried.length > 0 ? carried.map((m) => `${m.name} · ${m.contract ?? '—'}`).join('\n') : undefined,
       } satisfies TopicNodeData,
     })
   }
@@ -1023,12 +1027,14 @@ function buildDeclaredGraph(
       if (!source) continue
       edges.push({
         id: `e:sub:${s.pubsub}/${s.topic}:${c.name}`,
+        type: 'subscription',
         source,
         sourceHandle: 'out',
         target: comp,
         targetHandle: 'in',
         markerEnd: { type: MarkerType.ArrowClosed },
         className: 'rf-edge-ext',
+        data: { subscription: s } satisfies SubscriptionEdgeData,
       })
     }
   }
@@ -1204,13 +1210,13 @@ function SlotNode({ data }: NodeProps) {
 // horizontal cylinder — the message-channel glyph — so a topic reads as
 // infrastructure between components, never as another component card.
 function TopicNode({ data }: NodeProps) {
-  const { name, entity, contract } = data as TopicNodeData
+  const { name, entity, contract, detail } = data as TopicNodeData
   // Topic names share a long common prefix, so lead with the short entity and
   // keep the full topic/contract in a tooltip. Fall back to the name when a
   // topic declares no entity.
   const primary = entity ?? name
   const secondary = contract ?? name
-  const tip = contract ? `${name}\n${contract}` : name
+  const tip = [name, detail ?? contract].filter(Boolean).join('\n')
   return (
     <div className="rf-infra pubsub rf-topic-cyl" title={tip}>
       {/* Silhouette: a rectangle with both ends bulging as elliptical arcs;
@@ -1258,4 +1264,8 @@ const NODE_TYPES = {
   external: ExternalNode,
   topic: TopicNode,
   slot: SlotNode,
+}
+
+const EDGE_TYPES = {
+  subscription: SubscriptionEdge,
 }

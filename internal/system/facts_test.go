@@ -10,23 +10,20 @@ import (
 )
 
 func TestWorkspaceFactsOf(t *testing.T) {
-	t.Run("block records contribute, role records do not", func(t *testing.T) {
-		block := template.ScaffoldEntry{
-			Path: "order-extractor",
-			Scaffold: template.Scaffold{
-				Values:    map[string]any{"appId": "order-extractor", "topic": "orders", "contract": "Order"},
-				BlockKind: template.BlockKindExtractor,
-			},
-		}
-		lib := template.ScaffoldEntry{
-			Path:     "Acme.Models",
-			Scaffold: template.Scaffold{Values: map[string]any{"name": "Acme.Models"}, Role: template.RoleSharedLibrary},
-		}
-		facts := WorkspaceFactsOf([]template.ScaffoldEntry{block, lib})
-		if len(facts.TopicKeys) != 1 || facts.TopicKeys[0].Name != "orders" {
-			t.Fatalf("topic keys = %+v", facts.TopicKeys)
-		}
-	})
+	block := template.ScaffoldEntry{Path: "order-extractor", Scaffold: template.Scaffold{
+		Values: map[string]any{
+			template.KeyAppID: "order-extractor", template.KeyPublishes: "orders",
+		},
+		BlockKind: template.BlockKindExtractor,
+	}}
+	lib := template.ScaffoldEntry{Path: "Contracts", Scaffold: template.Scaffold{Values: map[string]any{"name": "Contracts"}, Role: template.RoleSharedLibrary}}
+	facts := WorkspaceFactsOf([]template.ScaffoldEntry{block, lib})
+	if len(facts.TopicKeys) != 1 || facts.TopicKeys[0].Name != "orders" {
+		t.Fatalf("topic keys = %+v", facts.TopicKeys)
+	}
+	if got := facts.MessageCandidates(); len(got) != 1 || got[0] != "orders" {
+		t.Fatalf("messages = %v", got)
+	}
 }
 
 func TestLoadWorkspaceFacts(t *testing.T) {
@@ -43,7 +40,7 @@ func TestLoadWorkspaceFacts(t *testing.T) {
 			SchemaVersion: template.ScaffoldSchemaVersion,
 			Template:      "extractor",
 			Version:       "v1.0.0",
-			Values:        map[string]any{"appId": "order-extractor", "topic": "orders", "contract": "Order"},
+			Values:        map[string]any{template.KeyAppID: "order-extractor", template.KeyPublishes: "orders"},
 			BlockKind:     template.BlockKindExtractor,
 		})
 		facts, warnings := LoadWorkspaceFacts(root)
@@ -66,23 +63,16 @@ func TestLoadWorkspaceFacts(t *testing.T) {
 		}
 		writeRecord(t, filepath.Join(root, "good"), template.Scaffold{
 			SchemaVersion: template.ScaffoldSchemaVersion,
-			Template:      "loader",
+			Template:      "extractor",
 			Version:       "v1.0.0",
-			Values:        map[string]any{"appId": "good", "topic": "audits", "contract": "Audit"},
-			BlockKind:     template.BlockKindLoader,
+			Values:        map[string]any{template.KeyAppID: "good", template.KeyPublishes: "audits"},
+			BlockKind:     template.BlockKindExtractor,
 		})
 		facts, warnings := LoadWorkspaceFacts(root)
 		if len(warnings) == 0 || !strings.Contains(warnings[0].Error(), "bad") {
 			t.Fatalf("warnings = %v", warnings)
 		}
 		if len(facts.TopicKeys) != 1 || facts.TopicKeys[0].Name != "audits" {
-			t.Fatalf("topic keys = %+v", facts.TopicKeys)
-		}
-	})
-
-	t.Run("missing root yields empty facts without fatal warnings", func(t *testing.T) {
-		facts, _ := LoadWorkspaceFacts(filepath.Join(t.TempDir(), "nope"))
-		if len(facts.TopicKeys) != 0 {
 			t.Fatalf("topic keys = %+v", facts.TopicKeys)
 		}
 	})

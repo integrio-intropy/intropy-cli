@@ -197,15 +197,20 @@ export interface StatusResult {
 // state is deliberately not embedded; it stays on /api/deploy/{path}, which
 // costs a GitOps checkout refresh.
 
-/** One end of a pub/sub wire a component sits on. */
+/** One end of a pub/sub wire a component sits on: a message it publishes or
+ *  routes (a topic, on records older than message wiring). */
 export interface ContractEdge {
   pubsub: string
   topic: string
-  /** The topic's contract shortName when the registry carries it, the raw
-   *  contract name otherwise — the flow view's lookup rule. */
+  /** The message on the topic; absent on older records. */
+  message?: string
+  /** The message's (else the topic's) contract shortName when the registry
+   *  carries it, the raw contract name otherwise — the flow view's lookup rule. */
   contract?: string
-  /** Every component the topic declares on each end of the wire — a contract
-   *  shown as the connection between components, not a name. */
+  /** The content filter the component's route applies, if any. */
+  when?: string
+  /** Every component on each end of the wire (the message's when known) — a
+   *  contract shown as the connection between components, not a name. */
   publishers?: string[]
   subscribers?: string[]
 }
@@ -273,12 +278,27 @@ export interface DeployState {
 export interface TopicRef {
   pubsub: string
   topic: string
+  /** The subscription's rules, in the order the sidecar evaluates them.
+   *  Absent on a record older than routing: every message on the topic. */
+  routes?: Route[]
+  /** What becomes of an event no route matches. */
+  default?: 'ignore' | 'dead-letter'
+}
+
+/** One rule of a subscription. */
+export interface Route {
+  /** The message it takes; its name is its CloudEvent type. */
+  message: string
+  /** The content filter (CEL) its events must also match, if any. */
+  when?: string
 }
 
 /** A component's output onto a pub/sub topic. */
 export interface Publication {
   pubsub: string
   topic: string
+  /** The message it publishes there; absent on older records. */
+  message?: string
 }
 
 /** A component's use of an external port. */
@@ -305,6 +325,11 @@ export interface TopologyComponent {
 export interface TopologyTopic {
   pubsub: string
   topic: string
+  /** The messages the topic carries, each with its own contract in
+   *  `messagegroups`. */
+  messages?: string[]
+  /** The topic's one contract, on records older than message wiring only:
+   *  read contracts through topicContracts (topology.ts), which covers both. */
   contract?: string
   publishers?: string[]
   subscribers?: string[]
@@ -399,6 +424,22 @@ export interface Development {
   files?: FilePort[]
 }
 
+/** One message of the `messagegroups` section. */
+export interface TopologyMessage {
+  /** Its name, which is its CloudEvent type. */
+  name: string
+  contract?: string
+  channel?: { pubsub: string; topic: string }
+  publishers?: string[]
+  subscribers?: string[]
+}
+
+/** A `messagegroups` entry: the messages a group declares. */
+export interface MessageGroup {
+  name?: string
+  messages?: TopologyMessage[]
+}
+
 export interface Topology {
   /** Root-relative system directory, same identifier space as Integration.path. */
   path: string
@@ -414,6 +455,8 @@ export interface Topology {
   contracts?: Contract[]
   /** Contract surfaces — parsed but not yet rendered (shape not finalized). */
   apis?: unknown[]
+  /** The system's messages, by group: each one's contract, channel and ends. */
+  messagegroups?: MessageGroup[]
   /** The host's local-run picture — where a port's dev inbox lives. */
   development?: Development
   /** Authored port payload descriptions, keyed by port name. CLI-merged
@@ -550,7 +593,8 @@ function setQuery(confirmed?: Record<string, unknown>): string {
   if (!confirmed) return ''
   return Object.entries(confirmed)
     .filter((e): e is [string, NonNullable<unknown>] => e[1] !== undefined && e[1] !== null)
-    .map(([k, v]) => `&set=${encodeURIComponent(`${k}=${String(v)}`)}`)
+    // A list goes as the JSON --set takes for it.
+    .map(([k, v]) => `&set=${encodeURIComponent(`${k}=${typeof v === 'object' ? JSON.stringify(v) : String(v)}`)}`)
     .join('')
 }
 
@@ -699,7 +743,12 @@ export interface TemplateField {
   name: string
   title?: string
   description?: string
-  type: 'string' | 'boolean' | 'integer' | 'number'
+  type: 'string' | 'boolean' | 'integer' | 'number' | 'array'
+  /** An array of objects' element fields, in declaration order; each element
+   *  is an object with these keys. Their suggestions arrive here too. */
+  items?: TemplateField[]
+  minItems?: number
+  maxItems?: number
   enum?: unknown[]
   default?: unknown
   pattern?: string

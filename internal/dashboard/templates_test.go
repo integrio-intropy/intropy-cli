@@ -516,18 +516,16 @@ const topicTemplateYAML = `apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: topic-template
+  labels:
+    intropy.io/block-kind: loader
+    intropy.io/message-params: subscribes
 spec:
   parameters:
     type: object
-    required: [topic, contract]
+    required: [subscribes]
     properties:
-      topic:
+      subscribes:
         type: string
-      contract:
-        type: string
-      pubsub:
-        type: string
-        default: pubsub
       organization:
         type: string
 `
@@ -538,7 +536,7 @@ func newTopicTemplateLibrary(t *testing.T, tag string) *templatetest.Library {
 	t.Helper()
 	return templatetest.NewLibrary(t, tag, map[string]string{
 		"topic-template/template.yaml":           topicTemplateYAML,
-		"topic-template/skeleton/README.md.tmpl": "{{ .topic }}",
+		"topic-template/skeleton/README.md.tmpl": "{{ .subscribes }}",
 	})
 }
 
@@ -559,7 +557,7 @@ const extractorScaffoldRecord = `{
   "owner": "o",
   "repo": "r",
   "version": "v1",
-  "values": {"appId": "order-extractor", "topic": "orders", "contract": "Order"},
+  "values": {"appId": "order-extractor", "publishes": "orders"},
   "blockKind": "extractor",
   "dataFlow": "in"
 }`
@@ -589,16 +587,8 @@ func TestGetTemplateWithDirServesWorkspaceSuggestions(t *testing.T) {
 	for _, f := range got.Fields {
 		suggestions[f.Name] = f.Suggestions
 	}
-	if len(suggestions["topic"]) != 1 || suggestions["topic"][0] != "orders" {
-		t.Errorf("topic suggestions = %v", suggestions["topic"])
-	}
-	if len(suggestions["contract"]) != 1 || suggestions["contract"][0] != "Order" {
-		t.Errorf("contract suggestions = %v", suggestions["contract"])
-	}
-	// pubsub's only candidate equals its schema default, so it is dropped
-	// rather than competing with the default bracket.
-	if len(suggestions["pubsub"]) != 0 {
-		t.Errorf("pubsub suggestions = %v", suggestions["pubsub"])
+	if len(suggestions["subscribes"]) != 1 || suggestions["subscribes"][0] != "orders" {
+		t.Errorf("subscribes suggestions = %v", suggestions["subscribes"])
 	}
 }
 
@@ -640,7 +630,7 @@ func TestGetTemplateWorkspaceOrganizationBeatsSeeded(t *testing.T) {
 	root := t.TempDir()
 	systemDir := filepath.Join(root, "acme")
 	record := strings.Replace(extractorScaffoldRecord,
-		`"contract": "Order"`, `"contract": "Order", "organization": "acme"`, 1)
+		`"publishes": "orders"`, `"publishes": "orders", "organization": "acme"`, 1)
 	writeScaffoldRecord(t, filepath.Join(systemDir, "order-extractor"), record)
 	h := testHandlerWithOrg(t, root, templateProviders(lib.Source(t)), "integrio")
 
@@ -690,9 +680,9 @@ func TestGetTemplateWithDirConflictingContractsSuggestNoContract(t *testing.T) {
   "owner": "o",
   "repo": "r",
   "version": "v1",
-  "values": {"appId": "order-loader", "topic": "orders", "contract": "OrderV2"},
-  "blockKind": "loader",
-  "dataFlow": "out"
+  "values": {"appId": "order-loader", "subscribes": "orders"},
+  "blockKind": "extractor",
+  "dataFlow": "in"
 }`)
 	h := testHandlerWith(t, root, templateProviders(lib.Source(t)))
 
@@ -739,9 +729,9 @@ const loaderScaffoldRecord = `{
   "owner": "o",
   "repo": "r",
   "version": "v1",
-  "values": {"appId": "audit-loader", "topic": "audits", "contract": "Audit"},
-  "blockKind": "loader",
-  "dataFlow": "out"
+  "values": {"appId": "audit-extractor", "publishes": "audits"},
+  "blockKind": "extractor",
+  "dataFlow": "in"
 }`
 
 func TestGetTemplateWithConfirmedValuesChainsSuggestions(t *testing.T) {
@@ -775,17 +765,14 @@ func TestGetTemplateWithConfirmedValuesChainsSuggestions(t *testing.T) {
 		return out
 	}
 
-	// Unconfirmed: every known topic and contract is a candidate.
 	unchained := suggestionsFor("/api/templates/topic-template?dir=acme")
-	if len(unchained["contract"]) != 2 {
-		t.Errorf("contract suggestions without a confirmed topic = %v, want both known contracts", unchained["contract"])
+	if len(unchained["subscribes"]) != 2 {
+		t.Errorf("subscribes suggestions = %v, want both messages", unchained["subscribes"])
 	}
 
-	// A confirmed topic narrows contract to the one that topic carries —
-	// the chaining the form's refresh round-trips for.
-	chained := suggestionsFor("/api/templates/topic-template?dir=acme&set=topic=orders")
-	if len(chained["contract"]) != 1 || chained["contract"][0] != "Order" {
-		t.Errorf("contract suggestions with set=topic=orders = %v, want [Order]", chained["contract"])
+	chained := suggestionsFor("/api/templates/topic-template?dir=acme&set=subscribes=orders")
+	if len(chained["subscribes"]) != 2 {
+		t.Errorf("subscribes suggestions with confirmed value = %v, want both messages", chained["subscribes"])
 	}
 
 	rec := get(t, h, "/api/templates/topic-template?dir=acme&set=not-a-pair")
@@ -819,18 +806,18 @@ func TestGetTemplateSuggestions(t *testing.T) {
 	}
 
 	all := suggestionsFor("/api/templates/suggestions/topic-template?dir=acme")
-	if len(all["topic"]) != 2 || len(all["contract"]) != 2 {
-		t.Errorf("suggestions = topic %v, contract %v; want both topics and contracts", all["topic"], all["contract"])
+	if len(all["subscribes"]) != 2 {
+		t.Errorf("suggestions = subscribes %v; want both messages", all["subscribes"])
 	}
 
-	chained := suggestionsFor("/api/templates/suggestions/topic-template?dir=acme&set=topic=audits")
-	if len(chained["contract"]) != 1 || chained["contract"][0] != "Audit" {
-		t.Errorf("contract suggestions with set=topic=audits = %v, want [Audit]", chained["contract"])
+	chained := suggestionsFor("/api/templates/suggestions/topic-template?dir=acme&set=subscribes=audits")
+	if len(chained["subscribes"]) != 2 {
+		t.Errorf("subscribes suggestions with set=subscribes=audits = %v", chained["subscribes"])
 	}
 	// The confirmed field itself keeps its candidates — the form still
 	// offers the other topics on the answered field.
-	if len(chained["topic"]) != 2 {
-		t.Errorf("topic suggestions = %v, want both topics still offered", chained["topic"])
+	if len(chained["subscribes"]) != 2 {
+		t.Errorf("subscribes suggestions = %v, want both messages still offered", chained["subscribes"])
 	}
 
 	for _, url := range []string{

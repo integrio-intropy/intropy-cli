@@ -294,42 +294,34 @@ func TestCreateWithoutFactsResolvesAsBefore(t *testing.T) {
 	}
 }
 
-// loaderTemplateYAML mirrors the library's loader shape: the wiring
-// parameters the workspace facts convention resolves.
+// loaderTemplateYAML mirrors the library's loader shape: the scalar message
+// wiring parameter can be suggested from workspace publications.
 const loaderTemplateYAML = `apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: loader
+  labels:
+    intropy.io/block-kind: loader
+    intropy.io/message-params: subscribes
 spec:
   parameters:
     type: object
-    required: [topic, contract]
+    required: [subscribes]
     properties:
-      topic:
+      subscribes:
         type: string
-      contract:
-        type: string
-      pubsub:
-        type: string
-        default: pubsub
 `
 
-// TestCreatePrefillsWiringFromWorkspaceFacts is the loader-in-a-system
-// walkthrough end to end: the extractor's recorded wiring prefills the
-// loader's required parameters with no prompt (stdin is empty and stays
-// unread), the notes name each override hatch, and the scaffold record
-// persists the same wiring the developer confirmed by running.
 func TestCreatePrefillsWiringFromWorkspaceFacts(t *testing.T) {
 	lib := newTestLibrary(t, "v1", map[string]string{
 		"loader/template.yaml":           loaderTemplateYAML,
-		"loader/skeleton/README.md.tmpl": "{{ .topic }} carries {{ .contract }} on {{ .pubsub }}\n",
+		"loader/skeleton/README.md.tmpl": "{{ .subscribes }}\n",
 	})
 
 	facts := BuildWorkspaceFacts([]WorkspaceFactEntry{
-		{BlockKind: BlockKindExtractor, Values: map[string]any{
-			"topic": "orders", "contract": "Order", "pubsub": "pubsub",
-		}},
+		{BlockKind: BlockKindExtractor, Values: map[string]any{KeyPublishes: "orders"}},
 	})
+	facts.SetMessageParameters([]string{KeySubscribes})
 
 	var stderr bytes.Buffer
 	outDir := filepath.Join(t.TempDir(), "order-loader")
@@ -346,47 +338,26 @@ func TestCreatePrefillsWiringFromWorkspaceFacts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-
-	for _, want := range []string{
-		"topic: orders (from workspace; override with --set topic=<value>)",
-		"contract: Order (from workspace; override with --set contract=<value>)",
-	} {
-		if !strings.Contains(stderr.String(), want) {
-			t.Errorf("stderr missing %q:\n%s", want, stderr.String())
-		}
+	if !strings.Contains(stderr.String(), "subscribes: orders") {
+		t.Errorf("stderr missing subscribes prefill:\n%s", stderr.String())
 	}
-
-	rendered, err := os.ReadFile(filepath.Join(outDir, "README.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(rendered) != "orders carries Order on pubsub\n" {
-		t.Errorf("rendered = %q", rendered)
-	}
-
 	record, err := LoadScaffold(filepath.Join(outDir, ScaffoldRelPath))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if record.Values["topic"] != "orders" || record.Values["contract"] != "Order" {
+	if record.Values[KeySubscribes] != "orders" {
 		t.Errorf("recorded values = %v", record.Values)
 	}
 }
 
-// TestCreateSetOverridesPrefill pins the override hatch: --set topic wins
-// over the workspace candidate, and a --set topic the facts do not know
-// leaves contract to be supplied explicitly (NoInput makes that the clean
-// missing-parameter error).
 func TestCreateSetOverridesPrefill(t *testing.T) {
 	lib := newTestLibrary(t, "v1", map[string]string{
 		"loader/template.yaml":           loaderTemplateYAML,
-		"loader/skeleton/README.md.tmpl": "{{ .topic }} carries {{ .contract }}\n",
+		"loader/skeleton/README.md.tmpl": "{{ .subscribes }}\n",
 	})
 
 	facts := BuildWorkspaceFacts([]WorkspaceFactEntry{
-		{BlockKind: BlockKindExtractor, Values: map[string]any{
-			"topic": "orders", "contract": "Order",
-		}},
+		{BlockKind: BlockKindExtractor, Values: map[string]any{KeyPublishes: "orders"}},
 	})
 
 	outDir := filepath.Join(t.TempDir(), "shipment-loader")
@@ -394,42 +365,40 @@ func TestCreateSetOverridesPrefill(t *testing.T) {
 		Template:  "loader",
 		OutputDir: outDir,
 		Version:   "v1",
-		SetValues: map[string]any{"topic": "shipments", "contract": "Shipment"},
+		SetValues: map[string]any{KeySubscribes: "shipments"},
 		NoInput:   true,
 		Stdin:     strings.NewReader(""),
-		Stderr:    &bytes.Buffer{},
+		Stderr:    io.Discard,
 		Source:    lib.sourceOpts(t.TempDir(), nil),
 		Facts:     facts,
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	rendered, err := os.ReadFile(filepath.Join(outDir, "README.md"))
+	record, err := LoadScaffold(filepath.Join(outDir, ScaffoldRelPath))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(rendered) != "shipments carries Shipment\n" {
-		t.Errorf("rendered = %q", rendered)
+	if record.Values[KeySubscribes] != "shipments" {
+		t.Errorf("recorded values = %v", record.Values)
 	}
 }
 
-// messageTemplateYAML declares one message-wiring parameter through the
-// message label — the shape the template library's message PR will ship.
 const messageTemplateYAML = `apiVersion: intropy.io/v1
 kind: Template
 metadata:
   name: message-loader
   labels:
     intropy.io/block-kind: loader
-    intropy.io/message-params: message
+    intropy.io/message-params: subscribes
 spec:
   parameters:
     type: object
-    required: [integrationName, message]
+    required: [integrationName, subscribes]
     properties:
       integrationName:
         type: string
-      message:
+      subscribes:
         type: string
 `
 
@@ -437,36 +406,24 @@ func newMessageTemplateLibrary(t *testing.T, tag string) *testLibrary {
 	t.Helper()
 	return newTestLibrary(t, tag, map[string]string{
 		"message-loader/template.yaml":           messageTemplateYAML,
-		"message-loader/skeleton/README.md.tmpl": "{{ .integrationName }} subscribes {{ .message }}\n",
+		"message-loader/skeleton/README.md.tmpl": "{{ .integrationName }} subscribes {{ .subscribes }}\n",
 	})
 }
 
-func subscribeBlockFixture() *SubscribeBlock {
-	return &SubscribeBlock{
-		Message:       "io.intropy.maxbo.product.export",
-		Pubsub:        "product-distribution-pubsub",
-		Topic:         "sbt-test-product-extractor-001",
-		Dataschema:    "/schemagroups/io.intropy.maxbo.product/schemas/product-export.v1",
-		DataschemaURL: "https://registry.example.com/schemagroups/io.intropy.maxbo.product/schemas/product-export.v1/versions/1",
-	}
-}
-
-// AE1: --subscribe with a resolved block writes the full block into the
-// scaffold record's values, and the resolution reaches the render.
-func TestCreateSubscribeWritesBlock(t *testing.T) {
+func TestCreateSubscribeWritesScalarMessage(t *testing.T) {
 	lib := newMessageTemplateLibrary(t, "v9.9.9")
 	outDir := filepath.Join(t.TempDir(), "order-loader")
 	var stderr bytes.Buffer
 
 	err := Create(context.Background(), CreateOptions{
-		Template:  "message-loader",
-		OutputDir: outDir,
-		Version:   "v9.9.9",
-		SetValues: map[string]any{"integrationName": "orders"},
-		NoInput:   true,
-		Stderr:    &stderr,
-		Source:    lib.sourceOpts(t.TempDir(), nil),
-		Subscribe: subscribeBlockFixture(),
+		Template:         "message-loader",
+		OutputDir:        outDir,
+		Version:          "v9.9.9",
+		SetValues:        map[string]any{"integrationName": "orders"},
+		NoInput:          true,
+		Stderr:           &stderr,
+		Source:           lib.sourceOpts(t.TempDir(), nil),
+		SubscribeMessage: "order-created",
 	})
 	if err != nil {
 		t.Fatalf("Create: %v\nstderr: %s", err, stderr.String())
@@ -476,19 +433,14 @@ func TestCreateSubscribeWritesBlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := ReadSubscribeBlock(ScaffoldEntry{Path: outDir, Scaffold: *record})
-	if err != nil {
-		t.Fatalf("scaffold record is not the block shape: %v (values: %v)", err, record.Values)
+	if got := record.Values[KeySubscribes]; got != "order-created" {
+		t.Errorf("values.subscribes = %v, want order-created", got)
 	}
-	if *b != *subscribeBlockFixture() {
-		t.Errorf("record subscribe block = %+v, want %+v", *b, *subscribeBlockFixture())
-	}
-
 	rendered, err := os.ReadFile(filepath.Join(outDir, "README.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(rendered), "io.intropy.maxbo.product.export") {
+	if !strings.Contains(string(rendered), "order-created") {
 		t.Errorf("render = %q, want the wired message", rendered)
 	}
 }
@@ -498,169 +450,41 @@ func TestCreateSubscribeRejectsConflictingMessageValue(t *testing.T) {
 	var stderr bytes.Buffer
 
 	err := Create(context.Background(), CreateOptions{
-		Template:  "message-loader",
-		OutputDir: filepath.Join(t.TempDir(), "out"),
-		Version:   "v9.9.9",
-		SetValues: map[string]any{"integrationName": "orders", "message": "io.intropy.other.message"},
-		NoInput:   true,
-		Stderr:    &stderr,
-		Source:    lib.sourceOpts(t.TempDir(), nil),
-		Subscribe: subscribeBlockFixture(),
+		Template:         "message-loader",
+		OutputDir:        filepath.Join(t.TempDir(), "out"),
+		Version:          "v9.9.9",
+		SetValues:        map[string]any{"integrationName": "orders", "subscribes": "other-message"},
+		NoInput:          true,
+		Stderr:           &stderr,
+		Source:           lib.sourceOpts(t.TempDir(), nil),
+		SubscribeMessage: "order-created",
 	})
 	if !errors.Is(err, ErrSubscribeMessageConflict) {
 		t.Fatalf("err = %v, want ErrSubscribeMessageConflict", err)
 	}
-	for _, want := range []string{"io.intropy.other.message", "io.intropy.maxbo.product.export"} {
+	for _, want := range []string{"other-message", "order-created"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q should name %q", err, want)
 		}
 	}
 }
 
-// AE2: --subscribe against a template with no message parameters is a
-// usage-class error naming the template, before anything renders.
 func TestCreateSubscribeGate(t *testing.T) {
-	lib := newTemplateLibrary(t, "v9.9.9") // no message label
+	lib := newTemplateLibrary(t, "v9.9.9")
 	var stderr bytes.Buffer
 
 	err := Create(context.Background(), CreateOptions{
-		Template:  "test-template",
-		OutputDir: filepath.Join(t.TempDir(), "out"),
-		Version:   "v9.9.9",
-		SetValues: map[string]any{"integrationName": "orders", "message": "io.intropy.maxbo.product.export"},
-		NoInput:   true,
-		Stderr:    &stderr,
-		Source:    lib.sourceOpts(t.TempDir(), nil),
-		Subscribe: subscribeBlockFixture(),
+		Template:         "test-template",
+		OutputDir:        filepath.Join(t.TempDir(), "out"),
+		Version:          "v9.9.9",
+		SetValues:        map[string]any{"integrationName": "orders"},
+		NoInput:          true,
+		Stderr:           &stderr,
+		Source:           lib.sourceOpts(t.TempDir(), nil),
+		SubscribeMessage: "order-created",
 	})
 	if !errors.Is(err, ErrNoMessageParameters) {
 		t.Fatalf("err = %v, want ErrNoMessageParameters", err)
-	}
-	if !strings.Contains(err.Error(), "test-template") {
-		t.Errorf("error %q should name the template", err)
-	}
-
-	// Nothing rendered: the gate runs before output.
-	if _, statErr := os.Stat(filepath.Join(t.TempDir(), "out")); statErr == nil {
-		// (out is a fresh dir; nothing from this run landed anywhere)
-	}
-}
-
-// A message-capable template registers its message parameters and the
-// registry refs with the facts, so prompts offer the union.
-func TestCreateSubscribeFactsGetMessageCandidates(t *testing.T) {
-	lib := newMessageTemplateLibrary(t, "v9.9.9")
-	var stderr bytes.Buffer
-	facts := BuildWorkspaceFacts(nil)
-
-	err := Create(context.Background(), CreateOptions{
-		Template:  "message-loader",
-		OutputDir: filepath.Join(t.TempDir(), "out"),
-		Version:   "v9.9.9",
-		SetValues: map[string]any{"integrationName": "orders", "message": "io.intropy.maxbo.product.export"},
-		NoInput:   true,
-		Stderr:    &stderr,
-		Source:    lib.sourceOpts(t.TempDir(), nil),
-		Facts:     facts,
-		MessageRefs: []string{
-			"io.intropy.maxbo.product.export",
-			"io.intropy.maxbo.catalog.updated",
-		},
-	})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-	if !facts.IsMessageParameter("message") {
-		t.Fatal("the manifest's message parameter did not reach the facts")
-	}
-	got := facts.MessageCandidates()
-	if len(got) != 2 || got[0] != "io.intropy.maxbo.catalog.updated" {
-		t.Errorf("candidates = %v, want both registry refs", got)
-	}
-}
-
-func TestCreateLoadsMessageRefsOnlyForMessageTemplates(t *testing.T) {
-	t.Run("message template loads candidates", func(t *testing.T) {
-		lib := newMessageTemplateLibrary(t, "v9.9.9")
-		facts := BuildWorkspaceFacts(nil)
-		called := 0
-		err := Create(context.Background(), CreateOptions{
-			Template:  "message-loader",
-			OutputDir: filepath.Join(t.TempDir(), "out"),
-			Version:   "v9.9.9",
-			SetValues: map[string]any{"integrationName": "orders", "message": "io.intropy.maxbo.product.export"},
-			NoInput:   true,
-			Stderr:    io.Discard,
-			Source:    lib.sourceOpts(t.TempDir(), nil),
-			Facts:     facts,
-			MessageRefsLoader: func(context.Context) ([]string, error) {
-				called++
-				return []string{"io.intropy.maxbo.product.export"}, nil
-			},
-		})
-		if err != nil {
-			t.Fatalf("Create: %v", err)
-		}
-		if called != 1 {
-			t.Fatalf("loader calls = %d, want 1", called)
-		}
-		if got := facts.MessageCandidates(); len(got) != 1 || got[0] != "io.intropy.maxbo.product.export" {
-			t.Errorf("candidates = %v", got)
-		}
-	})
-
-	t.Run("non-message template skips candidates", func(t *testing.T) {
-		lib := newTemplateLibrary(t, "v9.9.9")
-		called := 0
-		err := Create(context.Background(), CreateOptions{
-			Template:  "test-template",
-			OutputDir: filepath.Join(t.TempDir(), "out"),
-			Version:   "v9.9.9",
-			SetValues: map[string]any{"integrationName": "orders"},
-			NoInput:   true,
-			Stderr:    io.Discard,
-			Source:    lib.sourceOpts(t.TempDir(), nil),
-			Facts:     BuildWorkspaceFacts(nil),
-			MessageRefsLoader: func(context.Context) ([]string, error) {
-				called++
-				return nil, nil
-			},
-		})
-		if err != nil {
-			t.Fatalf("Create: %v", err)
-		}
-		if called != 0 {
-			t.Fatalf("loader calls = %d, want 0", called)
-		}
-	})
-}
-
-// --no-input plus a required message parameter and no --subscribe fails
-// naming --subscribe.
-func TestCreateNoInputMessageParameterHintsSubscribe(t *testing.T) {
-	lib := newMessageTemplateLibrary(t, "v9.9.9")
-	var stderr bytes.Buffer
-
-	err := Create(context.Background(), CreateOptions{
-		Template:  "message-loader",
-		OutputDir: filepath.Join(t.TempDir(), "out"),
-		Version:   "v9.9.9",
-		SetValues: map[string]any{"integrationName": "orders"},
-		NoInput:   true,
-		Stderr:    &stderr,
-		Source:    lib.sourceOpts(t.TempDir(), nil),
-		// The command always supplies the workspace facts; the parameter
-		// registry that turns the hint on lives there.
-		Facts: BuildWorkspaceFacts(nil),
-	})
-	if err == nil {
-		t.Fatal("expected the missing-required error")
-	}
-	if !strings.Contains(err.Error(), "--subscribe") {
-		t.Errorf("error %q should name --subscribe", err)
-	}
-	if !strings.Contains(err.Error(), "message") {
-		t.Errorf("error %q should name the message parameter", err)
 	}
 }
 
@@ -670,15 +494,15 @@ metadata:
   name: message-extractor
   labels:
     intropy.io/block-kind: extractor
-    intropy.io/message-params: message
+    intropy.io/message-params: publishes
 spec:
   parameters:
     type: object
-    required: [integrationName, message]
+    required: [integrationName, publishes]
     properties:
       integrationName:
         type: string
-      message:
+      publishes:
         type: string
 `
 
@@ -688,345 +512,43 @@ metadata:
   name: message-transactional
   labels:
     intropy.io/block-kind: transactional-integration
-    intropy.io/message-params: message
+    intropy.io/message-params: publishes
 spec:
   parameters:
     type: object
-    required: [integrationName, message]
+    required: [integrationName, publishes]
     properties:
       integrationName:
         type: string
-      message:
+      publishes:
         type: string
 `
 
 func newMessageDirectionLibrary(t *testing.T, tag string) *testLibrary {
 	t.Helper()
 	return newTestLibrary(t, tag, map[string]string{
-		"message-extractor/template.yaml":           messageExtractorYAML,
-		"message-extractor/skeleton/README.md.tmpl": "{{ .integrationName }} publishes {{ .message }}\n",
-		"message-transactional/template.yaml":       messageTransactionalYAML,
-		"message-transactional/skeleton/README.md":  "{{ .integrationName }}\n",
-		"message-loader/template.yaml":              messageTemplateYAML,
-		"message-loader/skeleton/README.md.tmpl":    "{{ .integrationName }} subscribes {{ .message }}\n",
+		"message-extractor/template.yaml":               messageExtractorYAML,
+		"message-extractor/skeleton/README.md.tmpl":     "{{ .integrationName }} publishes {{ .publishes }}\n",
+		"message-loader/template.yaml":                  messageTemplateYAML,
+		"message-loader/skeleton/README.md.tmpl":        "{{ .integrationName }} subscribes {{ .subscribes }}\n",
+		"message-transactional/template.yaml":           messageTransactionalYAML,
+		"message-transactional/skeleton/README.md.tmpl": "{{ .integrationName }}\n",
 	})
 }
 
-func publishesBlockFixture() *PublishesBlock {
-	return &PublishesBlock{
-		Message:       "io.intropy.maxbo.product.export",
-		Pubsub:        "product-distribution-pubsub",
-		Topic:         "sbt-test-erp-extractor-001",
-		Dataschema:    "/schemagroups/io.intropy.maxbo.product/schemas/product-export.v1",
-		DataschemaURL: "https://registry.example.com/schemagroups/io.intropy.maxbo.product/schemas/product-export.v1/versions/1",
-	}
-}
-
-// AE1's record shape, exercised at the template layer: the resolved
-// snapshot lands under the publishes key, the message parameter is
-// seeded, and contract stays a template parameter the resolution never
-// touches.
-func TestCreatePublishesWritesBlock(t *testing.T) {
+func TestCreatePublishesWritesScalarMessage(t *testing.T) {
 	lib := newMessageDirectionLibrary(t, "v9.9.9")
-	outDir := filepath.Join(t.TempDir(), "erp-extractor")
-	var stderr bytes.Buffer
+	outDir := filepath.Join(t.TempDir(), "order-extractor")
 
 	err := Create(context.Background(), CreateOptions{
-		Template:  "message-extractor",
-		OutputDir: outDir,
-		Version:   "v9.9.9",
-		SetValues: map[string]any{"integrationName": "erp"},
-		NoInput:   true,
-		Stderr:    &stderr,
-		Source:    lib.sourceOpts(t.TempDir(), nil),
-		Publishes: publishesBlockFixture(),
-	})
-	if err != nil {
-		t.Fatalf("Create: %v\nstderr: %s", err, stderr.String())
-	}
-
-	record, err := LoadScaffold(filepath.Join(outDir, ScaffoldRelPath))
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := ReadPublishesBlock(ScaffoldEntry{Path: outDir, Scaffold: *record})
-	if err != nil {
-		t.Fatalf("scaffold record is not the block shape: %v (values: %v)", err, record.Values)
-	}
-	if *b != *publishesBlockFixture() {
-		t.Errorf("record publishes block = %+v, want %+v", *b, *publishesBlockFixture())
-	}
-	if _, ok := record.Values[KeyContract]; ok {
-		t.Errorf("resolution must not invent a contract value")
-	}
-	rendered, err := os.ReadFile(filepath.Join(outDir, "README.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(rendered), "io.intropy.maxbo.product.export") {
-		t.Errorf("render = %q, want the wired message", rendered)
-	}
-}
-
-// AE2: direction gates — publishes against a subscribing template, both
-// flags against a no-messaging kind, and the subscribe-side mirror.
-func TestCreateMessageDirectionGate(t *testing.T) {
-	pub := publishesBlockFixture()
-	sub := subscribeBlockFixture()
-	for _, tc := range []struct {
-		name         string
-		template     string
-		subscribe    *SubscribeBlock
-		publishes    *PublishesBlock
-		wantContains string
-	}{
-		{"publishes against a loader", "message-loader", nil, pub, "subscribes to messages"},
-		{"subscribe against an extractor", "message-extractor", sub, nil, "publishes messages"},
-		{"publishes against transactional", "message-transactional", nil, pub, "wire no messages"},
-		{"subscribe against transactional", "message-transactional", sub, nil, "wire no messages"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			lib := newMessageDirectionLibrary(t, "v9.9.9")
-			var stderr bytes.Buffer
-			err := Create(context.Background(), CreateOptions{
-				Template:  tc.template,
-				OutputDir: filepath.Join(t.TempDir(), "out"),
-				Version:   "v9.9.9",
-				SetValues: map[string]any{"integrationName": "orders"},
-				NoInput:   true,
-				Stderr:    &stderr,
-				Source:    lib.sourceOpts(t.TempDir(), nil),
-				Subscribe: tc.subscribe,
-				Publishes: tc.publishes,
-			})
-			if !errors.Is(err, ErrMessageDirection) {
-				t.Fatalf("err = %v, want ErrMessageDirection", err)
-			}
-			if !strings.Contains(err.Error(), tc.template) || !strings.Contains(err.Error(), tc.wantContains) {
-				t.Errorf("error %q should name the template and say %q", err, tc.wantContains)
-			}
-		})
-	}
-}
-
-// A template of any kind without message parameters still fails on the
-// parameters gate, not the direction gate.
-func TestCreatePublishesGateWithoutMessageParameters(t *testing.T) {
-	lib := newTemplateLibrary(t, "v9.9.9")
-	var stderr bytes.Buffer
-
-	err := Create(context.Background(), CreateOptions{
-		Template:  "test-template",
-		OutputDir: filepath.Join(t.TempDir(), "out"),
-		Version:   "v9.9.9",
-		SetValues: map[string]any{"integrationName": "orders"},
-		NoInput:   true,
-		Stderr:    &stderr,
-		Source:    lib.sourceOpts(t.TempDir(), nil),
-		Publishes: publishesBlockFixture(),
-	})
-	if !errors.Is(err, ErrNoMessageParameters) {
-		t.Fatalf("err = %v, want ErrNoMessageParameters", err)
-	}
-	if !strings.Contains(err.Error(), "--publishes") {
-		t.Errorf("error %q should name --publishes", err)
-	}
-}
-
-func TestCreatePublishesRejectsConflictingMessageValue(t *testing.T) {
-	lib := newMessageDirectionLibrary(t, "v9.9.9")
-	var stderr bytes.Buffer
-
-	err := Create(context.Background(), CreateOptions{
-		Template:  "message-extractor",
-		OutputDir: filepath.Join(t.TempDir(), "out"),
-		Version:   "v9.9.9",
-		SetValues: map[string]any{"integrationName": "erp", "message": "io.intropy.other.message"},
-		NoInput:   true,
-		Stderr:    &stderr,
-		Source:    lib.sourceOpts(t.TempDir(), nil),
-		Publishes: publishesBlockFixture(),
-	})
-	if !errors.Is(err, ErrMessageParameterConflict) {
-		t.Fatalf("err = %v, want ErrMessageParameterConflict", err)
-	}
-	for _, want := range []string{"--publishes", "io.intropy.other.message", "io.intropy.maxbo.product.export"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q should name %q", err, want)
-		}
-	}
-}
-
-func TestCreateRejectsSubscribeAndPublishesTogether(t *testing.T) {
-	lib := newMessageDirectionLibrary(t, "v9.9.9")
-	var stderr bytes.Buffer
-
-	err := Create(context.Background(), CreateOptions{
-		Template:  "message-extractor",
-		OutputDir: filepath.Join(t.TempDir(), "out"),
-		Version:   "v9.9.9",
-		SetValues: map[string]any{"integrationName": "erp"},
-		NoInput:   true,
-		Stderr:    &stderr,
-		Source:    lib.sourceOpts(t.TempDir(), nil),
-		Subscribe: subscribeBlockFixture(),
-		Publishes: publishesBlockFixture(),
-	})
-	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
-		t.Fatalf("err = %v, want the exclusivity error", err)
-	}
-}
-
-// --no-input plus a required message parameter and no --publishes on a
-// producing template fails naming --publishes.
-func TestCreateNoInputMessageParameterHintsPublishes(t *testing.T) {
-	lib := newMessageDirectionLibrary(t, "v9.9.9")
-	var stderr bytes.Buffer
-
-	err := Create(context.Background(), CreateOptions{
-		Template:  "message-extractor",
-		OutputDir: filepath.Join(t.TempDir(), "out"),
-		Version:   "v9.9.9",
-		SetValues: map[string]any{"integrationName": "erp"},
-		NoInput:   true,
-		Stderr:    &stderr,
-		Source:    lib.sourceOpts(t.TempDir(), nil),
-		Facts:     BuildWorkspaceFacts(nil),
-	})
-	if err == nil {
-		t.Fatal("expected the missing-required error")
-	}
-	if !strings.Contains(err.Error(), "--publishes") {
-		t.Errorf("error %q should name --publishes", err)
-	}
-}
-
-// AE5: a publishing template's prompt pool is registry-only — workspace
-// messages already have producers — while a subscribing template sees the
-// full pool. With the registry contributing nothing, the publishing pool
-// is empty rather than filled with workspace messages.
-func TestCreateMessageCandidatesDirectionFiltered(t *testing.T) {
-	newFactsWithInternal := func() *WorkspaceFacts {
-		facts := BuildWorkspaceFacts([]WorkspaceFactEntry{{
-			BlockKind: "extractor",
-			Values: map[string]any{
-				"publishes": map[string]any{"message": "internal-only-message"},
-			},
-		}})
-		return facts
-	}
-
-	t.Run("publishing template keeps registry refs only", func(t *testing.T) {
-		lib := newMessageDirectionLibrary(t, "v9.9.9")
-		var stderr bytes.Buffer
-		facts := newFactsWithInternal()
-		err := Create(context.Background(), CreateOptions{
-			Template:  "message-extractor",
-			OutputDir: filepath.Join(t.TempDir(), "out"),
-			Version:   "v9.9.9",
-			SetValues: map[string]any{"integrationName": "erp", "message": "io.intropy.maxbo.product.export"},
-			NoInput:   true,
-			Stderr:    &stderr,
-			Source:    lib.sourceOpts(t.TempDir(), nil),
-			Facts:     facts,
-			MessageRefs: []string{
-				"io.intropy.maxbo.product.export",
-				"io.intropy.maxbo.catalog.updated",
-			},
-		})
-		if err != nil {
-			t.Fatalf("Create: %v", err)
-		}
-		got := facts.MessageCandidates()
-		if len(got) != 2 || got[0] != "io.intropy.maxbo.catalog.updated" {
-			t.Errorf("candidates = %v, want only the registry refs", got)
-		}
-	})
-
-	t.Run("subscribing template keeps the full pool", func(t *testing.T) {
-		lib := newMessageDirectionLibrary(t, "v9.9.9")
-		var stderr bytes.Buffer
-		facts := newFactsWithInternal()
-		err := Create(context.Background(), CreateOptions{
-			Template:    "message-loader",
-			OutputDir:   filepath.Join(t.TempDir(), "out"),
-			Version:     "v9.9.9",
-			SetValues:   map[string]any{"integrationName": "orders", "message": "internal-only-message"},
-			NoInput:     true,
-			Stderr:      &stderr,
-			Source:      lib.sourceOpts(t.TempDir(), nil),
-			Facts:       facts,
-			MessageRefs: []string{"io.intropy.maxbo.product.export"},
-		})
-		if err != nil {
-			t.Fatalf("Create: %v", err)
-		}
-		got := facts.MessageCandidates()
-		if len(got) != 2 || got[0] != "internal-only-message" || got[1] != "io.intropy.maxbo.product.export" {
-			t.Errorf("candidates = %v, want registry ref plus internal message", got)
-		}
-	})
-
-	t.Run("publishing pool is empty when the registry contributes nothing", func(t *testing.T) {
-		lib := newMessageDirectionLibrary(t, "v9.9.9")
-		var stderr bytes.Buffer
-		facts := newFactsWithInternal()
-		err := Create(context.Background(), CreateOptions{
-			Template:  "message-extractor",
-			OutputDir: filepath.Join(t.TempDir(), "out"),
-			Version:   "v9.9.9",
-			SetValues: map[string]any{"integrationName": "erp", "message": "internal-only-message"},
-			NoInput:   true,
-			Stderr:    &stderr,
-			Source:    lib.sourceOpts(t.TempDir(), nil),
-			Facts:     facts,
-			MessageRefsLoader: func(context.Context) ([]string, error) {
-				return nil, nil // the degraded pool the CLI's warning path produces
-			},
-		})
-		if err != nil {
-			t.Fatalf("Create: %v", err)
-		}
-		if got := facts.MessageCandidates(); len(got) != 0 {
-			t.Errorf("candidates = %v, want empty", got)
-		}
-	})
-}
-
-func TestCreatePublishesNilSetValues(t *testing.T) {
-	// Only the message parameter is required: the run carries no sets, so
-	// the seed must come from the resolution, and the block must land even
-	// though SetValues started nil.
-	manifest := `apiVersion: intropy.io/v1
-kind: Template
-metadata:
-  name: message-extractor
-  labels:
-    intropy.io/block-kind: extractor
-    intropy.io/message-params: message
-spec:
-  parameters:
-    type: object
-    required: [message]
-    properties:
-      message:
-        type: string
-`
-	lib := newTestLibrary(t, "v9.9.9", map[string]string{
-		"message-extractor/template.yaml":           manifest,
-		"message-extractor/skeleton/README.md.tmpl": " publishes {{ .message }}\n",
-	})
-	outDir := filepath.Join(t.TempDir(), "erp-extractor")
-	var stderr bytes.Buffer
-
-	err := Create(context.Background(), CreateOptions{
-		Template:  "message-extractor",
-		OutputDir: outDir,
-		Version:   "v9.9.9",
-		NoInput:   true,
-		Stderr:    &stderr,
-		Source:    lib.sourceOpts(t.TempDir(), nil),
-		Publishes: publishesBlockFixture(),
+		Template:         "message-extractor",
+		OutputDir:        outDir,
+		Version:          "v9.9.9",
+		SetValues:        map[string]any{"integrationName": "orders"},
+		NoInput:          true,
+		Stderr:           io.Discard,
+		Source:           lib.sourceOpts(t.TempDir(), nil),
+		PublishesMessage: "order-created",
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -1035,119 +557,114 @@ spec:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ReadPublishesBlock(ScaffoldEntry{Path: outDir, Scaffold: *record}); err != nil {
-		t.Fatalf("nil SetValues lost the publishes block: %v (values: %v)", err, record.Values)
+	if got := record.Values[KeyPublishes]; got != "order-created" {
+		t.Errorf("values.publishes = %v, want order-created", got)
 	}
 }
 
-func TestCreatePublishesNonStringMessageValueConflicts(t *testing.T) {
+func TestCreateMessageDirectionGate(t *testing.T) {
 	lib := newMessageDirectionLibrary(t, "v9.9.9")
-	var stderr bytes.Buffer
-
-	err := Create(context.Background(), CreateOptions{
-		Template:  "message-extractor",
-		OutputDir: filepath.Join(t.TempDir(), "out"),
-		Version:   "v9.9.9",
-		SetValues: map[string]any{"integrationName": "erp", "message": 7},
-		NoInput:   true,
-		Stderr:    &stderr,
-		Source:    lib.sourceOpts(t.TempDir(), nil),
-		Publishes: publishesBlockFixture(),
-	})
-	if !errors.Is(err, ErrMessageParameterConflict) {
-		t.Fatalf("err = %v, want ErrMessageParameterConflict", err)
+	for _, tc := range []struct {
+		name      string
+		template  string
+		subscribe string
+		publishes string
+		wantErr   string
+	}{
+		{name: "subscribe against extractor", template: "message-extractor", subscribe: "m", wantErr: "use --publishes"},
+		{name: "publishes against loader", template: "message-loader", publishes: "m", wantErr: "use --subscribe"},
+		{name: "publishes against transactional", template: "message-transactional", publishes: "m", wantErr: "wire no messages"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := Create(context.Background(), CreateOptions{
+				Template:         tc.template,
+				OutputDir:        filepath.Join(t.TempDir(), "out"),
+				Version:          "v9.9.9",
+				SetValues:        map[string]any{"integrationName": "orders"},
+				NoInput:          true,
+				Stderr:           io.Discard,
+				Source:           lib.sourceOpts(t.TempDir(), nil),
+				SubscribeMessage: tc.subscribe,
+				PublishesMessage: tc.publishes,
+			})
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("err = %v, want %q", err, tc.wantErr)
+			}
+		})
 	}
 }
 
-func TestCreateSubscribePublishesExclusivitySentinel(t *testing.T) {
+func TestCreateRejectsSubscribeAndPublishesTogether(t *testing.T) {
 	lib := newMessageDirectionLibrary(t, "v9.9.9")
-	var stderr bytes.Buffer
-
 	err := Create(context.Background(), CreateOptions{
-		Template:  "message-extractor",
-		OutputDir: filepath.Join(t.TempDir(), "out"),
-		Version:   "v9.9.9",
-		SetValues: map[string]any{"integrationName": "erp"},
-		NoInput:   true,
-		Stderr:    &stderr,
-		Source:    lib.sourceOpts(t.TempDir(), nil),
-		Subscribe: subscribeBlockFixture(),
-		Publishes: publishesBlockFixture(),
+		Template:         "message-extractor",
+		OutputDir:        filepath.Join(t.TempDir(), "out"),
+		Version:          "v9.9.9",
+		SetValues:        map[string]any{"integrationName": "orders"},
+		NoInput:          true,
+		Stderr:           io.Discard,
+		Source:           lib.sourceOpts(t.TempDir(), nil),
+		SubscribeMessage: "m",
+		PublishesMessage: "m",
 	})
 	if !errors.Is(err, ErrMessageFlagsExclusive) {
 		t.Fatalf("err = %v, want ErrMessageFlagsExclusive", err)
 	}
 }
 
-// A loader failure degrades to a warning and an empty pool: the
-// suggestions are advisory, and the create the records would still allow
-// must not fail on them.
-func TestCreateMessageRefsLoaderErrorDegrades(t *testing.T) {
+func TestCreateNoInputMessageParameterHintsDirection(t *testing.T) {
 	lib := newMessageDirectionLibrary(t, "v9.9.9")
-	var stderr bytes.Buffer
-	facts := BuildWorkspaceFacts(nil)
-
-	err := Create(context.Background(), CreateOptions{
-		Template:  "message-loader",
-		OutputDir: filepath.Join(t.TempDir(), "out"),
-		Version:   "v9.9.9",
-		SetValues: map[string]any{"integrationName": "orders", "message": "internal-only-message"},
-		NoInput:   true,
-		Stderr:    &stderr,
-		Source:    lib.sourceOpts(t.TempDir(), nil),
-		Facts:     facts,
-		MessageRefsLoader: func(context.Context) ([]string, error) {
-			return nil, errors.New("registry unreachable")
-		},
-	})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-	if !strings.Contains(stderr.String(), "registry unreachable") {
-		t.Errorf("stderr %q should carry the loader warning", stderr.String())
+	for _, tc := range []struct{ template, flag string }{{"message-loader", "--subscribe"}, {"message-extractor", "--publishes"}} {
+		t.Run(tc.template, func(t *testing.T) {
+			err := Create(context.Background(), CreateOptions{
+				Template:  tc.template,
+				OutputDir: filepath.Join(t.TempDir(), "out"),
+				Version:   "v9.9.9",
+				SetValues: map[string]any{"integrationName": "orders"},
+				NoInput:   true,
+				Stderr:    io.Discard,
+				Source:    lib.sourceOpts(t.TempDir(), nil),
+				Facts:     BuildWorkspaceFacts(nil),
+			})
+			if err == nil || !strings.Contains(err.Error(), tc.flag) {
+				t.Fatalf("err = %v, want hint %s", err, tc.flag)
+			}
+		})
 	}
 }
 
-// One create wires one message: a manifest declaring two message
-// parameters is refused under the flags rather than silently seeding both
-// with the same id.
 func TestCreateMultiMessageParameterFlagGate(t *testing.T) {
 	manifest := `apiVersion: intropy.io/v1
 kind: Template
 metadata:
-  name: two-message-loader
+  name: multi-message
   labels:
-    intropy.io/block-kind: loader
-    intropy.io/message-params: message, secondMessage
+    intropy.io/block-kind: extractor
+    intropy.io/message-params: first,second
 spec:
   parameters:
     type: object
-    required: [integrationName, message, secondMessage]
+    required: [integrationName, first, second]
     properties:
-      integrationName:
-        type: string
-      message:
-        type: string
-      secondMessage:
-        type: string
+      integrationName: {type: string}
+      first: {type: string}
+      second: {type: string}
 `
 	lib := newTestLibrary(t, "v9.9.9", map[string]string{
-		"two-message-loader/template.yaml":           manifest,
-		"two-message-loader/skeleton/README.md.tmpl": "{{ .integrationName }}\n",
+		"multi-message/template.yaml":           manifest,
+		"multi-message/skeleton/README.md.tmpl": "{{ .integrationName }}\n",
 	})
-	var stderr bytes.Buffer
-
 	err := Create(context.Background(), CreateOptions{
-		Template:  "two-message-loader",
-		OutputDir: filepath.Join(t.TempDir(), "out"),
-		Version:   "v9.9.9",
-		SetValues: map[string]any{"integrationName": "orders", "message": "a", "secondMessage": "b"},
-		NoInput:   true,
-		Stderr:    &stderr,
-		Source:    lib.sourceOpts(t.TempDir(), nil),
-		Subscribe: subscribeBlockFixture(),
+		Template:         "multi-message",
+		OutputDir:        filepath.Join(t.TempDir(), "out"),
+		Version:          "v9.9.9",
+		SetValues:        map[string]any{"integrationName": "orders"},
+		NoInput:          true,
+		Stderr:           io.Discard,
+		Source:           lib.sourceOpts(t.TempDir(), nil),
+		PublishesMessage: "order-created",
 	})
-	if err == nil || !strings.Contains(err.Error(), "wires one message") || !strings.Contains(err.Error(), "secondMessage") {
-		t.Errorf("err = %v, want the multi-parameter gate naming both parameters", err)
+	if err == nil || !strings.Contains(err.Error(), "declares 2 message parameters") {
+		t.Fatalf("err = %v, want multi-message gate", err)
 	}
 }

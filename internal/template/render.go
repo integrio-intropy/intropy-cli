@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
-
-	"github.com/Masterminds/sprig/v3"
 )
 
 const tmplSuffix = ".tmpl"
@@ -47,40 +45,73 @@ func RenderFiltered(srcDir, destDir string, values map[string]any, rules []FileR
 		if rel == "." {
 			return nil
 		}
-		include, err := filter.include(filepath.ToSlash(rel))
+		renders, err := filter.expand(filepath.ToSlash(rel))
 		if err != nil {
 			return err
 		}
-		if !include {
+		if len(renders) == 0 {
 			if d.IsDir() {
 				return fs.SkipDir
 			}
 			return nil
 		}
-		renderedRel, err := renderPath(rel, values)
-		if err != nil {
-			return err
+		// A directory every element shares renders once per element to one
+		// path; only files must land apart.
+		var seen map[string]bool
+		if !d.IsDir() {
+			seen = map[string]bool{}
 		}
-		if renderedRel == "" {
-			return fmt.Errorf("path %q rendered to empty string", rel)
+		for _, v := range renders {
+			renderedRel, err := renderSkeletonPath(rel, v, seen)
+			if err != nil {
+				return err
+			}
+			target := filepath.Join(destDir, strings.TrimSuffix(renderedRel, tmplSuffix))
+			if d.IsDir() {
+				if err := os.MkdirAll(target, 0o755); err != nil {
+					return err
+				}
+				continue
+			}
+			info, err := d.Info()
+			if err != nil {
+				return err
+			}
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+			mode := info.Mode().Perm()
+			if strings.HasSuffix(renderedRel, tmplSuffix) {
+				err = renderTemplate(path, target, mode, v)
+			} else {
+				err = copyFile(path, target, mode)
+			}
+			if err != nil {
+				return err
+			}
 		}
-		target := filepath.Join(destDir, strings.TrimSuffix(renderedRel, tmplSuffix))
-		if d.IsDir() {
-			return os.MkdirAll(target, 0o755)
-		}
-		info, err := d.Info()
-		if err != nil {
-			return err
-		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			return err
-		}
-		mode := info.Mode().Perm()
-		if strings.HasSuffix(renderedRel, tmplSuffix) {
-			return renderTemplate(path, target, mode, values)
-		}
-		return copyFile(path, target, mode)
+		return nil
 	})
+}
+
+// renderSkeletonPath renders one skeleton path for one value set, refusing
+// an empty result and — across the renders of an expanded file, tracked in
+// seen (nil for a directory) — two elements that would land on one file.
+func renderSkeletonPath(rel string, values map[string]any, seen map[string]bool) (string, error) {
+	renderedRel, err := renderPath(rel, values)
+	if err != nil {
+		return "", err
+	}
+	if renderedRel == "" {
+		return "", fmt.Errorf("path %q rendered to empty string", rel)
+	}
+	if seen != nil {
+		if seen[renderedRel] {
+			return "", fmt.Errorf("path %q renders to %q for more than one list element", rel, renderedRel)
+		}
+		seen[renderedRel] = true
+	}
+	return renderedRel, nil
 }
 
 // FileOutcomeKind is what an update render decided about one destination
@@ -128,6 +159,10 @@ type RenderUpdateOptions struct {
 // holds a project.
 func RenderUpdate(srcDir, destDir string, values map[string]any, rules []FileRule, opts RenderUpdateOptions) ([]FileOutcome, error) {
 	filter := newSkeletonFilter(rules, values)
+	var baseFilter *skeletonFilter
+	if opts.Baseline != nil {
+		baseFilter = newSkeletonFilter(rules, opts.Baseline)
+	}
 	var outcomes []FileOutcome
 	err := filepath.WalkDir(srcDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -140,80 +175,115 @@ func RenderUpdate(srcDir, destDir string, values map[string]any, rules []FileRul
 		if rel == "." {
 			return nil
 		}
-		include, err := filter.include(filepath.ToSlash(rel))
+		renders, err := filter.expand(filepath.ToSlash(rel))
 		if err != nil {
 			return err
 		}
-		if !include {
+		if len(renders) == 0 {
 			if d.IsDir() {
 				return fs.SkipDir
 			}
 			return nil
 		}
-		renderedRel, err := renderPath(rel, values)
-		if err != nil {
-			return err
+		// A directory every element shares renders once per element to one
+		// path; only files must land apart.
+		var seen map[string]bool
+		if !d.IsDir() {
+			seen = map[string]bool{}
 		}
-		if renderedRel == "" {
-			return fmt.Errorf("path %q rendered to empty string", rel)
-		}
-		outRel := filepath.ToSlash(strings.TrimSuffix(renderedRel, tmplSuffix))
-		target := filepath.Join(destDir, filepath.FromSlash(outRel))
-		if d.IsDir() {
-			if !opts.DryRun {
-				return os.MkdirAll(target, 0o755)
+		for _, v := range renders {
+			renderedRel, err := renderSkeletonPath(rel, v, seen)
+			if err != nil {
+				return err
 			}
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			return err
-		}
-		merged, err := renderFileBytes(path, renderedRel, values)
-		if err != nil {
-			return err
-		}
-		// A baseline render that fails (an older record missing a value the
-		// template needs) is unknown, not an error: the strict comparison
-		// below then decides, conservatively.
-		var baseline []byte
-		baselineKnown := false
-		if opts.Baseline != nil {
-			if b, berr := renderFileBytes(path, renderedRel, opts.Baseline); berr == nil {
-				baseline = b
-				baselineKnown = true
+			outRel := filepath.ToSlash(strings.TrimSuffix(renderedRel, tmplSuffix))
+			target := filepath.Join(destDir, filepath.FromSlash(outRel))
+			if d.IsDir() {
+				if !opts.DryRun {
+					if err := os.MkdirAll(target, 0o755); err != nil {
+						return err
+					}
+				}
+				continue
 			}
+			outcome, err := updateFile(path, rel, renderedRel, target, v, baseFilter, opts)
+			if err != nil {
+				return err
+			}
+			outcomes = append(outcomes, FileOutcome{Path: outRel, Outcome: outcome})
 		}
-		existing, err := os.ReadFile(target)
-		if err != nil && !os.IsNotExist(err) {
-			return err
-		}
-		var outcome FileOutcomeKind
-		switch {
-		case err != nil:
-			outcome = OutcomeCreated
-		case bytes.Equal(existing, merged):
-			outcome = OutcomeUnchanged
-		case baselineKnown && bytes.Equal(existing, baseline):
-			outcome = OutcomeUpdated
-		case !opts.Force:
-			outcome = OutcomeConflict
-		default:
-			outcome = OutcomeUpdated
-		}
-		outcomes = append(outcomes, FileOutcome{Path: outRel, Outcome: outcome})
-		if outcome == OutcomeUnchanged || outcome == OutcomeConflict || opts.DryRun {
-			return nil
-		}
-		return writeAtomically(target, info.Mode().Perm(), func(w io.Writer) error {
-			_, err := w.Write(merged)
-			return err
-		})
+		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
 	return outcomes, nil
+}
+
+// updateFile classifies one rendered destination file and writes it unless
+// it is unchanged, conflicting, or the run is dry.
+func updateFile(path, rel, renderedRel, target string, values map[string]any, baseFilter *skeletonFilter,
+	opts RenderUpdateOptions) (FileOutcomeKind, error) {
+	merged, err := renderFileBytes(path, renderedRel, values)
+	if err != nil {
+		return "", err
+	}
+	// A baseline render that fails (an older record missing a value the
+	// template needs) is unknown, not an error: the strict comparison
+	// below then decides, conservatively.
+	baseline, baselineKnown := baselineBytes(path, rel, renderedRel, baseFilter)
+	existing, err := os.ReadFile(target)
+	if err != nil && !os.IsNotExist(err) {
+		return "", err
+	}
+	var outcome FileOutcomeKind
+	switch {
+	case err != nil:
+		outcome = OutcomeCreated
+	case bytes.Equal(existing, merged):
+		outcome = OutcomeUnchanged
+	case baselineKnown && bytes.Equal(existing, baseline):
+		outcome = OutcomeUpdated
+	case !opts.Force:
+		outcome = OutcomeConflict
+	default:
+		outcome = OutcomeUpdated
+	}
+	if outcome == OutcomeUnchanged || outcome == OutcomeConflict || opts.DryRun {
+		return outcome, nil
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", err
+	}
+	return outcome, writeAtomically(target, info.Mode().Perm(), func(w io.Writer) error {
+		_, err := w.Write(merged)
+		return err
+	})
+}
+
+// baselineBytes renders the baseline's version of one destination file: the
+// baseline render of the same skeleton path that lands on the same file. An
+// expanded path's elements are matched by where they land, not by position,
+// so reordering a list never reads as a divergence.
+func baselineBytes(path, rel, renderedRel string, baseFilter *skeletonFilter) ([]byte, bool) {
+	if baseFilter == nil {
+		return nil, false
+	}
+	renders, err := baseFilter.expand(filepath.ToSlash(rel))
+	if err != nil {
+		return nil, false
+	}
+	for _, v := range renders {
+		baseRel, err := renderPath(rel, v)
+		if err != nil || baseRel != renderedRel {
+			continue
+		}
+		if b, err := renderFileBytes(path, renderedRel, v); err == nil {
+			return b, true
+		}
+	}
+	return nil, false
 }
 
 // renderFileBytes produces the bytes one skeleton file lands as: rendered
@@ -227,7 +297,7 @@ func renderFileBytes(src, renderedRel string, values map[string]any) ([]byte, er
 		return raw, nil
 	}
 	t, err := template.New(filepath.Base(src)).
-		Funcs(sprig.TxtFuncMap()).
+		Funcs(templateFuncs()).
 		Option("missingkey=error").
 		Parse(string(raw))
 	if err != nil {
@@ -245,7 +315,7 @@ func renderPath(rel string, values map[string]any) (string, error) {
 		return rel, nil
 	}
 	t, err := template.New("path").
-		Funcs(sprig.TxtFuncMap()).
+		Funcs(templateFuncs()).
 		Option("missingkey=error").
 		Parse(rel)
 	if err != nil {
@@ -264,7 +334,7 @@ func renderTemplate(src, dst string, mode os.FileMode, values map[string]any) er
 		return err
 	}
 	t, err := template.New(filepath.Base(src)).
-		Funcs(sprig.TxtFuncMap()).
+		Funcs(templateFuncs()).
 		Option("missingkey=error").
 		Parse(string(raw))
 	if err != nil {

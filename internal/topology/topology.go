@@ -87,21 +87,75 @@ type Component struct {
 	Subscribes []TopicRef    `json:"subscribes,omitempty"`
 	Publishes  []Publication `json:"publishes,omitempty"`
 	Ports      []PortUse     `json:"ports,omitempty"`
+	// InternalQueue is a transactional integration's own hop between its
+	// receive and send sides, and the Subscription its send side receives it
+	// through.
+	InternalQueue *InternalQueue `json:"internalQueue,omitempty"`
 	// Provides/Consumes are contract surfaces, parsed opaquely (see APIs).
 	Provides []json.RawMessage `json:"provides,omitempty"`
 	Consumes []json.RawMessage `json:"consumes,omitempty"`
 }
 
-// TopicRef is a component's subscription to a pub/sub topic.
+// TopicRef is a component's subscription to a pub/sub topic. Routes are its
+// rules in the order the sidecar evaluates them; Default says what happens to
+// an event no route matches: DefaultIgnore acknowledges it, DefaultDeadLetter
+// leaves it for the broker to dead-letter. A record without Routes predates
+// routing: the subscription takes every message on the topic.
+//
+// Resource, DefaultPath and Bulk describe the declarative Dapr Subscription
+// the host renders for it, alongside each route's Match and Path — exactly as
+// a local run loads it, so a deployment renders the same resource without
+// re-deriving the conventions. Records older than that leave them empty.
 type TopicRef struct {
-	PubSub string `json:"pubsub"`
-	Topic  string `json:"topic"`
+	PubSub      string  `json:"pubsub"`
+	Topic       string  `json:"topic"`
+	Routes      []Route `json:"routes,omitempty"`
+	Default     string  `json:"default,omitempty"`
+	Resource    string  `json:"resource,omitempty"`
+	DefaultPath string  `json:"defaultPath,omitempty"`
+	Bulk        *Bulk   `json:"bulk,omitempty"`
 }
 
-// Publication is a component's output onto a pub/sub topic.
+// InternalQueue is a transactional integration's internal hop: the pub/sub
+// and topic, and — on records new enough to carry it — the Subscription
+// resource's name and default path. One kind of message travels it, so the
+// Subscription has no rules.
+type InternalQueue struct {
+	PubSub      string `json:"pubsub"`
+	Topic       string `json:"topic"`
+	Resource    string `json:"resource,omitempty"`
+	DefaultPath string `json:"defaultPath,omitempty"`
+}
+
+// Bulk is a bulk subscription's batching, in the Subscription resource's units.
+type Bulk struct {
+	MaxMessagesCount   int   `json:"maxMessagesCount"`
+	MaxAwaitDurationMs int64 `json:"maxAwaitDurationMs"`
+}
+
+// The values of TopicRef.Default.
+const (
+	DefaultIgnore     = "ignore"
+	DefaultDeadLetter = "dead-letter"
+)
+
+// Route is one rule of a subscription: the message it takes (its name is its
+// CloudEvent type) and, when set, the content filter (a CEL expression) its
+// events must also match. Match and Path are the rule as the Subscription
+// resource renders it.
+type Route struct {
+	Message string `json:"message"`
+	When    string `json:"when,omitempty"`
+	Match   string `json:"match,omitempty"`
+	Path    string `json:"path,omitempty"`
+}
+
+// Publication is a component's output onto a pub/sub topic. Message names
+// what it publishes there; records older than message wiring omit it.
 type Publication struct {
-	PubSub string `json:"pubsub"`
-	Topic  string `json:"topic"`
+	PubSub  string `json:"pubsub"`
+	Topic   string `json:"topic"`
+	Message string `json:"message,omitempty"`
 }
 
 // PortUse is a component's use of an external port. Direction is "in"
@@ -112,11 +166,15 @@ type PortUse struct {
 }
 
 // Topic is a declared pub/sub topic: the metadata for a (PubSub, Topic) pair
-// components reference. Contract is the message contract it carries;
-// Publishers/Subscribers name the components on each end.
+// components reference. Messages names the messages it carries, each with its
+// own contract in the messagegroups section; Publishers/Subscribers name the
+// components on each end. Contract is set only by records older than message
+// wiring, which gave a topic a single contract: read contracts through
+// Topology.TopicContracts, which covers both.
 type Topic struct {
 	PubSub      string   `json:"pubsub"`
 	Topic       string   `json:"topic"`
+	Messages    []string `json:"messages,omitempty"`
 	Contract    string   `json:"contract,omitempty"`
 	Publishers  []string `json:"publishers,omitempty"`
 	Subscribers []string `json:"subscribers,omitempty"`

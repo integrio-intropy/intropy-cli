@@ -3,6 +3,7 @@ package deploy
 import (
 	"encoding/json"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -84,10 +85,24 @@ func TestManifestModelWorkloadFromBlockKind(t *testing.T) {
 	}
 }
 
+// A transactional integration sweeps, drains its internal hop and exits, so it
+// is scheduled like an extractor; as a Deployment it would crash-loop.
+func TestManifestModelWorkloadForTransactionalIntegrationIsCronJob(t *testing.T) {
+	topo := &topology.Topology{
+		APIVersion: topology.APIVersion,
+		System:     "s",
+		Components: []topology.Component{{Name: "order-sync", Kind: "transactional-integration"}},
+	}
+	if got := newManifestModel(topo, nil).Components[0].Workload; got != WorkloadCronJob {
+		t.Errorf("transactional-integration workload = %q, want %q", got, WorkloadCronJob)
+	}
+}
+
 // The block kind is camelCase in some records and kebab-case in others, so the
 // match must not be spelling-sensitive.
 func TestManifestModelWorkloadIgnoresKindSpelling(t *testing.T) {
-	for _, kind := range []string{"extractor", "Extractor", "EXTRACTOR"} {
+	for _, kind := range []string{"extractor", "Extractor", "EXTRACTOR",
+		"transactional-integration", "transactionalIntegration", "TransactionalIntegration"} {
 		topo := &topology.Topology{
 			APIVersion: topology.APIVersion,
 			System:     "s",
@@ -243,5 +258,84 @@ func TestManifestModelRoundTripsToMap(t *testing.T) {
 	first := comps[0].(map[string]any)
 	if first["workload"] != WorkloadDeployment {
 		t.Errorf("components[0].workload = %v", first["workload"])
+	}
+}
+
+// With message wiring a topic lists its messages and has a contract only when
+// they all share one.
+func TestBuildTopicsResolvesContractsFromMessages(t *testing.T) {
+	group := json.RawMessage(`{"name": "g", "messages": [
+	  {"name": "placed", "contract": "Contracts.Order", "channel": {"pubsub": "pubsub", "topic": "orders"}},
+	  {"name": "cancelled", "contract": "Contracts.OrderCancellation", "channel": {"pubsub": "pubsub", "topic": "orders"}},
+	  {"name": "shipped", "contract": "Contracts.Shipment", "channel": {"pubsub": "pubsub", "topic": "shipments"}}
+	]}`)
+	topo := &topology.Topology{
+		Topics: []topology.Topic{
+			{PubSub: "pubsub", Topic: "orders", Messages: []string{"cancelled", "placed"}},
+			{PubSub: "pubsub", Topic: "shipments", Messages: []string{"shipped"}},
+		},
+		MessageGroups: []json.RawMessage{group},
+	}
+
+	got := buildTopics(topo, nil)
+
+	if len(got) != 2 {
+		t.Fatalf("topics = %+v", got)
+	}
+	if got[0].Contract != "" || strings.Join(got[0].Messages, ",") != "cancelled,placed" {
+		t.Errorf("orders = %+v, want its messages and no single contract", got[0])
+	}
+	if got[1].Contract != "Contracts.Shipment" {
+		t.Errorf("shipments = %+v, want its one contract", got[1])
+	}
+}
+
+// A subscribing component carries its declarative Subscription verbatim from
+// the record; a component that subscribes to nothing, or a record too old to
+// carry the rendered resource, carries none.
+func TestSubscriptionForTakesTheRenderedResource(t *testing.T) {
+	loader := topology.Component{Name: "erp-loader", Kind: "loader", Subscribes: []topology.TopicRef{{
+		PubSub: "pubsub", Topic: "orders",
+		Routes: []topology.Route{{Message: "orders", When: "event.data.customerId != 'x'",
+			Match: "event.type == 'orders' && (event.data.customerId != 'x')", Path: "/orders"}},
+		Resource: "erp-loader-subscription", DefaultPath: "/unhandled",
+		Bulk: &topology.Bulk{MaxMessagesCount: 10, MaxAwaitDurationMs: 500},
+	}}}
+
+	got := subscriptionFor(loader)
+
+	want := &ManifestSubscription{
+		Name: "erp-loader-subscription", PubSub: "pubsub", Topic: "orders",
+		Rules:       []ManifestRule{{Match: "event.type == 'orders' && (event.data.customerId != 'x')", Path: "/orders"}},
+		DefaultPath: "/unhandled",
+		Bulk:        &ManifestBulk{MaxMessagesCount: 10, MaxAwaitDurationMs: 500},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("subscription = %+v, want %+v", got, want)
+	}
+
+	if got := subscriptionFor(topology.Component{Name: "erp-extractor", Kind: "extractor"}); got != nil {
+		t.Errorf("extractor subscription = %+v, want none", got)
+	}
+	old := loader
+	old.Subscribes = []topology.TopicRef{{PubSub: "pubsub", Topic: "orders", Routes: []topology.Route{{Message: "orders"}}}}
+	if got := subscriptionFor(old); got != nil {
+		t.Errorf("pre-resource record subscription = %+v, want none", got)
+	}
+}
+
+// A transactional integration receives its internal hop through a rule-less
+// Subscription: every event takes the default path.
+func TestSubscriptionForATransactionalIntegrationsInternalHop(t *testing.T) {
+	ti := topology.Component{Name: "price-sync", Kind: "transactional-integration",
+		InternalQueue: &topology.InternalQueue{PubSub: "internal-price-sync", Topic: "hop",
+			Resource: "price-sync-subscription", DefaultPath: "/unhandled"}}
+
+	got := subscriptionFor(ti)
+
+	want := &ManifestSubscription{Name: "price-sync-subscription", PubSub: "internal-price-sync", Topic: "hop",
+		Rules: []ManifestRule{}, DefaultPath: "/unhandled"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("subscription = %+v, want %+v", got, want)
 	}
 }

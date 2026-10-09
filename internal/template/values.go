@@ -9,7 +9,6 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/Masterminds/sprig/v3"
 	"github.com/santhosh-tekuri/jsonschema/v5"
 	"gopkg.in/yaml.v3"
 )
@@ -219,7 +218,7 @@ func promptForMissingRequired(fields []FieldSpec, values map[string]any, facts *
 		return missingRequiredError(missing, suggestions, facts)
 	}
 	for _, f := range missing {
-		f.Suggestions = suggestions[f.Name]
+		AttachSuggestions(&f, suggestions)
 		ans, _, err := prompter.Prompt(f)
 		if err != nil {
 			return err
@@ -267,7 +266,7 @@ func missingRequiredError(missing []FieldSpec, suggestions map[string][]string, 
 	err := fmt.Sprintf("missing required parameter(s): %s", strings.Join(names, ", "))
 	for _, f := range missing {
 		if facts.IsMessageParameter(f.Name) {
-			err += fmt.Sprintf("\npass %s <message-ref> to wire the %s parameter to a registry message", wiringFlagName(facts), f.Name)
+			err += fmt.Sprintf("\npass %s <message> to wire the %s parameter", wiringFlagName(facts), f.Name)
 			continue
 		}
 		if c := suggestions[f.Name]; len(c) > 0 {
@@ -377,7 +376,7 @@ func validateSchema(schema map[string]any, values map[string]any) error {
 // once values exist.
 func compileExpr(expr string) (*template.Template, error) {
 	return template.New("expr").
-		Funcs(sprig.TxtFuncMap()).
+		Funcs(templateFuncs()).
 		Option("missingkey=error").
 		Parse(expr)
 }

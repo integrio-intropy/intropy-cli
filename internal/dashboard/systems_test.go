@@ -52,7 +52,7 @@ func TestSyncSystemNoOrphansIsNoop(t *testing.T) {
 	if got.Action != "none" {
 		t.Errorf("action = %q, want none", got.Action)
 	}
-	if !strings.Contains(strings.Join(got.Diagnostics, "\n"), "no orphaned components") {
+	if !strings.Contains(strings.Join(got.Diagnostics, "\n"), "no orphaned or changed components") {
 		t.Errorf("diagnostics = %v, want the no-orphans note", got.Diagnostics)
 	}
 }

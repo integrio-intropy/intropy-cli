@@ -153,6 +153,28 @@ func TestResolveUsesPrompter(t *testing.T) {
 	}
 }
 
+func TestResolveRequiredArrayCanBeEmpty(t *testing.T) {
+	tmpl := buildTemplate(map[string]any{
+		"type":     "object",
+		"required": []any{"topics"},
+		"properties": map[string]any{
+			"topics": map[string]any{
+				"type":  "array",
+				"items": map[string]any{"type": "string"},
+			},
+		},
+	}, []string{"topics"}, nil)
+
+	out, err := Resolve(tmpl, nil, nil, map[string]any{"topics": []any{}}, nil)
+	if err != nil {
+		t.Fatalf("Resolve with an empty required array: %v", err)
+	}
+	got, ok := out["topics"].([]any)
+	if !ok || len(got) != 0 {
+		t.Errorf("topics = %#v, want an empty array", out["topics"])
+	}
+}
+
 func TestResolveEmptyPromptIsError(t *testing.T) {
 	tmpl := buildTemplate(map[string]any{
 		"type":     "object",

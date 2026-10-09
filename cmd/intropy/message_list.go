@@ -22,7 +22,7 @@ var messageListOpts messageListFlags
 var messageListCmd = &cobra.Command{
 	Use:   "list [dir]",
 	Short: "List messages from the registry and this workspace",
-	Long: "List messages: every message the read-only xRegistry serves, merged with the messages this workspace's scaffold records declare through publishes blocks. " +
+	Long: "List messages: every message the read-only xRegistry serves, merged with the messages this workspace's scaffold records declare through scalar publishes values. " +
 		"Reads " + template.ScaffoldRelPath + " under dir (default: the current directory) and one GET against the registry. " +
 		"Use --group to narrow to one registry message group; workspace messages have no group and are hidden by the filter. " +
 		"Use --output json for a machine-readable document including envelope metadata and producing channels.",

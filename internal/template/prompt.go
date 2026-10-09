@@ -2,6 +2,7 @@ package template
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"regexp"
@@ -40,6 +41,10 @@ func NewStdinPrompter(in io.Reader, out io.Writer) *StdinPrompter {
 }
 
 func (p *StdinPrompter) Prompt(f FieldSpec) (any, bool, error) {
+	if f.Type == "array" && len(f.Items) > 0 {
+		v, err := p.promptList(f)
+		return v, false, err
+	}
 	if len(f.Suggestions) > 0 && len(f.Enum) == 0 {
 		return p.promptSuggested(f)
 	}
@@ -107,6 +112,72 @@ func (p *StdinPrompter) promptSuggestedList(f FieldSpec) (any, bool, error) {
 		}
 		return v, false, nil
 	}
+}
+
+// promptList asks for a list of objects one element at a time: each element
+// field in turn (its suggestions and pattern apply as for a parameter), then
+// whether to add another — until the list holds MaxItems elements. A
+// required element field is asked again until it has a value; an optional
+// one left empty is omitted from the element.
+func (p *StdinPrompter) promptList(f FieldSpec) (any, error) {
+	p.writeHeading(f)
+	minItems, maxItems := 1, -1
+	if f.MinItems != nil {
+		minItems = *f.MinItems
+	}
+	if f.MaxItems != nil {
+		maxItems = *f.MaxItems
+	}
+	var list []any
+	for maxItems < 0 || len(list) < maxItems {
+		if len(list) >= minItems {
+			fmt.Fprintf(p.out, "Add another to %s? [y/N]: ", fieldLabel(f))
+			raw, ok, err := p.readLine()
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				return nil, io.EOF
+			}
+			if yes, _ := coerce(raw, "boolean").(bool); !yes {
+				break
+			}
+		}
+		fmt.Fprintf(p.out, "  %s %d\n", fieldLabel(f), len(list)+1)
+		element := map[string]any{}
+		for _, item := range f.Items {
+			v, err := p.promptElementField(item)
+			if err != nil {
+				return nil, err
+			}
+			if !isEmpty(v) {
+				element[item.Name] = v
+			}
+		}
+		list = append(list, element)
+	}
+	return list, nil
+}
+
+func (p *StdinPrompter) promptElementField(item FieldSpec) (any, error) {
+	for {
+		v, _, err := p.Prompt(item)
+		if err != nil {
+			return nil, err
+		}
+		if !item.Required || !isEmpty(v) {
+			return v, nil
+		}
+		fmt.Fprintln(p.out, "  ! a value is required")
+	}
+}
+
+// fieldLabel is a field's title, else its name.
+func fieldLabel(f FieldSpec) string {
+	if f.Title != "" {
+		return f.Title
+	}
+	return f.Name
 }
 
 func (p *StdinPrompter) promptScalar(f FieldSpec) (any, error) {
@@ -259,6 +330,12 @@ func isTypedField(typ string) bool {
 // downstream produces a clean type error in that case.
 func coerce(s, typ string) any {
 	switch typ {
+	case "array":
+		// An array arrives as text from --set or a values line: JSON.
+		var list []any
+		if err := json.Unmarshal([]byte(s), &list); err == nil {
+			return list
+		}
 	case "boolean":
 		switch strings.ToLower(s) {
 		case "y", "yes", "true", "1":

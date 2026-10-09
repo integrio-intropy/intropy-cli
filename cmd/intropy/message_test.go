@@ -126,7 +126,7 @@ func TestMessageListWorkspaceMessages(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(tmp, ".intropy"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	writeFileT(t, tmp+"/.intropy/scaffold.json", `{"schemaVersion":1,"template":"product-sink","owner":"o","repo":"r","version":"v1","blockKind":"extractor","values":{"appId":"product-sink","publishes":{"message":"product-exported","contract":"ProductExported"}}}`+"\n")
+	writeFileT(t, tmp+"/.intropy/scaffold.json", `{"schemaVersion":1,"template":"product-sink","owner":"o","repo":"r","version":"v1","blockKind":"extractor","values":{"appId":"product-sink","publishes":"product-exported"}}`+"\n")
 
 	stdout, _ := runMessage(t, "list", "--group", "", "--output", "plain")
 	out := stdout.String()
@@ -255,7 +255,7 @@ func TestMessageShowWorkspaceMessage(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(tmp, ".intropy"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	writeFileT(t, tmp+"/.intropy/scaffold.json", `{"schemaVersion":1,"template":"product-sink","owner":"o","repo":"r","version":"v1","blockKind":"extractor","values":{"appId":"product-sink","publishes":{"message":"product-exported","contract":"ProductExported"}}}`+"\n")
+	writeFileT(t, tmp+"/.intropy/scaffold.json", `{"schemaVersion":1,"template":"product-sink","owner":"o","repo":"r","version":"v1","blockKind":"extractor","values":{"appId":"product-sink","publishes":"product-exported"}}`+"\n")
 
 	stdout, _ := runMessage(t, "show", "product-exported", "--output", "plain")
 	if !strings.Contains(stdout.String(), "product-exported") || !strings.Contains(stdout.String(), "ProductExported") {
@@ -270,7 +270,7 @@ func TestMessageShowWorkspaceDir(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, ".intropy"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	writeFileT(t, filepath.Join(dir, ".intropy", "scaffold.json"), `{"schemaVersion":1,"template":"product-sink","owner":"o","repo":"r","version":"v1","blockKind":"extractor","values":{"appId":"product-sink","publishes":{"message":"product-exported","contract":"ProductExported"}}}`+"\n")
+	writeFileT(t, filepath.Join(dir, ".intropy", "scaffold.json"), `{"schemaVersion":1,"template":"product-sink","owner":"o","repo":"r","version":"v1","blockKind":"extractor","values":{"appId":"product-sink","publishes":"product-exported"}}`+"\n")
 	t.Chdir(tmp)
 
 	stdout, _ := runMessage(t, "show", "product-exported", dir, "--output", "plain")
