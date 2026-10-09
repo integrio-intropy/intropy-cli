@@ -1,0 +1,1 @@
+Can you fix so that the placeholder text for "Filter" in the dashboard is event.data.status == '0' instead?
