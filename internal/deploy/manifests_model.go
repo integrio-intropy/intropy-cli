@@ -15,19 +15,28 @@ import (
 // The Kubernetes workload a block runs as.
 //
 // An extractor is scheduled: it wakes, pulls from its source and exits, which is
-// a CronJob. Every other block reacts to messages or requests and must stay
-// resident. This is what the hand-written customer repos already do — fluxia and
-// entrovia both run their extractors as CronJobs — so deriving it from the
-// topology is reproducing an existing convention, not inventing one.
+// a CronJob. A transactional integration is the same kind of job — it sweeps its
+// source, drains its internal hop, shuts its sidecar down and exits — so a
+// Deployment would restart it into CrashLoopBackOff. Every other block reacts to
+// messages or requests and must stay resident.
 const (
 	WorkloadCronJob    = "cronjob"
 	WorkloadDeployment = "deployment"
 )
 
-// blockKindExtractor is the topology's block kind for a scheduled extractor.
-// Records spell kinds inconsistently (camelCase from one emitter, kebab-case
-// after the frontend normalises), so the comparison folds case.
-const blockKindExtractor = "extractor"
+// scheduledBlockKinds are the topology's block kinds that run to completion,
+// folded by foldKind. Records spell kinds inconsistently (camelCase from one
+// emitter, kebab-case after the frontend normalises), so kinds are compared
+// folded.
+var scheduledBlockKinds = []string{"extractor", "transactionalintegration"}
+
+// foldKind lowercases a block kind and drops its dashes, so
+// transactional-integration, transactionalIntegration and
+// TransactionalIntegration compare equal — the same fold the deploy templates
+// apply.
+func foldKind(kind string) string {
+	return strings.ToLower(strings.ReplaceAll(kind, "-", ""))
+}
 
 // ManifestModel is the topology view a manifest skeleton sees under the reserved
 // "topology" key: derived, flattened and sorted.
@@ -312,11 +321,11 @@ func subscriptionFor(c topology.Component) *ManifestSubscription {
 	return sub
 }
 
-// workloadFor maps a block kind to its Kubernetes workload. Anything that is not
-// an extractor stays resident, which is the safe default: a block wrongly run as
-// a CronJob would silently stop consuming.
+// workloadFor maps a block kind to its Kubernetes workload. Anything not known
+// to run to completion stays resident, which is the safe default: a block
+// wrongly run as a CronJob would silently stop consuming.
 func workloadFor(kind string) string {
-	if strings.EqualFold(kind, blockKindExtractor) {
+	if slices.Contains(scheduledBlockKinds, foldKind(kind)) {
 		return WorkloadCronJob
 	}
 	return WorkloadDeployment

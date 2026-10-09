@@ -85,10 +85,24 @@ func TestManifestModelWorkloadFromBlockKind(t *testing.T) {
 	}
 }
 
+// A transactional integration sweeps, drains its internal hop and exits, so it
+// is scheduled like an extractor; as a Deployment it would crash-loop.
+func TestManifestModelWorkloadForTransactionalIntegrationIsCronJob(t *testing.T) {
+	topo := &topology.Topology{
+		APIVersion: topology.APIVersion,
+		System:     "s",
+		Components: []topology.Component{{Name: "order-sync", Kind: "transactional-integration"}},
+	}
+	if got := newManifestModel(topo, nil).Components[0].Workload; got != WorkloadCronJob {
+		t.Errorf("transactional-integration workload = %q, want %q", got, WorkloadCronJob)
+	}
+}
+
 // The block kind is camelCase in some records and kebab-case in others, so the
 // match must not be spelling-sensitive.
 func TestManifestModelWorkloadIgnoresKindSpelling(t *testing.T) {
-	for _, kind := range []string{"extractor", "Extractor", "EXTRACTOR"} {
+	for _, kind := range []string{"extractor", "Extractor", "EXTRACTOR",
+		"transactional-integration", "transactionalIntegration", "TransactionalIntegration"} {
 		topo := &topology.Topology{
 			APIVersion: topology.APIVersion,
 			System:     "s",
