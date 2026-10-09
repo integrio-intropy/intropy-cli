@@ -1,0 +1,54 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "0a775c95bc5f",
+  "session_id": "01a120b7-902e-72f8-a9ad-d1d7582092e4",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-09T13:08:18.045046Z",
+  "branch": "feat/int-create-prompt",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "internal/berget/implement.go"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "1ff56e76d4a2",
+  "checkpoint_transcript_start": 73,
+  "transcript_lines_at_start": 73,
+  "compact_transcript_start": 32,
+  "token_usage": {
+    "input_tokens": 2117,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 353920,
+    "output_tokens": 5131,
+    "api_call_count": 7
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-10-09T13:08:18.017915Z",
+    "agent_lines": 75,
+    "agent_removed": 5,
+    "human_added": 38,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 113,
+    "total_lines_changed": 118,
+    "agent_percentage": 67.79661016949152,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 139,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "docs/plans/2026-10-08-001-feat-component-owned-subscriptions-plan.md": 79
+      }
+    }
+  ]
+}
