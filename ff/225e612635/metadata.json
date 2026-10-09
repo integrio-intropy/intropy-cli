@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "ff225e612635",
+  "strategy": "manual-commit",
+  "branch": "feat/int-create-prompt",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "cmd/intropy/int_create.go",
+    "internal/berget/client.go",
+    "internal/berget/implement.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ff/225e612635/0/metadata.json",
+      "transcript": "/ff/225e612635/0/full.jsonl",
+      "compact_transcript": "/ff/225e612635/0/transcript.jsonl",
+      "content_hash": "/ff/225e612635/0/content_hash.txt",
+      "prompt": "/ff/225e612635/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 56503,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 636032,
+    "output_tokens": 12320,
+    "api_call_count": 11
+  }
+}

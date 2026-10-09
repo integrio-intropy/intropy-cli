@@ -1,0 +1,19 @@
+Should we create something similar to a system prompt that we always add to make sure it picks up the right context from the template etc?
+
+---
+
+How do I use it?
+
+---
+
+I tested it but it seems to just hang. Is it possible to stream the output?
+
+
+Mac domains/order-management/withprompt on  poc/plugin-architecture [✘!?] ➜  i int create extractor -n ErpExtractor -o erp-extractor \
+  -s organization=Fluxia -s topic=order-notifications -s contract=Order --prompt "This extractor will pull orders. there orders is in a json format with orderId, orderStatus, and orderDateit should be transformed to another object with id, status and purchaseDate
+" --model zai-org/GLM-5.3-Flash
+using cached integrio-intropy/intropy-templates@v1.2.0
+Publishes (Logical name of the message this extractor publishes. The Dapr topic and CloudEvents type are the same value; the payload type derives from it.): orders
+created erp-extractor from integrio-intropy/intropy-templates@v1.2.0 (template extractor)
+created dependency Contracts from template shared-contracts
+implementing erp-extractor with zai-org/GLM-5.3-Flash
