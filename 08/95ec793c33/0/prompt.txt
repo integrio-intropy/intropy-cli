@@ -1,6 +1,2 @@
-Work on a feature branch off main do not push anything. I want to use berget code´s api so that, as a parameter to the intropy int create command you can send a prompt which can implement the component for you
-
----
-
 1. Yes that is right. Add a model flag
 2. Yes go with your plan
