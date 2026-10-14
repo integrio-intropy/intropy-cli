@@ -135,6 +135,30 @@ func TestManifestModelPubSubsAreDistinctWithSortedScopes(t *testing.T) {
 	}
 }
 
+// A system of only transactional integrations declares no topics, yet each
+// integration's internal queue rides the system's pub/sub: the component must
+// render, with every integration in its scopes, or the queues are unreachable.
+func TestManifestModelPubSubsIncludeInternalQueues(t *testing.T) {
+	queue := func(name string) *topology.InternalQueue {
+		return &topology.InternalQueue{PubSub: "tx-flow-pubsub", Topic: "internal-" + name}
+	}
+	topo := &topology.Topology{System: "tx-flow", Components: []topology.Component{
+		{Name: "stock-sync", Kind: "transactional-integration", InternalQueue: queue("stock-sync")},
+		{Name: "order-sync", Kind: "transactional-integration", InternalQueue: queue("order-sync")},
+	}}
+
+	m := newManifestModel(topo, nil)
+
+	want := []ManifestPubSub{{
+		Name:   "tx-flow-pubsub",
+		Topics: []string{"internal-order-sync", "internal-stock-sync"},
+		AppIDs: []string{"order-sync", "stock-sync"},
+	}}
+	if !reflect.DeepEqual(m.PubSubs, want) {
+		t.Errorf("PubSubs = %+v, want %+v", m.PubSubs, want)
+	}
+}
+
 func TestManifestModelPorts(t *testing.T) {
 	m := newManifestModel(decodeManifestTopology(t), nil)
 

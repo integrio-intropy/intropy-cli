@@ -51,14 +51,14 @@ func TestAssembleMessageFirstHappyPath(t *testing.T) {
 	if len(model.Components) != 2 {
 		t.Fatalf("components = %+v", model.Components)
 	}
-	if len(model.Topics) != 1 || model.Topics[0].Name != "order-created" || model.Topics[0].Pubsub != template.DefaultPubsub || model.Topics[0].Contract != "OrderCreated" {
+	if len(model.Topics) != 1 || model.Topics[0].Name != "order-created" || model.Topics[0].Pubsub != "" || model.Topics[0].Contract != "OrderCreated" {
 		t.Fatalf("topics = %+v, want derived order-created/OrderCreated", model.Topics)
 	}
 	if len(model.Messages) != 1 || model.Messages[0].Name != "order-created" || model.Messages[0].Contract != "OrderCreated" || model.Messages[0].Publisher != "order-extractor" {
 		t.Fatalf("messages = %+v, want order-created/OrderCreated", model.Messages)
 	}
 	for _, c := range model.Components {
-		if c.Topic == nil || c.Topic.Name != "order-created" || c.Topic.Pubsub != template.DefaultPubsub {
+		if c.Topic == nil || c.Topic.Name != "order-created" || c.Topic.Pubsub != "" {
 			t.Errorf("component %s topic = %+v", c.AppID, c.Topic)
 		}
 	}
@@ -145,5 +145,32 @@ func TestPascalCaseDerivation(t *testing.T) {
 		if got := template.PascalCase(in); got != want {
 			t.Errorf("PascalCase(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// Assembly leaves every channel on the system's pub/sub; UsePubsub names it
+// once the system is known, on components, topics and messages alike.
+func TestUsePubsubNamesTheSystemsPubsubEverywhere(t *testing.T) {
+	model, err := Assemble([]template.ScaffoldEntry{
+		extractor("order-extractor", "order-extractor", "order-created"),
+		loader("order-loader", "order-loader", "order-created"),
+		transactional("price-sync", "price-sync", "price-in", "price-out"),
+	}, discardWarnf)
+	if err != nil {
+		t.Fatalf("Assemble: %v", err)
+	}
+
+	model.UsePubsub(template.SystemPubsub("order-flow"))
+
+	for _, c := range model.Components {
+		if c.Topic != nil && c.Topic.Pubsub != "order-flow-pubsub" {
+			t.Errorf("component %s pubsub = %q", c.AppID, c.Topic.Pubsub)
+		}
+	}
+	if len(model.Topics) != 1 || model.Topics[0].Pubsub != "order-flow-pubsub" {
+		t.Errorf("topics = %+v", model.Topics)
+	}
+	if len(model.Messages) != 1 || model.Messages[0].Pubsub != "order-flow-pubsub" {
+		t.Errorf("messages = %+v", model.Messages)
 	}
 }

@@ -166,13 +166,13 @@ func resolveSubscriptionChannels(components []Component) error {
 		}
 		if c.Topic == nil {
 			c.topicContract = c.Message.Contract
-			c.Topic = &TopicKey{Pubsub: template.DefaultPubsub, Name: c.Message.Name}
+			c.Topic = &TopicKey{Name: c.Message.Name}
 		}
 		key := *c.Topic
 		if r, ok := channels[c.Message.Name]; ok {
 			if r.key != key {
-				return fmt.Errorf("message %q is published on conflicting channels: %s on pubsub %q/topic %q (%s) vs pubsub %q/topic %q (%s)",
-					c.Message.Name, r.appID, r.key.Pubsub, r.key.Name, r.path, key.Pubsub, key.Name, c.Path)
+				return fmt.Errorf("message %q is published on conflicting channels: %s on topic %q (%s) vs topic %q (%s)",
+					c.Message.Name, r.appID, r.key.Name, r.path, key.Name, c.Path)
 			}
 			if r.contract != "" && c.Message.Contract != "" && r.contract != c.Message.Contract {
 				return fmt.Errorf("message %q is published with conflicting contracts: %q (%s) vs %q (%s)",

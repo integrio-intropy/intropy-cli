@@ -42,7 +42,8 @@ type Message struct {
 //
 // Topic is the derived transport channel for the component's message: the
 // system pubsub and a topic named after the message. Subscribers receive the
-// producer's channel during assembly.
+// producer's channel during assembly. Its Pubsub stays empty until
+// Model.UsePubsub names the system's.
 type Component struct {
 	AppID string    `json:"name"` // the Add<Kind> argument in the generated system class
 	Kind  string    `json:"kind"` // a key of the blockParsers registry
@@ -118,4 +119,26 @@ type Model struct {
 	// exists — valid for a topic-free system, and for a topic-bearing one
 	// the host template scaffolds the contracts project as a dependency.
 	Shared *SharedLibrary
+}
+
+// UsePubsub names the pub/sub of every channel Assemble left on the system's
+// own — all of them, since a scaffold record never names one. The name needs
+// the system, which assembly does not know: sys create derives it from its
+// flag, sys update from the host's record.
+func (m *Model) UsePubsub(pubsub string) {
+	for i := range m.Components {
+		if t := m.Components[i].Topic; t != nil && t.Pubsub == "" {
+			t.Pubsub = pubsub
+		}
+	}
+	for i := range m.Topics {
+		if m.Topics[i].Pubsub == "" {
+			m.Topics[i].Pubsub = pubsub
+		}
+	}
+	for i := range m.Messages {
+		if m.Messages[i].Topic != "" && m.Messages[i].Pubsub == "" {
+			m.Messages[i].Pubsub = pubsub
+		}
+	}
 }

@@ -118,6 +118,7 @@ func Create(ctx context.Context, opts CreateOptions) error {
 		return err
 	}
 	model.Name = kebab
+	model.UsePubsub(template.SystemPubsub(kebab))
 
 	payload, err := buildPayload(model, opts.OutputDir, kebab)
 	if err != nil {

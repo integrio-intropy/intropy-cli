@@ -112,12 +112,16 @@ func TestRealManifestPublishesExtractor(t *testing.T) {
 	}
 	for _, want := range []string{
 		`public const string EventType = "orders";`,
-		`public const string PubSubName = "pubsub";`,
 		`public const string TopicName = "orders";`,
 	} {
 		if !strings.Contains(string(constants), want) {
 			t.Errorf("Constants.cs missing %q:\n%s", want, constants)
 		}
+	}
+	// The pub/sub is the system's, named at run time: a component scaffolded
+	// before its system must not pin a name the deployment does not render.
+	if strings.Contains(string(constants), "const string PubSubName") {
+		t.Errorf("Constants.cs pins a pub/sub name:\n%s", constants)
 	}
 }
 

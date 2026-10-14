@@ -25,7 +25,7 @@ func TestBuildWorkspaceFactsMessageFirst(t *testing.T) {
 	if c, ok := facts.ContractForMessage("order-created"); !ok || c != "OrderCreated" {
 		t.Fatalf("ContractForMessage = %q, %v", c, ok)
 	}
-	if len(facts.TopicKeys) != 1 || facts.TopicKeys[0] != (TopicKey{Pubsub: DefaultPubsub, Name: "order-created"}) {
+	if len(facts.TopicKeys) != 1 || facts.TopicKeys[0] != (TopicKey{Name: "order-created"}) {
 		t.Fatalf("TopicKeys = %+v", facts.TopicKeys)
 	}
 	if got, ok := facts.Organization(); !ok || got != "Acme" {

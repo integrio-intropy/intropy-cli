@@ -289,6 +289,20 @@ func planUpdate(opts UpdateOptions) (*updatePlan, error) {
 	if err != nil {
 		return nil, err
 	}
+	system, err := template.RecordValue(host, template.KeyName)
+	if err != nil {
+		return nil, err
+	}
+	pubsub := template.SystemPubsub(system)
+	if stored := storedPubsub(host.Values); stored != "" && stored != pubsub {
+		// A host created before systems owned their pub/sub declares the
+		// legacy name. Folding new components onto another would split the
+		// host's messages across two components; it keeps one until re-created.
+		warnf("%s declares its messages on pub/sub %q, not %q: kept for the components this update folds in; re-create the host with 'intropy sys create' to move the system to its own pub/sub",
+			host.Path, stored, pubsub)
+		pubsub = stored
+	}
+	model.UsePubsub(pubsub)
 
 	var orphans, refreshed []Component
 	for _, c := range model.Components {
@@ -320,6 +334,23 @@ func planUpdate(opts UpdateOptions) (*updatePlan, error) {
 		refreshed: refreshed,
 		kept:      kept,
 	}, nil
+}
+
+// storedPubsub is the pub/sub the host's record declares its topics and
+// messages on, or "" when it declares none. Every entry shares one: they were
+// all assembled from scaffold records, which never name their own.
+func storedPubsub(values map[string]any) string {
+	for _, section := range []string{"topics", "messages"} {
+		entries, _ := values[section].([]any)
+		for _, e := range entries {
+			if m, ok := e.(map[string]any); ok {
+				if pubsub, _ := m[template.KeyPubsub].(string); pubsub != "" {
+					return pubsub
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // assembleCandidates is Assemble without the zero-component refusal: an

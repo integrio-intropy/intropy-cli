@@ -394,6 +394,12 @@ func buildPubSubs(t *topology.Topology, appIDs map[string]string) []ManifestPubS
 		for _, p := range c.Publishes {
 			note(p.PubSub, p.Topic, c.Name)
 		}
+		// A transactional integration's internal queue is no topic edge, so a
+		// system of only transactional integrations has no topics at all — yet
+		// the integration publishes and subscribes on the queue's pub/sub.
+		if q := c.InternalQueue; q != nil {
+			note(q.PubSub, q.Topic, c.Name)
+		}
 	}
 
 	out := make([]ManifestPubSub, 0, len(topics))

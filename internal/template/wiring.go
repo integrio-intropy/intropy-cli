@@ -40,10 +40,16 @@ const (
 	// The values of KeyDefault.
 	DefaultDeadLetter = "dead-letter"
 	DefaultIgnore     = "ignore"
-
-	// DefaultPubsub is the pub/sub component used for every internal message.
-	DefaultPubsub = "pubsub"
 )
+
+// SystemPubsub is the pub/sub component a system named system owns: every
+// message the system declares travels on it. Systems share an environment's
+// namespace and broker, so each owns a component of its own, scoped to its
+// components and carrying its own broker credentials. The topology derives
+// the same name.
+func SystemPubsub(system string) string {
+	return system + "-pubsub"
+}
 
 // RecordValue reads key from a scaffold record's values as a non-empty
 // string. Missing, mistyped, and empty values are errors naming the

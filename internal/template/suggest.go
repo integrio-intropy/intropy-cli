@@ -98,7 +98,8 @@ func suggestField(f FieldSpec, facts *WorkspaceFacts, confirmed map[string]any) 
 		seen := map[string]bool{}
 		var pubs []string
 		for _, key := range facts.TopicKeys {
-			if !seen[key.Pubsub] {
+			// An empty pubsub is the system's, which has no name to suggest yet.
+			if key.Pubsub != "" && !seen[key.Pubsub] {
 				seen[key.Pubsub] = true
 				pubs = append(pubs, key.Pubsub)
 			}
@@ -110,9 +111,6 @@ func suggestField(f FieldSpec, facts *WorkspaceFacts, confirmed map[string]any) 
 		// Without one, every known contract is a candidate.
 		if topic, ok := confirmedString(confirmed, KeyTopic); ok {
 			pubsub, _ := confirmedString(confirmed, KeyPubsub)
-			if pubsub == "" {
-				pubsub = DefaultPubsub
-			}
 			if contract, ok := facts.ContractFor(TopicKey{Pubsub: pubsub, Name: topic}); ok {
 				return []string{contract}
 			}

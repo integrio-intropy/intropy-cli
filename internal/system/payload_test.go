@@ -211,14 +211,14 @@ func TestBuildPayloadMessagegroup(t *testing.T) {
 		Name: "order-flow",
 		Components: []Component{
 			{AppID: "product-sink", Kind: template.BlockKindExtractor,
-				Topic:   &TopicKey{Pubsub: template.DefaultPubsub, Name: "product-exported"},
+				Topic:   &TopicKey{Pubsub: "order-flow-pubsub", Name: "product-exported"},
 				Message: &MessageWiring{Kind: MessagePublish, Name: "product-exported", Contract: "ProductExported"}},
 			{AppID: "product-loader", Kind: template.BlockKindLoader,
-				Topic:   &TopicKey{Pubsub: template.DefaultPubsub, Name: "product-exported"},
+				Topic:   &TopicKey{Pubsub: "order-flow-pubsub", Name: "product-exported"},
 				Message: &MessageWiring{Kind: MessageSubscribe, Name: "product-exported"}},
 		},
 		Topics: []Topic{
-			{TopicKey: TopicKey{Pubsub: template.DefaultPubsub, Name: "product-exported"}, Contract: "ProductExported"},
+			{TopicKey: TopicKey{Pubsub: "order-flow-pubsub", Name: "product-exported"}, Contract: "ProductExported"},
 		},
 		Messages: []Message{{Name: "product-exported", Type: "product-exported", Contract: "ProductExported", Publisher: "product-sink"}},
 		Ports:    []Port{},
