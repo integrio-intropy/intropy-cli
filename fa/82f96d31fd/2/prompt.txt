@@ -1,0 +1,82 @@
+How is the pubsub name set when running manifest render?
+
+---
+
+Can you show me an example topology where this is set?
+
+---
+
+Ok but can I set it in the code?
+
+---
+
+But does a system with only transactional integrations get MessageRef scaffolded?
+
+---
+
+Could you try to scaffold a system with three transactional integration and inspect the local manifest to see if it is deployable?
+
+---
+
+Is it worth rendering a Messages.cs for TI aswell?
+
+---
+
+Does the fix/queue-subscribe-race-condition branch rename things we are considering to update here?
+
+---
+
+Ok and the changes you suggested were?
+
+---
+
+Is that right, or do we want 1 pubsub with three different topics?
+
+---
+
+What would you recommend here? Following dapr best practices
+race branch have changed
+
+---
+
+Do the framework change
+
+---
+
+Go ahead
+
+---
+
+When we are using rabbitqm we will probably have one vhost per environment, not per system. And we will probably have one service bus namespace per environment
+
+---
+
+But then it will get practically impossible to use scopes on the component right? Because what adds a new component to the scope?
+
+---
+
+Yes and option 3 would also be required if we do not want to use the same authentication to the broker for all systems?
+
+---
+
+continue
+
+---
+
+I had a lot of unstaged cli changes. I stashed them now because I do not want to include them in this but you might need to rescan the cli to make sure that your changes wasnt built on the unstaged changes
+
+---
+
+Can you make the cli changes?
+
+---
+
+In the template repo Can you create a new branch from main, release/2.0 merge feat/multi-source-ports into that
+
+---
+
+/add-dir ../intropy-templates
+
+---
+
+Can you go ahead with the template changes?

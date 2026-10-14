@@ -3,11 +3,24 @@
   "checkpoint_id": "fa82f96d31fd",
   "strategy": "manual-commit",
   "branch": "feat/no-hardcoded-pubsub",
-  "checkpoints_count": 7,
+  "checkpoints_count": 27,
   "files_touched": [
+    "internal/deploy/manifests_model.go",
+    "internal/deploy/manifests_model_test.go",
     "internal/system/assemble.go",
+    "internal/system/assemble_test.go",
+    "internal/system/blocks.go",
+    "internal/system/create.go",
     "internal/system/model.go",
-    "internal/system/routes_test.go"
+    "internal/system/payload_test.go",
+    "internal/system/routes_test.go",
+    "internal/system/update.go",
+    "internal/system/update_test.go",
+    "internal/template/facts.go",
+    "internal/template/facts_test.go",
+    "internal/template/real_manifest_e2e_test.go",
+    "internal/template/suggest.go",
+    "internal/template/wiring.go"
   ],
   "sessions": [
     {
@@ -23,13 +36,20 @@
       "compact_transcript": "/fa/82f96d31fd/1/transcript.jsonl",
       "content_hash": "/fa/82f96d31fd/1/content_hash.txt",
       "prompt": "/fa/82f96d31fd/1/prompt.txt"
+    },
+    {
+      "metadata": "/fa/82f96d31fd/2/metadata.json",
+      "transcript": "/fa/82f96d31fd/2/full.jsonl",
+      "compact_transcript": "/fa/82f96d31fd/2/transcript.jsonl",
+      "content_hash": "/fa/82f96d31fd/2/content_hash.txt",
+      "prompt": "/fa/82f96d31fd/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 23062,
-    "cache_creation_tokens": 463703,
-    "cache_read_tokens": 51289824,
-    "output_tokens": 227171,
-    "api_call_count": 183
+    "input_tokens": 23586,
+    "cache_creation_tokens": 936583,
+    "cache_read_tokens": 114685131,
+    "output_tokens": 392035,
+    "api_call_count": 445
   }
 }
