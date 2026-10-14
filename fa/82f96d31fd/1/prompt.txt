@@ -1,0 +1,87 @@
+Help me build an ai driven version of the dashboard flow view. It should use berget ai api for LLM use and be able to turn prompts like "Partners send orders, invoices and complaints as EDI files over SFTP and as JSON over HTTP. Set up the intake." to cli command calls. It should display the steps to the right of the flow. Something like:
+
+
+<pasted_content id="8f51">
+Plan: two extractors from the official template, both publishing RawPartnerMessage on one topic, then assemble the System host.
+$ intropy int create extractor -n sftp-intake --set topic=inbound.raw --set contract=RawPartnerMessage --set port=partners-sftp --no-input
+rendered extractor@v1.4.0 into sftp-intake/
+wrote sftp-intake/.intropy/scaffold.json
+$ intropy int create extractor -n http-intake --set topic=inbound.raw --set contract=RawPartnerMessage --set port=partners-http --no-input
+rendered extractor@v1.4.0 into http-intake/
+wrote http-intake/.intropy/scaffold.json
+sftp-intake/.intropy/scaffold.json (values illustrative)
++ {
++   "template": "extractor", "version": "v1.4.0",
++   "blockKind": "extractor",
++   "topic": "inbound.raw", "contract": "RawPartnerMessage",
++   "port": "partners-sftp"
++ }
+$ intropy sys create -n partner-intake
+2 components · 1 topic · 2 ports
+rendered system-host into partner-intake/ (Topics.cs, Ports.cs)
+</pasted_content id="8f51">
+
+.
+
+---
+
+We need somewhere to put the prompt in the ai flow?
+
+---
+
+I closed the browser
+
+---
+
+I would like to evalute TypeSafe Jev (I have an api key). The workflow would be
+
+
+
+<pasted_content id="8f51">
+Retrieve templates and their schemas. Include descriptions, capabilities, parameters, defaults and constraints.
+Ask Jev which templates the prompt requires. Allow multiple selections and “no suitable template.” Your example needs both file and HTTP intake.
+Resolve each selected template’s parameters. Batch independent parameter questions into one Jev request:- Explicit or clearly inferred value → use it.
+- Omitted value → apply the declared default.
+- Missing required value or ambiguous instruction → request clarification.
+- Free-form values → extract candidates, then select and validate them.
+
+Validate the resulting configuration in code. Check types, constraints, dependencies and conflicting values.
+Construct and execute the scaffolding command deterministically. Pass validated arguments and use --no-input so unresolved requirements fail rather than trigger an unexpected prompt.
+</pasted_content id="8f51">
+
+---
+
+Can I test it for myself?
+
+---
+
+I get questions like "Does data come from poll?" how does that work?
+
+---
+
+Also this prompt results in two extractors: Poll Perfion for product information
+intropy int create extractor -n PollPerfionIntake --publishes information --set organization=Perfion --template-version v1.2.0 --no-input
+
+intropy int create extractor -n PerfionIntake --publishes information --set organization=Perfion --template-version v1.2.0 --no-input
+
+Perfion is a system, not an organization
+
+---
+
+I wish to make this xregistry driven. We haven an xregistry at http://localhost:8787 and the intropy cli have a message command. I am thinking that the developer should prompt what message it should retrieve where and what message to delivery where and the llm+jev can provide quite a lot of help
+Something like:
+
+
+<pasted_content id="8f51">
+Retrieve candidate contracts from xRegistry using the partner, business concepts and destination.
+Use Jev to select the intended source and destination from those candidates, with explicit “no match” and “ambiguous” outcomes.
+Fetch the exact definitions and referenced schemas, recording their versions.
+Retrieve mapping rules and relevant examples.
+Have the LLM generate the transformation, using an existing transformation if one already fits.
+Compile and test it, validate outputs against the destination schema, and check business expectations.
+Scaffold the surrounding Intropy components, with transport binding handled at its appropriate stage.
+</pasted_content id="8f51">
+
+---
+
+The transformations will have to be best-effort based on input and output
