@@ -1,0 +1,20 @@
+<pasted_content id="394d">
+ Currently the cli use the latest version of the template library if not overriden with the
+ template-version flag. That makes it a bit harder to rollout breaking changes. I wonder if it
+ would be possible to pin the CLI against a major version of the template library, for example
+ cli 2.0 uses the latest 2.x.x release of the template library?
+</pasted_content id="394d">
+
+---
+
+I think SupportedTemplateMajor constant, what do you think?
+
+Is the rate limit a real risk?
+
+---
+
+yes
+
+---
+
+Switch SupportedTemplateMajor to 2

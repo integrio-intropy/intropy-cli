@@ -1,0 +1,34 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "42e31d96f03f",
+  "strategy": "manual-commit",
+  "branch": "feat/pin-template-major",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "README.md",
+    "cmd/intropy/flagtext.go",
+    "internal/system/create.go",
+    "internal/template/github.go",
+    "internal/template/github_test.go",
+    "internal/template/source.go",
+    "internal/template/source_fetch_test.go",
+    "internal/template/source_test.go",
+    "internal/template/templatetest/templatetest.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/42/e31d96f03f/0/metadata.json",
+      "transcript": "/42/e31d96f03f/0/full.jsonl",
+      "compact_transcript": "/42/e31d96f03f/0/transcript.jsonl",
+      "content_hash": "/42/e31d96f03f/0/content_hash.txt",
+      "prompt": "/42/e31d96f03f/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 58,
+    "cache_creation_tokens": 80158,
+    "cache_read_tokens": 1843023,
+    "output_tokens": 21254,
+    "api_call_count": 29
+  }
+}
