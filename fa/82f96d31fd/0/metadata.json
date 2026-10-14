@@ -1,0 +1,82 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "fa82f96d31fd",
+  "session_id": "01a12741-fd73-739b-9b06-e9a38a771561",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-14T04:37:28.774567Z",
+  "branch": "feat/no-hardcoded-pubsub",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "internal/system/assemble.go",
+    "internal/system/model.go",
+    "internal/system/routes_test.go"
+  ],
+  "agent": "Pi",
+  "model": "gpt-6-astra",
+  "turn_id": "cc317968bacf",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 22710,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 82560,
+    "output_tokens": 2016,
+    "api_call_count": 7
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-10-14T04:37:28.76195Z",
+    "agent_lines": 0,
+    "agent_removed": 1,
+    "human_added": 130,
+    "human_modified": 4,
+    "human_removed": 0,
+    "total_committed": 130,
+    "total_lines_changed": 152,
+    "agent_percentage": 0.6578947368421052,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 5281,
+      "user_lines_removed": 40,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "cmd/intropy/dashboard.go": 32,
+        "internal/dashboard/assistant.go": 1037,
+        "internal/dashboard/assistant_jev.go": 1518,
+        "internal/dashboard/assistant_jev_test.go": 278,
+        "internal/dashboard/assistant_registry.go": 427,
+        "internal/dashboard/assistant_registry_test.go": 151,
+        "internal/dashboard/assistant_test.go": 281,
+        "internal/dashboard/handlers.go": 16,
+        "internal/dashboard/server.go": 20,
+        "internal/dashboard/templates.go": 15,
+        "internal/system/assemble.go": 32,
+        "internal/system/model.go": 3,
+        "internal/system/routes_test.go": 29,
+        "internal/xregistry/types.go": 7,
+        "web/src/App.tsx": 5,
+        "web/src/api.ts": 112,
+        "web/src/components/AssistantPanel.tsx": 584,
+        "web/src/components/FlowView.tsx": 112,
+        "web/src/index.css": 562
+      },
+      "user_removed_per_file": {
+        "cmd/intropy/dashboard.go": 3,
+        "internal/dashboard/handlers.go": 1,
+        "internal/dashboard/templates.go": 7,
+        "internal/system/assemble.go": 4,
+        "internal/xregistry/types.go": 3,
+        "web/src/App.tsx": 1,
+        "web/src/components/FlowView.tsx": 21
+      }
+    }
+  ]
+}

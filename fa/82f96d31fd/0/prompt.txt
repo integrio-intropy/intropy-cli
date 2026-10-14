@@ -1,0 +1,1 @@
+Do not make any changes. I want to extend the dev experience by letting developers deploy to a dev server with a single command. I am thinking that the dev server is a k3s/k3d/k0s that is automatically provisioned on virtual machines. What would I need to build?
