@@ -135,6 +135,57 @@ func TestManifestModelPubSubsAreDistinctWithSortedScopes(t *testing.T) {
 	}
 }
 
+// A system of only transactional integrations declares no topics, yet each
+// integration's internal queue rides the system's pub/sub: the component must
+// render, with every integration in its scopes, or the queues are unreachable.
+func TestManifestModelPubSubsIncludeInternalQueues(t *testing.T) {
+	queue := func(name string) *topology.InternalQueue {
+		return &topology.InternalQueue{PubSub: "tx-flow-pubsub", Topic: "internal-" + name}
+	}
+	topo := &topology.Topology{System: "tx-flow", Components: []topology.Component{
+		{Name: "stock-sync", Kind: "transactional-integration", InternalQueue: queue("stock-sync")},
+		{Name: "order-sync", Kind: "transactional-integration", InternalQueue: queue("order-sync")},
+	}}
+
+	m := newManifestModel(topo, nil)
+
+	want := []ManifestPubSub{{
+		Name:   "tx-flow-pubsub",
+		Topics: []string{"internal-order-sync", "internal-stock-sync"},
+		AppIDs: []string{"order-sync", "stock-sync"},
+	}}
+	if !reflect.DeepEqual(m.PubSubs, want) {
+		t.Errorf("PubSubs = %+v, want %+v", m.PubSubs, want)
+	}
+}
+
+// The deployment passes each component the channel the topology settled, as
+// the local host does; a record without one leaves the names empty rather
+// than have the CLI derive them.
+func TestManifestModelComponentChannelFromRecord(t *testing.T) {
+	topo := &topology.Topology{System: "tx-flow", Components: []topology.Component{
+		{Name: "order-sync", Kind: "transactional-integration",
+			Channel: &topology.Channel{PubSub: "tx-flow-pubsub", Topic: "internal-order-sync"}},
+		{Name: "fan-out", Kind: "extractor", Channel: &topology.Channel{PubSub: "tx-flow-pubsub"}},
+		{Name: "legacy", Kind: "loader"},
+	}}
+
+	m := newManifestModel(topo, nil)
+
+	got := map[string][2]string{}
+	for _, c := range m.Components {
+		got[c.Name] = [2]string{c.PubSub, c.Topic}
+	}
+	want := map[string][2]string{
+		"order-sync": {"tx-flow-pubsub", "internal-order-sync"},
+		"fan-out":    {"tx-flow-pubsub", ""},
+		"legacy":     {"", ""},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("component channels = %v, want %v", got, want)
+	}
+}
+
 func TestManifestModelPorts(t *testing.T) {
 	m := newManifestModel(decodeManifestTopology(t), nil)
 

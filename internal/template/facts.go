@@ -263,7 +263,9 @@ func BuildWorkspaceFacts(entries []WorkspaceFactEntry) *WorkspaceFacts {
 			message, mok := SoftValue(e.Values, KeyPublishes)
 			if mok {
 				contract := PascalCase(message)
-				indexTopic(TopicKey{Pubsub: DefaultPubsub, Name: message}, contract)
+				// Pubsub left empty: a scaffold's message travels on the
+				// system's pub/sub, named only once the system exists.
+				indexTopic(TopicKey{Name: message}, contract)
 				if _, seen := facts.messages[message]; !seen {
 					facts.messages[message] = contract
 				}

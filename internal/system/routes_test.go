@@ -67,8 +67,9 @@ func TestAssembleRoutesMessagesSharingATopic(t *testing.T) {
 	if !reflect.DeepEqual(loaderEntry[template.KeyRoutes], wantRoutes) || loaderEntry[template.KeyDefault] != template.DefaultIgnore {
 		t.Errorf("loader entry = %#v", loaderEntry)
 	}
+	model.UsePubsub("order-flow-pubsub")
 	for _, m := range model.Messages {
-		if entry := MessageEntry(m); entry[template.KeyTopic] != "orders" || entry[template.KeyPubsub] != template.DefaultPubsub {
+		if entry := MessageEntry(m); entry[template.KeyTopic] != "orders" || entry[template.KeyPubsub] != "order-flow-pubsub" {
 			t.Errorf("message entry = %#v, want its channel", entry)
 		}
 	}

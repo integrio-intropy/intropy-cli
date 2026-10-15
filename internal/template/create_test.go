@@ -572,7 +572,7 @@ func TestCreateMessageDirectionGate(t *testing.T) {
 		wantErr   string
 	}{
 		{name: "subscribe against extractor", template: "message-extractor", subscribe: "m", wantErr: "use --publishes"},
-		{name: "publishes against loader", template: "message-loader", publishes: "m", wantErr: "use --subscribe"},
+		{name: "publishes against loader", template: "message-loader", publishes: "m", wantErr: "use --subscribes"},
 		{name: "publishes against transactional", template: "message-transactional", publishes: "m", wantErr: "wire no messages"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -614,7 +614,7 @@ func TestCreateRejectsSubscribeAndPublishesTogether(t *testing.T) {
 
 func TestCreateNoInputMessageParameterHintsDirection(t *testing.T) {
 	lib := newMessageDirectionLibrary(t, "v9.9.9")
-	for _, tc := range []struct{ template, flag string }{{"message-loader", "--subscribe"}, {"message-extractor", "--publishes"}} {
+	for _, tc := range []struct{ template, flag string }{{"message-loader", "--subscribes"}, {"message-extractor", "--publishes"}} {
 		t.Run(tc.template, func(t *testing.T) {
 			err := Create(context.Background(), CreateOptions{
 				Template:  tc.template,

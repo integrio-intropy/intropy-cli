@@ -16,7 +16,7 @@ type Channel struct {
 	Endpoint string
 }
 
-// ResolvedMessage is the wiring --subscribe writes into a scaffold record:
+// ResolvedMessage is the wiring --subscribes writes into a scaffold record:
 // the message identity, its CloudEvents type, the channels the message can
 // arrive on, and the schema pin.
 type ResolvedMessage struct {
@@ -189,7 +189,7 @@ func producerChannels(doc *Export, groupID string) ([]Channel, error) {
 }
 
 // Resolve fetches the export and resolves one message reference into
-// subscription wiring — the flow --subscribe runs. The schema pin is
+// subscription wiring — the flow --subscribes runs. The schema pin is
 // returned absolute: the pinned version URL must survive on its own once
 // the record is committed, so it is joined with the base URL here.
 func (c *Client) Resolve(ctx context.Context, ref string) (*ResolvedMessage, error) {

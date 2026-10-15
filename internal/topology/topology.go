@@ -91,6 +91,11 @@ type Component struct {
 	// receive and send sides, and the Subscription its send side receives it
 	// through.
 	InternalQueue *InternalQueue `json:"internalQueue,omitempty"`
+	// Channel is the one pub/sub and topic the component runs on, as the
+	// topology settles them: what a deployment passes in INTROPY_PUBSUB_NAME
+	// and INTROPY_TOPIC_NAME. Either is empty when the topology settles no
+	// single name for it; records that predate it leave Channel nil.
+	Channel *Channel `json:"channel,omitempty"`
 	// Provides/Consumes are contract surfaces, parsed opaquely (see APIs).
 	Provides []json.RawMessage `json:"provides,omitempty"`
 	Consumes []json.RawMessage `json:"consumes,omitempty"`

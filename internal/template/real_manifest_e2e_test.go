@@ -112,16 +112,20 @@ func TestRealManifestPublishesExtractor(t *testing.T) {
 	}
 	for _, want := range []string{
 		`public const string EventType = "orders";`,
-		`public const string PubSubName = "pubsub";`,
 		`public const string TopicName = "orders";`,
 	} {
 		if !strings.Contains(string(constants), want) {
 			t.Errorf("Constants.cs missing %q:\n%s", want, constants)
 		}
 	}
+	// The pub/sub is the system's, named at run time: a component scaffolded
+	// before its system must not pin a name the deployment does not render.
+	if strings.Contains(string(constants), "const string PubSubName") {
+		t.Errorf("Constants.cs pins a pub/sub name:\n%s", constants)
+	}
 }
 
-// Happy path, consumer side: --subscribe against the real loader manifest.
+// Happy path, consumer side: --subscribes against the real loader manifest.
 func TestRealManifestSubscribeLoader(t *testing.T) {
 	src, version := realTemplatesSource(t)
 	outDir := filepath.Join(t.TempDir(), "order-file-loader")
@@ -146,7 +150,7 @@ func TestRealManifestSubscribeLoader(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := record.Values[KeySubscribes]; got != "orders" {
-		t.Errorf("values.subscribes = %v, want the --subscribe message", got)
+		t.Errorf("values.subscribes = %v, want the --subscribes message", got)
 	}
 	if _, has := record.Values[KeyPublishes]; has {
 		t.Errorf("loader record grew a publishes value: %v", record.Values)
@@ -168,7 +172,7 @@ func TestRealManifestSubscribeLoader(t *testing.T) {
 	}
 }
 
-// The direction gate: --subscribe against the real extractor and --publishes
+// The direction gate: --subscribes against the real extractor and --publishes
 // against the real loader are usage errors, and nothing lands on disk.
 // A template flag that silently vanished would leave a record whose wiring
 // contradicts the rendered code.
@@ -182,7 +186,7 @@ func TestRealManifestDirectionGates(t *testing.T) {
 		hint      string
 	}{
 		{name: "subscribe against extractor", tmpl: "extractor", subscribe: "orders", hint: "use --publishes"},
-		{name: "publishes against loader", tmpl: "loader", publishes: "orders", hint: "use --subscribe"},
+		{name: "publishes against loader", tmpl: "loader", publishes: "orders", hint: "use --subscribes"},
 	}
 	for _, r := range runs {
 		t.Run(r.name, func(t *testing.T) {

@@ -19,7 +19,7 @@ func TestMergeWiringAddsScalarMessageOrphan(t *testing.T) {
 		},
 		orphans: []Component{{
 			AppID: "order-extractor", Kind: template.BlockKindExtractor,
-			Topic: &TopicKey{Pubsub: template.DefaultPubsub, Name: "order-created"}, topicContract: "OrderCreated",
+			Topic: &TopicKey{Pubsub: "order-flow-pubsub", Name: "order-created"}, topicContract: "OrderCreated",
 			Ports:   []string{"order-source"},
 			Message: &MessageWiring{Kind: MessagePublish, Name: "order-created", Contract: "OrderCreated"},
 		}},
@@ -123,5 +123,29 @@ func TestMergedComponentEntriesRefreshesInPlace(t *testing.T) {
 	}
 	if got[2].(map[string]any)[template.KeyAppID] != "new-extractor" {
 		t.Errorf("orphan not appended: %#v", got[2])
+	}
+}
+
+// A host created before systems owned their pub/sub declares the legacy name;
+// an update reads it back so folded-in components stay on the host's one.
+func TestStoredPubsub(t *testing.T) {
+	cases := map[string]struct {
+		values map[string]any
+		want   string
+	}{
+		"legacy topics": {map[string]any{"topics": []any{
+			map[string]any{template.KeyPubsub: "pubsub", template.KeyName: "orders"}}}, "pubsub"},
+		"messages only": {map[string]any{"messages": []any{
+			map[string]any{template.KeyName: "orders", template.KeyPubsub: "order-flow-pubsub", template.KeyTopic: "orders"}}}, "order-flow-pubsub"},
+		"message on its own name declares none": {map[string]any{"messages": []any{
+			map[string]any{template.KeyName: "orders"}}}, ""},
+		"transactional only": {map[string]any{"topics": []any{}, "messages": []any{}}, ""},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := storedPubsub(tc.values); got != tc.want {
+				t.Errorf("storedPubsub = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

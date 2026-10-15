@@ -52,7 +52,7 @@ func parseExtractor(e template.ScaffoldEntry, c *Component) error {
 		channel = message
 	}
 	c.channel = channel
-	c.Topic = &TopicKey{Pubsub: template.DefaultPubsub, Name: channel}
+	c.Topic = &TopicKey{Name: channel}
 	c.topicContract = contract
 	c.Message = &MessageWiring{Kind: MessagePublish, Name: message, Contract: contract}
 	return parseSinglePort(e, c)

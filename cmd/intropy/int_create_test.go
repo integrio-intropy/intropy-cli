@@ -226,7 +226,7 @@ func TestWorkspaceRootOf(t *testing.T) {
 }
 
 // messageRegistryFixture serves an /export shaped like the Intropy registry
-// for the --subscribe e2e tests.
+// for the --subscribes e2e tests.
 func TestIntCreatePublishesFlagCombinations(t *testing.T) {
 	resetCreateFlags := func(t *testing.T) {
 		t.Helper()
@@ -240,13 +240,13 @@ func TestIntCreatePublishesFlagCombinations(t *testing.T) {
 		resetRootIO(t, &stdout, &stderr)
 		t.Chdir(t.TempDir())
 
-		rootCmd.SetArgs([]string{"int", "create", "hello-world", "--name", "x", "--no-input", "--subscribe", "a.b", "--publishes", "a.b"})
+		rootCmd.SetArgs([]string{"int", "create", "hello-world", "--name", "x", "--no-input", "--subscribes", "a.b", "--publishes", "a.b"})
 		err := rootCmd.Execute()
 		var ue *usageError
 		if !errors.As(err, &ue) {
 			t.Fatalf("error %v is not a usageError", err)
 		}
-		if !strings.Contains(err.Error(), "cannot combine --subscribe with --publishes") {
+		if !strings.Contains(err.Error(), "cannot combine --subscribes with --publishes") {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})

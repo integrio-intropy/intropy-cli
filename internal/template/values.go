@@ -277,13 +277,12 @@ func missingRequiredError(missing []FieldSpec, suggestions map[string][]string, 
 }
 
 // wiringFlagName picks the message flag the hint names: the direction the
-// template's kind declares, or --subscribe when no direction is known —
-// the flag every template accepted before the gate existed.
+// template's kind declares, or --subscribes when no direction is known.
 func wiringFlagName(facts *WorkspaceFacts) string {
 	if facts.WiringDirection() == MessageDirectionPublish {
 		return "--publishes"
 	}
-	return "--subscribe"
+	return "--subscribes"
 }
 
 func renderDerivedValues(derived map[string]string, values map[string]any, byName map[string]FieldSpec) error {
