@@ -1,0 +1,9 @@
+- int create --help contradicts itself: the -n text says the name becomes the output directory, while -o says it defaults to the kebab-cased name, which is what actually happens.
+
+---
+
+please do
+
+---
+
+- The flag names don't match: --publishes versus --subscribe.

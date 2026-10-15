@@ -1,0 +1,90 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "fc6068a3b988",
+  "session_id": "01a13e21-f552-7443-ad0c-f325249ba609",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-15T08:46:44.233451Z",
+  "branch": "feat/no-hardcoded-pubsub",
+  "checkpoints_count": 3,
+  "save_step_count": 3,
+  "files_touched": [
+    "AGENTS.md",
+    "catalog/concepts/messages-and-subscriptions.md",
+    "cmd/intropy/int_create.go",
+    "cmd/intropy/int_create_real_e2e_test.go",
+    "cmd/intropy/int_create_test.go",
+    "cmd/intropy/message_source.go",
+    "cmd/intropy/sys_create.go",
+    "internal/config/config.go",
+    "internal/template/create.go",
+    "internal/template/create_test.go",
+    "internal/template/manifest.go",
+    "internal/template/real_manifest_e2e_test.go",
+    "internal/template/routes_test.go",
+    "internal/template/scaffold.go",
+    "internal/template/suggest_test.go",
+    "internal/template/values.go",
+    "internal/xregistry/resolve.go"
+  ],
+  "agent": "Pi",
+  "model": "zai-org/GLM-5.3-Flash",
+  "turn_id": "16eeba89c977",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 102988,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 734592,
+    "output_tokens": 8962,
+    "api_call_count": 30
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-10-15T08:46:44.215441Z",
+    "agent_lines": 40,
+    "agent_removed": 41,
+    "human_added": 43,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 83,
+    "total_lines_changed": 124,
+    "agent_percentage": 65.32258064516128,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1,
+      "agent_lines_removed": 1,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2,
+      "agent_lines_removed": 2,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    }
+  ]
+}
