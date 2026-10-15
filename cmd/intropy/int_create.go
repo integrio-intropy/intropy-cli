@@ -198,6 +198,10 @@ func init() {
 	f.BoolVar(&intCreateFlags.force, "force", false, "allow rendering into a non-empty output directory")
 	f.BoolVar(&intCreateFlags.noInput, "no-input", false, flagUsageNoInput)
 	f.StringVar(&intCreateFlags.subscribe, "subscribes", "", flagUsageSubscribe)
+	// --subscribe is the pre-2.1 spelling, kept as a hidden alias so existing
+	// scripts keep working while they move to --subscribes.
+	f.StringVar(&intCreateFlags.subscribe, "subscribe", "", flagUsageSubscribe)
+	_ = f.MarkDeprecated("subscribe", "use --subscribes instead")
 	f.StringVar(&intCreateFlags.publishes, "publishes", "", flagUsagePublishes)
 	intCmd.AddCommand(intCreateCmd)
 }

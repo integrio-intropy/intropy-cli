@@ -250,6 +250,18 @@ func TestIntCreatePublishesFlagCombinations(t *testing.T) {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})
+	t.Run("deprecated --subscribe alias sets the subscribes value", func(t *testing.T) {
+		resetCreateFlags(t)
+		var stdout, stderr bytes.Buffer
+		resetRootIO(t, &stdout, &stderr)
+		t.Chdir(t.TempDir())
+
+		rootCmd.SetArgs([]string{"int", "create", "hello-world", "--name", "x", "--no-input", "--subscribe", "a.b", "--publishes", "a.b"})
+		err := rootCmd.Execute()
+		if err == nil || !strings.Contains(err.Error(), "cannot combine --subscribes with --publishes") {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
 }
 
 // The direction and conflict gates exit 2 through the shared mapper.
