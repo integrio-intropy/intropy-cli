@@ -1,0 +1,5 @@
+Can you create a new github release with version v2.1.0 and relevant notes for the changes from v2.0.0?
+
+---
+
+" I can open a PR that adds --subscribe back as a hidden, deprecated alias and ship it " yes please
