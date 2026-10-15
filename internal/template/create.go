@@ -51,7 +51,7 @@ type CreateOptions struct {
 	Facts *WorkspaceFacts
 
 	// SubscribeMessage, when set, is the scalar message value written by
-	// --subscribe. The manifest must declare a matching message parameter.
+	// --subscribes. The manifest must declare a matching message parameter.
 	SubscribeMessage string
 
 	// PublishesMessage is SubscribeMessage's producing-side counterpart,
@@ -205,12 +205,12 @@ func prepareCreateTemplate(_ context.Context, templateRoot string, opts CreateOp
 	}
 	if opts.SubscribeMessage != "" {
 		if len(messageParams) == 0 {
-			return nil, nil, fmt.Errorf("template %q: %w\n--subscribe requires a template release whose manifest declares message parameters (label %s); check the pinned template version", tmpl.Metadata.Name, ErrNoMessageParameters, TemplateMessageParamsLabel)
+			return nil, nil, fmt.Errorf("template %q: %w\n--subscribes requires a template release whose manifest declares message parameters (label %s); check the pinned template version", tmpl.Metadata.Name, ErrNoMessageParameters, TemplateMessageParamsLabel)
 		}
 		if err := gateMessageDirection(tmpl, MessageDirectionSubscribe); err != nil {
 			return nil, nil, err
 		}
-		if err := seedMessageParameters(tmpl, messageParams, opts.SetValues, "--subscribe", ErrSubscribeMessageConflict, opts.SubscribeMessage); err != nil {
+		if err := seedMessageParameters(tmpl, messageParams, opts.SetValues, "--subscribes", ErrSubscribeMessageConflict, opts.SubscribeMessage); err != nil {
 			return nil, nil, err
 		}
 		opts.SetValues[KeySubscribes] = MessageValue(opts.SubscribeMessage)
@@ -358,15 +358,15 @@ func AutoPrompter(stdin io.Reader, out io.Writer, noInput bool) Prompter {
 	return NewStdinPrompter(stdin, out)
 }
 
-// ErrNoMessageParameters reports --subscribe or --publishes against a
+// ErrNoMessageParameters reports --subscribes or --publishes against a
 // template whose manifest declares no message parameters. Callers map it
 // to a usage error: the fault is in the requested combination, not the
 // environment.
 var ErrNoMessageParameters = errors.New("declares no message parameters")
 
 // ErrSubscribeMessageConflict reports a message parameter value that does
-// not match the scalar --subscribe message.
-var ErrSubscribeMessageConflict = errors.New("message parameter conflicts with --subscribe")
+// not match the scalar --subscribes message.
+var ErrSubscribeMessageConflict = errors.New("message parameter conflicts with --subscribes")
 
 // ErrMessageParameterConflict is the direction-neutral form of
 // ErrSubscribeMessageConflict, reported when --publishes names a different
@@ -382,14 +382,14 @@ var ErrMessageDirection = errors.New("template does not wire messages in this di
 // programming-visible state (the CLI rejects the combination as a usage
 // error before Create runs) guarded here so library callers cannot reach
 // a record carrying both blocks.
-var ErrMessageFlagsExclusive = errors.New("subscribe and publishes are mutually exclusive; one component is one direction")
+var ErrMessageFlagsExclusive = errors.New("--subscribes and --publishes are mutually exclusive; one component is one direction")
 
 // gateMessageDirection checks the template's block kind against the
 // direction an explicit message flag would wire. Known-kinds mismatch and
 // no-messaging kinds are hard errors — a flag that silently vanished
 // would leave a record whose wiring contradicts the rendered code. An
 // absent or unknown kind stays direction-neutral: today's behavior for
-// --subscribe, and the tolerated shape for kind-less message templates.
+// --subscribes, and the tolerated shape for kind-less message templates.
 func gateMessageDirection(tmpl *Template, flagDirection string) error {
 	kind := blockKindFromLabels(tmpl.Metadata.Labels)
 	dir := MessageDirection(kind)
@@ -401,9 +401,9 @@ func gateMessageDirection(tmpl *Template, flagDirection string) error {
 	case dir == MessageDirectionNone:
 		return nil // unknown or absent kind: direction-neutral
 	case dir == MessageDirectionPublish:
-		return fmt.Errorf("template %q: %w\n--subscribe wires a consuming component, but this template publishes messages; use --publishes", tmpl.Metadata.Name, ErrMessageDirection)
+		return fmt.Errorf("template %q: %w\n--subscribes wires a consuming component, but this template publishes messages; use --publishes", tmpl.Metadata.Name, ErrMessageDirection)
 	default:
-		return fmt.Errorf("template %q: %w\n--publishes wires a producing component, but this template subscribes to messages; use --subscribe", tmpl.Metadata.Name, ErrMessageDirection)
+		return fmt.Errorf("template %q: %w\n--publishes wires a producing component, but this template subscribes to messages; use --subscribes", tmpl.Metadata.Name, ErrMessageDirection)
 	}
 }
 

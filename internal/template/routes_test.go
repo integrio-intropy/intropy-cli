@@ -89,13 +89,13 @@ func TestResolveTakesAListFromSet(t *testing.T) {
 	}
 }
 
-// --subscribe seeds a list-shaped message parameter with one route, and
+// --subscribes seeds a list-shaped message parameter with one route, and
 // accepts a pre-set list only when it routes the message.
 func TestSeedMessageParametersSeedsOneRoute(t *testing.T) {
 	tmpl := loadRouted(t)
 
 	sets := map[string]any{}
-	if err := seedMessageParameters(tmpl, []string{"routes"}, sets, "--subscribe", ErrSubscribeMessageConflict, "order-placed"); err != nil {
+	if err := seedMessageParameters(tmpl, []string{"routes"}, sets, "--subscribes", ErrSubscribeMessageConflict, "order-placed"); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(sets["routes"], []any{map[string]any{"message": "order-placed"}}) {
@@ -103,7 +103,7 @@ func TestSeedMessageParametersSeedsOneRoute(t *testing.T) {
 	}
 
 	preset := map[string]any{"routes": `[{"message": "order-cancelled"}]`}
-	err := seedMessageParameters(tmpl, []string{"routes"}, preset, "--subscribe", ErrSubscribeMessageConflict, "order-placed")
+	err := seedMessageParameters(tmpl, []string{"routes"}, preset, "--subscribes", ErrSubscribeMessageConflict, "order-placed")
 	if err == nil || !strings.Contains(err.Error(), "does not route it") {
 		t.Errorf("err = %v, want a conflict", err)
 	}

@@ -80,7 +80,7 @@ func TestResolveWithMissingMessageNamesKnownValues(t *testing.T) {
 		},
 	}, []string{KeySubscribes}, nil)
 	_, err := ResolveWith(tmpl, ResolveOptions{Facts: facts})
-	if err == nil || !strings.Contains(err.Error(), "pass --subscribe") {
+	if err == nil || !strings.Contains(err.Error(), "pass --subscribes") {
 		t.Fatalf("err = %v", err)
 	}
 }

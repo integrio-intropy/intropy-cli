@@ -36,7 +36,7 @@ var intCreateFlags createFlags
 var intCreateCmd = &cobra.Command{
 	Use:   "create <template>",
 	Short: "Create a new integration",
-	Long:  "Scaffold a new integration from the official Intropy template library. The positional argument selects which template subdirectory to render (e.g. 'hello-world'). Use --subscribe with message-capable consuming templates, or --publishes with producing templates, to write the scaffold record's scalar message wiring.",
+	Long:  "Scaffold a new integration from the official Intropy template library. The positional argument selects which template subdirectory to render (e.g. 'hello-world'). Use --subscribes with message-capable consuming templates, or --publishes with producing templates, to write the scaffold record's scalar message wiring.",
 	Args:  usageArgs(cobra.ExactArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sets, err := template.ParseSets(intCreateFlags.sets)
@@ -64,7 +64,7 @@ var intCreateCmd = &cobra.Command{
 		}
 		stderr := cmd.ErrOrStderr()
 		if intCreateFlags.subscribe != "" && intCreateFlags.publishes != "" {
-			return newUsageErrorf("cannot combine --subscribe with --publishes (one component is one direction)")
+			return newUsageErrorf("cannot combine --subscribes with --publishes (one component is one direction)")
 		}
 		if skipOutDir {
 			out, err := deriveOutDir(cmd.Context(), template.CreateOptions{
@@ -190,14 +190,14 @@ func init() {
 	f.StringVarP(&intCreateFlags.outDir, "out-dir", "o", "", "destination directory (defaults to the kebab-cased name)")
 	f.StringVar(&intCreateFlags.output, "output", "", flagUsageOutputJSONOnly)
 	_ = intCreateCmd.MarkFlagDirname("out-dir")
-	f.StringVarP(&intCreateFlags.name, "name", "n", "", "integration name; sets the template's 'name' parameter and, unless --out-dir is set, becomes the output directory")
+	f.StringVarP(&intCreateFlags.name, "name", "n", "", "integration name; sets the template's 'name' parameter; without --out-dir, the output directory is its kebab-cased form")
 	f.StringVar(&intCreateFlags.templateVersion, "template-version", "", flagUsageTemplateVer)
 	f.StringVar(&intCreateFlags.templateRepo, "template-repo", "", flagUsageTemplateRepo)
 	f.StringArrayVarP(&intCreateFlags.values, "values", "f", nil, "values file in YAML/JSON (repeatable; use - to read one doc from stdin)")
 	f.StringArrayVarP(&intCreateFlags.sets, "set", "s", nil, "set a value as key=value (repeatable)")
 	f.BoolVar(&intCreateFlags.force, "force", false, "allow rendering into a non-empty output directory")
 	f.BoolVar(&intCreateFlags.noInput, "no-input", false, flagUsageNoInput)
-	f.StringVar(&intCreateFlags.subscribe, "subscribe", "", flagUsageSubscribe)
+	f.StringVar(&intCreateFlags.subscribe, "subscribes", "", flagUsageSubscribe)
 	f.StringVar(&intCreateFlags.publishes, "publishes", "", flagUsagePublishes)
 	intCmd.AddCommand(intCreateCmd)
 }

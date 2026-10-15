@@ -159,6 +159,33 @@ func TestManifestModelPubSubsIncludeInternalQueues(t *testing.T) {
 	}
 }
 
+// The deployment passes each component the channel the topology settled, as
+// the local host does; a record without one leaves the names empty rather
+// than have the CLI derive them.
+func TestManifestModelComponentChannelFromRecord(t *testing.T) {
+	topo := &topology.Topology{System: "tx-flow", Components: []topology.Component{
+		{Name: "order-sync", Kind: "transactional-integration",
+			Channel: &topology.Channel{PubSub: "tx-flow-pubsub", Topic: "internal-order-sync"}},
+		{Name: "fan-out", Kind: "extractor", Channel: &topology.Channel{PubSub: "tx-flow-pubsub"}},
+		{Name: "legacy", Kind: "loader"},
+	}}
+
+	m := newManifestModel(topo, nil)
+
+	got := map[string][2]string{}
+	for _, c := range m.Components {
+		got[c.Name] = [2]string{c.PubSub, c.Topic}
+	}
+	want := map[string][2]string{
+		"order-sync": {"tx-flow-pubsub", "internal-order-sync"},
+		"fan-out":    {"tx-flow-pubsub", ""},
+		"legacy":     {"", ""},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("component channels = %v, want %v", got, want)
+	}
+}
+
 func TestManifestModelPorts(t *testing.T) {
 	m := newManifestModel(decodeManifestTopology(t), nil)
 

@@ -46,7 +46,7 @@ const (
 	// TemplateMessageParamsLabel names the manifest label that declares
 	// which parameters carry message wiring, as a comma-separated list of
 	// parameter names. A template without it declares no message
-	// parameters: --subscribe against it is a usage error (R4), and its
+	// parameters: --subscribes against it is a usage error (R4), and its
 	// parameters get no message suggestions however they are named.
 	TemplateMessageParamsLabel = "intropy.io/message-params"
 

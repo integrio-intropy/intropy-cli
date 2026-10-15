@@ -64,7 +64,7 @@ var sysCreateCmd = &cobra.Command{
 func init() {
 	f := sysCreateCmd.Flags()
 	f.StringVarP(&sysCreateFlagValues.name, "name", "n", "", "system name; PascalCase or kebab-case (OrderFlow and order-flow are equivalent)")
-	f.StringVarP(&sysCreateFlagValues.outDir, "out-dir", "o", "", "destination directory (default: the kebab-cased name)")
+	f.StringVarP(&sysCreateFlagValues.outDir, "out-dir", "o", "", "destination directory (defaults to the kebab-cased name)")
 	f.StringVar(&sysCreateFlagValues.output, "output", "", flagUsageOutputJSONOnly)
 	_ = sysCreateCmd.MarkFlagDirname("out-dir")
 	f.StringVar(&sysCreateFlagValues.templateVersion, "template-version", "", flagUsageTemplateVer)

@@ -48,7 +48,7 @@ const (
 	EnvTemplateRepo = "INTROPY_TEMPLATE_REPO"
 
 	// EnvRegistryURL overrides registryUrl: the base URL of the read-only
-	// xRegistry service that backs the message noun and --subscribe.
+	// xRegistry service that backs the message noun and --subscribes.
 	EnvRegistryURL = "INTROPY_REGISTRY_URL"
 
 	dirName  = "intropy"
@@ -76,7 +76,7 @@ type Config struct {
 	TemplateRepo string `yaml:"templateRepo"`
 
 	// RegistryURL is the base URL of the read-only xRegistry service that
-	// backs message discovery and --subscribe resolution. Empty means
+	// backs message discovery and --subscribes resolution. Empty means
 	// unconfigured: there is no built-in default, and every consumer must
 	// treat the zero value as "nothing to contact".
 	RegistryURL string `yaml:"registryUrl"`

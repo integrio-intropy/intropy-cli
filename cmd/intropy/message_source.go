@@ -115,7 +115,7 @@ func sortedMessageIDs(g xregistry.MessageGroup) []string {
 // producerChannels lists the producer endpoints' channels for one group,
 // split-validated and rendered as <pubsub>/<topic>. A malformed channel is
 // skipped here: listing must show what is resolvable, and assembly or
-// --subscribe is the surface that reports the malformed endpoint.
+// --subscribes is the surface that reports the malformed endpoint.
 func producerChannels(doc *xregistry.Export, groupID string) []string {
 	want := "/messagegroups/" + groupID
 	var out []string

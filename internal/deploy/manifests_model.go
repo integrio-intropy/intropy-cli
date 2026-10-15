@@ -79,6 +79,14 @@ type ManifestComponent struct {
 	Topics []string `json:"topics,omitempty"`
 	Ports  []string `json:"ports,omitempty"`
 
+	// PubSub and Topic are the one pub/sub and topic the component runs on,
+	// taken verbatim from the topology record's channel — what the deployment
+	// passes in INTROPY_PUBSUB_NAME and INTROPY_TOPIC_NAME. The framework
+	// derives neither, so neither does the CLI: empty when the record settles
+	// no single name, or predates the channel.
+	PubSub string `json:"pubsub,omitempty"`
+	Topic  string `json:"topic,omitempty"`
+
 	// Subscription is the declarative Dapr Subscription the component needs to
 	// receive anything: a subscribing block's app callback announces none of
 	// its own. Absent for a component that subscribes to nothing, and for a
@@ -280,6 +288,9 @@ func buildComponents(components []topology.Component, appIDs, dirs map[string]st
 		}
 		ic.Ports = sortedKeys(ports)
 		ic.Subscription = subscriptionFor(c)
+		if ch := c.Channel; ch != nil {
+			ic.PubSub, ic.Topic = ch.PubSub, ch.Topic
+		}
 
 		out = append(out, ic)
 	}

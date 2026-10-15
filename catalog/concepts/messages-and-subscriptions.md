@@ -7,7 +7,7 @@ status: draft
 commands:
   - intropy message list
   - intropy message show
-  - intropy int create --subscribe
+  - intropy int create --subscribes
 sources:
   - id: xregistry-api
     resource: https://registry.intropy.io
