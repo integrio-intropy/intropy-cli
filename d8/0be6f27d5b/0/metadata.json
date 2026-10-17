@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "d80be6f27d5b",
+  "session_id": "01a148e7-ba97-7349-b816-63c13ff7c329",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-17T08:16:54.580313Z",
+  "branch": "chore/code-review-cleanup",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "cmd/intropy/deploy_diff.go",
+    "cmd/intropy/deploy_pin.go",
+    "cmd/intropy/deploy_sync.go",
+    "cmd/intropy/manifests_render.go"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "6fbcd0dce792",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 68107,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 4173120,
+    "output_tokens": 30345,
+    "api_call_count": 75
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-10-17T08:16:54.555011Z",
+    "agent_lines": 16,
+    "agent_removed": 23,
+    "human_added": 46,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 62,
+    "total_lines_changed": 155,
+    "agent_percentage": 25.161290322580644,
+    "metric_version": 2
+  }
+}
