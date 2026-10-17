@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "5e3e9143adcc",
+  "strategy": "manual-commit",
+  "branch": "chore/code-review-cleanup",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "cmd/intropy/deploy.go",
+    "cmd/intropy/deploy_diff.go",
+    "cmd/intropy/deploy_pin.go",
+    "cmd/intropy/deploy_promote.go",
+    "cmd/intropy/deploy_status.go",
+    "cmd/intropy/deploy_sync.go",
+    "cmd/intropy/flagtext.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/5e/3e9143adcc/0/metadata.json",
+      "transcript": "/5e/3e9143adcc/0/full.jsonl",
+      "compact_transcript": "/5e/3e9143adcc/0/transcript.jsonl",
+      "content_hash": "/5e/3e9143adcc/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 5506,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1167552,
+    "output_tokens": 6405,
+    "api_call_count": 12
+  }
+}
