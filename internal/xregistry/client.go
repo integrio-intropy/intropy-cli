@@ -1,7 +1,7 @@
 // Package xregistry is a read-only client for the Intropy xRegistry
 // service: message, endpoint, and schema discovery over GET /export, plus
-// in-memory resolution of a message reference into the wiring a component
-// needs to subscribe to it.
+// in-memory lookup helpers that find one message or schema in the export
+// document.
 //
 // It shares a name and nothing else with internal/registry, the OCI
 // registry client — different protocol, different base URL, different
@@ -10,10 +10,9 @@
 //
 // xRegistry has no message-to-channel field: the association is
 // Endpoint.messagegroups (the groups allowed on an endpoint) plus
-// Endpoint.channel, and the resolution join in resolve.go walks it. The
-// registry declares filtering, inlining, entity-path lookups, and pagination
-// out of scope, so the client sends only GET /export — no query params it
-// did not see advertised.
+// Endpoint.channel. The registry declares filtering, inlining, entity-path
+// lookups, and pagination out of scope, so the client sends only
+// GET /export — no query params it did not see advertised.
 package xregistry
 
 import (

@@ -33,58 +33,32 @@ func TestSplitChannel(t *testing.T) {
 }
 
 // Two groups carrying the same message id: a bare reference names both, so
-// resolving it is refused rather than guessed.
-func TestResolveBareRefAmbiguousAcrossGroups(t *testing.T) {
+// looking it up is refused rather than guessed.
+func TestFindMessageBareRefAmbiguousAcrossGroups(t *testing.T) {
 	doc := &Export{
 		MessageGroups: map[string]MessageGroup{
 			"one": {ID: "one", Messages: map[string]Message{"shared.event": {ID: "shared.event"}}},
 			"two": {ID: "two", Messages: map[string]Message{"shared.event": {ID: "shared.event"}}},
 		},
 	}
-	_, err := ResolveMessage(doc, "shared.event")
+	_, _, err := FindMessage(doc, "shared.event")
 	if err == nil || !strings.Contains(err.Error(), "/messagegroups/one") || !strings.Contains(err.Error(), "/messagegroups/two") {
 		t.Errorf("err = %v, want ambiguity naming both groups", err)
 	}
 }
 
-func TestResolveListOfExportDegradesToEmptyMaps(t *testing.T) {
+func TestFindMessageEmptyExportDegradesToEmptyMaps(t *testing.T) {
 	// An export with no collections at all is a valid empty registry.
 	doc := &Export{}
-	_, err := ResolveMessage(doc, "anything")
+	_, _, err := FindMessage(doc, "anything")
 	var notFound *MessageNotFoundError
 	if !errors.As(err, &notFound) {
 		t.Errorf("err = %v, want MessageNotFoundError on the empty registry", err)
 	}
 }
 
-func TestResolveChannelsAreSorted(t *testing.T) {
+func TestDefaultSchemaVersionXIDPinsTheDefaultVersion(t *testing.T) {
 	doc := &Export{
-		MessageGroups: map[string]MessageGroup{
-			"g": {ID: "g", Messages: map[string]Message{"m": {ID: "m", Versions: map[string]*MessageVersion{
-				"1": {VersionID: "1", IsDefault: true},
-			}}}},
-		},
-		Endpoints: map[string]Endpoint{
-			"b": {ID: "b", Usage: []string{"producer"}, Channel: "z-pubsub/z-topic", MessageGroups: []string{"/messagegroups/g"}},
-			"a": {ID: "a", Usage: []string{"producer"}, Channel: "a-pubsub/a-topic", MessageGroups: []string{"/messagegroups/g"}},
-		},
-	}
-	res, err := ResolveMessage(doc, "m")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(res.Channels) != 2 || res.Channels[0].Pubsub != "a-pubsub" {
-		t.Errorf("channels = %+v, want sorted by pubsub", res.Channels)
-	}
-}
-
-func TestSchemaDefaultVersionPinnedFromDocView(t *testing.T) {
-	doc := &Export{
-		MessageGroups: map[string]MessageGroup{
-			"g": {ID: "g", Messages: map[string]Message{"m": {ID: "m", Versions: map[string]*MessageVersion{
-				"1": {VersionID: "1", IsDefault: true, DataSchemaXID: "/schemagroups/sg/schemas/s"},
-			}}}},
-		},
 		SchemaGroups: map[string]SchemaGroup{
 			"sg": {ID: "sg", Schemas: map[string]Schema{
 				"s": {ID: "s", Versions: map[string]Version{
@@ -94,11 +68,22 @@ func TestSchemaDefaultVersionPinnedFromDocView(t *testing.T) {
 			}},
 		},
 	}
-	res, err := ResolveMessage(doc, "m")
+	xid, err := DefaultSchemaVersionXID(doc, "/schemagroups/sg/schemas/s")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.DataSchemaURL != "/schemagroups/sg/schemas/s/versions/3" {
-		t.Errorf("DataSchemaURL = %q, want the default version's xid", res.DataSchemaURL)
+	if xid != "/schemagroups/sg/schemas/s/versions/3" {
+		t.Errorf("xid = %q, want the default version's xid", xid)
+	}
+
+	for _, bad := range []string{"not-an-xid", "/schemagroups/sg/schemas/unknown", "/schemagroups/unknown/schemas/s"} {
+		if _, err := DefaultSchemaVersionXID(doc, bad); err == nil {
+			t.Errorf("DefaultSchemaVersionXID(%q) err = nil, want SchemaNotFoundError", bad)
+		} else {
+			var notFound *SchemaNotFoundError
+			if !errors.As(err, &notFound) {
+				t.Errorf("DefaultSchemaVersionXID(%q) err = %v, want SchemaNotFoundError", bad, err)
+			}
+		}
 	}
 }

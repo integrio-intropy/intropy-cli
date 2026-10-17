@@ -307,9 +307,3 @@ func BuildWorkspaceFacts(entries []WorkspaceFactEntry) *WorkspaceFacts {
 	sort.Strings(facts.Ports)
 	return facts
 }
-
-// entry adapts the fact entry into the ScaffoldEntry shape the strict
-// block readers consume: same values, zero path beyond the record name.
-func entry(e WorkspaceFactEntry) ScaffoldEntry {
-	return ScaffoldEntry{Scaffold: Scaffold{Values: e.Values}}
-}
