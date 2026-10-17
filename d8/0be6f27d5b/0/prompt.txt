@@ -1,5 +1,1 @@
-Can you do a review of the cli code? Focus on finding dead code. Violations of DRY and SOLID, inconsistencies, bad go practices
-
----
-
 Could you do the fixes on a new branch off main? Do not push anything
