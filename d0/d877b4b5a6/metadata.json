@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "d0d877b4b5a6",
+  "strategy": "manual-commit",
+  "branch": "chore/code-review-cleanup",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "internal/deploy/versiondiff.go",
+    "internal/deploy/versiondiff_test.go",
+    "internal/template/facts.go",
+    "internal/xregistry/client.go",
+    "internal/xregistry/client_test.go",
+    "internal/xregistry/errors.go",
+    "internal/xregistry/resolve.go",
+    "internal/xregistry/resolve_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/d0/d877b4b5a6/0/metadata.json",
+      "transcript": "/d0/d877b4b5a6/0/full.jsonl",
+      "compact_transcript": "/d0/d877b4b5a6/0/transcript.jsonl",
+      "content_hash": "/d0/d877b4b5a6/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2639,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 737920,
+    "output_tokens": 3573,
+    "api_call_count": 7
+  }
+}
