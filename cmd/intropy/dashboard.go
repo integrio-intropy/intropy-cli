@@ -3,8 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/integrio-intropy/intropy-cli/internal/config"
 	"github.com/integrio-intropy/intropy-cli/internal/dashboard"
@@ -41,7 +39,7 @@ var dashboardCmd = &cobra.Command{
 			return newUsageErrorf("dashboard: %s is not a directory", root)
 		}
 
-		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		ctx, cancel := commandContext(cmd)
 		defer cancel()
 
 		return dashboard.Serve(ctx, dashboard.Options{

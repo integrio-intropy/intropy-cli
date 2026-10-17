@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 
+	"github.com/integrio-intropy/intropy-cli/internal/deploy"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -21,6 +22,27 @@ var deployCmd = &cobra.Command{
 		"  diff     Show the rendered change a sync would apply\n" +
 		"  status   Show what every environment runs, side by side\n" +
 		"  sync     Apply an environment's pending change through ArgoCD",
+}
+
+// deployTargetFlags are the flags every deploy subcommand shares: how to
+// disambiguate the component, where the GitOps repository and ArgoCD are,
+// and how to print. Registering them in one place keeps the commands from
+// drifting apart.
+type deployTargetFlags struct {
+	domain       string
+	system       string
+	gitopsRepo   string
+	argocdServer string
+	output       string
+}
+
+func (f *deployTargetFlags) register(cmd *cobra.Command) {
+	flags := cmd.Flags()
+	flags.StringVar(&f.domain, "domain", "", flagUsageDomain)
+	flags.StringVar(&f.system, "system", "", flagUsageSystem)
+	flags.StringVar(&f.gitopsRepo, "gitops-repo", "", flagUsageGitopsRepo)
+	flags.StringVar(&f.argocdServer, "argocd-server", "", flagUsageArgocd)
+	flags.StringVarP(&f.output, "output", "o", deploy.OutputPlain, flagUsageOutput)
 }
 
 // useColor decides whether to emit ANSI colour: only for a real terminal, and

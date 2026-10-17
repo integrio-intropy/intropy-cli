@@ -2,9 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/integrio-intropy/intropy-cli/internal/deploy"
 	"github.com/integrio-intropy/intropy-cli/internal/interactive"
@@ -32,6 +29,8 @@ var manifestsRenderCmd = &cobra.Command{
 		"clearly otherwise. The complete render is buffered, so a failed render writes no YAML. Nothing is written to Git.",
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		// MarkFlagRequired only rejects an absent --env; an explicitly empty
+		// one (--env "") passes cobra's validation, so the value is checked.
 		if manifestsRenderFlagValues.env == "" {
 			return newUsageErrorf("--env is required")
 		}
@@ -43,7 +42,7 @@ var manifestsRenderCmd = &cobra.Command{
 			return err
 		}
 
-		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		ctx, cancel := commandContext(cmd)
 		defer cancel()
 		selector := interactive.NewTerminalSelector(cmd.InOrStdin(), cmd.ErrOrStderr())
 		built, err := deploy.RenderManifests(ctx, deploy.RenderManifestOptions{
@@ -54,7 +53,7 @@ var manifestsRenderCmd = &cobra.Command{
 			Images:          manifestsRenderFlagValues.images,
 			Bindings:        manifestsRenderFlagValues.bindings,
 			Selector:        selector,
-			UserAgent:       "intropy-cli/" + version,
+			UserAgent:       userAgent(),
 			Stdin:           cmd.InOrStdin(),
 			Stderr:          cmd.ErrOrStderr(),
 			Owner:           owner,

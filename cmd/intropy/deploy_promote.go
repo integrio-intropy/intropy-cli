@@ -1,9 +1,6 @@
 package main
 
 import (
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/integrio-intropy/intropy-cli/internal/argocd"
@@ -12,19 +9,15 @@ import (
 )
 
 type promoteFlags struct {
-	from         string
-	to           string
-	domain       string
-	system       string
-	gitopsRepo   string
-	argocdServer string
-	plan         bool
-	noWait       bool
-	timeout      time.Duration
-	output       string
+	from    string
+	to      string
+	plan    bool
+	noWait  bool
+	timeout time.Duration
+	deployTargetFlags
 }
 
-var promoteFlagValues = promoteFlags{output: deploy.OutputPlain}
+var promoteFlagValues = promoteFlags{deployTargetFlags: deployTargetFlags{output: deploy.OutputPlain}}
 
 var deployPromoteCmd = &cobra.Command{
 	Use:   "promote <component>",
@@ -58,7 +51,7 @@ var deployPromoteCmd = &cobra.Command{
 			return newUsageErrorf("--from and --to are both %s; a promotion moves digests between environments", promoteFlagValues.to)
 		}
 
-		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		ctx, cancel := commandContext(cmd)
 		defer cancel()
 
 		return deploy.Promote(ctx, deploy.PromoteOptions{
@@ -74,7 +67,7 @@ var deployPromoteCmd = &cobra.Command{
 			Timeout:      promoteFlagValues.timeout,
 			OutputFormat: promoteFlagValues.output,
 			Color:        useColor(cmd),
-			UserAgent:    "intropy-cli/" + version,
+			UserAgent:    userAgent(),
 			Stdout:       cmd.OutOrStdout(),
 			Stderr:       cmd.ErrOrStderr(),
 		})
@@ -85,14 +78,10 @@ func init() {
 	f := deployPromoteCmd.Flags()
 	f.StringVar(&promoteFlagValues.from, "from", "", "environment to copy the pinned digests from (required)")
 	f.StringVar(&promoteFlagValues.to, "to", "", "environment to write them into (required)")
-	f.StringVar(&promoteFlagValues.domain, "domain", "", flagUsageDomain)
-	f.StringVar(&promoteFlagValues.system, "system", "", flagUsageSystem)
-	f.StringVar(&promoteFlagValues.gitopsRepo, "gitops-repo", "", flagUsageGitopsRepo)
-	f.StringVar(&promoteFlagValues.argocdServer, "argocd-server", "", flagUsageArgocd)
-	f.BoolVar(&promoteFlagValues.plan, "plan", false, "render and diff the change without writing to git")
-	f.BoolVar(&promoteFlagValues.noWait, "no-wait", false, "push without waiting for ArgoCD to sync")
-	f.DurationVar(&promoteFlagValues.timeout, "timeout", argocd.DefaultTimeout, "how long to wait for ArgoCD to converge")
-	f.StringVarP(&promoteFlagValues.output, "output", "o", deploy.OutputPlain, flagUsageOutput)
+	f.BoolVar(&promoteFlagValues.plan, "plan", false, flagUsagePlan)
+	f.BoolVar(&promoteFlagValues.noWait, "no-wait", false, flagUsageNoWaitPush)
+	f.DurationVar(&promoteFlagValues.timeout, "timeout", argocd.DefaultTimeout, flagUsageTimeout)
+	promoteFlagValues.register(deployPromoteCmd)
 
 	_ = deployPromoteCmd.MarkFlagRequired("from")
 	_ = deployPromoteCmd.MarkFlagRequired("to")

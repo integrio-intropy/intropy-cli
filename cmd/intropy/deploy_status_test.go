@@ -10,8 +10,8 @@ import (
 func resetStatusState(t *testing.T, stdout, stderr *bytes.Buffer) {
 	t.Helper()
 	resetRootIO(t, stdout, stderr)
-	statusFlagValues = statusFlags{output: "plain"}
-	t.Cleanup(func() { statusFlagValues = statusFlags{output: "plain"} })
+	statusFlagValues = statusFlags{deployTargetFlags: deployTargetFlags{output: "plain"}}
+	t.Cleanup(func() { statusFlagValues = statusFlags{deployTargetFlags: deployTargetFlags{output: "plain"}} })
 }
 
 func runStatus(t *testing.T, args ...string) (stdout, stderr *bytes.Buffer, err error) {

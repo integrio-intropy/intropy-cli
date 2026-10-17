@@ -1,10 +1,6 @@
 package main
 
 import (
-	"os"
-	"os/signal"
-	"syscall"
-
 	"github.com/integrio-intropy/intropy-cli/internal/system"
 	"github.com/integrio-intropy/intropy-cli/internal/template"
 	"github.com/spf13/cobra"
@@ -44,7 +40,7 @@ var sysCreateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		ctx, cancel := commandContext(cmd)
 		defer cancel()
 		return system.Create(ctx, system.CreateOptions{
 			Name:       sysCreateFlagValues.name,
@@ -54,7 +50,7 @@ var sysCreateCmd = &cobra.Command{
 			OutputJSON: outputJSON,
 			Stdout:     cmd.OutOrStdout(),
 			Stderr:     cmd.ErrOrStderr(),
-			UserAgent:  "intropy-cli/" + version,
+			UserAgent:  userAgent(),
 			Owner:      owner,
 			Repo:       repo,
 		})

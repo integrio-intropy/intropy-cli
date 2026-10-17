@@ -1,10 +1,6 @@
 package main
 
 import (
-	"os"
-	"os/signal"
-	"syscall"
-
 	"github.com/integrio-intropy/intropy-cli/internal/deploy"
 	"github.com/integrio-intropy/intropy-cli/internal/interactive"
 	"github.com/spf13/cobra"
@@ -42,7 +38,7 @@ var manifestsCreateCmd = &cobra.Command{
 			return err
 		}
 
-		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		ctx, cancel := commandContext(cmd)
 		defer cancel()
 		selector := interactive.NewTerminalSelector(cmd.InOrStdin(), cmd.ErrOrStderr())
 		return deploy.CreateManifests(ctx, deploy.CreateManifestOptions{
@@ -55,7 +51,7 @@ var manifestsCreateCmd = &cobra.Command{
 			GitopsRepo:      manifestsCreateFlagValues.gitopsRepo,
 			DryRun:          manifestsCreateFlagValues.dryRun,
 			Diff:            manifestsCreateFlagValues.diff,
-			UserAgent:       "intropy-cli/" + version,
+			UserAgent:       userAgent(),
 			CliVersion:      version,
 			Stdin:           cmd.InOrStdin(),
 			Stdout:          cmd.OutOrStdout(),

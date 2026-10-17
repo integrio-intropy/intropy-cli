@@ -1,9 +1,6 @@
 package main
 
 import (
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/integrio-intropy/intropy-cli/internal/argocd"
@@ -15,18 +12,14 @@ import (
 // environment. The revision guard, sync call, and wait loop live in
 // internal/deploy.Sync; this file is flag plumbing.
 type syncFlags struct {
-	env          string
-	revision     string
-	domain       string
-	system       string
-	gitopsRepo   string
-	argocdServer string
-	noWait       bool
-	timeout      time.Duration
-	output       string
+	env      string
+	revision string
+	noWait   bool
+	timeout  time.Duration
+	deployTargetFlags
 }
 
-var syncFlagValues = syncFlags{output: deploy.OutputPlain}
+var syncFlagValues = syncFlags{deployTargetFlags: deployTargetFlags{output: deploy.OutputPlain}}
 
 var deploySyncCmd = &cobra.Command{
 	Use:   "sync <component>",
@@ -46,11 +39,12 @@ var deploySyncCmd = &cobra.Command{
 		if err := validateOutputFlag(syncFlagValues.output, deploy.OutputPlain, deploy.OutputJSON); err != nil {
 			return err
 		}
+		// MarkFlagRequired only rejects an absent --env; an explicitly empty
+		// one (--env "") passes cobra's validation, so the value is checked.
 		if syncFlagValues.env == "" {
 			return newUsageErrorf("--env is required")
 		}
-
-		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		ctx, cancel := commandContext(cmd)
 		defer cancel()
 
 		return deploy.Sync(ctx, deploy.SyncOptions{
@@ -64,7 +58,7 @@ var deploySyncCmd = &cobra.Command{
 			NoWait:       syncFlagValues.noWait,
 			Timeout:      syncFlagValues.timeout,
 			OutputFormat: syncFlagValues.output,
-			UserAgent:    "intropy-cli/" + version,
+			UserAgent:    userAgent(),
 			Stdout:       cmd.OutOrStdout(),
 			Stderr:       cmd.ErrOrStderr(),
 		})
@@ -75,13 +69,9 @@ func init() {
 	f := deploySyncCmd.Flags()
 	f.StringVarP(&syncFlagValues.env, "env", "e", "", flagUsageEnv)
 	f.StringVar(&syncFlagValues.revision, "revision", "", "the commit whose diff you reviewed; refuse if the pending change is another one")
-	f.StringVar(&syncFlagValues.domain, "domain", "", flagUsageDomain)
-	f.StringVar(&syncFlagValues.system, "system", "", flagUsageSystem)
-	f.StringVar(&syncFlagValues.gitopsRepo, "gitops-repo", "", flagUsageGitopsRepo)
-	f.StringVar(&syncFlagValues.argocdServer, "argocd-server", "", flagUsageArgocd)
-	f.BoolVar(&syncFlagValues.noWait, "no-wait", false, "return once the sync is accepted, without waiting for it to converge")
-	f.DurationVar(&syncFlagValues.timeout, "timeout", argocd.DefaultTimeout, "how long to wait for ArgoCD to converge")
-	f.StringVarP(&syncFlagValues.output, "output", "o", deploy.OutputPlain, flagUsageOutput)
+	f.BoolVar(&syncFlagValues.noWait, "no-wait", false, flagUsageNoWaitSync)
+	f.DurationVar(&syncFlagValues.timeout, "timeout", argocd.DefaultTimeout, flagUsageTimeout)
+	syncFlagValues.register(deploySyncCmd)
 
 	_ = deploySyncCmd.MarkFlagRequired("env")
 

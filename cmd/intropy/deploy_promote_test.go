@@ -10,8 +10,8 @@ import (
 func resetPromoteState(t *testing.T, stdout, stderr *bytes.Buffer) {
 	t.Helper()
 	resetRootIO(t, stdout, stderr)
-	promoteFlagValues = promoteFlags{output: "plain"}
-	t.Cleanup(func() { promoteFlagValues = promoteFlags{output: "plain"} })
+	promoteFlagValues = promoteFlags{deployTargetFlags: deployTargetFlags{output: "plain"}}
+	t.Cleanup(func() { promoteFlagValues = promoteFlags{deployTargetFlags: deployTargetFlags{output: "plain"}} })
 }
 
 func runPromote(t *testing.T, args ...string) (stdout, stderr *bytes.Buffer, err error) {

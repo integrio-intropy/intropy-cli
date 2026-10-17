@@ -5,10 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"os/signal"
 	"path/filepath"
-	"syscall"
 
 	"github.com/huandu/xstrings"
 	"github.com/integrio-intropy/intropy-cli/internal/config"
@@ -76,7 +73,7 @@ var intCreateCmd = &cobra.Command{
 				Stdin:            cmd.InOrStdin(),
 				Stdout:           cmd.OutOrStdout(),
 				Stderr:           cmd.ErrOrStderr(),
-				UserAgent:        "intropy-cli/" + version,
+				UserAgent:        userAgent(),
 				Owner:            owner,
 				Repo:             repo,
 				SubscribeMessage: intCreateFlags.subscribe,
@@ -92,7 +89,7 @@ var intCreateCmd = &cobra.Command{
 			printWarning(stderr, w)
 		}
 		seedOrganization(facts)
-		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		ctx, cancel := commandContext(cmd)
 		defer cancel()
 		if err := template.Create(ctx, template.CreateOptions{
 			Template:         args[0],
@@ -106,7 +103,7 @@ var intCreateCmd = &cobra.Command{
 			Stdin:            cmd.InOrStdin(),
 			Stdout:           cmd.OutOrStdout(),
 			Stderr:           stderr,
-			UserAgent:        "intropy-cli/" + version,
+			UserAgent:        userAgent(),
 			Owner:            owner,
 			Repo:             repo,
 			Facts:            facts,

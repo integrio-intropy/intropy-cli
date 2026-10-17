@@ -1,9 +1,6 @@
 package main
 
 import (
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/integrio-intropy/intropy-cli/internal/argocd"
@@ -12,20 +9,16 @@ import (
 )
 
 type deployFlags struct {
-	env          string
-	domain       string
-	system       string
-	gitopsRepo   string
-	argocdServer string
-	plan         bool
-	allowDirty   bool
-	watch        bool
-	noWait       bool
-	timeout      time.Duration
-	output       string
+	env        string
+	plan       bool
+	allowDirty bool
+	watch      bool
+	noWait     bool
+	timeout    time.Duration
+	deployTargetFlags
 }
 
-var deployFlagValues = deployFlags{output: deploy.OutputPlain}
+var deployFlagValues = deployFlags{deployTargetFlags: deployTargetFlags{output: deploy.OutputPlain}}
 
 var deployPinCmd = &cobra.Command{
 	Use:   "pin <component> [version]",
@@ -48,6 +41,8 @@ var deployPinCmd = &cobra.Command{
 		if err := validateOutputFlag(deployFlagValues.output, deploy.OutputPlain, deploy.OutputJSON); err != nil {
 			return err
 		}
+		// MarkFlagRequired only rejects an absent --env; an explicitly empty
+		// one (--env "") passes cobra's validation, so the value is checked.
 		if deployFlagValues.env == "" {
 			return newUsageErrorf("--env is required")
 		}
@@ -63,7 +58,7 @@ var deployPinCmd = &cobra.Command{
 			return newUsageErrorf("--watch has no meaning when deploying a release: a release records the digests, so there is nothing to wait for")
 		}
 
-		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		ctx, cancel := commandContext(cmd)
 		defer cancel()
 
 		return deploy.Run(ctx, deploy.Options{
@@ -81,7 +76,7 @@ var deployPinCmd = &cobra.Command{
 			Timeout:      deployFlagValues.timeout,
 			OutputFormat: deployFlagValues.output,
 			Color:        useColor(cmd),
-			UserAgent:    "intropy-cli/" + version,
+			UserAgent:    userAgent(),
 			Stdout:       cmd.OutOrStdout(),
 			Stderr:       cmd.ErrOrStderr(),
 		})
@@ -99,16 +94,12 @@ func versionArg(args []string) string {
 func init() {
 	f := deployPinCmd.Flags()
 	f.StringVarP(&deployFlagValues.env, "env", "e", "", flagUsageEnv)
-	f.StringVar(&deployFlagValues.domain, "domain", "", flagUsageDomain)
-	f.StringVar(&deployFlagValues.system, "system", "", flagUsageSystem)
-	f.StringVar(&deployFlagValues.gitopsRepo, "gitops-repo", "", flagUsageGitopsRepo)
-	f.StringVar(&deployFlagValues.argocdServer, "argocd-server", "", flagUsageArgocd)
-	f.BoolVar(&deployFlagValues.plan, "plan", false, "render and diff the change without writing to git")
+	f.BoolVar(&deployFlagValues.plan, "plan", false, flagUsagePlan)
 	f.BoolVar(&deployFlagValues.allowDirty, "allow-dirty", false, "deploy despite uncommitted changes under the component's source paths")
 	f.BoolVarP(&deployFlagValues.watch, "watch", "w", false, "wait for the commit's images to appear in the registry instead of failing immediately")
-	f.BoolVar(&deployFlagValues.noWait, "no-wait", false, "push without waiting for ArgoCD to sync")
-	f.DurationVar(&deployFlagValues.timeout, "timeout", argocd.DefaultTimeout, "how long to wait for ArgoCD to converge")
-	f.StringVarP(&deployFlagValues.output, "output", "o", deploy.OutputPlain, flagUsageOutput)
+	f.BoolVar(&deployFlagValues.noWait, "no-wait", false, flagUsageNoWaitPush)
+	f.DurationVar(&deployFlagValues.timeout, "timeout", argocd.DefaultTimeout, flagUsageTimeout)
+	deployFlagValues.register(deployPinCmd)
 
 	_ = deployPinCmd.MarkFlagRequired("env")
 
