@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "b525da5d76f8",
+  "session_id": "01a148e7-ba97-7349-b816-63c13ff7c329",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-17T08:21:10.211881Z",
+  "branch": "chore/code-review-cleanup",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "internal/argocd/client.go",
+    "internal/release/artifact.go",
+    "internal/topology/graph.go"
+  ],
+  "agent": "Pi",
+  "model": "moonshotai/Kimi-K3",
+  "turn_id": "6fbcd0dce792",
+  "checkpoint_transcript_start": 251,
+  "transcript_lines_at_start": 251,
+  "compact_transcript_start": 101,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-10-17T08:21:10.165939Z",
+    "agent_lines": 4,
+    "agent_removed": 4,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 4,
+    "total_lines_changed": 8,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
