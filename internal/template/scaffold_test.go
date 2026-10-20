@@ -80,6 +80,7 @@ func TestLoadScaffoldRejectsMalformedJSON(t *testing.T) {
 func TestMessageDirection(t *testing.T) {
 	for kind, want := range map[string]string{
 		BlockKindExtractor:     MessageDirectionPublish,
+		BlockKindGateway:       MessageDirectionPublish,
 		BlockKindLoader:        MessageDirectionSubscribe,
 		BlockKindTransactional: MessageDirectionNone,
 		"aggregator":           MessageDirectionNone,

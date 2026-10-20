@@ -26,7 +26,8 @@ func Assemble(entries []template.ScaffoldEntry, warnf func(format string, args .
 		byAppID    = map[string]string{}   // appId -> scaffold dir
 		byTopic    = map[TopicKey]Topic{}  // key -> first-seen topic
 		firstDir   = map[TopicKey]string{} // key -> dir that defined it
-		byPort     = map[string]string{}   // port -> scaffold dir
+		byPort     = map[string]string{}   // port or endpoint -> scaffold dir
+		endpoints  []Endpoint
 	)
 
 	for _, e := range entries {
@@ -69,11 +70,20 @@ func Assemble(entries []template.ScaffoldEntry, warnf func(format string, args .
 		}
 		byAppID[appID] = e.Path
 
+		// Ports and endpoints share one namespace: both name a Dapr or
+		// Kubernetes resource of the system.
 		for _, port := range c.Ports {
 			if prev, ok := byPort[port]; ok {
 				return nil, fmt.Errorf("duplicate port %q: declared by both %s and %s (each block gets its own port; rename one in the record's values)", port, prev, e.Path)
 			}
 			byPort[port] = e.Path
+		}
+		if c.Endpoint != "" {
+			if prev, ok := byPort[c.Endpoint]; ok {
+				return nil, fmt.Errorf("duplicate port %q: declared by both %s and %s (each block gets its own port; rename one in the record's values)", c.Endpoint, prev, e.Path)
+			}
+			byPort[c.Endpoint] = e.Path
+			endpoints = append(endpoints, Endpoint{Name: c.Endpoint, Path: c.EndpointPath})
 		}
 
 		components = append(components, c)
@@ -130,12 +140,15 @@ func Assemble(entries []template.ScaffoldEntry, warnf func(format string, args .
 	})
 
 	ports := make([]Port, 0, len(byPort))
-	for name := range byPort {
-		ports = append(ports, Port{Name: name})
+	for _, c := range components {
+		for _, name := range c.Ports {
+			ports = append(ports, Port{Name: name})
+		}
 	}
 	sort.Slice(ports, func(i, j int) bool { return ports[i].Name < ports[j].Name })
+	sort.Slice(endpoints, func(i, j int) bool { return endpoints[i].Name < endpoints[j].Name })
 
-	model := &Model{Components: components, Topics: topics, Ports: ports, Messages: aggregateMessages(components)}
+	model := &Model{Components: components, Topics: topics, Ports: ports, Endpoints: endpoints, Messages: aggregateMessages(components)}
 	if len(shared) == 1 {
 		model.Shared = &shared[0]
 	}

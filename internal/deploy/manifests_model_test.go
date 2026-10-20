@@ -98,6 +98,18 @@ func TestManifestModelWorkloadForTransactionalIntegrationIsCronJob(t *testing.T)
 	}
 }
 
+// A gateway serves requests, so it stays resident.
+func TestManifestModelWorkloadForGatewayIsDeployment(t *testing.T) {
+	topo := &topology.Topology{
+		APIVersion: topology.APIVersion,
+		System:     "s",
+		Components: []topology.Component{{Name: "order-gateway", Kind: "gateway"}},
+	}
+	if got := newManifestModel(topo, nil).Components[0].Workload; got != WorkloadDeployment {
+		t.Errorf("gateway workload = %q, want %q", got, WorkloadDeployment)
+	}
+}
+
 // The block kind is camelCase in some records and kebab-case in others, so the
 // match must not be spelling-sensitive.
 func TestManifestModelWorkloadIgnoresKindSpelling(t *testing.T) {

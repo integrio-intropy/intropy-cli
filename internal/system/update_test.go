@@ -149,3 +149,53 @@ func TestStoredPubsub(t *testing.T) {
 		})
 	}
 }
+
+func TestMergeWiringAddsGatewayEndpoint(t *testing.T) {
+	plan := &updatePlan{
+		hostDir: "host",
+		baseline: map[string]any{
+			"components": []any{},
+			"topics":     []any{},
+			"ports":      []any{},
+			"messages":   []any{},
+		},
+		orphans: []Component{{
+			AppID: "order-gateway", Kind: template.BlockKindGateway, Endpoint: "order-gateway-endpoint", EndpointPath: "/order-placed",
+			Topic: &TopicKey{Pubsub: "orders-pubsub", Name: "order-placed"}, topicContract: "OrderPlaced",
+			Message: &MessageWiring{Kind: MessagePublish, Name: "order-placed", Contract: "OrderPlaced"},
+		}},
+	}
+	merged := map[string]any{}
+	if err := mergeWiring(plan, merged); err != nil {
+		t.Fatalf("mergeWiring: %v", err)
+	}
+	endpoints := merged["endpoints"].([]any)
+	if e := endpoints[0].(map[string]any); len(endpoints) != 1 || e["name"] != "order-gateway-endpoint" || e["path"] != "/order-placed" {
+		t.Fatalf("endpoints = %#v", endpoints)
+	}
+	if ports := merged["ports"].([]any); len(ports) != 0 {
+		t.Fatalf("ports = %#v, want empty", ports)
+	}
+	if m := merged["messages"].([]any)[0].(map[string]any); m["publisher"] != "order-gateway" {
+		t.Fatalf("message = %#v", m)
+	}
+}
+
+// Stored endpoints pass through verbatim and an orphan's is appended, as for
+// ports. (A record without the list starts one: the test above.)
+func TestMergeWiringKeepsStoredEndpoints(t *testing.T) {
+	plan := &updatePlan{
+		hostDir: "host",
+		baseline: map[string]any{
+			"endpoints": []any{map[string]any{"name": "a-endpoint"}},
+		},
+		orphans: []Component{{AppID: "b", Kind: template.BlockKindGateway, Endpoint: "b-endpoint"}},
+	}
+	merged := map[string]any{}
+	if err := mergeWiring(plan, merged); err != nil {
+		t.Fatalf("mergeWiring: %v", err)
+	}
+	if endpoints := merged["endpoints"].([]any); len(endpoints) != 2 {
+		t.Fatalf("endpoints = %#v, want the stored one and the orphan's", endpoints)
+	}
+}

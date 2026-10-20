@@ -76,6 +76,7 @@ type DataFlow = 'in' | 'out' | 'both' | 'internal'
 // from the declared topology.
 const KIND_DATA_FLOW: Record<string, DataFlow> = {
   extractor: 'in',
+  gateway: 'in',
   loader: 'out',
   transactional: 'both',
   transactionalintegration: 'both',
@@ -87,6 +88,13 @@ const KIND_DATA_FLOW: Record<string, DataFlow> = {
 // "transactional-integration").
 function dataFlowFor(kind: string): DataFlow | undefined {
   return KIND_DATA_FLOW[kind.toLowerCase().replace(/-/g, '')]
+}
+
+// seedsFiles tells whether a component takes test files: an inbound block that
+// sweeps a dev folder. A gateway is inbound too, but its items are pushed to
+// it over HTTP — it has no folder to seed.
+function seedsFiles(kind: string | undefined, flow: DataFlow | undefined): boolean {
+  return flow === 'in' && kind?.toLowerCase() !== 'gateway'
 }
 
 // Directional glyph per data flow; integrations with no known flow keep the
@@ -312,9 +320,9 @@ export function FlowView({ selected, onSelect, theme }: Props) {
     [effective, items],
   )
 
-  // Mark the nodes that offer seeding. A declared extractor (kind maps to
-  // data flow "in") is 'ready' — the drawer resolves its in-ports and dev
-  // folders. A ghost identified as an extractor is 'ghost' — a disabled,
+  // Mark the nodes that offer seeding. A declared extractor (an inbound kind
+  // other than a gateway, see seedsFiles) is 'ready' — the drawer resolves its
+  // in-ports and dev folders. A ghost identified as one is 'ghost' — a disabled,
   // explained button: without declared wiring there is no port to seed.
   // Ghosts of unknown kind get nothing: the data model cannot always tell
   // "known extractor, undeclared" from "unknown kind", so it errs on
@@ -322,13 +330,13 @@ export function FlowView({ selected, onSelect, theme }: Props) {
   const seededNodes = useMemo(() => {
     const ready = new Set(
       (effective?.components ?? [])
-        .filter((c) => dataFlowFor(c.kind) === 'in')
+        .filter((c) => seedsFiles(c.kind, dataFlowFor(c.kind)))
         .map((c) => c.name),
     )
     const ghostPaths = new Set(
       built.ghosts
-        .filter(
-          (g) => (g.dataFlow ?? (g.blockKind ? dataFlowFor(g.blockKind) : undefined)) === 'in',
+        .filter((g) =>
+          seedsFiles(g.blockKind, g.dataFlow ?? (g.blockKind ? dataFlowFor(g.blockKind) : undefined)),
         )
         .map((g) => g.path),
     )
@@ -824,7 +832,7 @@ function buildDeclaredGraph(
   const cols = Math.max(1, Math.max(...[...depth.values()], 0) + 1)
   // At least three columns, so the create slots always sit in their archetype
   // positions (in → process → out) even when the declared graph is narrower —
-  // an empty system renders as the fillable three-slot skeleton.
+  // an empty system renders as the fillable slot skeleton.
   const effCols = Math.max(cols, 3)
   const extractorCol = 0
   const loaderCol = Math.max(2, cols - 1)
@@ -850,13 +858,16 @@ function buildDeclaredGraph(
     return flow === 'in' ? extractorCol : flow === 'out' ? loaderCol : transactionalCol
   }
 
-  // Placeholder slots — one per kind column, pinned to a shared bottom rail
-  // below the flow. Clicking one opens the create drawer pre-filtered to
-  // that block kind; the slots are affordances, never part of the graph.
-  const slotDefs: Array<{ kind: SlotKind; col: number }> = [
-    { kind: 'extractor', col: extractorCol },
-    { kind: 'transactional', col: transactionalCol },
-    { kind: 'loader', col: loaderCol },
+  // Placeholder slots, pinned to a shared bottom rail below the flow: one per
+  // kind column, and the inbound column stacks its second entry kind, the
+  // gateway, under the extractor. Clicking one opens the create drawer
+  // pre-filtered to that block kind; the slots are affordances, never part of
+  // the graph.
+  const slotDefs: Array<{ kind: SlotKind; col: number; row: number }> = [
+    { kind: 'extractor', col: extractorCol, row: 0 },
+    { kind: 'gateway', col: extractorCol, row: 1 },
+    { kind: 'transactional', col: transactionalCol, row: 0 },
+    { kind: 'loader', col: loaderCol, row: 0 },
   ]
 
   // Column stacks center vertically against the tallest column: a lone
@@ -984,7 +995,7 @@ function buildDeclaredGraph(
       type: 'slot',
       parentId: groupId,
       extent: 'parent',
-      position: { x: colX(s.col), y: slotY },
+      position: { x: colX(s.col), y: slotY + s.row * (NODE_H + ROW_GAP) },
       style: { width: NODE_W, height: NODE_H },
       draggable: false,
       selectable: false,
@@ -992,7 +1003,8 @@ function buildDeclaredGraph(
     })
   }
 
-  const groupHeight = slotY + NODE_H + GROUP_PAD
+  const slotRows = Math.max(...slotDefs.map((s) => s.row)) + 1
+  const groupHeight = slotY + slotRows * NODE_H + (slotRows - 1) * ROW_GAP + GROUP_PAD
   nodes.unshift({
     id: groupId,
     type: 'group',
@@ -1180,11 +1192,12 @@ function IntegrationNode({ data }: NodeProps) {
   )
 }
 
-// SlotNode is a create placeholder: one per block-kind column, low-contrast
+// SlotNode is a create placeholder: one per block kind, low-contrast
 // until hovered. Clicking it opens the create drawer for that kind. It has no
 // handles — a slot carries no wiring.
 const SLOT_LABELS: Record<SlotKind, string> = {
   extractor: 'Extractor',
+  gateway: 'Gateway',
   transactional: 'Core block',
   loader: 'Loader',
 }

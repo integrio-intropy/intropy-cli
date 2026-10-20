@@ -370,6 +370,7 @@ func assembleCandidates(entries []template.ScaffoldEntry, warnf func(format stri
 var wiringKeys = []string{
 	template.KeyAppID, "kind", template.KeyTopic, template.KeyPublishes, template.KeySubscribes,
 	template.KeyRoutes, template.KeyDefault, template.KeyPort, template.KeyFromPort, template.KeyToPort,
+	template.KeyEndpoint,
 }
 
 // refreshedEntry is a stored component entry with its wiring rewritten from
@@ -420,9 +421,9 @@ func mergedComponentEntries(plan *updatePlan) ([]any, error) {
 	return merged, nil
 }
 
-// mergeWiring folds the orphans' and refreshed components' topics, ports
-// and messages into the record's stored lists, deduplicating by (pubsub, name), name, and
-// message name respectively. A stored entry passes through verbatim; only
+// mergeWiring folds the orphans' and refreshed components' topics, ports,
+// endpoints and messages into the record's stored lists, deduplicating by
+// (pubsub, name), name, name and message name respectively. A stored entry passes through verbatim; only
 // genuinely new names are appended. Component payloads build their wiring
 // against these lists, so an orphan naming a topic, port or message the
 // host never declared must add it here.
@@ -455,6 +456,19 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 		name, _ := m[template.KeyName].(string)
 		seenPorts[name] = true
 		ports = append(ports, p)
+	}
+
+	seenEndpoints := map[string]bool{}
+	storedEndpoints, _ := plan.baseline["endpoints"].([]any)
+	endpoints := make([]any, 0, len(storedEndpoints))
+	for _, p := range storedEndpoints {
+		m, ok := p.(map[string]any)
+		if !ok {
+			return fmt.Errorf("%s: values.endpoints entry has type %T, expected object", recordPath, p)
+		}
+		name, _ := m[template.KeyName].(string)
+		seenEndpoints[name] = true
+		endpoints = append(endpoints, p)
 	}
 
 	seenMessages := map[string]bool{}
@@ -503,6 +517,10 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 				ports = append(ports, map[string]any{template.KeyName: p})
 			}
 		}
+		if c.Endpoint != "" && !seenEndpoints[c.Endpoint] {
+			seenEndpoints[c.Endpoint] = true
+			endpoints = append(endpoints, map[string]any{template.KeyName: c.Endpoint, template.KeyPath: c.EndpointPath})
+		}
 		if c.Message != nil && c.Message.Kind == MessagePublish && !seenMessages[c.Message.Name] {
 			seenMessages[c.Message.Name] = true
 			msg := Message{Name: c.Message.Name, Type: c.Message.Name, Contract: c.Message.Contract, Publisher: c.AppID}
@@ -515,6 +533,7 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 
 	merged["topics"] = topics
 	merged["ports"] = ports
+	merged["endpoints"] = endpoints
 	merged["messages"] = messages
 	return nil
 }

@@ -45,3 +45,23 @@ func TestBuildWorkspaceFactsConflictingOrganization(t *testing.T) {
 		t.Fatalf("Organization = %q, %v; want empty on conflict", got, ok)
 	}
 }
+
+// A gateway publishes like an extractor, so a loader scaffolded next to it is
+// offered its message.
+func TestBuildWorkspaceFactsGateway(t *testing.T) {
+	facts := BuildWorkspaceFacts([]WorkspaceFactEntry{
+		factEntry(BlockKindGateway, map[string]any{
+			KeyAppID: "order-gateway", KeyPublishes: "order-placed", KeyPort: "order-gateway-endpoint",
+		}),
+	})
+
+	if got := facts.MessageCandidates(); len(got) != 1 || got[0] != "order-placed" {
+		t.Fatalf("MessageCandidates = %v", got)
+	}
+	if c, ok := facts.ContractForMessage("order-placed"); !ok || c != "OrderPlaced" {
+		t.Fatalf("ContractForMessage = %q, %v", c, ok)
+	}
+	if len(facts.Ports) != 1 || facts.Ports[0] != "order-gateway-endpoint" {
+		t.Fatalf("Ports = %v, want the endpoint's name in use", facts.Ports)
+	}
+}

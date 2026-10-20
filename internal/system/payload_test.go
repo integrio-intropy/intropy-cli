@@ -246,3 +246,38 @@ func TestBuildPayloadMessagegroup(t *testing.T) {
 		t.Errorf("subscriber entry subscribes = %#v", m2["subscribes"])
 	}
 }
+
+// The endpoint travels apart from the ports, which the host resolves to file
+// bindings.
+func TestBuildPayloadGateway(t *testing.T) {
+	m := &Model{
+		Name:      "orders",
+		Endpoints: []Endpoint{{Name: "order-gateway-endpoint", Path: "/order-placed"}},
+		Components: []Component{{
+			AppID: "order-gateway", Kind: "gateway", Endpoint: "order-gateway-endpoint",
+			Topic:   &TopicKey{Pubsub: "orders-pubsub", Name: "order-placed"},
+			Message: &MessageWiring{Kind: MessagePublish, Name: "order-placed", Contract: "OrderPlaced"},
+		}},
+	}
+
+	payload, err := buildPayload(m, "orders", "orders")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	endpoints := payload["endpoints"].([]any)
+	if len(endpoints) != 1 || endpoints[0].(map[string]any)["name"] != "order-gateway-endpoint" ||
+		endpoints[0].(map[string]any)["path"] != "/order-placed" {
+		t.Errorf("endpoints = %#v", endpoints)
+	}
+	if ports := payload["ports"].([]any); len(ports) != 0 {
+		t.Errorf("ports = %#v, want empty: an endpoint is not a file port", ports)
+	}
+	gw := payload["components"].([]any)[0].(map[string]any)
+	if gw["endpoint"] != "order-gateway-endpoint" || gw["publishes"] != "order-placed" || gw["kind"] != "gateway" {
+		t.Errorf("gateway entry = %#v", gw)
+	}
+	if _, ok := gw["port"]; ok {
+		t.Errorf("gateway entry carries port: %#v", gw)
+	}
+}

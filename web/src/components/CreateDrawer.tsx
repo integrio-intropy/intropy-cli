@@ -10,19 +10,21 @@ import { Combobox } from './Combobox'
 import { Field, FormField } from './form'
 import { useTemplateFields } from './useTemplateFields'
 
-/** The three create placeholders on the flow canvas, one per archetype
- *  column: in → process → out. */
-export type SlotKind = 'extractor' | 'transactional' | 'loader'
+/** The create placeholders on the flow canvas, by archetype column:
+ *  in (extractor, gateway) → process → out. */
+export type SlotKind = 'extractor' | 'gateway' | 'transactional' | 'loader'
 
 // The intropy.io/block-kind label value each slot filters templates by.
 const KIND_BLOCK_LABEL: Record<SlotKind, string> = {
   extractor: 'extractor',
+  gateway: 'gateway',
   transactional: 'transactional-integration',
   loader: 'loader',
 }
 
 const KIND_TITLE: Record<SlotKind, string> = {
   extractor: 'extractor',
+  gateway: 'gateway',
   transactional: 'core block',
   loader: 'loader',
 }

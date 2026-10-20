@@ -349,6 +349,13 @@ kinds. The assembled kinds:
 - **extractor / loader** — topic blocks. Their records carry `topic`,
   `contract`, and one optional `port`; a record without a `port` value
   keeps its component but gets no `From`/`To`.
+- **gateway** — a topic block that publishes like an extractor, but whose
+  items are pushed to it over HTTP. Its record carries `publishes`, a
+  required `port` (the endpoint it exposes) and `routePath` (the path callers
+  post to; `/<publishes>` when absent). The endpoint reaches the system-host
+  template as the component's `endpoint` and as a `{name, path}` entry in a
+  separate `endpoints` list, never in `ports`: the host resolves every port to
+  a file binding. A gateway deploys as a Deployment.
 - **transactional-integration** — a port-to-port block with no topic. Its
   record carries `fromPort` and `toPort`; both are required, and a missing
   one fails the assembly. The generated system class wires it as
