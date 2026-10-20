@@ -1,10 +1,6 @@
 package main
 
 import (
-	"os"
-	"os/signal"
-	"syscall"
-
 	"github.com/integrio-intropy/intropy-cli/internal/system"
 	"github.com/spf13/cobra"
 )
@@ -43,7 +39,7 @@ var sysUpdateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		ctx, cancel := commandContext(cmd)
 		defer cancel()
 		return system.Update(ctx, system.UpdateOptions{
 			Force:      sysUpdateFlagValues.force,
@@ -51,7 +47,7 @@ var sysUpdateCmd = &cobra.Command{
 			OutputJSON: outputJSON,
 			Stdout:     cmd.OutOrStdout(),
 			Stderr:     cmd.ErrOrStderr(),
-			UserAgent:  "intropy-cli/" + version,
+			UserAgent:  userAgent(),
 			Owner:      owner,
 			Repo:       repo,
 			Version:    sysUpdateFlagValues.templateVersion,

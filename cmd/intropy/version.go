@@ -14,6 +14,9 @@ var (
 	date    = "unknown"
 )
 
+// userAgent identifies this build on every outbound HTTP call.
+func userAgent() string { return "intropy-cli/" + version }
+
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print version information",

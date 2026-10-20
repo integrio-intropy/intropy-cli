@@ -15,8 +15,8 @@ import (
 func resetDeployState(t *testing.T, stdout, stderr *bytes.Buffer) {
 	t.Helper()
 	resetRootIO(t, stdout, stderr)
-	deployFlagValues = deployFlags{output: "plain"}
-	t.Cleanup(func() { deployFlagValues = deployFlags{output: "plain"} })
+	deployFlagValues = deployFlags{deployTargetFlags: deployTargetFlags{output: "plain"}}
+	t.Cleanup(func() { deployFlagValues = deployFlags{deployTargetFlags: deployTargetFlags{output: "plain"}} })
 }
 
 func runDeploy(t *testing.T, args ...string) (stdout, stderr *bytes.Buffer, err error) {

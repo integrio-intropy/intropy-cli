@@ -10,8 +10,8 @@ import (
 func resetDiffState(t *testing.T, stdout, stderr *bytes.Buffer) {
 	t.Helper()
 	resetRootIO(t, stdout, stderr)
-	diffFlagValues = diffFlags{output: "plain"}
-	t.Cleanup(func() { diffFlagValues = diffFlags{output: "plain"} })
+	diffFlagValues = diffFlags{deployTargetFlags: deployTargetFlags{output: "plain"}}
+	t.Cleanup(func() { diffFlagValues = diffFlags{deployTargetFlags: deployTargetFlags{output: "plain"}} })
 }
 
 func runDiff(t *testing.T, args ...string) (stdout, stderr *bytes.Buffer, err error) {

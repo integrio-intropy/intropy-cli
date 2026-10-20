@@ -1,10 +1,6 @@
 package main
 
 import (
-	"os"
-	"os/signal"
-	"syscall"
-
 	"github.com/integrio-intropy/intropy-cli/internal/deploy"
 	"github.com/spf13/cobra"
 )
@@ -33,13 +29,13 @@ var manifestsInspectCmd = &cobra.Command{
 			return err
 		}
 
-		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		ctx, cancel := commandContext(cmd)
 		defer cancel()
 		return deploy.InspectManifests(ctx, deploy.InspectManifestOptions{
 			System:          manifestsInspectFlagValues.system,
 			TemplateVersion: manifestsInspectFlagValues.templateVersion,
 			OutputFormat:    manifestsInspectFlagValues.output,
-			UserAgent:       "intropy-cli/" + version,
+			UserAgent:       userAgent(),
 			Stdin:           cmd.InOrStdin(),
 			Stdout:          cmd.OutOrStdout(),
 			Stderr:          cmd.ErrOrStderr(),

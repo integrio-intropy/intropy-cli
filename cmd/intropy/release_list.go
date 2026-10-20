@@ -1,10 +1,6 @@
 package main
 
 import (
-	"os"
-	"os/signal"
-	"syscall"
-
 	"github.com/integrio-intropy/intropy-cli/internal/release"
 	"github.com/spf13/cobra"
 )
@@ -33,7 +29,7 @@ var releaseListCmd = &cobra.Command{
 			return err
 		}
 
-		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		ctx, cancel := commandContext(cmd)
 		defer cancel()
 
 		return release.List(ctx, release.Options{
@@ -42,7 +38,7 @@ var releaseListCmd = &cobra.Command{
 			System:       releaseListOpts.system,
 			GitopsRepo:   releaseListOpts.gitopsRepo,
 			OutputFormat: releaseListOpts.output,
-			UserAgent:    "intropy-cli/" + version,
+			UserAgent:    userAgent(),
 			Stdout:       cmd.OutOrStdout(),
 			Stderr:       cmd.ErrOrStderr(),
 		})

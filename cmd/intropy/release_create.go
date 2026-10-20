@@ -1,10 +1,6 @@
 package main
 
 import (
-	"os"
-	"os/signal"
-	"syscall"
-
 	"github.com/integrio-intropy/intropy-cli/internal/release"
 	"github.com/spf13/cobra"
 )
@@ -46,7 +42,7 @@ var releaseCreateCmd = &cobra.Command{
 			return newUsageErrorf("--version is required")
 		}
 
-		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		ctx, cancel := commandContext(cmd)
 		defer cancel()
 
 		return release.Create(ctx, release.Options{
@@ -58,7 +54,7 @@ var releaseCreateCmd = &cobra.Command{
 			AllowDirty:   releaseCreateOpts.allowDirty,
 			Watch:        releaseCreateOpts.watch,
 			OutputFormat: releaseCreateOpts.output,
-			UserAgent:    "intropy-cli/" + version,
+			UserAgent:    userAgent(),
 			Stdout:       cmd.OutOrStdout(),
 			Stderr:       cmd.ErrOrStderr(),
 		})

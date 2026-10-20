@@ -3,9 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/integrio-intropy/intropy-cli/internal/template"
 	"github.com/spf13/cobra"
@@ -37,11 +34,11 @@ var templateListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		ctx, cancel := commandContext(cmd)
 		defer cancel()
 		result, err := template.List(ctx, template.ListOptions{
 			Version:   templateListOpts.templateVersion,
-			UserAgent: "intropy-cli/" + version,
+			UserAgent: userAgent(),
 			Owner:     owner,
 			Repo:      repo,
 		})

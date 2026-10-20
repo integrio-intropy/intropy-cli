@@ -33,7 +33,7 @@ func RunGraph(ctx context.Context, hostDir string) (*Topology, error) {
 	var buildOut bytes.Buffer
 	build.Stdout, build.Stderr = &buildOut, &buildOut
 	if err := build.Run(); err != nil {
-		return nil, fmt.Errorf("build failed: %v%s", err, tail(buildOut.Bytes()))
+		return nil, fmt.Errorf("build failed: %w%s", err, tail(buildOut.Bytes()))
 	}
 
 	// --development asks the host to include its development section (local
@@ -44,7 +44,7 @@ func RunGraph(ctx context.Context, hostDir string) (*Topology, error) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("graph verb failed: %v%s", err, tail(stderr.Bytes()))
+		return nil, fmt.Errorf("graph verb failed: %w%s", err, tail(stderr.Bytes()))
 	}
 	t, err := Decode(&stdout)
 	if err != nil {

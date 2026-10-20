@@ -1,23 +1,15 @@
 package main
 
 import (
-	"os"
-	"os/signal"
-	"syscall"
-
 	"github.com/integrio-intropy/intropy-cli/internal/deploy"
 	"github.com/spf13/cobra"
 )
 
 type statusFlags struct {
-	domain       string
-	system       string
-	gitopsRepo   string
-	argocdServer string
-	output       string
+	deployTargetFlags
 }
 
-var statusFlagValues = statusFlags{output: deploy.OutputPlain}
+var statusFlagValues = statusFlags{deployTargetFlags: deployTargetFlags{output: deploy.OutputPlain}}
 
 var deployStatusCmd = &cobra.Command{
 	Use:   "status <component>",
@@ -37,7 +29,7 @@ var deployStatusCmd = &cobra.Command{
 			return err
 		}
 
-		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		ctx, cancel := commandContext(cmd)
 		defer cancel()
 
 		return deploy.Status(ctx, deploy.StatusOptions{
@@ -47,7 +39,7 @@ var deployStatusCmd = &cobra.Command{
 			GitopsRepo:   statusFlagValues.gitopsRepo,
 			ArgocdServer: statusFlagValues.argocdServer,
 			OutputFormat: statusFlagValues.output,
-			UserAgent:    "intropy-cli/" + version,
+			UserAgent:    userAgent(),
 			Stdout:       cmd.OutOrStdout(),
 			Stderr:       cmd.ErrOrStderr(),
 		})
@@ -55,12 +47,7 @@ var deployStatusCmd = &cobra.Command{
 }
 
 func init() {
-	f := deployStatusCmd.Flags()
-	f.StringVar(&statusFlagValues.domain, "domain", "", flagUsageDomain)
-	f.StringVar(&statusFlagValues.system, "system", "", flagUsageSystem)
-	f.StringVar(&statusFlagValues.gitopsRepo, "gitops-repo", "", flagUsageGitopsRepo)
-	f.StringVar(&statusFlagValues.argocdServer, "argocd-server", "", flagUsageArgocd)
-	f.StringVarP(&statusFlagValues.output, "output", "o", deploy.OutputPlain, flagUsageOutput)
+	statusFlagValues.register(deployStatusCmd)
 
 	// Deliberately no --env: status is every environment at once, and the
 	// question about one of them — what a sync would apply — is deploy diff.

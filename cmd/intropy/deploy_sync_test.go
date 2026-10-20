@@ -10,8 +10,8 @@ import (
 func resetSyncState(t *testing.T, stdout, stderr *bytes.Buffer) {
 	t.Helper()
 	resetRootIO(t, stdout, stderr)
-	syncFlagValues = syncFlags{output: "plain"}
-	t.Cleanup(func() { syncFlagValues = syncFlags{output: "plain"} })
+	syncFlagValues = syncFlags{deployTargetFlags: deployTargetFlags{output: "plain"}}
+	t.Cleanup(func() { syncFlagValues = syncFlags{deployTargetFlags: deployTargetFlags{output: "plain"}} })
 }
 
 func runSync(t *testing.T, args ...string) (stdout, stderr *bytes.Buffer, err error) {

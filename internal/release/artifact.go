@@ -120,7 +120,7 @@ func Pull(ctx context.Context, reg Registry, ref string) (*Manifest, error) {
 
 	var m Manifest
 	if err := json.Unmarshal(art.Layers[0].Data, &m); err != nil {
-		return nil, fmt.Errorf("%w: %s: %v", ErrNotRelease, ref, err)
+		return nil, fmt.Errorf("%w: %s: %w", ErrNotRelease, ref, err)
 	}
 	if err := m.Validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", ref, err)

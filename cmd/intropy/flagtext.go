@@ -38,4 +38,13 @@ const (
 	flagUsagePublishes         = "message name this component publishes"
 	flagUsageBinding           = "local port fixture as <port>=<fixture> (repeatable)"
 	flagUsageGitOpsBinding     = "GitOps port binding kind as <port>=<kind> (repeatable)"
+	flagUsagePlan              = "render and diff the change without writing to git"
+	flagUsageTimeout           = "how long to wait for ArgoCD to converge"
+
+	// --no-wait sits on both sides of a manual-sync environment and means a
+	// different wait on each: pin and promote skip the post-push wait, sync
+	// returns once the sync is accepted rather than converged. Two constants
+	// keep that difference deliberate rather than drift.
+	flagUsageNoWaitPush = "push without waiting for ArgoCD to sync"
+	flagUsageNoWaitSync = "return once the sync is accepted, without waiting for it to converge"
 )

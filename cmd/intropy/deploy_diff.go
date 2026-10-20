@@ -1,10 +1,6 @@
 package main
 
 import (
-	"os"
-	"os/signal"
-	"syscall"
-
 	"github.com/integrio-intropy/intropy-cli/internal/deploy"
 	"github.com/spf13/cobra"
 )
@@ -13,15 +9,11 @@ import (
 // and prints the difference. Rendering goes through ArgoCD, not a local
 // kustomize build; the logic lives in internal/deploy.Diff.
 type diffFlags struct {
-	env          string
-	domain       string
-	system       string
-	gitopsRepo   string
-	argocdServer string
-	output       string
+	env string
+	deployTargetFlags
 }
 
-var diffFlagValues = diffFlags{output: deploy.OutputPlain}
+var diffFlagValues = diffFlags{deployTargetFlags: deployTargetFlags{output: deploy.OutputPlain}}
 
 var deployDiffCmd = &cobra.Command{
 	Use:   "diff <component>",
@@ -44,11 +36,12 @@ var deployDiffCmd = &cobra.Command{
 		if err := validateOutputFlag(diffFlagValues.output, deploy.OutputPlain, deploy.OutputJSON); err != nil {
 			return err
 		}
+		// MarkFlagRequired only rejects an absent --env; an explicitly empty
+		// one (--env "") passes cobra's validation, so the value is checked.
 		if diffFlagValues.env == "" {
 			return newUsageErrorf("--env is required")
 		}
-
-		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		ctx, cancel := commandContext(cmd)
 		defer cancel()
 
 		return deploy.Diff(ctx, deploy.DiffOptions{
@@ -60,7 +53,7 @@ var deployDiffCmd = &cobra.Command{
 			ArgocdServer: diffFlagValues.argocdServer,
 			OutputFormat: diffFlagValues.output,
 			Color:        useColor(cmd),
-			UserAgent:    "intropy-cli/" + version,
+			UserAgent:    userAgent(),
 			Stdout:       cmd.OutOrStdout(),
 			Stderr:       cmd.ErrOrStderr(),
 		})
@@ -70,11 +63,7 @@ var deployDiffCmd = &cobra.Command{
 func init() {
 	f := deployDiffCmd.Flags()
 	f.StringVarP(&diffFlagValues.env, "env", "e", "", flagUsageEnv)
-	f.StringVar(&diffFlagValues.domain, "domain", "", flagUsageDomain)
-	f.StringVar(&diffFlagValues.system, "system", "", flagUsageSystem)
-	f.StringVar(&diffFlagValues.gitopsRepo, "gitops-repo", "", flagUsageGitopsRepo)
-	f.StringVar(&diffFlagValues.argocdServer, "argocd-server", "", flagUsageArgocd)
-	f.StringVarP(&diffFlagValues.output, "output", "o", deploy.OutputPlain, flagUsageOutput)
+	diffFlagValues.register(deployDiffCmd)
 
 	_ = deployDiffCmd.MarkFlagRequired("env")
 

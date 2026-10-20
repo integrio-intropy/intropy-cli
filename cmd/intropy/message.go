@@ -45,7 +45,7 @@ func registryClient(flagURL string) (*xregistry.Client, error) {
 }
 
 func newXRegistryClient(url string) (*xregistry.Client, error) {
-	return xregistry.New(url, xregistry.WithUserAgent("intropy-cli/"+version))
+	return xregistry.New(url, xregistry.WithUserAgent(userAgent()))
 }
 
 // workspaceMessages indexes the publishes declarations under dir. Scan and

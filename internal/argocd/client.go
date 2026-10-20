@@ -281,7 +281,7 @@ func (c *Client) do(ctx context.Context, method, path string, body io.Reader, ou
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return ctxErr
 		}
-		return fmt.Errorf("%w: %s: %v", ErrUnreachable, c.base.Host, err)
+		return fmt.Errorf("%w: %s: %w", ErrUnreachable, c.base.Host, err)
 	}
 	defer resp.Body.Close()
 
