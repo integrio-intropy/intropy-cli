@@ -79,6 +79,10 @@ type ManifestComponent struct {
 	Topics []string `json:"topics,omitempty"`
 	Ports  []string `json:"ports,omitempty"`
 
+	// Endpoints are the gateway's ingress contract, carried from the topology
+	// onto its application Service. File-port fixtures never consume them.
+	Endpoints []topology.Endpoint `json:"endpoints,omitempty"`
+
 	// PubSub and Topic are the one pub/sub and topic the component runs on,
 	// taken verbatim from the topology record's channel — what the deployment
 	// passes in INTROPY_PUBSUB_NAME and INTROPY_TOPIC_NAME. The framework
@@ -287,6 +291,8 @@ func buildComponents(components []topology.Component, appIDs, dirs map[string]st
 			ports[u.Port] = true
 		}
 		ic.Ports = sortedKeys(ports)
+		ic.Endpoints = slices.Clone(c.Endpoints)
+		slices.SortFunc(ic.Endpoints, func(a, b topology.Endpoint) int { return strings.Compare(a.Name, b.Name) })
 		ic.Subscription = subscriptionFor(c)
 		if ch := c.Channel; ch != nil {
 			ic.PubSub, ic.Topic = ch.PubSub, ch.Topic

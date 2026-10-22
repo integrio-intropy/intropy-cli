@@ -402,3 +402,32 @@ func TestSubscriptionForATransactionalIntegrationsInternalHop(t *testing.T) {
 		t.Errorf("subscription = %+v, want %+v", got, want)
 	}
 }
+
+func TestManifestModelKeepsGatewayEndpoints(t *testing.T) {
+	topo, err := topology.Decode(strings.NewReader(`{
+		"apiVersion":"topology.intropy.io/v1", "kind":"SystemTopology", "system":"orders",
+		"components":[{"name":"orders-gateway","kind":"gateway","endpoints":[
+			{"name":"orders-web","path":"/api/orders"}, {"name":"orders-edi","path":"/edi"}]}]
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	component := newManifestModel(topo, nil).Components[0]
+	encoded, err := json.Marshal(component)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(encoded, &got); err != nil {
+		t.Fatal(err)
+	}
+	want := []any{map[string]any{"name": "orders-edi", "path": "/edi"}, map[string]any{"name": "orders-web", "path": "/api/orders"}}
+	if !reflect.DeepEqual(got["endpoints"], want) {
+		t.Fatalf("endpoints = %#v, want %#v", got["endpoints"], want)
+	}
+	// Sorting the deployment view must not mutate the topology declaration.
+	original, _ := json.Marshal(topo)
+	if !strings.Contains(string(original), `"endpoints":[{"name":"orders-web"`) {
+		t.Fatalf("topology mutated: %s", original)
+	}
+}

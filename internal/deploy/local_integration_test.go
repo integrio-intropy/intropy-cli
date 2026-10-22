@@ -5,6 +5,7 @@ package deploy
 import (
 	"bytes"
 	"context"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -29,6 +30,9 @@ func newLocalFixtureWith(t *testing.T, entries map[string]string) localFixture {
 	f := newLocalFixture(t)
 	f.lib = localLibrary(t, entries)
 	f.source = f.lib.Source(t)
+	if err := os.WriteFile(filepath.Join(f.sourceDir, "topology.json"), []byte(runtimeTemplateTopologyRecord), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	return f
 }
 
@@ -96,7 +100,7 @@ func TestLocalTemplatesDiscoverTheHost(t *testing.T) {
 
 	workspace := t.TempDir()
 	writeHostWorkspace(t, workspace, "distribution")
-	called := stubRunGraph(t, localTopologyRecord)
+	called := stubRunGraph(t, runtimeTemplateTopologyRecord)
 
 	var stderr bytes.Buffer
 	opts := f.renderOptions(&stderr)

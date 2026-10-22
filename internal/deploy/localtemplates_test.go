@@ -5,12 +5,16 @@ package deploy
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 // localTemplateEntries reads the real deploy-host / deploy-component templates
@@ -72,7 +76,7 @@ func localTemplatesRoot(t *testing.T) string {
 func TestLocalTemplatesRenderAndBuild(t *testing.T) {
 	requireKustomize(t)
 	root := localTemplatesRoot(t)
-	f := newInitFixtureWith(t, localTemplateEntries(t, root))
+	f := newRealTemplatesInitFixture(t, root)
 
 	var stdout, stderr bytes.Buffer
 	opts := f.options(t, &stdout, &stderr)
@@ -85,6 +89,9 @@ func TestLocalTemplatesRenderAndBuild(t *testing.T) {
 	base := filepath.Join(work, "domains", "sales", "distribution")
 
 	for _, unit := range []string{"host", "extractor", "erp-loader", "reconciler"} {
+		if _, err := os.Stat(filepath.Join(base, unit, "base", "service.yaml")); !os.IsNotExist(err) {
+			t.Errorf("non-gateway %s has an application Service, stat error: %v", unit, err)
+		}
 		for _, env := range []string{"dev", "staging", "prod"} {
 			overlay := filepath.Join(base, unit, "overlays", env)
 			out, err := exec.Command("kustomize", "build", overlay).CombinedOutput()
@@ -139,7 +146,7 @@ func TestLocalTemplatesRenderAndBuild(t *testing.T) {
 func TestLocalTemplatesRenderSelectedBindingAdapters(t *testing.T) {
 	requireKustomize(t)
 	root := localTemplatesRoot(t)
-	f := newInitFixtureWith(t, localTemplateEntries(t, root))
+	f := newRealTemplatesInitFixture(t, root)
 
 	f.topologyFile = filepath.Join(t.TempDir(), "topology.json")
 	if err := os.WriteFile(f.topologyFile, []byte(`{
@@ -148,6 +155,8 @@ func TestLocalTemplatesRenderSelectedBindingAdapters(t *testing.T) {
 		"system": "distribution",
 		"components": [
 			{"name": "order-loader", "kind": "loader",
+			 "channel": {"pubsub": "distribution-pubsub", "topic": "orders"},
+			 "subscribes": [{"pubsub":"distribution-pubsub", "topic":"orders", "resource":"order-loader-subscription", "defaultPath":"/unhandled"}],
 			 "ports": [{"port": "erp", "direction": "out"}]}
 		],
 		"ports": [
@@ -182,7 +191,7 @@ func TestLocalTemplatesRenderSelectedBindingAdapters(t *testing.T) {
 func TestLocalTemplatesAzureRendersServiceBusAndNoSecrets(t *testing.T) {
 	requireKustomize(t)
 	root := localTemplatesRoot(t)
-	f := newInitFixtureWith(t, localTemplateEntries(t, root))
+	f := newRealTemplatesInitFixture(t, root)
 	setPlatform(t, f, "provider: azure\n  pubsub: servicebus\n  secretStore: azure-keyvault\n")
 
 	var stdout, stderr bytes.Buffer
@@ -210,4 +219,178 @@ func TestLocalTemplatesAzureRendersServiceBusAndNoSecrets(t *testing.T) {
 		t.Fatalf("kustomize build failed: %v\n%s", err, out)
 	}
 	t.Logf("azure host/prod:\n%s", out)
+}
+
+const gatewayTopologyRecord = `{
+  "apiVersion":"topology.intropy.io/v1", "kind":"SystemTopology", "system":"distribution",
+  "components":[{"name":"order-gateway","kind":"gateway",
+    "endpoints":[{"name":"orders-endpoint","path":"/api/orders"},{"name":"edi-endpoint","path":"/edi/orders"}],
+    "publishes":[{"pubsub":"distribution-pubsub","topic":"orders"}],
+    "channel":{"pubsub":"distribution-pubsub","topic":"orders"}}],
+  "topics":[{"pubsub":"distribution-pubsub","topic":"orders","publishers":["order-gateway"]}]
+}`
+
+func TestLocalTemplatesGatewayServiceAndProbes(t *testing.T) {
+	requireKustomize(t)
+	f := newLocalFixtureWith(t, localTemplateEntries(t, localTemplatesRoot(t)))
+	if err := os.WriteFile(filepath.Join(f.sourceDir, "topology.json"), []byte(gatewayTopologyRecord), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	opts := f.renderOptions(&stderr)
+	opts.Bindings = nil
+	built, err := RenderManifests(t.Context(), opts)
+	if err != nil {
+		t.Fatalf("render: %v\n%s", err, stderr.String())
+	}
+	assertGatewayResources(t, built)
+}
+
+func TestLocalTemplatesGatewayProductionOverlays(t *testing.T) {
+	requireKustomize(t)
+	f := newRealTemplatesInitFixture(t, localTemplatesRoot(t))
+	if err := os.WriteFile(f.topologyFile, []byte(gatewayTopologyRecord), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	opts := f.options(t, &stdout, &stderr)
+	opts.Bindings = nil
+	if err := runManifestPipeline(t.Context(), opts); err != nil {
+		t.Fatalf("render: %v\n%s", err, stderr.String())
+	}
+	work := f.clone(t, "manifests-create/sales-distribution-all")
+	for _, env := range []string{"dev", "staging", "prod"} {
+		t.Run(env, func(t *testing.T) {
+			overlay := filepath.Join(work, "domains", "sales", "distribution", "order-gateway", "overlays", env)
+			built, err := exec.Command("kustomize", "build", overlay).CombinedOutput()
+			if err != nil {
+				t.Fatalf("kustomize: %v\n%s", err, built)
+			}
+			assertGatewayResources(t, built)
+		})
+	}
+}
+
+func assertGatewayResources(t *testing.T, built []byte) {
+	t.Helper()
+	decoder := yaml.NewDecoder(bytes.NewReader(built))
+	var service, deployment map[string]any
+	for {
+		var doc map[string]any
+		if err := decoder.Decode(&doc); err == io.EOF {
+			break
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		switch doc["kind"] {
+		case "Service":
+			service = doc
+		case "Deployment":
+			deployment = doc
+		case "Ingress":
+			t.Fatal("public ingress must be explicitly configured by the environment")
+		}
+	}
+	if service == nil || deployment == nil {
+		t.Fatalf("missing gateway Service or Deployment:\n%s", built)
+	}
+	metadata := service["metadata"].(map[string]any)
+	if metadata["name"] != "order-gateway" {
+		t.Fatalf("service name = %v", metadata["name"])
+	}
+	spec := service["spec"].(map[string]any)
+	if spec["type"] != "ClusterIP" {
+		t.Fatalf("service must stay private: %#v", spec)
+	}
+	if spec["selector"].(map[string]any)["app"] != "order-gateway" {
+		t.Fatalf("selector = %#v", spec["selector"])
+	}
+	port := spec["ports"].([]any)[0].(map[string]any)
+	if port["name"] != "http" || port["port"] != 80 || port["targetPort"] != "http" {
+		t.Fatalf("service port = %#v", port)
+	}
+	var endpoints []map[string]string
+	annotations := metadata["annotations"].(map[string]any)
+	if err := json.Unmarshal([]byte(annotations["intropy.io/endpoints"].(string)), &endpoints); err != nil {
+		t.Fatal(err)
+	}
+	if len(endpoints) != 2 || endpoints[0]["path"] != "/edi/orders" || endpoints[1]["path"] != "/api/orders" {
+		t.Fatalf("endpoint contract = %#v", endpoints)
+	}
+	pod := deployment["spec"].(map[string]any)["template"].(map[string]any)
+	if pod["metadata"].(map[string]any)["annotations"].(map[string]any)["dapr.io/app-protocol"] != "http" {
+		t.Fatal("gateway sidecar must use HTTP")
+	}
+	container := pod["spec"].(map[string]any)["containers"].([]any)[0].(map[string]any)
+	for probe, path := range map[string]string{"readinessProbe": "/readyz", "livenessProbe": "/healthz"} {
+		http := container[probe].(map[string]any)["httpGet"].(map[string]any)
+		if http["path"] != path || http["port"] != "http" {
+			t.Fatalf("%s = %#v", probe, http)
+		}
+	}
+}
+
+func TestLocalTemplatesGatewayRequiresEndpointAndChannelFacts(t *testing.T) {
+	entries := localTemplateEntries(t, localTemplatesRoot(t))
+	for _, missing := range []string{"endpoints", "pubsub", "topic"} {
+		t.Run(missing, func(t *testing.T) {
+			var record map[string]any
+			if err := json.Unmarshal([]byte(gatewayTopologyRecord), &record); err != nil {
+				t.Fatal(err)
+			}
+			component := record["components"].([]any)[0].(map[string]any)
+			if missing == "endpoints" {
+				delete(component, "endpoints")
+			} else {
+				delete(component["channel"].(map[string]any), missing)
+			}
+			data, err := json.Marshal(record)
+			if err != nil {
+				t.Fatal(err)
+			}
+			f := newLocalFixtureWith(t, entries)
+			if err := os.WriteFile(filepath.Join(f.sourceDir, "topology.json"), data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			var stderr bytes.Buffer
+			opts := f.renderOptions(&stderr)
+			opts.Bindings = nil
+			_, err = RenderManifests(t.Context(), opts)
+			want := map[string]string{"endpoints": "names no endpoints", "pubsub": "names no pub/sub", "topic": "names no topic"}[missing]
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("error = %v, want %q", err, want)
+			}
+		})
+	}
+}
+
+// Real-template renders use the current channel and Subscription contract;
+// the older minimal graph fixtures separately exercise backward-compatible decoding.
+const runtimeTemplateTopologyRecord = `{
+  "apiVersion":"topology.intropy.io/v1", "kind":"SystemTopology", "system":"distribution",
+  "components":[
+    {"name":"erp-loader","kind":"loader",
+     "channel":{"pubsub":"price-pubsub","topic":"price-b2b"},
+     "subscribes":[{"pubsub":"price-pubsub","topic":"price-b2b","resource":"erp-loader-subscription","defaultPath":"/unhandled"}],
+     "ports":[{"port":"erp","direction":"out"}]},
+    {"name":"extractor","kind":"extractor",
+     "channel":{"pubsub":"price-pubsub","topic":"price-b2b"},
+     "publishes":[{"pubsub":"price-pubsub","topic":"price-b2b"}],
+     "ports":[{"port":"price-master","direction":"in"}]},
+    {"name":"reconciler","kind":"reconciler"}
+  ],
+  "topics":[{"pubsub":"price-pubsub","topic":"price-b2b","publishers":["extractor"],"subscribers":["erp-loader"]}],
+  "ports":[
+    {"name":"price-master","externalSystem":"price-master","directions":["in"],"usedBy":["extractor"]},
+    {"name":"erp","externalSystem":"erp","directions":["out"],"usedBy":["erp-loader"]}
+  ]
+}`
+
+func newRealTemplatesInitFixture(t *testing.T, root string) initFixture {
+	t.Helper()
+	f := newInitFixtureWith(t, localTemplateEntries(t, root))
+	if err := os.WriteFile(f.topologyFile, []byte(runtimeTemplateTopologyRecord), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return f
 }

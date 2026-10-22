@@ -87,6 +87,8 @@ type Component struct {
 	Subscribes []TopicRef    `json:"subscribes,omitempty"`
 	Publishes  []Publication `json:"publishes,omitempty"`
 	Ports      []PortUse     `json:"ports,omitempty"`
+	// Endpoints are HTTP interfaces served by a gateway, not Dapr bindings.
+	Endpoints []Endpoint `json:"endpoints,omitempty"`
 	// InternalQueue is a transactional integration's own hop between its
 	// receive and send sides, and the Subscription its send side receives it
 	// through.
@@ -99,6 +101,13 @@ type Component struct {
 	// Provides/Consumes are contract surfaces, parsed opaquely (see APIs).
 	Provides []json.RawMessage `json:"provides,omitempty"`
 	Consumes []json.RawMessage `json:"consumes,omitempty"`
+}
+
+// Endpoint is an HTTP interface a gateway serves; Path is the ingress path,
+// passed through without rewriting to the gateway's application Service.
+type Endpoint struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
 }
 
 // TopicRef is a component's subscription to a pub/sub topic. Routes are its
