@@ -244,12 +244,18 @@ intropy int create hello-world -o ./out --no-input -f values.yaml
 intropy int create hello-world -o ./out --output json
 ```
 
-Use `--force` to render into a non-empty directory.
+Use `--force` to render into a non-empty directory. An identity change is never
+a re-render: edit the component's `[IntropyComponent]` attribute and build — the
+record's identity fields follow on the next build.
 
 `int create` also writes a scaffold record to `.intropy/scaffold.json` inside
 the new integration — the template name, the exact release version, and the
 resolved parameter values. Commit it: later commands read it to reproduce
-decisions made at scaffold time.
+decisions made at scaffold time. A block component's identity (component
+name, organization, message, payload, event source, and its endpoint) lives
+in code, in the `[IntropyComponent]` attribute on the component class: its
+build checks the attribute and regenerates the record's identity values from
+it, while the CLI's provenance survives every build unharmed.
 
 ### Show an integration
 
