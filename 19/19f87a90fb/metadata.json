@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "1919f87a90fb",
+  "strategy": "manual-commit",
+  "branch": "feat/gateway-block",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "README.md",
+    "internal/system/assemble_test.go",
+    "internal/system/blocks.go",
+    "internal/template/wiring.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/19/19f87a90fb/0/metadata.json",
+      "transcript": "/19/19f87a90fb/0/full.jsonl",
+      "compact_transcript": "/19/19f87a90fb/0/transcript.jsonl",
+      "content_hash": "/19/19f87a90fb/0/content_hash.txt",
+      "prompt": "/19/19f87a90fb/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 4
+  }
+}
