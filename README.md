@@ -357,7 +357,7 @@ kinds. The assembled kinds:
   keeps its component but gets no `From`/`To`.
 - **gateway** — a topic block that publishes like an extractor, but whose
   items are pushed to it over HTTP. Its record carries `publishes`, a
-  required `port` (the endpoint it exposes) and `routePath` (the path callers
+  required `port` (the endpoint it exposes) and `endpointPath` (the path callers
   post to; `/<publishes>` when absent). The endpoint reaches the system-host
   template as the component's `endpoint` and as a `{name, path}` entry in a
   separate `endpoints` list, never in `ports`: the host resolves every port to

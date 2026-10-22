@@ -199,7 +199,7 @@ func TestAssembleGateway(t *testing.T) {
 	if gw.Topic == nil || gw.Topic.Name != "order-placed" {
 		t.Fatalf("gateway topic = %+v, want order-placed", gw.Topic)
 	}
-	// The record carries no routePath, so the path is the framework's default.
+	// The record carries no endpointPath, so the path is the framework's default.
 	if len(model.Endpoints) != 1 || model.Endpoints[0] != (Endpoint{Name: "order-gateway-endpoint", Path: "/order-placed"}) {
 		t.Fatalf("endpoints = %+v", model.Endpoints)
 	}
@@ -216,7 +216,7 @@ func TestAssembleGateway(t *testing.T) {
 
 func TestAssembleGatewayTakesTheRecordedPath(t *testing.T) {
 	model, err := Assemble([]template.ScaffoldEntry{component("gw", template.BlockKindGateway, "gw", map[string]any{
-		template.KeyPublishes: "order-placed", template.KeyPort: "gw-endpoint", template.KeyRoutePath: "/api/orders",
+		template.KeyPublishes: "order-placed", template.KeyPort: "gw-endpoint", template.KeyEndpointPath: "/api/orders",
 	})}, discardWarnf)
 	if err != nil {
 		t.Fatalf("Assemble: %v", err)
@@ -229,7 +229,7 @@ func TestAssembleGatewayTakesTheRecordedPath(t *testing.T) {
 func TestAssembleGatewayErrors(t *testing.T) {
 	t.Run("a path that is not a path", func(t *testing.T) {
 		_, err := Assemble([]template.ScaffoldEntry{component("gw", template.BlockKindGateway, "gw", map[string]any{
-			template.KeyPublishes: "order-placed", template.KeyPort: "gw-endpoint", template.KeyRoutePath: "orders",
+			template.KeyPublishes: "order-placed", template.KeyPort: "gw-endpoint", template.KeyEndpointPath: "orders",
 		})}, discardWarnf)
 		if err == nil || !strings.Contains(err.Error(), "a path starts with /") {
 			t.Fatalf("err = %v", err)

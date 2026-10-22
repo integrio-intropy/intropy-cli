@@ -63,13 +63,13 @@ func parseGateway(e template.ScaffoldEntry, c *Component) error {
 	if published {
 		c.EndpointPath = "/" + c.Message.Name
 	}
-	if _, ok := e.Values[template.KeyRoutePath]; ok {
-		path, err := template.RecordValue(e, template.KeyRoutePath)
+	if _, ok := e.Values[template.KeyEndpointPath]; ok {
+		path, err := template.RecordValue(e, template.KeyEndpointPath)
 		if err != nil {
 			return err
 		}
 		if !strings.HasPrefix(path, "/") {
-			return fmt.Errorf("%s: values.%s is %q; a path starts with /", e.Path, template.KeyRoutePath, path)
+			return fmt.Errorf("%s: values.%s is %q; a path starts with /", e.Path, template.KeyEndpointPath, path)
 		}
 		c.EndpointPath = path
 	}

@@ -2,6 +2,8 @@ package system
 
 import (
 	"encoding/json"
+	"io"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -197,5 +199,69 @@ func TestMergeWiringKeepsStoredEndpoints(t *testing.T) {
 	}
 	if endpoints := merged["endpoints"].([]any); len(endpoints) != 2 {
 		t.Fatalf("endpoints = %#v, want the stored one and the orphan's", endpoints)
+	}
+}
+
+func TestPlanUpdateDetectsGatewayEndpointChanges(t *testing.T) {
+	for _, tc := range []struct {
+		name, storedPath string
+		wantRefresh      bool
+	}{
+		{"unchanged", "/orders", false},
+		{"changed path", "/old-orders", true},
+		{"missing endpoint", "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ws := t.TempDir()
+			g := gateway(filepath.Join(ws, "order-gateway"), "order-gateway", "order-placed")
+			g.Values[template.KeyEndpointPath] = "/orders"
+			if err := template.WriteScaffold(g.Path, g.Scaffold); err != nil {
+				t.Fatal(err)
+			}
+			model, err := Assemble([]template.ScaffoldEntry{g}, discardWarnf)
+			if err != nil {
+				t.Fatal(err)
+			}
+			model.UsePubsub("order-flow-pubsub")
+			endpoints := []any{}
+			if tc.storedPath != "" {
+				endpoints = append(endpoints, map[string]any{"name": g.Values[template.KeyPort], "path": tc.storedPath})
+			}
+			host := template.Scaffold{Role: template.RoleSystemHost, Values: map[string]any{
+				"name": "order-flow", "components": []any{ComponentEntry(model.Components[0])}, "endpoints": endpoints,
+			}}
+			if err := template.WriteScaffold(filepath.Join(ws, "order-flow"), host); err != nil {
+				t.Fatal(err)
+			}
+			plan, err := planUpdate(UpdateOptions{StartDir: ws, Stderr: io.Discard})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := len(plan.refreshed) > 0; got != tc.wantRefresh {
+				t.Fatalf("refresh = %v, want %v", got, tc.wantRefresh)
+			}
+		})
+	}
+}
+
+func TestMergeWiringRefreshesGatewayPathWithoutMutatingBaseline(t *testing.T) {
+	stored := map[string]any{"name": "orders-endpoint", "path": "/old-orders", "note": "kept"}
+	plan := &updatePlan{
+		baseline:  map[string]any{"endpoints": []any{stored, map[string]any{"name": "absent-endpoint", "path": "/absent"}}},
+		refreshed: []Component{{Endpoint: "orders-endpoint", EndpointPath: "/orders"}},
+	}
+	merged := map[string]any{}
+	if err := mergeWiring(plan, merged); err != nil {
+		t.Fatal(err)
+	}
+	endpoints := merged["endpoints"].([]any)
+	if got := endpoints[0].(map[string]any); got["path"] != "/orders" || got["note"] != "kept" {
+		t.Fatalf("endpoint = %#v", got)
+	}
+	if stored["path"] != "/old-orders" {
+		t.Fatal("baseline mutated")
+	}
+	if len(endpoints) != 2 || endpoints[1].(map[string]any)["path"] != "/absent" {
+		t.Fatalf("endpoints = %#v", endpoints)
 	}
 }

@@ -19,10 +19,10 @@ const (
 	// kept apart from port because the host resolves every port to a file
 	// binding, and an endpoint is served over HTTP, not swept.
 	KeyEndpoint = "endpoint"
-	// KeyRoutePath is the path a gateway's endpoint accepts items on, as its
+	// KeyEndpointPath is the path a gateway's endpoint accepts items on, as its
 	// scaffold record carries it; it rides with the endpoint in the payload as
 	// path, where the system host and the ingress read it.
-	KeyRoutePath    = "routePath"
+	KeyEndpointPath = "endpointPath"
 	KeyPath         = "path"
 	KeyName         = "name"
 	KeyOrganization = "organization"

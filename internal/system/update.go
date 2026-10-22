@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -310,7 +311,7 @@ func planUpdate(opts UpdateOptions) (*updatePlan, error) {
 		switch {
 		case !ok:
 			orphans = append(orphans, c)
-		case !reflect.DeepEqual(stored, refreshedEntry(stored, c)):
+		case !reflect.DeepEqual(stored, refreshedEntry(stored, c)) || endpointChanged(host.Values, c):
 			refreshed = append(refreshed, c)
 		}
 	}
@@ -334,6 +335,21 @@ func planUpdate(opts UpdateOptions) (*updatePlan, error) {
 		refreshed: refreshed,
 		kept:      kept,
 	}, nil
+}
+
+// endpointChanged compares the gateway's separately stored endpoint declaration;
+// the component entry contains its name, not its path.
+func endpointChanged(values map[string]any, c Component) bool {
+	if c.Endpoint == "" {
+		return false
+	}
+	endpoints, _ := values["endpoints"].([]any)
+	for _, raw := range endpoints {
+		if endpoint, ok := raw.(map[string]any); ok && endpoint[template.KeyName] == c.Endpoint {
+			return endpoint[template.KeyPath] != c.EndpointPath
+		}
+	}
+	return true
 }
 
 // storedPubsub is the pub/sub the host's record declares its topics and
@@ -423,10 +439,10 @@ func mergedComponentEntries(plan *updatePlan) ([]any, error) {
 
 // mergeWiring folds the orphans' and refreshed components' topics, ports,
 // endpoints and messages into the record's stored lists, deduplicating by
-// (pubsub, name), name, name and message name respectively. A stored entry passes through verbatim; only
-// genuinely new names are appended. Component payloads build their wiring
-// against these lists, so an orphan naming a topic, port or message the
-// host never declared must add it here.
+// (pubsub, name), name, name and message name respectively. Refreshed endpoints
+// take their scaffold's path; unrelated entries and hand-recorded metadata
+// survive. Component payloads resolve wiring against these lists, so new
+// names must be added before the template renders.
 func mergeWiring(plan *updatePlan, merged map[string]any) error {
 	recordPath := filepath.Join(plan.hostDir, filepath.FromSlash(template.ScaffoldRelPath))
 
@@ -458,7 +474,7 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 		ports = append(ports, p)
 	}
 
-	seenEndpoints := map[string]bool{}
+	seenEndpoints := map[string]int{}
 	storedEndpoints, _ := plan.baseline["endpoints"].([]any)
 	endpoints := make([]any, 0, len(storedEndpoints))
 	for _, p := range storedEndpoints {
@@ -467,7 +483,7 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 			return fmt.Errorf("%s: values.endpoints entry has type %T, expected object", recordPath, p)
 		}
 		name, _ := m[template.KeyName].(string)
-		seenEndpoints[name] = true
+		seenEndpoints[name] = len(endpoints)
 		endpoints = append(endpoints, p)
 	}
 
@@ -517,9 +533,16 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 				ports = append(ports, map[string]any{template.KeyName: p})
 			}
 		}
-		if c.Endpoint != "" && !seenEndpoints[c.Endpoint] {
-			seenEndpoints[c.Endpoint] = true
-			endpoints = append(endpoints, map[string]any{template.KeyName: c.Endpoint, template.KeyPath: c.EndpointPath})
+		if c.Endpoint != "" {
+			if index, found := seenEndpoints[c.Endpoint]; found {
+				// Clone so the baseline still describes the last successful render.
+				endpoint := maps.Clone(endpoints[index].(map[string]any))
+				endpoint[template.KeyPath] = c.EndpointPath
+				endpoints[index] = endpoint
+			} else {
+				seenEndpoints[c.Endpoint] = len(endpoints)
+				endpoints = append(endpoints, map[string]any{template.KeyName: c.Endpoint, template.KeyPath: c.EndpointPath})
+			}
 		}
 		if c.Message != nil && c.Message.Kind == MessagePublish && !seenMessages[c.Message.Name] {
 			seenMessages[c.Message.Name] = true
