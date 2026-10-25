@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "03405c9ce175",
+  "strategy": "manual-commit",
+  "branch": "feat/gateway-block",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "README.md",
+    "web/src/components/CreateDrawer.tsx",
+    "web/src/components/FlowView.tsx",
+    "web/src/index.css"
+  ],
+  "sessions": [
+    {
+      "metadata": "/03/405c9ce175/0/metadata.json",
+      "transcript": "/03/405c9ce175/0/full.jsonl",
+      "compact_transcript": "/03/405c9ce175/0/transcript.jsonl",
+      "content_hash": "/03/405c9ce175/0/content_hash.txt",
+      "prompt": "/03/405c9ce175/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 58,
+    "cache_creation_tokens": 76863,
+    "cache_read_tokens": 2365753,
+    "output_tokens": 17574,
+    "api_call_count": 29
+  }
+}

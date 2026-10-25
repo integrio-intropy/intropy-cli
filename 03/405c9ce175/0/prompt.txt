@@ -1,0 +1,5 @@
+In the cli dashboard integration flow view we render slots, extractor, gateway, core, and loader. Could we change to always render 3 slots, "Edge block", "Core block", and "Edge block" again. When you click edge block on the left you would have an option to select extractor or gateway, core block you get to select any of the core templates, other edge block you get loader (and any other edge block on that side). This will probably require some property in the templates for classification
+
+---
+
+Could we have just a drop down appearing on the slot you click on instead of in the template details pane on the right?
