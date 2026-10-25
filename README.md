@@ -245,17 +245,17 @@ intropy int create hello-world -o ./out --output json
 ```
 
 Use `--force` to render into a non-empty directory. An identity change is never
-a re-render: edit the component's `[IntropyComponent]` attribute and build — the
-record's identity fields follow on the next build.
+a re-render: edit the component's `Manifest` and the matching `values` keys in
+its scaffold record together.
 
 `int create` also writes a scaffold record to `.intropy/scaffold.json` inside
 the new integration — the template name, the exact release version, and the
 resolved parameter values. Commit it: later commands read it to reproduce
-decisions made at scaffold time. A block component's identity (component
-name, organization, message, payload, event source, and its endpoint) lives
-in code, in the `[IntropyComponent]` attribute on the component class: its
-build checks the attribute and regenerates the record's identity values from
-it, while the CLI's provenance survives every build unharmed.
+decisions made at scaffold time. A gateway's identity (component name,
+organization, message, event source, and its endpoint) is rendered both into
+the component class's `Manifest`, which the framework reads at runtime, and
+into the record's `values`, which `sys create` reads. The CLI is the record's
+only writer; the component's build never touches the record.
 
 ### Show an integration
 

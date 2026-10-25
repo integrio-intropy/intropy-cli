@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   api,
   type CreateResponse,
@@ -6,27 +6,50 @@ import {
   type TemplateList,
   type TemplateSummary,
 } from '../api'
-import { Combobox } from './Combobox'
-import { Field, FormField } from './form'
+import { FormField } from './form'
 import { useTemplateFields } from './useTemplateFields'
 
 /** The create placeholders on the flow canvas, by archetype column:
- *  in (extractor, gateway) → process → out. */
-export type SlotKind = 'extractor' | 'gateway' | 'transactional' | 'loader'
+ *  inbound edge → core → outbound edge. */
+export type SlotKind = 'edge-in' | 'core' | 'edge-out'
 
-// The intropy.io/block-kind label value each slot filters templates by.
-const KIND_BLOCK_LABEL: Record<SlotKind, string> = {
-  extractor: 'extractor',
-  gateway: 'gateway',
-  transactional: 'transactional-integration',
-  loader: 'loader',
+// The intropy.io/data-flow label values each slot offers templates for. The
+// label is what places a block on the system boundary, so a new edge kind
+// lands in its slot without a change here.
+const KIND_DATA_FLOWS: Record<SlotKind, string[]> = {
+  'edge-in': ['in'],
+  core: ['both', 'internal'],
+  'edge-out': ['out'],
 }
 
-const KIND_TITLE: Record<SlotKind, string> = {
-  extractor: 'extractor',
-  gateway: 'gateway',
-  transactional: 'core block',
-  loader: 'loader',
+/** The data-flow values a slot offers, for its empty-state message. */
+export function slotDataFlows(kind: SlotKind): string[] {
+  return KIND_DATA_FLOWS[kind]
+}
+
+/** The block templates a slot offers: those on its side of the system
+ *  boundary. Support projects (system host, shared library) carry no block
+ *  kind, and a slot scaffolds a block, so they never qualify. */
+export function slotCandidates(list: TemplateList, kind: SlotKind): TemplateSummary[] {
+  const want = KIND_DATA_FLOWS[kind]
+  return templateEntries(list).filter(
+    (e) =>
+      e.labels?.['intropy.io/block-kind'] &&
+      want.includes(e.labels?.['intropy.io/data-flow']?.toLowerCase() ?? ''),
+  )
+}
+
+/** Every template in the listing, for a slot's "show all" escape hatch. */
+export function templateEntries(list: TemplateList): TemplateSummary[] {
+  return list.entries ?? list.templates.map((name) => ({ name }))
+}
+
+// optionLabel names a candidate with its block kind, so an edge slot's
+// choice between extractor and gateway reads as one.
+export function optionLabel(c: TemplateSummary): string {
+  const base = c.title ? `${c.title} (${c.name})` : c.name
+  const kind = c.labels?.['intropy.io/block-kind']
+  return kind && kind !== c.name ? `${base} · ${kind}` : base
 }
 
 type CreateState =
@@ -34,13 +57,9 @@ type CreateState =
   | { phase: 'running' }
   | { phase: 'error'; message: string; status: number }
 
-// norm compares label values the way dataFlowFor compares kinds: ignoring
-// case and hyphens, so "transactional-integration" matches however the
-// library spells it.
-const norm = (s: string) => s.toLowerCase().replace(/-/g, '')
-
 interface Props {
-  kind: SlotKind
+  /** The template picked from a slot's menu. */
+  template: TemplateSummary
   /** Root-relative directory the new block scaffolds into ("." = workspace root). */
   systemPath: string
   systemLabel: string
@@ -50,99 +69,29 @@ interface Props {
   onCreated: (outputDir: string) => void
 }
 
-// CreateDrawer is the flow view's create surface: opened by a placeholder
-// slot, it offers the library's templates for that block kind and renders the
-// selected one's manifest as the same form the templates view uses, scoped to
-// the slot's system. Success is reported to the caller — the drawer closes
-// and the canvas shows the new scaffold as a ghost node.
-export function CreateDrawer({ kind, systemPath, systemLabel, onClose, onCreated }: Props) {
-  const [list, setList] = useState<TemplateList | null>(null)
-  const [listError, setListError] = useState<string | null>(null)
-  const [showAll, setShowAll] = useState(false)
-  const [tpl, setTpl] = useState<string | null>(null)
-
-  useEffect(() => {
-    api
-      .listTemplates()
-      .then(setList)
-      .catch((e: unknown) => setListError(errText(e)))
-  }, [])
-
-  const candidates = useMemo<TemplateSummary[]>(() => {
-    if (!list) return []
-    const entries: TemplateSummary[] =
-      list.entries ?? list.templates.map((name) => ({ name }))
-    if (showAll) return entries
-    const want = norm(KIND_BLOCK_LABEL[kind])
-    return entries.filter((e) => norm(e.labels?.['intropy.io/block-kind'] ?? '') === want)
-  }, [list, showAll, kind])
-
-  // Keep the selection valid as the candidate list settles (load, show-all).
-  useEffect(() => {
-    setTpl((cur) =>
-      cur && candidates.some((c) => c.name === cur) ? cur : candidates[0]?.name ?? null,
-    )
-  }, [candidates])
-
+// CreateDrawer is the flow view's create surface: opened by picking a
+// template from a placeholder slot's menu, it renders that template's
+// manifest as the same form the templates view uses, scoped to the slot's
+// system. Success is reported to the caller — the drawer closes and the
+// canvas shows the new scaffold as a ghost node.
+export function CreateDrawer({ template, systemPath, systemLabel, onClose, onCreated }: Props) {
   return (
     <aside className="create-drawer">
       <header className="create-drawer-head">
         <div>
-          <h2 className="create-drawer-title">New {KIND_TITLE[kind]}</h2>
+          <h2 className="create-drawer-title">New {template.title ?? template.name}</h2>
           <span className="create-drawer-sys">in {systemLabel}</span>
         </div>
         <button type="button" className="flow-detail-close" onClick={onClose} aria-label="Close">
           ×
         </button>
       </header>
-
-      {listError && <div className="banner error">{listError}</div>}
-      {!list && !listError && <div className="empty">loading templates…</div>}
-
-      {list && candidates.length === 0 && (
-        <div className="empty">
-          no template in {list.owner}/{list.repo}@{list.version} carries{' '}
-          <code>intropy.io/block-kind: {KIND_BLOCK_LABEL[kind]}</code>
-          <div>
-            <button type="button" className="flow-refresh" onClick={() => setShowAll(true)}>
-              show all templates
-            </button>
-          </div>
-        </div>
-      )}
-
-      {list && candidates.length > 0 && (
-        <>
-          <Field label="template" required>
-            <Combobox
-              value={tpl}
-              options={candidates.map((c) => ({
-                value: c.name,
-                label: c.title ? `${c.title} (${c.name})` : c.name,
-              }))}
-              onChange={setTpl}
-              placeholder="Select a template…"
-            />
-          </Field>
-          {!showAll && (
-            <button
-              type="button"
-              className="drawer-show-all"
-              onClick={() => setShowAll(true)}
-            >
-              show all templates
-            </button>
-          )}
-          {tpl && (
-            <DrawerForm
-              key={tpl}
-              template={tpl}
-              systemPath={systemPath}
-              onCreated={onCreated}
-            />
-          )}
-        </>
-      )}
+      <DrawerForm
+        key={template.name}
+        template={template.name}
+        systemPath={systemPath}
+        onCreated={onCreated}
+      />
     </aside>
   )
 }

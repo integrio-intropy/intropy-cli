@@ -2045,6 +2045,31 @@ body {
   opacity: 1;
 }
 
+.rf-slot-wrap {
+  position: relative;
+}
+
+/* The slot is a button: reset the browser's button chrome to the card. */
+.rf-slot {
+  font: inherit;
+  text-align: left;
+}
+
+.rf-slot.open {
+  opacity: 1;
+  border-color: var(--text-muted);
+  background: var(--surface);
+}
+
+.rf-slot-menu {
+  cursor: default;
+}
+
+.rf-slot-menu-all {
+  display: block;
+  margin: 0 12px 10px;
+}
+
 .rf-slot-plus {
   font-size: 22px;
   line-height: 1;
