@@ -1,0 +1,5 @@
+Why does intropy context list not listing my contexts? intropy context show displays the current
+
+---
+
+Could you fix the config file but only configure Fluxia in it?
