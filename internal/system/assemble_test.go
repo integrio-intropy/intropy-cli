@@ -45,6 +45,10 @@ func transactional(path, appID, from, to string) template.ScaffoldEntry {
 	})
 }
 
+func job(path, appID string) template.ScaffoldEntry {
+	return component(path, template.BlockKindJob, appID, map[string]any{})
+}
+
 func discardWarnf(string, ...any) {}
 
 func TestAssembleMessageFirstHappyPath(t *testing.T) {
@@ -80,6 +84,24 @@ func TestAssembleTransactional(t *testing.T) {
 	}
 	if len(model.Components) != 1 || len(model.Ports) != 2 || len(model.Messages) != 0 || len(model.Topics) != 0 {
 		t.Fatalf("model = %+v", model)
+	}
+}
+
+// A job wires nothing, so it joins the system as a component of its own and
+// contributes no port, topic or message.
+func TestAssembleJob(t *testing.T) {
+	model, err := Assemble([]template.ScaffoldEntry{
+		job("nightly-cleanup", "nightly-cleanup"),
+	}, func(format string, args ...any) { t.Errorf("unexpected warning: "+format, args...) })
+	if err != nil {
+		t.Fatalf("Assemble: %v", err)
+	}
+	if len(model.Components) != 1 || len(model.Ports) != 0 || len(model.Messages) != 0 || len(model.Topics) != 0 {
+		t.Fatalf("model = %+v", model)
+	}
+	entry := ComponentEntry(model.Components[0])
+	if len(entry) != 2 || entry[template.KeyAppID] != "nightly-cleanup" || entry["kind"] != template.BlockKindJob {
+		t.Errorf("payload entry = %+v, want only appId and kind", entry)
 	}
 }
 

@@ -366,6 +366,10 @@ kinds. The assembled kinds:
   record carries `fromPort` and `toPort`; both are required, and a missing
   one fails the assembly. The generated system class wires it as
   `.From(Ports.X).To(Ports.Y)`.
+- **job** — scheduled work with no topic, port or endpoint. Its record
+  carries only its `appId`; the generated system class wires it as
+  `builder.AddJob("<app-id>")`, and it deploys as a CronJob. Message flags
+  against a job template are usage errors.
 
 Validate the result from the host directory with `dotnet run -- check`.
 

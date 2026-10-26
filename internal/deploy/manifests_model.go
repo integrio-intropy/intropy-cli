@@ -17,8 +17,9 @@ import (
 // An extractor is scheduled: it wakes, pulls from its source and exits, which is
 // a CronJob. A transactional integration is the same kind of job — it sweeps its
 // source, drains its internal hop, shuts its sidecar down and exits — so a
-// Deployment would restart it into CrashLoopBackOff. Every other block reacts to
-// messages or requests and must stay resident.
+// Deployment would restart it into CrashLoopBackOff, and so is a job, whose run
+// is its own work. Every other block reacts to messages or requests and must
+// stay resident.
 const (
 	WorkloadCronJob    = "cronjob"
 	WorkloadDeployment = "deployment"
@@ -28,7 +29,7 @@ const (
 // folded by foldKind. Records spell kinds inconsistently (camelCase from one
 // emitter, kebab-case after the frontend normalises), so kinds are compared
 // folded.
-var scheduledBlockKinds = []string{"extractor", "transactionalintegration"}
+var scheduledBlockKinds = []string{"extractor", "transactionalintegration", "job"}
 
 // foldKind lowercases a block kind and drops its dashes, so
 // transactional-integration, transactionalIntegration and

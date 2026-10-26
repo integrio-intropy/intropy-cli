@@ -19,6 +19,7 @@ type parseBlock func(e template.ScaffoldEntry, c *Component) error
 var blockParsers = map[string]parseBlock{
 	template.BlockKindExtractor:     parseExtractor,
 	template.BlockKindGateway:       parseGateway,
+	template.BlockKindJob:           parseJob,
 	template.BlockKindLoader:        parseLoader,
 	template.BlockKindTransactional: parseTransactional,
 }
@@ -165,5 +166,12 @@ func parseTransactional(e template.ScaffoldEntry, c *Component) error {
 		return err
 	}
 	c.Ports = []string{from, to}
+	return nil
+}
+
+// parseJob reads a job: nothing beyond its app id. A job wires no message,
+// port or endpoint, so its record carries no wiring to read, and it joins
+// the system as a component of its own.
+func parseJob(template.ScaffoldEntry, *Component) error {
 	return nil
 }

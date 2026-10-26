@@ -83,6 +83,7 @@ func TestMessageDirection(t *testing.T) {
 		BlockKindGateway:       MessageDirectionPublish,
 		BlockKindLoader:        MessageDirectionSubscribe,
 		BlockKindTransactional: MessageDirectionNone,
+		BlockKindJob:           MessageDirectionNone,
 		"aggregator":           MessageDirectionNone,
 		"":                     MessageDirectionNone,
 	} {

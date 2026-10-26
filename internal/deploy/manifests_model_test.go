@@ -110,6 +110,18 @@ func TestManifestModelWorkloadForGatewayIsDeployment(t *testing.T) {
 	}
 }
 
+// A job's run is its own work and ends, so it is scheduled like an extractor.
+func TestManifestModelWorkloadForJobIsCronJob(t *testing.T) {
+	topo := &topology.Topology{
+		APIVersion: topology.APIVersion,
+		System:     "s",
+		Components: []topology.Component{{Name: "nightly-cleanup", Kind: "job"}},
+	}
+	if got := newManifestModel(topo, nil).Components[0].Workload; got != WorkloadCronJob {
+		t.Errorf("job workload = %q, want %q", got, WorkloadCronJob)
+	}
+}
+
 // The block kind is camelCase in some records and kebab-case in others, so the
 // match must not be spelling-sensitive.
 func TestManifestModelWorkloadIgnoresKindSpelling(t *testing.T) {

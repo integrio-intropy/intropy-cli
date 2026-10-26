@@ -668,3 +668,18 @@ spec:
 		t.Fatalf("err = %v, want multi-message gate", err)
 	}
 }
+
+// A job wires no messages, so either message flag against a job template is a
+// usage error rather than a flag that silently vanishes from the record.
+func TestGateMessageDirectionRejectsMessageFlagsForJobs(t *testing.T) {
+	tmpl := &Template{Metadata: Metadata{Name: "job", Labels: map[string]string{TemplateBlockKindLabel: BlockKindJob}}}
+	for _, direction := range []string{MessageDirectionPublish, MessageDirectionSubscribe} {
+		err := gateMessageDirection(tmpl, direction)
+		if !errors.Is(err, ErrMessageDirection) {
+			t.Fatalf("%s: err = %v, want %v", direction, err, ErrMessageDirection)
+		}
+		if !strings.Contains(err.Error(), "jobs run their own work") {
+			t.Errorf("%s: error %q should say why a job wires no messages", direction, err)
+		}
+	}
+}
