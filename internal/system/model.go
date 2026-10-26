@@ -53,7 +53,12 @@ type Component struct {
 	// additive-only.
 	Port  string   `json:"port,omitempty"`
 	Ports []string `json:"ports,omitempty"` // transactional blocks: exactly [from, to]
-	Path  string   `json:"path"`            // scaffold directory, for error messages
+	// Endpoint is the HTTP port a gateway exposes and EndpointPath the path
+	// it accepts items on; both empty for every other kind. The endpoint
+	// shares the port namespace but is never a file port.
+	Endpoint     string `json:"endpoint,omitempty"`
+	EndpointPath string `json:"endpointPath,omitempty"`
+	Path         string `json:"path"` // scaffold directory, for error messages
 
 	// Message carries the component's message wiring: what it publishes or
 	// subscribes by name. A routing subscriber's Message is its first route.
@@ -97,6 +102,14 @@ type Port struct {
 	Name string `json:"name"`
 }
 
+// Endpoint is one assembled gateway endpoint: the port it is named by and the
+// path callers post to. The path is part of the system's declaration because
+// the ingress in front of the host routes it.
+type Endpoint struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
 // SharedLibrary is the workspace's contract project: referenced by the
 // host, never declared as a component.
 type SharedLibrary struct {
@@ -112,9 +125,10 @@ type Model struct {
 	ProjectName string // template-derived PascalCase name
 	SystemClass string // template-derived ISystemDefinition class name
 	Components  []Component
-	Topics      []Topic   // sorted by (Pubsub, Name)
-	Messages    []Message // sorted by Name; the internal messagegroup
-	Ports       []Port    // sorted by Name
+	Topics      []Topic    // sorted by (Pubsub, Name)
+	Messages    []Message  // sorted by Name; the internal messagegroup
+	Ports       []Port     // sorted by Name
+	Endpoints   []Endpoint // gateways' HTTP ports, sorted by Name
 	// Shared is the workspace's shared-library scaffold, nil when none
 	// exists — valid for a topic-free system, and for a topic-bearing one
 	// the host template scaffolds the contracts project as a dependency.

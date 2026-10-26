@@ -98,6 +98,30 @@ func TestManifestModelWorkloadForTransactionalIntegrationIsCronJob(t *testing.T)
 	}
 }
 
+// A gateway serves requests, so it stays resident.
+func TestManifestModelWorkloadForGatewayIsDeployment(t *testing.T) {
+	topo := &topology.Topology{
+		APIVersion: topology.APIVersion,
+		System:     "s",
+		Components: []topology.Component{{Name: "order-gateway", Kind: "gateway"}},
+	}
+	if got := newManifestModel(topo, nil).Components[0].Workload; got != WorkloadDeployment {
+		t.Errorf("gateway workload = %q, want %q", got, WorkloadDeployment)
+	}
+}
+
+// A job's run is its own work and ends, so it is scheduled like an extractor.
+func TestManifestModelWorkloadForJobIsCronJob(t *testing.T) {
+	topo := &topology.Topology{
+		APIVersion: topology.APIVersion,
+		System:     "s",
+		Components: []topology.Component{{Name: "nightly-cleanup", Kind: "job"}},
+	}
+	if got := newManifestModel(topo, nil).Components[0].Workload; got != WorkloadCronJob {
+		t.Errorf("job workload = %q, want %q", got, WorkloadCronJob)
+	}
+}
+
 // The block kind is camelCase in some records and kebab-case in others, so the
 // match must not be spelling-sensitive.
 func TestManifestModelWorkloadIgnoresKindSpelling(t *testing.T) {
@@ -388,5 +412,34 @@ func TestSubscriptionForATransactionalIntegrationsInternalHop(t *testing.T) {
 		Rules: []ManifestRule{}, DefaultPath: "/unhandled"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("subscription = %+v, want %+v", got, want)
+	}
+}
+
+func TestManifestModelKeepsGatewayEndpoints(t *testing.T) {
+	topo, err := topology.Decode(strings.NewReader(`{
+		"apiVersion":"topology.intropy.io/v1", "kind":"SystemTopology", "system":"orders",
+		"components":[{"name":"orders-gateway","kind":"gateway","endpoints":[
+			{"name":"orders-web","path":"/api/orders"}, {"name":"orders-edi","path":"/edi"}]}]
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	component := newManifestModel(topo, nil).Components[0]
+	encoded, err := json.Marshal(component)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(encoded, &got); err != nil {
+		t.Fatal(err)
+	}
+	want := []any{map[string]any{"name": "orders-edi", "path": "/edi"}, map[string]any{"name": "orders-web", "path": "/api/orders"}}
+	if !reflect.DeepEqual(got["endpoints"], want) {
+		t.Fatalf("endpoints = %#v, want %#v", got["endpoints"], want)
+	}
+	// Sorting the deployment view must not mutate the topology declaration.
+	original, _ := json.Marshal(topo)
+	if !strings.Contains(string(original), `"endpoints":[{"name":"orders-web"`) {
+		t.Fatalf("topology mutated: %s", original)
 	}
 }

@@ -57,6 +57,14 @@ const (
 	BlockKindExtractor     = "extractor"
 	BlockKindLoader        = "loader"
 	BlockKindTransactional = "transactional-integration"
+	// BlockKindGateway is an extractor whose items are pushed to it over
+	// HTTP: it publishes like an extractor, and its port is an endpoint it
+	// exposes rather than a binding it sweeps.
+	BlockKindGateway = "gateway"
+	// BlockKindJob is scheduled work that runs to completion and wires no
+	// message, port or endpoint: the catch-all for work no other kind
+	// describes.
+	BlockKindJob = "job"
 
 	// Message direction values, derived from block kind. The mapping is
 	// boundary-relative data-flow inverted: an extractor flows data in
@@ -123,7 +131,7 @@ func blockKindFromLabels(labels map[string]string) string {
 // stay coherent; that check lives with the message-parameters gate.
 func MessageDirection(kind string) string {
 	switch kind {
-	case BlockKindExtractor:
+	case BlockKindExtractor, BlockKindGateway:
 		return MessageDirectionPublish
 	case BlockKindLoader:
 		return MessageDirectionSubscribe

@@ -8,13 +8,22 @@ import (
 // The wiring vocabulary: the parameter names templates record in scaffold
 // values and later commands read back. One home keeps DSL changes local.
 const (
-	KeyAppID        = "appId"
-	KeyTopic        = "topic"
-	KeyContract     = "contract"
-	KeyPubsub       = "pubsub"
-	KeyPort         = "port"
-	KeyFromPort     = "fromPort"
-	KeyToPort       = "toPort"
+	KeyAppID    = "appId"
+	KeyTopic    = "topic"
+	KeyContract = "contract"
+	KeyPubsub   = "pubsub"
+	KeyPort     = "port"
+	KeyFromPort = "fromPort"
+	KeyToPort   = "toPort"
+	// KeyEndpoint carries a gateway's port in the system-host payload. It is
+	// kept apart from port because the host resolves every port to a file
+	// binding, and an endpoint is served over HTTP, not swept.
+	KeyEndpoint = "endpoint"
+	// KeyEndpointPath is the path a gateway's endpoint accepts items on, as its
+	// scaffold record carries it; it rides with the endpoint in the payload as
+	// path, where the system host and the ingress read it.
+	KeyEndpointPath = "endpointPath"
+	KeyPath         = "path"
 	KeyName         = "name"
 	KeyOrganization = "organization"
 	KeyProjectName  = "projectName"

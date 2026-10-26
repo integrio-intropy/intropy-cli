@@ -17,8 +17,9 @@ import (
 // An extractor is scheduled: it wakes, pulls from its source and exits, which is
 // a CronJob. A transactional integration is the same kind of job — it sweeps its
 // source, drains its internal hop, shuts its sidecar down and exits — so a
-// Deployment would restart it into CrashLoopBackOff. Every other block reacts to
-// messages or requests and must stay resident.
+// Deployment would restart it into CrashLoopBackOff, and so is a job, whose run
+// is its own work. Every other block reacts to messages or requests and must
+// stay resident.
 const (
 	WorkloadCronJob    = "cronjob"
 	WorkloadDeployment = "deployment"
@@ -28,7 +29,7 @@ const (
 // folded by foldKind. Records spell kinds inconsistently (camelCase from one
 // emitter, kebab-case after the frontend normalises), so kinds are compared
 // folded.
-var scheduledBlockKinds = []string{"extractor", "transactionalintegration"}
+var scheduledBlockKinds = []string{"extractor", "transactionalintegration", "job"}
 
 // foldKind lowercases a block kind and drops its dashes, so
 // transactional-integration, transactionalIntegration and
@@ -78,6 +79,10 @@ type ManifestComponent struct {
 
 	Topics []string `json:"topics,omitempty"`
 	Ports  []string `json:"ports,omitempty"`
+
+	// Endpoints are the gateway's ingress contract, carried from the topology
+	// onto its application Service. File-port fixtures never consume them.
+	Endpoints []topology.Endpoint `json:"endpoints,omitempty"`
 
 	// PubSub and Topic are the one pub/sub and topic the component runs on,
 	// taken verbatim from the topology record's channel — what the deployment
@@ -287,6 +292,8 @@ func buildComponents(components []topology.Component, appIDs, dirs map[string]st
 			ports[u.Port] = true
 		}
 		ic.Ports = sortedKeys(ports)
+		ic.Endpoints = slices.Clone(c.Endpoints)
+		slices.SortFunc(ic.Endpoints, func(a, b topology.Endpoint) int { return strings.Compare(a.Name, b.Name) })
 		ic.Subscription = subscriptionFor(c)
 		if ch := c.Channel; ch != nil {
 			ic.PubSub, ic.Topic = ch.PubSub, ch.Topic

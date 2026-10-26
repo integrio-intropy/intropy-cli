@@ -756,3 +756,46 @@ func realTemplatesSource(t *testing.T) (source template.SourceOptions, pin strin
 	}
 	return template.SourceOptions{RepoURL: "file://" + mirrorRoot, CacheRoot: t.TempDir()}, tag
 }
+
+func TestRealSystemUpdateRefreshesGatewayPath(t *testing.T) {
+	src, version := realTemplatesSource(t)
+	ws := t.TempDir()
+	hostDir := filepath.Join(ws, "order-flow")
+	g := gateway(filepath.Join(ws, "order-gateway"), "order-gateway", "order-placed")
+	g.Values[template.KeyEndpointPath] = "/api/orders"
+	writeRecord(t, g.Path, g.Scaffold)
+	var stderr bytes.Buffer
+	if err := Create(t.Context(), CreateOptions{Name: "OrderFlow", StartDir: ws, OutputDir: hostDir,
+		Version: version, Source: src, Stderr: &stderr, Stdout: io.Discard}); err != nil {
+		t.Fatalf("Create: %v\n%s", err, stderr.String())
+	}
+
+	g.Values[template.KeyEndpointPath] = "/orders"
+	writeRecord(t, g.Path, g.Scaffold)
+	stderr.Reset()
+	if err := Update(t.Context(), UpdateOptions{StartDir: ws, Source: src, Stderr: &stderr, Stdout: io.Discard}); err != nil {
+		t.Fatalf("Update: %v\n%s", err, stderr.String())
+	}
+	endpoints, err := os.ReadFile(filepath.Join(hostDir, "Endpoints.cs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(endpoints), `EndpointRef.Define("order-gateway-endpoint", "/orders")`) || strings.Contains(string(endpoints), "/api/orders") {
+		t.Fatalf("stale Endpoints.cs:\n%s", endpoints)
+	}
+	record, err := template.LoadScaffold(filepath.Join(hostDir, template.ScaffoldRelPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := record.Values["endpoints"].([]any)[0].(map[string]any)
+	if stored["path"] != "/orders" {
+		t.Fatalf("stored endpoint = %#v", stored)
+	}
+	stderr.Reset()
+	if err := Update(t.Context(), UpdateOptions{StartDir: ws, Source: src, Stderr: &stderr, Stdout: io.Discard}); err != nil {
+		t.Fatalf("second Update: %v", err)
+	}
+	if !strings.Contains(stderr.String(), ErrNoOrphans.Error()) {
+		t.Fatalf("second update: %s", stderr.String())
+	}
+}

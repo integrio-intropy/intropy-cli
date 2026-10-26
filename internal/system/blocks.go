@@ -3,6 +3,7 @@ package system
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/integrio-intropy/intropy-cli/internal/template"
 )
@@ -17,6 +18,8 @@ type parseBlock func(e template.ScaffoldEntry, c *Component) error
 // supported kinds. Adding a kind is a constant, a parser, and an entry here.
 var blockParsers = map[string]parseBlock{
 	template.BlockKindExtractor:     parseExtractor,
+	template.BlockKindGateway:       parseGateway,
+	template.BlockKindJob:           parseJob,
 	template.BlockKindLoader:        parseLoader,
 	template.BlockKindTransactional: parseTransactional,
 }
@@ -36,17 +39,58 @@ func supportedKinds() []string {
 // identity is the declaration; system assembly derives the channel and
 // payload type from it.
 func parseExtractor(e template.ScaffoldEntry, c *Component) error {
+	published, err := parsePublishes(e, c)
+	if err != nil || !published {
+		return err
+	}
+	return parseSinglePort(e, c)
+}
+
+// parseGateway reads a gateway: the message it publishes, as an extractor's,
+// and the endpoint it exposes with its path. The endpoint is required — the
+// template that introduced the kind always records it — and it is not a file
+// port, so it stays out of Ports. The path defaults to /<message>, the default
+// the framework applies to a record without one.
+func parseGateway(e template.ScaffoldEntry, c *Component) error {
+	published, err := parsePublishes(e, c)
+	if err != nil {
+		return err
+	}
+	endpoint, err := template.RecordValue(e, template.KeyPort)
+	if err != nil {
+		return err
+	}
+	c.Endpoint = endpoint
+	if published {
+		c.EndpointPath = "/" + c.Message.Name
+	}
+	if _, ok := e.Values[template.KeyEndpointPath]; ok {
+		path, err := template.RecordValue(e, template.KeyEndpointPath)
+		if err != nil {
+			return err
+		}
+		if !strings.HasPrefix(path, "/") {
+			return fmt.Errorf("%s: values.%s is %q; a path starts with /", e.Path, template.KeyEndpointPath, path)
+		}
+		c.EndpointPath = path
+	}
+	return nil
+}
+
+// parsePublishes reads the one message a producing block publishes and the
+// channel it publishes on; false when the message derives no contract.
+func parsePublishes(e template.ScaffoldEntry, c *Component) (bool, error) {
 	message, err := template.ReadPublishesMessage(e)
 	if err != nil {
-		return preScalarMessageRecord(err)
+		return false, preScalarMessageRecord(err)
 	}
 	contract := template.PascalCase(message)
 	if contract == "" {
-		return nil
+		return false, nil
 	}
 	channel, err := template.ReadChannel(e)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if channel == "" {
 		channel = message
@@ -55,7 +99,7 @@ func parseExtractor(e template.ScaffoldEntry, c *Component) error {
 	c.Topic = &TopicKey{Name: channel}
 	c.topicContract = contract
 	c.Message = &MessageWiring{Kind: MessagePublish, Name: message, Contract: contract}
-	return parseSinglePort(e, c)
+	return true, nil
 }
 
 // parseLoader reads the messages a loader routes — its routes, or the one
@@ -92,7 +136,7 @@ func parseLoader(e template.ScaffoldEntry, c *Component) error {
 // nested blocks or legacy flat keys, and no fallback reads them. The guidance
 // names both migration paths — set the scalar key, or re-scaffold.
 func preScalarMessageRecord(err error) error {
-	return fmt.Errorf("%w\nthis record predates the scalar message DSL: set values.publishes (extractor) or values.subscribes (loader) to the message name in the record's values, or re-scaffold the integration with a current template release", err)
+	return fmt.Errorf("%w\nthis record predates the scalar message DSL: set values.publishes (extractor, gateway) or values.subscribes (loader) to the message name in the record's values, or re-scaffold the integration with a current template release", err)
 }
 
 func parseSinglePort(e template.ScaffoldEntry, c *Component) error {
@@ -122,5 +166,12 @@ func parseTransactional(e template.ScaffoldEntry, c *Component) error {
 		return err
 	}
 	c.Ports = []string{from, to}
+	return nil
+}
+
+// parseJob reads a job: nothing beyond its app id. A job wires no message,
+// port or endpoint, so its record carries no wiring to read, and it joins
+// the system as a component of its own.
+func parseJob(template.ScaffoldEntry, *Component) error {
 	return nil
 }

@@ -244,12 +244,18 @@ intropy int create hello-world -o ./out --no-input -f values.yaml
 intropy int create hello-world -o ./out --output json
 ```
 
-Use `--force` to render into a non-empty directory.
+Use `--force` to render into a non-empty directory. An identity change is never
+a re-render: edit the component's `Manifest` and the matching `values` keys in
+its scaffold record together.
 
 `int create` also writes a scaffold record to `.intropy/scaffold.json` inside
 the new integration — the template name, the exact release version, and the
 resolved parameter values. Commit it: later commands read it to reproduce
-decisions made at scaffold time.
+decisions made at scaffold time. A gateway's identity (component name,
+organization, message, event source, and its endpoint) is rendered both into
+the component class's `Manifest`, which the framework reads at runtime, and
+into the record's `values`, which `sys create` reads. The CLI is the record's
+only writer; the component's build never touches the record.
 
 ### Show an integration
 
@@ -349,10 +355,21 @@ kinds. The assembled kinds:
 - **extractor / loader** — topic blocks. Their records carry `topic`,
   `contract`, and one optional `port`; a record without a `port` value
   keeps its component but gets no `From`/`To`.
+- **gateway** — a topic block that publishes like an extractor, but whose
+  items are pushed to it over HTTP. Its record carries `publishes`, a
+  required `port` (the endpoint it exposes) and `endpointPath` (the path callers
+  post to; `/<publishes>` when absent). The endpoint reaches the system-host
+  template as the component's `endpoint` and as a `{name, path}` entry in a
+  separate `endpoints` list, never in `ports`: the host resolves every port to
+  a file binding. A gateway deploys as a Deployment.
 - **transactional-integration** — a port-to-port block with no topic. Its
   record carries `fromPort` and `toPort`; both are required, and a missing
   one fails the assembly. The generated system class wires it as
   `.From(Ports.X).To(Ports.Y)`.
+- **job** — scheduled work with no topic, port or endpoint. Its record
+  carries only its `appId`; the generated system class wires it as
+  `builder.AddJob("<app-id>")`, and it deploys as a CronJob. Message flags
+  against a job template are usage errors.
 
 Validate the result from the host directory with `dotnet run -- check`.
 
@@ -816,6 +833,17 @@ environments:
   dev: { sync: auto }
   staging: { sync: auto, promotesFrom: [dev] }
   prod: { sync: manual, promotesFrom: [staging], requireSourceHealthy: true }
+```
+
+Three optional fields feed only `intropy manifests create`, which renders the
+GitOps source; `deploy`, `promote`, `diff` and `sync` ignore them. Unset, the
+templates' defaults apply:
+
+```yaml
+imageNamespace: intropy-poc                 # registry/<imageNamespace>/<component>: the project CI pushes to
+imagePullSecret: harbor-intropy-robot-credentials  # rendered as imagePullSecrets on every workload
+environments:
+  test: { sync: auto, namespace: test-acme-integrations }   # the namespace the overlay targets
 ```
 
 `promotesFrom` is the promotion graph: `deploy promote --to prod` accepts only

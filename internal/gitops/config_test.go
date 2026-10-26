@@ -93,6 +93,40 @@ func TestUnknownEnvironmentListsWhatExists(t *testing.T) {
 	}
 }
 
+// The manifest-scaffolding fields are optional: a repository that sets none of
+// them loads exactly as before, and one that sets them gets them verbatim.
+func TestLoadDeployConfigManifestFields(t *testing.T) {
+	root := t.TempDir()
+	writeDeployYAML(t, root, `schemaVersion: 1
+registry: harbor.intropy.io
+imageNamespace: intropy-poc
+imagePullSecret: harbor-intropy-robot-credentials
+environments:
+  test:
+    sync: auto
+    namespace: test-uppsala-integrations
+  prod:
+    sync: manual
+`)
+
+	cfg, err := LoadDeployConfig(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ImageNamespace != "intropy-poc" {
+		t.Errorf("ImageNamespace = %q", cfg.ImageNamespace)
+	}
+	if cfg.ImagePullSecret != "harbor-intropy-robot-credentials" {
+		t.Errorf("ImagePullSecret = %q", cfg.ImagePullSecret)
+	}
+	if got := cfg.Environments["test"].Namespace; got != "test-uppsala-integrations" {
+		t.Errorf("test namespace = %q", got)
+	}
+	if got := cfg.Environments["prod"].Namespace; got != "" {
+		t.Errorf("prod namespace = %q, want empty (template default)", got)
+	}
+}
+
 func TestLoadDeployConfigRejections(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -135,6 +169,21 @@ func TestLoadDeployConfigRejections(t *testing.T) {
 			name:    "promotesFrom names an undefined environment",
 			yaml:    "schemaVersion: 1\nregistry: r\nenvironments:\n  prod:\n    sync: manual\n    promotesFrom: [stagng]\n",
 			wantErr: "which is not defined",
+		},
+		{
+			name:    "imageNamespace with a path separator",
+			yaml:    "schemaVersion: 1\nregistry: r\nimageNamespace: a/b\nenvironments:\n  dev:\n    sync: auto\n",
+			wantErr: "not a registry path segment",
+		},
+		{
+			name:    "imagePullSecret with uppercase",
+			yaml:    "schemaVersion: 1\nregistry: r\nimagePullSecret: Harbor\nenvironments:\n  dev:\n    sync: auto\n",
+			wantErr: "not a Kubernetes Secret name",
+		},
+		{
+			name:    "namespace that is not a DNS label",
+			yaml:    "schemaVersion: 1\nregistry: r\nenvironments:\n  dev:\n    sync: auto\n    namespace: Test_NS\n",
+			wantErr: "not a Kubernetes namespace name",
 		},
 		{
 			name:    "unknown key",

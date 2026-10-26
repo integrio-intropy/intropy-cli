@@ -31,11 +31,22 @@ func loader(path, appID, subscribes string) template.ScaffoldEntry {
 	})
 }
 
+func gateway(path, appID, publishes string) template.ScaffoldEntry {
+	return component(path, template.BlockKindGateway, appID, map[string]any{
+		template.KeyPublishes: publishes,
+		template.KeyPort:      appID + "-endpoint",
+	})
+}
+
 func transactional(path, appID, from, to string) template.ScaffoldEntry {
 	return component(path, template.BlockKindTransactional, appID, map[string]any{
 		template.KeyFromPort: from,
 		template.KeyToPort:   to,
 	})
+}
+
+func job(path, appID string) template.ScaffoldEntry {
+	return component(path, template.BlockKindJob, appID, map[string]any{})
 }
 
 func discardWarnf(string, ...any) {}
@@ -73,6 +84,24 @@ func TestAssembleTransactional(t *testing.T) {
 	}
 	if len(model.Components) != 1 || len(model.Ports) != 2 || len(model.Messages) != 0 || len(model.Topics) != 0 {
 		t.Fatalf("model = %+v", model)
+	}
+}
+
+// A job wires nothing, so it joins the system as a component of its own and
+// contributes no port, topic or message.
+func TestAssembleJob(t *testing.T) {
+	model, err := Assemble([]template.ScaffoldEntry{
+		job("nightly-cleanup", "nightly-cleanup"),
+	}, func(format string, args ...any) { t.Errorf("unexpected warning: "+format, args...) })
+	if err != nil {
+		t.Fatalf("Assemble: %v", err)
+	}
+	if len(model.Components) != 1 || len(model.Ports) != 0 || len(model.Messages) != 0 || len(model.Topics) != 0 {
+		t.Fatalf("model = %+v", model)
+	}
+	entry := ComponentEntry(model.Components[0])
+	if len(entry) != 2 || entry[template.KeyAppID] != "nightly-cleanup" || entry["kind"] != template.BlockKindJob {
+		t.Errorf("payload entry = %+v, want only appId and kind", entry)
 	}
 }
 
@@ -173,4 +202,90 @@ func TestUsePubsubNamesTheSystemsPubsubEverywhere(t *testing.T) {
 	if len(model.Messages) != 1 || model.Messages[0].Pubsub != "order-flow-pubsub" {
 		t.Errorf("messages = %+v", model.Messages)
 	}
+}
+
+// A gateway publishes like an extractor, so a loader subscribes to its
+// message, but its port is an endpoint: it never becomes a file port.
+func TestAssembleGateway(t *testing.T) {
+	model, err := Assemble([]template.ScaffoldEntry{
+		gateway("order-gateway", "order-gateway", "order-placed"),
+		loader("order-loader", "order-loader", "order-placed"),
+	}, discardWarnf)
+	if err != nil {
+		t.Fatalf("Assemble: %v", err)
+	}
+	gw := model.Components[0]
+	if gw.Kind != template.BlockKindGateway || gw.Endpoint != "order-gateway-endpoint" || len(gw.Ports) != 0 || gw.Port != "" {
+		t.Fatalf("gateway = %+v, want endpoint order-gateway-endpoint and no ports", gw)
+	}
+	if gw.Topic == nil || gw.Topic.Name != "order-placed" {
+		t.Fatalf("gateway topic = %+v, want order-placed", gw.Topic)
+	}
+	// The record carries no endpointPath, so the path is the framework's default.
+	if len(model.Endpoints) != 1 || model.Endpoints[0] != (Endpoint{Name: "order-gateway-endpoint", Path: "/order-placed"}) {
+		t.Fatalf("endpoints = %+v", model.Endpoints)
+	}
+	if len(model.Ports) != 1 || model.Ports[0].Name != "order-loader-destination" {
+		t.Fatalf("ports = %+v, want only the loader's", model.Ports)
+	}
+	if len(model.Messages) != 1 || model.Messages[0].Publisher != "order-gateway" || model.Messages[0].Contract != "OrderPlaced" {
+		t.Fatalf("messages = %+v, want order-placed published by order-gateway", model.Messages)
+	}
+	if lt := model.Components[1].Topic; lt == nil || lt.Name != "order-placed" {
+		t.Fatalf("loader topic = %+v, want the gateway's", lt)
+	}
+}
+
+func TestAssembleGatewayTakesTheRecordedPath(t *testing.T) {
+	model, err := Assemble([]template.ScaffoldEntry{component("gw", template.BlockKindGateway, "gw", map[string]any{
+		template.KeyPublishes: "order-placed", template.KeyPort: "gw-endpoint", template.KeyEndpointPath: "/api/orders",
+	})}, discardWarnf)
+	if err != nil {
+		t.Fatalf("Assemble: %v", err)
+	}
+	if got := model.Endpoints; len(got) != 1 || got[0].Path != "/api/orders" {
+		t.Fatalf("endpoints = %+v, want /api/orders", got)
+	}
+}
+
+func TestAssembleGatewayErrors(t *testing.T) {
+	t.Run("a path that is not a path", func(t *testing.T) {
+		_, err := Assemble([]template.ScaffoldEntry{component("gw", template.BlockKindGateway, "gw", map[string]any{
+			template.KeyPublishes: "order-placed", template.KeyPort: "gw-endpoint", template.KeyEndpointPath: "orders",
+		})}, discardWarnf)
+		if err == nil || !strings.Contains(err.Error(), "a path starts with /") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+
+	t.Run("without an endpoint", func(t *testing.T) {
+		_, err := Assemble([]template.ScaffoldEntry{component("gw", template.BlockKindGateway, "gw", map[string]any{
+			template.KeyPublishes: "order-placed",
+		})}, discardWarnf)
+		if err == nil || !strings.Contains(err.Error(), template.KeyPort) {
+			t.Fatalf("err = %v, want a missing port", err)
+		}
+	})
+
+	t.Run("endpoint named like another block's port", func(t *testing.T) {
+		_, err := Assemble([]template.ScaffoldEntry{
+			extractor("a", "a", "a-created"),
+			component("gw", template.BlockKindGateway, "gw", map[string]any{template.KeyPublishes: "b-created", template.KeyPort: "a-source"}),
+		}, discardWarnf)
+		if err == nil || !strings.Contains(err.Error(), "duplicate port") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+
+	t.Run("publishing a message another block publishes on another channel", func(t *testing.T) {
+		_, err := Assemble([]template.ScaffoldEntry{
+			extractor("a", "a", "order-placed"),
+			component("gw", template.BlockKindGateway, "gw", map[string]any{
+				template.KeyPublishes: "order-placed", template.KeyPort: "gw-endpoint", template.KeyChannel: "orders",
+			}),
+		}, discardWarnf)
+		if err == nil || !strings.Contains(err.Error(), "conflicting channels") {
+			t.Fatalf("err = %v", err)
+		}
+	})
 }

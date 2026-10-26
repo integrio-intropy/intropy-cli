@@ -398,6 +398,8 @@ func gateMessageDirection(tmpl *Template, flagDirection string) error {
 		return nil
 	case dir == MessageDirectionNone && kind == BlockKindTransactional:
 		return fmt.Errorf("template %q: %w\ntransactional integrations talk with external systems directly and wire no messages", tmpl.Metadata.Name, ErrMessageDirection)
+	case dir == MessageDirectionNone && kind == BlockKindJob:
+		return fmt.Errorf("template %q: %w\njobs run their own work to completion and wire no messages", tmpl.Metadata.Name, ErrMessageDirection)
 	case dir == MessageDirectionNone:
 		return nil // unknown or absent kind: direction-neutral
 	case dir == MessageDirectionPublish:

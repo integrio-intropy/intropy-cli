@@ -37,6 +37,16 @@ func buildPayload(m *Model, outputDir, kebab string) (map[string]any, error) {
 		}
 	}
 
+	// A gateway's endpoint is listed apart from the ports: the host resolves
+	// every port to a file binding, and an endpoint is served over HTTP.
+	endpoints := make([]any, len(m.Endpoints))
+	for i, e := range m.Endpoints {
+		endpoints[i] = map[string]any{
+			template.KeyName: e.Name,
+			template.KeyPath: e.Path,
+		}
+	}
+
 	components := make([]any, len(m.Components))
 	for i, c := range m.Components {
 		components[i] = ComponentEntry(c)
@@ -55,6 +65,7 @@ func buildPayload(m *Model, outputDir, kebab string) (map[string]any, error) {
 		"topics":     topics,
 		"messages":   messages,
 		"ports":      ports,
+		"endpoints":  endpoints,
 		"components": components,
 	}
 	if m.Shared != nil {
@@ -133,6 +144,9 @@ func ComponentEntry(c Component) map[string]any {
 		}
 		entry[template.KeyRoutes] = routes
 		entry[template.KeyDefault] = c.Default
+	}
+	if c.Endpoint != "" {
+		entry[template.KeyEndpoint] = c.Endpoint
 	}
 	switch len(c.Ports) {
 	case 0:

@@ -198,9 +198,9 @@ func (f *WorkspaceFacts) ContractForMessage(name string) (string, bool) {
 // caller-side adapter maps full scaffold records to entries, and the import
 // graph never cycles back through the scanner.
 type WorkspaceFactEntry struct {
-	// BlockKind is the record's block kind ("extractor", "loader",
-	// "transactional-integration"); entries with any other kind contribute
-	// nothing.
+	// BlockKind is the record's block kind ("extractor", "gateway",
+	// "loader", "transactional-integration"); entries with any other kind
+	// contribute nothing but their organization.
 	BlockKind string
 
 	// Values is the record's resolved parameter values.
@@ -259,7 +259,7 @@ func BuildWorkspaceFacts(entries []WorkspaceFactEntry) *WorkspaceFacts {
 			}
 		}
 		switch e.BlockKind {
-		case BlockKindExtractor:
+		case BlockKindExtractor, BlockKindGateway:
 			message, mok := SoftValue(e.Values, KeyPublishes)
 			if mok {
 				contract := PascalCase(message)
