@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -59,6 +60,17 @@ const (
 type DeployConfig struct {
 	SchemaVersion int    `yaml:"schemaVersion"`
 	Registry      string `yaml:"registry"`
+
+	// ImageNamespace is the path segment between the registry and an image's
+	// name: the registry project CI pushes to (registry/imageNamespace/name).
+	// Only manifest scaffolding reads it; empty leaves the template's default.
+	ImageNamespace string `yaml:"imageNamespace"`
+
+	// ImagePullSecret names the Secret a workload pulls its image with, when
+	// the registry project is private and the namespace's service account does
+	// not already carry one. Only manifest scaffolding reads it; empty renders
+	// no imagePullSecrets.
+	ImagePullSecret string `yaml:"imagePullSecret"`
 
 	// MinimumCliVersion, when set, is the oldest CLI the repository's authors
 	// consider safe to deploy with.
@@ -119,6 +131,11 @@ type EnvironmentConfig struct {
 	// promotion into this one. Parsed here, enforced by promote.
 	RequireSourceHealthy bool `yaml:"requireSourceHealthy"`
 
+	// Namespace is the Kubernetes namespace this environment's workloads and
+	// Dapr components run in. Only manifest scaffolding reads it; empty leaves
+	// the template's default, one integration namespace per cluster.
+	Namespace string `yaml:"namespace"`
+
 	// Scratch marks an environment as disposable. The semantics are not yet
 	// defined, so this is carried but never acted on — parsing it now means a
 	// repository that already sets it is not rejected as malformed.
@@ -177,6 +194,14 @@ func (c *DeployConfig) validate(path string) error {
 	if c.Registry == "" {
 		return fmt.Errorf("%s: registry is required", path)
 	}
+	// The three names below end up verbatim in rendered manifests, where a
+	// malformed one fails only when the cluster or the registry rejects it.
+	if c.ImageNamespace != "" && !imageNamespacePattern.MatchString(c.ImageNamespace) {
+		return fmt.Errorf("%s: imageNamespace %q is not a registry path segment (lowercase letters, digits, and '.', '_' or '-' between them)", path, c.ImageNamespace)
+	}
+	if c.ImagePullSecret != "" && !dnsSubdomainPattern.MatchString(c.ImagePullSecret) {
+		return fmt.Errorf("%s: imagePullSecret %q is not a Kubernetes Secret name (DNS-1123 subdomain)", path, c.ImagePullSecret)
+	}
 	if len(c.Environments) == 0 {
 		return fmt.Errorf("%s: at least one entry under environments is required", path)
 	}
@@ -194,9 +219,18 @@ func (c *DeployConfig) validate(path string) error {
 				return fmt.Errorf("%s: environment %q promotes from %q, which is not defined", path, name, src)
 			}
 		}
+		if env.Namespace != "" && !dnsLabelPattern.MatchString(env.Namespace) {
+			return fmt.Errorf("%s: environment %q has namespace %q, which is not a Kubernetes namespace name (DNS-1123 label)", path, name, env.Namespace)
+		}
 	}
 	return nil
 }
+
+var (
+	imageNamespacePattern = regexp.MustCompile(`^[a-z0-9]+(?:[._-][a-z0-9]+)*$`)
+	dnsLabelPattern       = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`)
+	dnsSubdomainPattern   = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
+)
 
 // Environment returns the named environment's policy, or an error listing the
 // environments the repository does define.

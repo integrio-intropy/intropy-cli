@@ -551,6 +551,13 @@ type manifestFacts struct {
 	AppNamespace string
 	Platform     gitops.PlatformConfig
 
+	// ImageNamespace and ImagePullSecret come from deploy.yaml and apply to
+	// every environment; Namespaces is each environment's namespace from it.
+	// Empty values leave the template's defaults.
+	ImageNamespace  string
+	ImagePullSecret string
+	Namespaces      map[string]string
+
 	Model     ManifestModel
 	Scaffolds map[string]template.ScaffoldEntry
 	Selected  []ManifestComponent
@@ -609,16 +616,24 @@ func resolveGitOpsFacts(opts manifestRunOptions, s *session, found discoveredTop
 		}
 	}
 
+	namespaces := make(map[string]string, len(environments))
+	for _, env := range environments {
+		namespaces[env] = s.deployCfg.Environments[env].Namespace
+	}
+
 	return manifestFacts{
-		Domain:       domain,
-		System:       system,
-		Environments: environments,
-		Registry:     s.deployCfg.Registry,
-		AppNamespace: s.deployCfg.Argocd.AppNamespace,
-		Platform:     s.deployCfg.Platform,
-		Model:        model,
-		Scaffolds:    matchScaffolds(topo.Components, scaffolds),
-		Selected:     selected,
+		Domain:          domain,
+		System:          system,
+		Environments:    environments,
+		Registry:        s.deployCfg.Registry,
+		AppNamespace:    s.deployCfg.Argocd.AppNamespace,
+		Platform:        s.deployCfg.Platform,
+		ImageNamespace:  s.deployCfg.ImageNamespace,
+		ImagePullSecret: s.deployCfg.ImagePullSecret,
+		Namespaces:      namespaces,
+		Model:           model,
+		Scaffolds:       matchScaffolds(topo.Components, scaffolds),
+		Selected:        selected,
 	}, nil
 }
 
@@ -868,6 +883,8 @@ func manifestSeeds(facts manifestFacts, dirName string, comp *ManifestComponent)
 		"system":             facts.System,
 		"hostName":           HostDirName,
 		"registry":           facts.Registry,
+		"imageNamespace":     facts.ImageNamespace,
+		"imagePullSecret":    facts.ImagePullSecret,
 		"argocdAppNamespace": facts.AppNamespace,
 		"provider":           facts.Platform.Provider,
 		"pubsub":             facts.Platform.Pubsub,
@@ -925,6 +942,9 @@ func (f manifestFacts) gitopsMap(component, env string) map[string]any {
 		"registry":           f.Registry,
 		"argocdAppNamespace": f.AppNamespace,
 		"environments":       f.Environments,
+		// The environment's namespace, or empty for the template's default. A
+		// map lookup, so the local render, which has no deploy.yaml, gets empty.
+		"namespace": f.Namespaces[env],
 		"platform": map[string]any{
 			"provider":    f.Platform.Provider,
 			"pubsub":      f.Platform.Pubsub,

@@ -835,6 +835,17 @@ environments:
   prod: { sync: manual, promotesFrom: [staging], requireSourceHealthy: true }
 ```
 
+Three optional fields feed only `intropy manifests create`, which renders the
+GitOps source; `deploy`, `promote`, `diff` and `sync` ignore them. Unset, the
+templates' defaults apply:
+
+```yaml
+imageNamespace: intropy-poc                 # registry/<imageNamespace>/<component>: the project CI pushes to
+imagePullSecret: harbor-intropy-robot-credentials  # rendered as imagePullSecrets on every workload
+environments:
+  test: { sync: auto, namespace: test-acme-integrations }   # the namespace the overlay targets
+```
+
 `promotesFrom` is the promotion graph: `deploy promote --to prod` accepts only
 `--from staging`. `deploy` reads it too, but only to report whether the digests
 it is about to pin are what those environments already run.
