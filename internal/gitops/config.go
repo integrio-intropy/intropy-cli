@@ -102,6 +102,11 @@ type PlatformConfig struct {
 	// SecretStore selects the Dapr secret store, e.g. "kubernetes",
 	// "azure.keyvault" or "vault".
 	SecretStore string `yaml:"secretStore"`
+
+	// OtelEndpoint is the OTLP/gRPC collector the workloads export traces to,
+	// e.g. "http://tempo.monitoring.svc.cluster.local:4317". Empty leaves the
+	// templates' placeholder.
+	OtelEndpoint string `yaml:"otelEndpoint"`
 }
 
 // ArgocdConfig locates the ArgoCD instance that reconciles this repository.
