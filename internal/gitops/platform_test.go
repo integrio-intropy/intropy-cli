@@ -34,6 +34,7 @@ platform:
   provider: azure
   pubsub: servicebus
   secretStore: azure.keyvault
+  otelEndpoint: http://otel-collector.monitoring:4317
 argocd:
   server: argocd.example.com
   appNamespace: customer-acme
@@ -45,7 +46,7 @@ environments:
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := PlatformConfig{Provider: "azure", Pubsub: "servicebus", SecretStore: "azure.keyvault"}
+	want := PlatformConfig{Provider: "azure", Pubsub: "servicebus", SecretStore: "azure.keyvault", OtelEndpoint: "http://otel-collector.monitoring:4317"}
 	if cfg.Platform != want {
 		t.Errorf("Platform = %+v, want %+v", cfg.Platform, want)
 	}

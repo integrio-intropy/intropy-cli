@@ -889,6 +889,7 @@ func manifestSeeds(facts manifestFacts, dirName string, comp *ManifestComponent)
 		"provider":           facts.Platform.Provider,
 		"pubsub":             facts.Platform.Pubsub,
 		"secretStore":        facts.Platform.SecretStore,
+		"otelEndpoint":       facts.Platform.OtelEndpoint,
 	}
 	// Only when unambiguous. Guessing between two brokers would put the wrong
 	// name in a Component that the generated C# then fails to resolve.
@@ -946,9 +947,10 @@ func (f manifestFacts) gitopsMap(component, env string) map[string]any {
 		// map lookup, so the local render, which has no deploy.yaml, gets empty.
 		"namespace": f.Namespaces[env],
 		"platform": map[string]any{
-			"provider":    f.Platform.Provider,
-			"pubsub":      f.Platform.Pubsub,
-			"secretStore": f.Platform.SecretStore,
+			"provider":     f.Platform.Provider,
+			"pubsub":       f.Platform.Pubsub,
+			"secretStore":  f.Platform.SecretStore,
+			"otelEndpoint": f.Platform.OtelEndpoint,
 		},
 	}
 }

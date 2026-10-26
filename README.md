@@ -835,13 +835,15 @@ environments:
   prod: { sync: manual, promotesFrom: [staging], requireSourceHealthy: true }
 ```
 
-Three optional fields feed only `intropy manifests create`, which renders the
+Four optional fields feed only `intropy manifests create`, which renders the
 GitOps source; `deploy`, `promote`, `diff` and `sync` ignore them. Unset, the
-templates' defaults apply:
+templates' defaults or placeholders apply:
 
 ```yaml
 imageNamespace: intropy-poc                 # registry/<imageNamespace>/<component>: the project CI pushes to
 imagePullSecret: harbor-intropy-robot-credentials  # rendered as imagePullSecrets on every workload
+platform:
+  otelEndpoint: http://tempo.monitoring.svc.cluster.local:4317  # OTEL_EXPORTER_OTLP_ENDPOINT on every workload
 environments:
   test: { sync: auto, namespace: test-acme-integrations }   # the namespace the overlay targets
 ```
