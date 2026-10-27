@@ -304,9 +304,9 @@ func TestInitScaffoldsTheWholeSystem(t *testing.T) {
 	work := f.clone(t, "manifests-create/sales-distribution-all")
 	base := "domains/sales/distribution"
 	for _, rel := range []string{
-		base + "/host/component.yaml",
-		base + "/host/base/dapr/pubsub-rabbitmq.yaml",
-		base + "/host/base/secrets/secrets.yaml",
+		base + "/shared/component.yaml",
+		base + "/shared/base/dapr/pubsub-rabbitmq.yaml",
+		base + "/shared/base/secrets/secrets.yaml",
 		base + "/erp-loader/component.yaml",
 		base + "/erp-loader/base/deployment.yaml",
 		base + "/extractor/component.yaml",
@@ -320,7 +320,7 @@ func TestInitScaffoldsTheWholeSystem(t *testing.T) {
 
 	// The platform default is rabbitmq, so the Service Bus component must not be
 	// rendered at all — this is the conditionality the whole design turns on.
-	if _, err := os.Stat(filepath.Join(work, filepath.FromSlash(base+"/host/base/dapr/pubsub-servicebus.yaml"))); err == nil {
+	if _, err := os.Stat(filepath.Join(work, filepath.FromSlash(base+"/shared/base/dapr/pubsub-servicebus.yaml"))); err == nil {
 		t.Error("the servicebus component was rendered on a rabbitmq platform")
 	}
 }
@@ -357,7 +357,7 @@ func TestInitScopesComeFromTheTopology(t *testing.T) {
 	}
 
 	got := readTreeFile(t, f.clone(t, "manifests-create/sales-distribution-all"),
-		"domains/sales/distribution/host/base/dapr/pubsub-rabbitmq.yaml")
+		"domains/sales/distribution/shared/base/dapr/pubsub-rabbitmq.yaml")
 	for _, want := range []string{"- erp-loader", "- extractor", "- wms-loader"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("scopes missing %q:\n%s", want, got)
@@ -467,8 +467,8 @@ func TestInitJSONResult(t *testing.T) {
 	if res.System != "distribution" || res.Domain != "sales" {
 		t.Errorf("result = %+v", res)
 	}
-	if res.Host != HostDirName {
-		t.Errorf("Host = %q", res.Host)
+	if res.Shared != SharedDirName {
+		t.Errorf("Shared = %q", res.Shared)
 	}
 	if res.Template != initLibraryRef+"@v1.0.0" {
 		t.Errorf("Template = %q", res.Template)
@@ -496,7 +496,7 @@ func TestInitRendersServiceBusOnAzure(t *testing.T) {
 	}
 
 	work := f.clone(t, "manifests-create/sales-distribution-all")
-	base := "domains/sales/distribution/host/base/dapr"
+	base := "domains/sales/distribution/shared/base/dapr"
 	if got := readTreeFile(t, work, base+"/pubsub-servicebus.yaml"); !strings.Contains(got, "azure.servicebus") {
 		t.Errorf("servicebus component = %q", got)
 	}
@@ -625,7 +625,7 @@ func TestInitRefusesToWriteThroughASymlinkInTheGitopsRepository(t *testing.T) {
 	if err := os.WriteFile(outside, []byte("untouched\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	link := filepath.Join(f.gitopsOrigin, "domains", "sales", "distribution", "host", "component.yaml")
+	link := filepath.Join(f.gitopsOrigin, "domains", "sales", "distribution", "shared", "component.yaml")
 	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -644,6 +644,33 @@ func TestInitRefusesToWriteThroughASymlinkInTheGitopsRepository(t *testing.T) {
 	}
 	if data, readErr := os.ReadFile(outside); readErr != nil || string(data) != "untouched\n" {
 		t.Errorf("the file outside the repository was written: %q (%v)", data, readErr)
+	}
+}
+
+// A system rendered by CLI 2.2 or earlier keeps its shared manifests under
+// host/. Rendering shared/ beside it would give the same Dapr Components two
+// ArgoCD Applications, so the render stops and says how to migrate.
+func TestInitRefusesALegacyHostDirectory(t *testing.T) {
+	f := newInitFixture(t)
+
+	legacy := filepath.Join(f.gitopsOrigin, "domains", "sales", "distribution", "host", "component.yaml")
+	if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacy, []byte("schemaVersion: 1\nkind: shared\nname: host\nenvironments: [dev]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gittest.Run(t, f.gitopsOrigin, "add", "--", "domains")
+	gittest.Run(t, f.gitopsOrigin, "commit", "--quiet", "-m", "rendered by CLI 2.2")
+
+	_, _, err := runInit(t, f.options(t, &bytes.Buffer{}, &bytes.Buffer{}))
+	if err == nil {
+		t.Fatal("expected Init to refuse a system that still has host/")
+	}
+	for _, want := range []string{"domains/sales/distribution/host", "git mv", "domains/sales/distribution/shared"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error does not mention %q: %v", want, err)
+		}
 	}
 }
 
@@ -720,7 +747,7 @@ func TestInitProducesLoadableComponentConfigs(t *testing.T) {
 	work := f.clone(t, "manifests-create/sales-distribution-all")
 	base := filepath.Join(work, "domains", "sales", "distribution")
 
-	host, err := loadComponentAt(base, HostDirName)
+	host, err := loadComponentAt(base, SharedDirName)
 	if err != nil {
 		t.Fatalf("host component.yaml: %v", err)
 	}

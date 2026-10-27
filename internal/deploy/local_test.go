@@ -276,7 +276,7 @@ func TestLocalRendersTheWholeSystem(t *testing.T) {
 		t.Fatalf("Init: %v\nstderr: %s", err, stderr.String())
 	}
 
-	wantResources := []string{"host/overlays/local", "erp-loader/overlays/local", "extractor/overlays/local"}
+	wantResources := []string{"shared/overlays/local", "erp-loader/overlays/local", "extractor/overlays/local"}
 	if strings.Join(root.Resources, ",") != strings.Join(wantResources, ",") {
 		t.Errorf("resources = %v, want %v", root.Resources, wantResources)
 	}
@@ -289,7 +289,7 @@ func TestLocalRendersTheWholeSystem(t *testing.T) {
 		t.Fatalf("images = %+v, want 2 entries", root.Images)
 	}
 	for _, img := range root.Images {
-		if img.Name == "host" {
+		if img.Name == "shared" {
 			t.Errorf("the host got an images entry: %+v", img)
 		}
 		if !strings.HasPrefix(img.Name, "local/") {

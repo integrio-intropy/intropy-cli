@@ -20,14 +20,14 @@ func TestRequirePinnableAllowsService(t *testing.T) {
 // An empty plan would read as "already up to date", so this has to be an error
 // rather than a run that changes nothing.
 func TestRequirePinnableRejectsShared(t *testing.T) {
-	coord := gitops.Coordinate{Domain: "sales", System: "ordersync", Component: "host"}
-	comp := &gitops.ComponentConfig{Name: "host", Kind: gitops.KindShared}
+	coord := gitops.Coordinate{Domain: "sales", System: "ordersync", Component: "shared"}
+	comp := &gitops.ComponentConfig{Name: "shared", Kind: gitops.KindShared}
 
 	err := requirePinnable(coord, comp)
 	if err == nil {
 		t.Fatal("expected an error for a shared component")
 	}
-	for _, want := range []string{"sales/ordersync/host", gitops.KindShared, "nothing to pin"} {
+	for _, want := range []string{"sales/ordersync/shared", gitops.KindShared, "nothing to pin"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not mention %q", err, want)
 		}
@@ -45,8 +45,8 @@ func TestComponentKindMakesTheDefaultExplicit(t *testing.T) {
 
 // An empty DIGEST column must not be readable as "never deployed".
 func TestNotesExplainSharedHasNoDigest(t *testing.T) {
-	coord := gitops.Coordinate{Domain: "sales", System: "ordersync", Component: "host"}
-	comp := &gitops.ComponentConfig{Name: "host", Kind: gitops.KindShared}
+	coord := gitops.Coordinate{Domain: "sales", System: "ordersync", Component: "shared"}
+	comp := &gitops.ComponentConfig{Name: "shared", Kind: gitops.KindShared}
 
 	got := notes(coord, comp, nil)
 	if len(got) == 0 {

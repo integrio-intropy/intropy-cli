@@ -88,7 +88,7 @@ func TestLocalTemplatesRenderAndBuild(t *testing.T) {
 	work := f.clone(t, "manifests-create/sales-distribution-all")
 	base := filepath.Join(work, "domains", "sales", "distribution")
 
-	for _, unit := range []string{"host", "extractor", "erp-loader", "reconciler"} {
+	for _, unit := range []string{"shared", "extractor", "erp-loader", "reconciler"} {
 		if _, err := os.Stat(filepath.Join(base, unit, "base", "service.yaml")); !os.IsNotExist(err) {
 			t.Errorf("non-gateway %s has an application Service, stat error: %v", unit, err)
 		}
@@ -105,7 +105,7 @@ func TestLocalTemplatesRenderAndBuild(t *testing.T) {
 
 	// The generated component.yaml has to satisfy the schema the rest of deploy
 	// reads, or the tree is unusable the moment it merges.
-	host, err := loadComponentAt(base, HostDirName)
+	host, err := loadComponentAt(base, SharedDirName)
 	if err != nil {
 		t.Fatalf("host component.yaml: %v", err)
 	}
@@ -123,8 +123,8 @@ func TestLocalTemplatesRenderAndBuild(t *testing.T) {
 	// The fixture selects erp=sftp and price-master=http (see initFixture's
 	// options), so the host renders exactly those two adapter files.
 	for _, want := range []struct{ path, bindingType, port string }{
-		{"domains/sales/distribution/host/base/bindings/sftp.yaml", "bindings.sftp", "erp"},
-		{"domains/sales/distribution/host/base/bindings/http.yaml", "bindings.http", "price-master"},
+		{"domains/sales/distribution/shared/base/bindings/sftp.yaml", "bindings.sftp", "erp"},
+		{"domains/sales/distribution/shared/base/bindings/http.yaml", "bindings.http", "price-master"},
 	} {
 		got := readTreeFile(t, work, want.path)
 		if !strings.Contains(got, "type: "+want.bindingType) {
@@ -135,7 +135,7 @@ func TestLocalTemplatesRenderAndBuild(t *testing.T) {
 		}
 	}
 	for _, absent := range []string{"file.yaml", "blob.yaml"} {
-		if _, err := os.Stat(filepath.Join(work, "domains/sales/distribution/host/base/bindings", absent)); !os.IsNotExist(err) {
+		if _, err := os.Stat(filepath.Join(work, "domains/sales/distribution/shared/base/bindings", absent)); !os.IsNotExist(err) {
 			t.Errorf("unselected adapter %s was rendered, stat err = %v", absent, err)
 		}
 	}
@@ -175,7 +175,7 @@ func TestLocalTemplatesRenderSelectedBindingAdapters(t *testing.T) {
 	}
 
 	work := f.clone(t, "manifests-create/sales-distribution-all")
-	got := readTreeFile(t, work, "domains/sales/distribution/host/base/bindings/sftp.yaml")
+	got := readTreeFile(t, work, "domains/sales/distribution/shared/base/bindings/sftp.yaml")
 	for _, want := range []string{
 		"name: erp",
 		"type: bindings.sftp",
@@ -200,7 +200,7 @@ func TestLocalTemplatesAzureRendersServiceBusAndNoSecrets(t *testing.T) {
 	}
 
 	work := f.clone(t, "manifests-create/sales-distribution-all")
-	hostBase := filepath.Join(work, "domains", "sales", "distribution", "host", "base")
+	hostBase := filepath.Join(work, "domains", "sales", "distribution", "shared", "base")
 
 	if _, err := os.Stat(filepath.Join(hostBase, "dapr", "pubsub-servicebus.yaml")); err != nil {
 		t.Errorf("servicebus component missing: %v", err)
@@ -214,11 +214,11 @@ func TestLocalTemplatesAzureRendersServiceBusAndNoSecrets(t *testing.T) {
 		t.Error("base/secrets was rendered despite an external secret store")
 	}
 
-	out, err := exec.Command("kustomize", "build", filepath.Join(work, "domains", "sales", "distribution", "host", "overlays", "prod")).CombinedOutput()
+	out, err := exec.Command("kustomize", "build", filepath.Join(work, "domains", "sales", "distribution", "shared", "overlays", "prod")).CombinedOutput()
 	if err != nil {
 		t.Fatalf("kustomize build failed: %v\n%s", err, out)
 	}
-	t.Logf("azure host/prod:\n%s", out)
+	t.Logf("azure shared/prod:\n%s", out)
 }
 
 const gatewayTopologyRecord = `{

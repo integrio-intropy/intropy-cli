@@ -21,14 +21,14 @@ func writeScanFile(t *testing.T, root, rel, content string) {
 
 func TestScanPlaceholdersReportsFileAndLine(t *testing.T) {
 	root := t.TempDir()
-	writeScanFile(t, root, "host/base/secrets/secrets.yaml", `apiVersion: v1
+	writeScanFile(t, root, "shared/base/secrets/secrets.yaml", `apiVersion: v1
 kind: Secret
 stringData:
   connection: REPLACE-ME-RABBITMQ-CONNECTION-STRING
   host: REPLACE-ME-SFTP-HOST
 `)
 
-	found, err := scanPlaceholders(root, []string{"host/base/secrets/secrets.yaml"})
+	found, err := scanPlaceholders(root, []string{"shared/base/secrets/secrets.yaml"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ stringData:
 	if found[1].Line != 5 || found[1].Token != "REPLACE-ME-SFTP-HOST" {
 		t.Errorf("found[1] = %+v", found[1])
 	}
-	if found[0].File != "host/base/secrets/secrets.yaml" {
+	if found[0].File != "shared/base/secrets/secrets.yaml" {
 		t.Errorf("File = %q, want a slash-separated relative path", found[0].File)
 	}
 }
@@ -161,7 +161,7 @@ func TestReportPlaceholdersSaysImagesAreNotIncluded(t *testing.T) {
 	out := output{Stdout: &stdout, Format: OutputPlain}
 
 	reportPlaceholders(out, []Placeholder{
-		{File: "host/base/secrets/secrets.yaml", Line: 4, Token: "REPLACE-ME-RABBITMQ-CONNECTION-STRING"},
+		{File: "shared/base/secrets/secrets.yaml", Line: 4, Token: "REPLACE-ME-RABBITMQ-CONNECTION-STRING"},
 	})
 
 	got := stdout.String()

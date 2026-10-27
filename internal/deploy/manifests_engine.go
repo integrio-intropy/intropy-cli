@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -31,13 +32,54 @@ const (
 	TemplateDeployComponent = "deploy-component"
 )
 
-// HostDirName is the component directory holding a system's shared manifests.
+// SharedDirName is the component directory holding a system's shared manifests.
 //
 // A Dapr Component is namespace-scoped and every integration in a customer's
-// namespace shares it, so exactly one ArgoCD Application may own each one. The
-// system host is what gives them that owner: it has no Dockerfile and therefore
-// no image, which is precisely what gitops.KindShared describes.
-const HostDirName = "host"
+// namespace shares it, so exactly one ArgoCD Application may own each one. This
+// directory is what gives them that owner: it has no Dockerfile and therefore no
+// image, which is precisely what gitops.KindShared describes, and it is named
+// after that kind.
+const SharedDirName = "shared"
+
+// LegacyHostDirName is where CLI 2.2 and earlier rendered the shared manifests.
+// It was named after the system host, which in a source workspace is the Aspire
+// project, not anything that runs in the cluster. A GitOps tree that still has it
+// must be migrated before rendering (refuseLegacyHostDir), and no component may
+// take either name (assertComponentNameFree).
+const LegacyHostDirName = "host"
+
+// assertComponentNameFree refuses a component named after the shared directory,
+// current or legacy: its manifests would render into the directory that owns the
+// system's Dapr Components, and its ArgoCD Application would take that name.
+func assertComponentNameFree(name string) error {
+	if name == SharedDirName || name == LegacyHostDirName {
+		return fmt.Errorf("component name %q is reserved: %s/ holds a system's shared manifests (%s/ before CLI 2.3); rename the component",
+			name, SharedDirName, LegacyHostDirName)
+	}
+	return nil
+}
+
+// refuseLegacyHostDir stops a render into a system whose shared manifests are
+// still under host/. Rendering shared/ next to it would give the same Dapr
+// Components two ArgoCD Applications, and moving it is not a change to make
+// silently: the Application is named after the directory, so the rename replaces
+// it, and an Application with the resources finalizer deletes what it owned on
+// its way out, PersistentVolumeClaims included.
+func refuseLegacyHostDir(dest *destTree, facts manifestFacts) error {
+	legacy := componentRelPath(facts.Domain, facts.System, LegacyHostDirName)
+	_, err := dest.read(path.Join(legacy, gitops.ComponentFileName))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	shared := componentRelPath(facts.Domain, facts.System, SharedDirName)
+	return fmt.Errorf("%s/ holds this system's shared manifests from CLI 2.2 or earlier; this CLI renders them into %s/.\n"+
+		"Migrate first: git mv %s %s, and read \"Migrating host/ to shared/\" in the README before pushing. "+
+		"The ArgoCD Application changes name, and the old one deletes what it owned unless the ApplicationSet preserves resources on deletion",
+		legacy, SharedDirName, legacy, shared)
+}
 
 // Review branches keep incomplete manifests away from the default branch,
 // where the ApplicationSet could pick them up before review.
@@ -279,6 +321,10 @@ func initGitOps(ctx context.Context, opts manifestRunOptions, found discoveredTo
 	}
 	defer dest.Close()
 
+	if err := refuseLegacyHostDir(dest, facts); err != nil {
+		return err
+	}
+
 	if err := renderScaffold(ctx, opts, facts, bindings, lib, staging); err != nil {
 		return err
 	}
@@ -302,7 +348,7 @@ func initGitOps(ctx context.Context, opts manifestRunOptions, found discoveredTo
 	result := ManifestCreateResult{
 		System:       facts.System,
 		Domain:       facts.Domain,
-		Host:         HostDirName,
+		Shared:       SharedDirName,
 		Template:     lib.Ref(),
 		Components:   facts.ComponentNames(),
 		Files:        actions,
@@ -373,6 +419,9 @@ func resolveLocalFacts(opts manifestRunOptions, found discoveredTopology) (manif
 		// not own: a name with a separator in it would render into a directory of
 		// its own choosing.
 		if err := assertPathSegment("component name", c.Name); err != nil {
+			return manifestFacts{}, err
+		}
+		if err := assertComponentNameFree(c.Name); err != nil {
 			return manifestFacts{}, err
 		}
 		if c.Dir == "" {
@@ -611,6 +660,9 @@ func resolveGitOpsFacts(opts manifestRunOptions, s *session, found discoveredTop
 		if err := assertPathSegment("component name", c.Name); err != nil {
 			return manifestFacts{}, err
 		}
+		if err := assertComponentNameFree(c.Name); err != nil {
+			return manifestFacts{}, err
+		}
 		if c.Dir == "" {
 			fmt.Fprintf(opts.Stderr, "warning: %s has no scaffold record under the workspace root; its manifests will be generated without an appId or sourcePaths\n", c.Name)
 		}
@@ -762,11 +814,11 @@ func selectEnvironments(cfg *gitops.DeployConfig, requested []string) ([]string,
 //
 // In GitOps mode staging mirrors the repository, so a staged path is already
 // the repo-relative path the classifier and the commit both need. A local
-// render stages flat — host/ and one directory per component — because the
+// render stages flat — shared/ and one directory per component — because the
 // temp root already holds exactly one system and no commit needs a
 // repo-relative path.
 func renderScaffold(ctx context.Context, opts manifestRunOptions, facts manifestFacts, bindings map[string]map[string]string, lib *template.Library, staging string) error {
-	if err := renderOne(opts, facts, bindings, lib, TemplateDeployHost, HostDirName, nil, staging); err != nil {
+	if err := renderOne(opts, facts, bindings, lib, TemplateDeployHost, SharedDirName, nil, staging); err != nil {
 		return err
 	}
 	for _, c := range facts.Selected {
@@ -879,9 +931,11 @@ func resolveManifestValues(opts manifestRunOptions, facts manifestFacts, binding
 // template would declare for it.
 func manifestSeeds(facts manifestFacts, dirName string, comp *ManifestComponent) map[string]any {
 	seeds := map[string]any{
-		"domain":             facts.Domain,
-		"system":             facts.System,
-		"hostName":           HostDirName,
+		"domain": facts.Domain,
+		"system": facts.System,
+		// The template contract's name for the shared directory; the key predates
+		// the rename and stays, so templates written against it keep working.
+		"hostName":           SharedDirName,
 		"registry":           facts.Registry,
 		"imageNamespace":     facts.ImageNamespace,
 		"imagePullSecret":    facts.ImagePullSecret,
@@ -935,11 +989,13 @@ func isBlank(v any) bool {
 
 func (f manifestFacts) gitopsMap(component, env string) map[string]any {
 	return map[string]any{
-		"domain":             f.Domain,
-		"system":             f.System,
-		"component":          component,
-		"env":                env,
-		"host":               HostDirName,
+		"domain":    f.Domain,
+		"system":    f.System,
+		"component": component,
+		"env":       env,
+		// .gitops.host: the shared directory's name, under the key the templates
+		// already read.
+		"host":               SharedDirName,
 		"registry":           f.Registry,
 		"argocdAppNamespace": f.AppNamespace,
 		"environments":       f.Environments,

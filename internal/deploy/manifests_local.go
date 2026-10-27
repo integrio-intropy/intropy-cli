@@ -208,7 +208,7 @@ func writeLocalRootKustomization(staging, namespace string, facts manifestFacts,
 		APIVersion: "kustomize.config.k8s.io/v1beta1",
 		Kind:       "Kustomization",
 		Namespace:  namespace,
-		Resources:  []string{HostDirName + "/overlays/" + localEnv},
+		Resources:  []string{SharedDirName + "/overlays/" + localEnv},
 		Images:     images,
 	}
 	for _, c := range facts.Selected {

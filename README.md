@@ -437,6 +437,39 @@ workspace. The domain is inferred from the existing GitOps tree or workspace
 layout, with `--domain` available on the first run when neither is conclusive.
 The latest template release is used by default; `--template-version` pins one.
 
+Beside the components, every system gets `domains/<domain>/<system>/shared/`
+(`kind: shared` in its `component.yaml`): the Dapr Components and claims its
+blocks share. A Dapr Component is namespace-scoped, so exactly one ArgoCD
+Application may own each one, and this directory is that owner. It has no image,
+so `deploy pin` and `deploy promote` refuse it; its manifests are edited
+directly. `shared` and `host` are reserved: no component may take either name.
+
+#### Migrating host/ to shared/
+
+CLI 2.2 and earlier rendered the shared manifests into `host/`, named after the
+system host, which in a source workspace is the Aspire project. This CLI renders
+`shared/`, and refuses to render a system that still has `host/`: the two would
+give the same Dapr Components two ArgoCD Applications.
+
+The ApplicationSet names each Application after its directory, so the rename
+replaces `<domain>-<system>-host-<env>` with `<domain>-<system>-shared-<env>`.
+An Application with the `resources-finalizer.argocd.argoproj.io` finalizer (the
+ApplicationSet default) deletes everything it owned when it goes,
+PersistentVolumeClaims and the files on them included. Keep the resources:
+
+1. In each ApplicationSet that generates the Applications, set
+   `spec.syncPolicy.preserveResourcesOnDeletion: true`, push, and wait for the
+   ApplicationSet to apply it. Its Applications are then deleted without
+   cascading.
+2. For each system: `git mv domains/<domain>/<system>/host domains/<domain>/<system>/shared`,
+   and change `name: host` to `name: shared` in its `component.yaml`. Push.
+3. The ApplicationSet deletes the `-host-` Applications, leaving their
+   resources in place, and creates the `-shared-` ones, which adopt them on
+   their first sync. An environment that syncs automatically does that by
+   itself; for one that syncs manually, sync the new Application once.
+4. Check that each `-shared-` Application is Synced and Healthy, then remove
+   `preserveResourcesOnDeletion` again if you do not want it permanently.
+
 ## Deployment (`intropy deploy pin`)
 
 Pin the image digest that CI built for your current commit into one

@@ -31,9 +31,9 @@ func apply(t *testing.T, staging, dest string, actions []FileAction) error {
 
 func TestClassifyRefusesASymlinkedDestinationFile(t *testing.T) {
 	staging, dest, outside := t.TempDir(), t.TempDir(), t.TempDir()
-	writeTree(t, staging, map[string]string{"host/component.yaml": "scaffolded\n"})
+	writeTree(t, staging, map[string]string{"shared/component.yaml": "scaffolded\n"})
 	writeTree(t, outside, map[string]string{"secrets.yaml": "not ours\n"})
-	symlink(t, filepath.Join(outside, "secrets.yaml"), filepath.Join(dest, "host", "component.yaml"))
+	symlink(t, filepath.Join(outside, "secrets.yaml"), filepath.Join(dest, "shared", "component.yaml"))
 
 	rels, err := stageRels(staging)
 	if err != nil {
@@ -55,10 +55,10 @@ func TestClassifyRefusesASymlinkedDestinationFile(t *testing.T) {
 // while creating the file underneath it without the destination guard.
 func TestApplyRefusesASymlinkedParentDirectoryWithoutForce(t *testing.T) {
 	staging, dest, outside := t.TempDir(), t.TempDir(), t.TempDir()
-	writeTree(t, staging, map[string]string{"host/base/kustomization.yaml": "scaffolded\n"})
-	symlink(t, outside, filepath.Join(dest, "host"))
+	writeTree(t, staging, map[string]string{"shared/base/kustomization.yaml": "scaffolded\n"})
+	symlink(t, outside, filepath.Join(dest, "shared"))
 
-	actions := []FileAction{{Rel: "host/base/kustomization.yaml", Action: ActionCreate}}
+	actions := []FileAction{{Rel: "shared/base/kustomization.yaml", Action: ActionCreate}}
 	err := apply(t, staging, dest, actions)
 	if err == nil {
 		t.Fatal("expected a symlinked parent directory to be refused")
@@ -75,13 +75,13 @@ func TestApplyRefusesASymlinkedParentDirectoryWithoutForce(t *testing.T) {
 // permits it, and .git/hooks is inside the checkout.
 func TestApplyRefusesAParentSymlinkPointingIntoTheRepository(t *testing.T) {
 	staging, dest := t.TempDir(), t.TempDir()
-	writeTree(t, staging, map[string]string{"host/base/kustomization.yaml": "scaffolded\n"})
+	writeTree(t, staging, map[string]string{"shared/base/kustomization.yaml": "scaffolded\n"})
 	if err := os.MkdirAll(filepath.Join(dest, ".git", "hooks"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	symlink(t, filepath.Join("..", ".git", "hooks"), filepath.Join(dest, "host"))
+	symlink(t, filepath.Join("..", ".git", "hooks"), filepath.Join(dest, "shared"))
 
-	err := apply(t, staging, dest, []FileAction{{Rel: "host/base/kustomization.yaml", Action: ActionCreate}})
+	err := apply(t, staging, dest, []FileAction{{Rel: "shared/base/kustomization.yaml", Action: ActionCreate}})
 	if err == nil {
 		t.Fatal("expected a symlink into .git to be refused")
 	}
@@ -96,7 +96,7 @@ func TestApplyRefusesRelsThatLeaveTheRepository(t *testing.T) {
 
 	for _, rel := range []string{
 		"../escaped.yaml",
-		"host/../../escaped.yaml",
+		"shared/../../escaped.yaml",
 		filepath.Join(outside, "escaped.yaml"),
 		"",
 	} {
@@ -115,9 +115,9 @@ func TestApplyRefusesRelsThatLeaveTheRepository(t *testing.T) {
 
 func TestStageRelsRefusesASymlinkInTheRenderedTree(t *testing.T) {
 	staging, outside := t.TempDir(), t.TempDir()
-	writeTree(t, staging, map[string]string{"host/component.yaml": "fine\n"})
+	writeTree(t, staging, map[string]string{"shared/component.yaml": "fine\n"})
 	writeTree(t, outside, map[string]string{"id_rsa": "private\n"})
-	symlink(t, filepath.Join(outside, "id_rsa"), filepath.Join(staging, "host", "leak.yaml"))
+	symlink(t, filepath.Join(outside, "id_rsa"), filepath.Join(staging, "shared", "leak.yaml"))
 
 	if _, err := stageRels(staging); err == nil {
 		t.Fatal("expected a symlink in the staging tree to be refused")
@@ -129,10 +129,10 @@ func TestStageRelsRefusesASymlinkInTheRenderedTree(t *testing.T) {
 func TestApplyCreatesThroughTheGuard(t *testing.T) {
 	staging, dest := t.TempDir(), t.TempDir()
 	writeTree(t, staging, map[string]string{
-		"host/component.yaml":                  "old\n",
-		"host/overlays/dev/kustomization.yaml": "fresh\n",
+		"shared/component.yaml":                  "old\n",
+		"shared/overlays/dev/kustomization.yaml": "fresh\n",
 	})
-	writeTree(t, dest, map[string]string{"host/component.yaml": "old\n"})
+	writeTree(t, dest, map[string]string{"shared/component.yaml": "old\n"})
 
 	written, err := applyStaged(staging, destTreeFor(t, dest), classify(t, staging, dest))
 	if err != nil {
@@ -141,10 +141,10 @@ func TestApplyCreatesThroughTheGuard(t *testing.T) {
 	if len(written) != 1 {
 		t.Fatalf("written = %v", written)
 	}
-	if got := readTreeFile(t, dest, "host/component.yaml"); got != "old\n" {
+	if got := readTreeFile(t, dest, "shared/component.yaml"); got != "old\n" {
 		t.Errorf("existing file = %q", got)
 	}
-	if got := readTreeFile(t, dest, "host/overlays/dev/kustomization.yaml"); got != "fresh\n" {
+	if got := readTreeFile(t, dest, "shared/overlays/dev/kustomization.yaml"); got != "fresh\n" {
 		t.Errorf("create = %q", got)
 	}
 }

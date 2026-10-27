@@ -14,7 +14,7 @@ import (
 )
 
 func TestAssertOnlyAcceptsASubset(t *testing.T) {
-	expected := []string{"domains/sales/orders/host/component.yaml", "domains/sales/orders/host/base/kustomization.yaml"}
+	expected := []string{"domains/sales/orders/shared/component.yaml", "domains/sales/orders/shared/base/kustomization.yaml"}
 
 	// Exactly what was asked for.
 	if err := assertOnly("staged", expected, expected); err != nil {
