@@ -57,9 +57,9 @@ func classify(t *testing.T, staging, dest string) []FileAction {
 func TestStageRelsIsSortedAndSlashSeparated(t *testing.T) {
 	staging := t.TempDir()
 	writeTree(t, staging, map[string]string{
-		"host/overlays/dev/kustomization.yaml": "dev\n",
-		"host/base/kustomization.yaml":         "base\n",
-		"host/component.yaml":                  "comp\n",
+		"shared/overlays/dev/kustomization.yaml": "dev\n",
+		"shared/base/kustomization.yaml":         "base\n",
+		"shared/component.yaml":                  "comp\n",
 	})
 
 	rels, err := stageRels(staging)
@@ -67,9 +67,9 @@ func TestStageRelsIsSortedAndSlashSeparated(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{
-		"host/base/kustomization.yaml",
-		"host/component.yaml",
-		"host/overlays/dev/kustomization.yaml",
+		"shared/base/kustomization.yaml",
+		"shared/component.yaml",
+		"shared/overlays/dev/kustomization.yaml",
 	}
 	if strings.Join(rels, "|") != strings.Join(want, "|") {
 		t.Errorf("rels = %v, want %v", rels, want)
@@ -79,8 +79,8 @@ func TestStageRelsIsSortedAndSlashSeparated(t *testing.T) {
 func TestClassifyFreshOnboardingIsAllCreate(t *testing.T) {
 	staging, dest := t.TempDir(), t.TempDir()
 	writeTree(t, staging, map[string]string{
-		"host/component.yaml":          "kind: shared\n",
-		"host/base/kustomization.yaml": "resources: []\n",
+		"shared/component.yaml":          "kind: shared\n",
+		"shared/base/kustomization.yaml": "resources: []\n",
 	})
 
 	for _, a := range classify(t, staging, dest) {
@@ -94,11 +94,11 @@ func TestClassifyFreshOnboardingIsAllCreate(t *testing.T) {
 // git history.
 func TestClassifyIdenticalFileIsNotAChange(t *testing.T) {
 	staging, dest := t.TempDir(), t.TempDir()
-	writeTree(t, staging, map[string]string{"host/component.yaml": "kind: shared\n"})
-	writeTree(t, dest, map[string]string{"host/component.yaml": "kind: shared\n"})
+	writeTree(t, staging, map[string]string{"shared/component.yaml": "kind: shared\n"})
+	writeTree(t, dest, map[string]string{"shared/component.yaml": "kind: shared\n"})
 
 	actions := classify(t, staging, dest)
-	if got := actionFor(t, actions, "host/component.yaml"); got != ActionIdentical {
+	if got := actionFor(t, actions, "shared/component.yaml"); got != ActionIdentical {
 		t.Errorf("action = %q, want identical", got)
 	}
 	for _, a := range actions {
@@ -110,10 +110,10 @@ func TestClassifyIdenticalFileIsNotAChange(t *testing.T) {
 
 func TestClassifyDifferingFileIsAConflict(t *testing.T) {
 	staging, dest := t.TempDir(), t.TempDir()
-	writeTree(t, staging, map[string]string{"host/component.yaml": "kind: shared\n"})
-	writeTree(t, dest, map[string]string{"host/component.yaml": "kind: shared\n# hand-edited\n"})
+	writeTree(t, staging, map[string]string{"shared/component.yaml": "kind: shared\n"})
+	writeTree(t, dest, map[string]string{"shared/component.yaml": "kind: shared\n# hand-edited\n"})
 
-	if got := actionFor(t, classify(t, staging, dest), "host/component.yaml"); got != ActionConflict {
+	if got := actionFor(t, classify(t, staging, dest), "shared/component.yaml"); got != ActionConflict {
 		t.Errorf("action = %q, want conflict", got)
 	}
 }
@@ -141,14 +141,14 @@ func TestClassifyIsAdditiveWhenTheTopologyGrows(t *testing.T) {
 
 func TestApplyStagedRefusesAFileCreatedAfterClassification(t *testing.T) {
 	staging, dest := t.TempDir(), t.TempDir()
-	writeTree(t, staging, map[string]string{"host/component.yaml": "generated\n"})
+	writeTree(t, staging, map[string]string{"shared/component.yaml": "generated\n"})
 	actions := classify(t, staging, dest)
-	writeTree(t, dest, map[string]string{"host/component.yaml": "appeared later\n"})
+	writeTree(t, dest, map[string]string{"shared/component.yaml": "appeared later\n"})
 
 	if _, err := applyStaged(staging, destTreeFor(t, dest), actions); err == nil {
 		t.Fatal("expected the late file to be refused")
 	}
-	if got := readTreeFile(t, dest, "host/component.yaml"); got != "appeared later\n" {
+	if got := readTreeFile(t, dest, "shared/component.yaml"); got != "appeared later\n" {
 		t.Errorf("late file was replaced: %q", got)
 	}
 }
@@ -193,7 +193,7 @@ func TestSummariseActions(t *testing.T) {
 }
 
 func TestComponentRelPathIsSlashSeparated(t *testing.T) {
-	if got := componentRelPath("sales", "ordersync", "host"); got != "domains/sales/ordersync/host" {
+	if got := componentRelPath("sales", "ordersync", "shared"); got != "domains/sales/ordersync/shared" {
 		t.Errorf("componentRelPath = %q", got)
 	}
 }
@@ -205,4 +205,17 @@ func readTreeFile(t *testing.T, root, rel string) string {
 		t.Fatal(err)
 	}
 	return string(data)
+}
+
+// The shared directory owns the system's Dapr Components, so no component may
+// render into it, under its current name or the one CLI 2.2 used.
+func TestComponentNamesOfTheSharedDirectoryAreReserved(t *testing.T) {
+	for _, name := range []string{SharedDirName, LegacyHostDirName} {
+		if err := assertComponentNameFree(name); err == nil {
+			t.Errorf("assertComponentNameFree(%q) = nil, want an error", name)
+		}
+	}
+	if err := assertComponentNameFree("erp-loader"); err != nil {
+		t.Errorf("assertComponentNameFree(erp-loader) = %v", err)
+	}
 }

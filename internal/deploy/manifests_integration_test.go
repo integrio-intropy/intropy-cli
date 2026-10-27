@@ -92,7 +92,7 @@ func TestCreateManifestsAcceptsExistingIdenticalFiles(t *testing.T) {
 
 func TestCreateManifestsRefusesAnExistingDifferentFile(t *testing.T) {
 	f := newInitFixture(t)
-	rel := "domains/sales/distribution/host/component.yaml"
+	rel := "domains/sales/distribution/shared/component.yaml"
 	gittest.Commit(t, f.gitopsOrigin, rel, "hand-written: true\n", "add hand-written manifest")
 
 	var stdout, stderr bytes.Buffer
@@ -130,7 +130,7 @@ func TestCreateManifestsDryRunCreatesNoReviewBranch(t *testing.T) {
 
 func TestCreateManifestsDiffReportsConflictWithoutWriting(t *testing.T) {
 	f := newInitFixture(t)
-	rel := "domains/sales/distribution/host/component.yaml"
+	rel := "domains/sales/distribution/shared/component.yaml"
 	gittest.Commit(t, f.gitopsOrigin, rel, "hand-written: true\n", "add hand-written manifest")
 
 	var stdout, stderr bytes.Buffer

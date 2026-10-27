@@ -137,8 +137,8 @@ type ManifestCreateResult struct {
 	System string `json:"system"`
 	Domain string `json:"domain"`
 
-	// Host is the component directory holding the system's shared manifests.
-	Host string `json:"host"`
+	// Shared is the component directory holding the system's shared manifests.
+	Shared string `json:"shared"`
 
 	// Template is the resolved template library reference, so a reviewer can tell
 	// which release produced the tree.

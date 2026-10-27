@@ -24,7 +24,7 @@ func TestCreateBranchAndSwitchBack(t *testing.T) {
 	if err := g.CreateBranch(ctx, "deploy-init/sales-ordersync", "main"); err != nil {
 		t.Fatalf("CreateBranch: %v", err)
 	}
-	gittest.Commit(t, dir, "domains/sales/ordersync/host/component.yaml", "kind: shared\n", "scaffold")
+	gittest.Commit(t, dir, "domains/sales/ordersync/shared/component.yaml", "kind: shared\n", "scaffold")
 
 	onBranch, err := g.HEAD(ctx)
 	if err != nil {

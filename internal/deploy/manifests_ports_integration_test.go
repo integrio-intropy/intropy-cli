@@ -67,7 +67,7 @@ spec:
 	}
 
 	got := readTreeFile(t, f.clone(t, "manifests-create/sales-distribution-all"),
-		"domains/sales/distribution/host/base/bindings/bindings.yaml")
+		"domains/sales/distribution/shared/base/bindings/bindings.yaml")
 	for _, want := range []string{"type: bindings.sftp", "type: bindings.http"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("selected binding missing %q:\n%s", want, got)
@@ -90,7 +90,7 @@ func TestManifestCreateExcludesLocalOverlays(t *testing.T) {
 
 	work := f.clone(t, "manifests-create/sales-distribution-all")
 	base := filepath.Join(work, "domains", "sales", "distribution")
-	for _, unit := range []string{"host", "extractor"} {
+	for _, unit := range []string{"shared", "extractor"} {
 		local := filepath.Join(base, unit, "overlays", localEnv)
 		if _, err := os.Stat(local); !os.IsNotExist(err) {
 			t.Errorf("%s = %v, want no local overlay in GitOps manifests", local, err)
