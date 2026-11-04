@@ -3,31 +3,46 @@
   "checkpoint_id": "1bf9e4361ef4",
   "strategy": "manual-commit",
   "branch": "fix/registry-message-definitions",
-  "checkpoints_count": 1,
+  "checkpoints_count": 6,
   "files_touched": [
+    "AGENTS.md",
     "cmd/intropy/int_create.go",
     "cmd/intropy/message.go",
     "cmd/intropy/message_list.go",
     "cmd/intropy/message_model.go",
     "cmd/intropy/message_show.go",
     "cmd/intropy/message_source.go",
+    "cmd/intropy/message_test.go",
     "cmd/intropy/sys_create.go",
     "cmd/intropy/sys_update.go",
+    "internal/dashboard/handlers.go",
+    "internal/dashboard/server.go",
+    "internal/deploy/manifests_values_test.go",
+    "internal/gitops/config_test.go",
     "internal/system/assemble.go",
     "internal/system/assemble_test.go",
     "internal/system/blocks.go",
     "internal/system/create.go",
     "internal/system/model.go",
     "internal/system/payload.go",
+    "internal/system/real_template_e2e_test.go",
     "internal/system/update.go",
     "internal/template/create.go",
     "internal/template/create_test.go",
     "internal/template/facts.go",
     "internal/template/facts_test.go",
     "internal/template/naming.go",
+    "internal/template/real_manifest_e2e_test.go",
     "internal/template/wiring.go",
+    "internal/xregistry/client.go",
     "internal/xregistry/resolve.go",
-    "internal/xregistry/resolve_test.go"
+    "internal/xregistry/resolve_test.go",
+    "web/src/api.ts",
+    "web/src/components/Catalog.tsx",
+    "web/src/components/ContractDetail.tsx",
+    "web/src/components/FlowDetail.tsx",
+    "web/src/components/FlowView.tsx",
+    "web/src/index.css"
   ],
   "sessions": [
     {
@@ -36,13 +51,20 @@
       "compact_transcript": "/1b/f9e4361ef4/0/transcript.jsonl",
       "content_hash": "/1b/f9e4361ef4/0/content_hash.txt",
       "prompt": "/1b/f9e4361ef4/0/prompt.txt"
+    },
+    {
+      "metadata": "/1b/f9e4361ef4/1/metadata.json",
+      "transcript": "/1b/f9e4361ef4/1/full.jsonl",
+      "compact_transcript": "/1b/f9e4361ef4/1/transcript.jsonl",
+      "content_hash": "/1b/f9e4361ef4/1/content_hash.txt",
+      "prompt": "/1b/f9e4361ef4/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 14472,
-    "cache_creation_tokens": 0,
-    "cache_read_tokens": 64,
-    "output_tokens": 261,
-    "api_call_count": 1
+    "input_tokens": 14516,
+    "cache_creation_tokens": 42285,
+    "cache_read_tokens": 1095042,
+    "output_tokens": 8897,
+    "api_call_count": 19
   }
 }

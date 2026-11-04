@@ -1,0 +1,27 @@
+I am trying to create a release with the cli but I am not sure how it works. It seems to get stuck waiting for a sha that I am not sure exists
+
+
+<pasted_content id="66e6">
+Robins-MacBook-Pro domains/invoicing/file-transfer on  main ➜  intropy release create invoice-file-transfer --version 1.0.0 -w                                                                                  07:56
+refreshing git@gitlab.com:integrio/intropy/customers/Uppsala/gitops.git
+waiting for the sha-4262de38a1db32b345691be45cd9a169a888d8a1 image(s) to appear in the registry (ctrl+c to stop)
+  still waiting for sha-4262de38a1db32b345691be45cd9a169a888d8a1… (30s elapsed)
+  still waiting for sha-4262de38a1db32b345691be45cd9a169a888d8a1… (1m2s elapsed)
+</pasted_content id="66e6">
+
+---
+
+The pipeline only builds and pushes what was changed in that commit. So that commit won't result in a new image for that component
+
+---
+
+Can you check if that fix would work for this repo?
+/Users/robinhultman/dev/intropy/customers/uppsala/integrations
+
+---
+
+Can you also give me the exact commands for the workaround? I want to create a release for the invoice-file-transfer component in /Users/robinhultman/dev/intropy/customers/uppsala/gitops
+
+---
+
+intropy release create cant take a commit id?
