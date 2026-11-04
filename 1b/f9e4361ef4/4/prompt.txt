@@ -1,0 +1,184 @@
+Can you implement this on a new branch? Do not commit anything
+
+
+
+<pasted_content id="f384">
+# Task: make the intropy CLI honour xRegistry message definitions and record values
+
+Repo: `integrio-intropy/intropy-cli` (seen at 635dd6f9, CLI 2.3.0, templates v2.3.0).
+Fix in the CLI only; if a fix needs a template or topology change, report it
+instead of making it. Investigate before changing: some of this may be deliberate
+design (see `internal/template/naming.go`: "the name is generated, never
+declared"). If so, say so, and propose the smallest change that removes the
+failure modes below.
+
+## Context
+
+The xRegistry (registryUrl in the CLI config) declares, among others,
+`se.ladok.studiedeltagande.antagning.created.v1`: group `se.ladok.studiedeltagande`,
+producer channel `students-pubsub/ladok-events`, data schema
+`/schemagroups/se.ladok/schemas/antagning-created.v1`. Six sibling messages share
+that channel: one extractor publishes all seven on one topic.
+
+## Issue 1: the registry's channel is ignored (most important)
+
+Repro, in an empty directory:
+
+    intropy int create loader -n AdLoader -o ad-loader --no-input \
+      --subscribes se.ladok.studiedeltagande.antagning.created.v1 \
+      -s organization=Uppsala -s empty=false
+
+`ad-loader/.intropy/scaffold.json` gets
+`"channel": "se.ladok.studiedeltagande.antagning.created.v1"`. Expected: the
+registry's producer channel's topic, `ladok-events`. The same happens with
+`int create extractor --publishes <registry message>`. `sys create` then renders
+`MessageRef<…>.Define("<message>")` with the topic defaulting to the message
+name, so the deployed topic doesn't match the registry. Any component wired from
+the registry ends up on a different topic from what the registry documents.
+
+Pointers: `--publishes` never reads the registry (`internal/template/create.go`,
+`seedMessageParameters` only copies the name). `--subscribes` is documented as
+registry-backed (`internal/config/config.go`, `cmd/intropy/message_source.go`
+`producerChannels`), yet the rendered channel is still the message name. Find
+out why. In a workspace that already holds a publisher record, the workspace
+entry shadows the registry entirely (`message show` says "A workspace publish …
+resolves locally").
+
+Expected: when a message resolves in the registry, its producer channel decides
+the topic for both directions, unless `-s channel=…` overrides it. A conflict
+between an explicit channel and the registry is an error with a hint. A
+registry message with several producer channels needs an explicit choice.
+
+## Issue 2: the contract type is always re-derived; the record's payloadType is ignored
+
+`template.PascalCase(message)` names the contract in three places:
+`internal/system/blocks.go:87` (sys create), `internal/template/facts.go:265`,
+and `cmd/intropy/message.go:76` (message list/show). The record's `payloadType`
+value is written at render time but never read. Consequences:
+
+- A record whose `payloadType` differs from the derivation silently produces a
+  `Messages.cs` that references a type that doesn't exist, and the host fails to
+  build with no hint from the CLI. Real cases: a `job` record turned into an
+  extractor by hand (the documented way to build a feed extractor today), or
+  contracts named after their schema. Repro: scaffold an extractor with
+  `--publishes se.ladok.utbildning.kurstillfalle.klarmarkerat.v1`, rename the
+  record class in Contracts and `payloadType` in the scaffold record to
+  `KurstillfalleKlarmarkerat`, then run `intropy sys create`. `Messages.cs`
+  still says `SeLadokUtbildningKurstillfalleKlarmarkeratV1`.
+- Registry messages get unwieldy type names
+  (`SeLadokStudiedeltagandeAntagningCreatedV1`) although the registry names the
+  schema (`antagning-created.v1`).
+
+Expected, in order of preference: read `payloadType` from the record when present
+and use it consistently (sys create, message list/show). Otherwise, fail
+`sys create` when `payloadType` and the derivation disagree, naming the record
+and both names. Separately, propose whether the derivation for registry messages
+should use the data schema name; keep that as a proposal unless it's trivial and
+the templates already agree.
+
+## Issue 3: a record can declare only one published message
+
+`publishes` is scalar (`template.ReadPublishesMessage`, `parsePublishes` in
+`internal/system/blocks.go`). The topology supports several
+`.Publishes(...)` per extractor (`Intropy.Topology` `ExtractorBuilder.Publishes`),
+and the Ladok extractor publishes seven messages on one topic. Today the other six
+are hand edits in `StudentsSystem.cs`/`Messages.cs` that a re-run of `sys create`
+overwrites. Propose and, if it fits the record schema's versioning, implement a
+list form (as `routes` is for loaders). Keep the scalar form working.
+
+## Issue 4 (small): `message show` hides the registry definition
+
+Inside a workspace whose record publishes a registry message, `intropy message
+show <name>` prints only the workspace entry (path, derived contract) and none of
+the registry's envelope rules or schema. Show both, or say the registry entry is
+shadowed and how to see it.
+
+## Acceptance
+
+- Tests for each fix next to the existing ones (`internal/system`, `internal/template`,
+  `cmd/intropy`), including the repros above against a fake registry export.
+- The repro in Issue 1 renders `"channel": "ladok-events"`, and `sys create` puts the
+  message on `ladok-events`.
+- Existing `go test ./...` green; no change in behaviour for non-registry
+  messages (`--publishes invoice-created` still yields `InvoiceCreated` on
+  `invoice-created`).
+- Report what was deliberate design, what you changed, and anything that needs a
+  template or topology change.
+
+Two notes for whoever runs this:
+
+- Issue 1 matters for the Ladok system. Our host declares topic: "ladok-events" by hand, so it matches the registry. A future consumer scaffolded with --subscribes would wire itself to a different topic until Issue 1 is fixed.
+- The README I wrote is wrong on this point. It lists the naming problem as a sys create bug. I'll correct that entry once you've decided how to handle it.
+</pasted_content id="f384">
+
+---
+
+I do not want any references to the student domain or ladok in the source code
+
+---
+
+Can you create prompts for these?
+Needs a template or topology change (not made)
+
+---
+
+<pasted_content id="f384">
+# Task: decide how a component honours the pubsub half of a registry channel
+
+Repos: investigate `intropy-topology`, `intropy-templates` and `intropy-cli`;
+propose before changing. Do not use real customer or business domains in code,
+examples or tests; use neutral examples.
+
+## Context
+
+Registry producer channels are `<pubsub>/<topic>`. When a message resolves in
+the registry, the CLI (`fix/registry-message-definitions`) now records only the
+topic: the template's `topic` parameter feeds the recorded `channel`. Scaffold
+records never name a pubsub. `sys create` gives every channel the system's own
+pubsub, `<system>-pubsub` (`Model.UsePubsub` in `internal/system/model.go`).
+
+So `sales-pubsub/sales-events` is honoured only if the system happens to be
+named `sales`. In a system named anything else, the message is declared on
+`<other>-pubsub/sales-events`, and nothing warns.
+
+The pieces that already exist:
+
+- `MessageRef<T>.Define(name, pubSub, topic)` accepts another pubsub. Its doc
+  says "name another only to reach a component this system does not own".
+- `system-host/skeleton/Messages.cs.tmpl` renders a non-system pubsub when the
+  payload's message entry carries one.
+- `UsePubsub` fills only empty pubsubs, so a pubsub the CLI read from the record
+  would flow through unchanged.
+
+## Questions to answer
+
+1. Is publishing or subscribing on another system's pubsub component supported
+   end to end? Check deployment, the local Aspire run and Dapr component
+   scoping. If not, what's missing in the topology?
+2. Which of these should happen?
+   a. **Warn only:** `sys create` compares the registry's pubsub with
+      `<system>-pubsub` and warns (or fails) on a mismatch.
+   b. **Record the pubsub:** the templates record a `pubsub` value, the CLI
+      seeds it from the registry and reads it in assembly, and the host declares
+      it.
+   c. **Treat the pubsub as documentation:** the registry's pubsub names the
+      producing system, and consumers in other systems are a cross-system
+      concern this model doesn't cover yet.
+3. For whichever option you choose: the smallest change per repo, and whether
+   the scaffold record needs a new key (additive keys keep
+   `schemaVersion` 1).
+
+## Deliverable
+
+A short written proposal with the answers and a recommended option. Make no code
+changes until the proposal is accepted. If the answer is (a), include a ready
+task description for the CLI change.
+</pasted_content id="f384">
+
+---
+
+Can we rollout the message registry features but limit it to scenarios where the publisher and the consumers are in the same system and then build the cross-system messaging features after that is stable?
+
+---
+
+yes

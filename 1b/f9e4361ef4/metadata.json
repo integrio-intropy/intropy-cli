@@ -3,11 +3,13 @@
   "checkpoint_id": "1bf9e4361ef4",
   "strategy": "manual-commit",
   "branch": "fix/registry-message-definitions",
-  "checkpoints_count": 13,
+  "checkpoints_count": 19,
   "files_touched": [
     "AGENTS.md",
     "cmd/intropy/int_create.go",
     "cmd/intropy/message.go",
+    "cmd/intropy/message_channel.go",
+    "cmd/intropy/message_channel_test.go",
     "cmd/intropy/message_list.go",
     "cmd/intropy/message_model.go",
     "cmd/intropy/message_show.go",
@@ -25,6 +27,7 @@
     "internal/system/create.go",
     "internal/system/model.go",
     "internal/system/payload.go",
+    "internal/system/publications_test.go",
     "internal/system/real_template_e2e_test.go",
     "internal/system/update.go",
     "internal/template/create.go",
@@ -72,13 +75,20 @@
       "compact_transcript": "/1b/f9e4361ef4/3/transcript.jsonl",
       "content_hash": "/1b/f9e4361ef4/3/content_hash.txt",
       "prompt": "/1b/f9e4361ef4/3/prompt.txt"
+    },
+    {
+      "metadata": "/1b/f9e4361ef4/4/metadata.json",
+      "transcript": "/1b/f9e4361ef4/4/full.jsonl",
+      "compact_transcript": "/1b/f9e4361ef4/4/transcript.jsonl",
+      "content_hash": "/1b/f9e4361ef4/4/content_hash.txt",
+      "prompt": "/1b/f9e4361ef4/4/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 14854,
-    "cache_creation_tokens": 587300,
-    "cache_read_tokens": 28475531,
-    "output_tokens": 98833,
-    "api_call_count": 178
+    "input_tokens": 15042,
+    "cache_creation_tokens": 824383,
+    "cache_read_tokens": 45514602,
+    "output_tokens": 179291,
+    "api_call_count": 267
   }
 }
