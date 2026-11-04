@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "c0a5aacdfc84",
+  "strategy": "manual-commit",
+  "branch": "feat/release-notes-input",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "README.md",
+    "cmd/intropy/release_create.go",
+    "internal/release/create.go",
+    "internal/release/create_test.go",
+    "internal/release/request.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/c0/a5aacdfc84/0/metadata.json",
+      "transcript": "/c0/a5aacdfc84/0/full.jsonl",
+      "compact_transcript": "/c0/a5aacdfc84/0/transcript.jsonl",
+      "content_hash": "/c0/a5aacdfc84/0/content_hash.txt",
+      "prompt": "/c0/a5aacdfc84/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 66,
+    "cache_creation_tokens": 39027,
+    "cache_read_tokens": 2915466,
+    "output_tokens": 15898,
+    "api_call_count": 30
+  }
+}

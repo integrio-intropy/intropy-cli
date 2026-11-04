@@ -1,0 +1,14 @@
+I commited the unstaged changes. Could you implement this on the same branch? If we do this fix for release create pin and promote can just reference the release, right?
+
+---
+
+I am running the command in /Users/robinhultman/dev/intropy/customers/uppsala/gitops/domains/invoicing/file-transfer
+
+And I get:
+Robins-MacBook-Pro domains/invoicing/file-transfer on  main ✖ i release create invoice-file-transfer --version 1.0.0 -w --ref eed87d9e6d96fbd2f068f4455816f744137f855e
+refreshing git@gitlab.com:integrio/intropy/customers/Uppsala/gitops.git
+error: check whether eed87d9 is an ancestor of origin/main: git merge-base --is-ancestor eed87d9e6d96fbd2f068f4455816f744137f855e origin/main: fatal: Not a valid commit name eed87d9e6d96fbd2f068f4455816f744137f855e
+
+---
+
+Can release create cover a whole system?
