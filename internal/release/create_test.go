@@ -501,3 +501,101 @@ func TestCreateWatchWaitsForTheImage(t *testing.T) {
 		t.Errorf("images = %+v, want one pinned digest", r.Manifest.Images)
 	}
 }
+
+// createWithNotes runs Create with operator-supplied notes.
+func (f *createFixture) createWithNotes(t *testing.T, version, notes string) (Result, error) {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	opts := f.options(version, &stdout, &stderr)
+	opts.Notes = notes
+	if err := Create(context.Background(), opts); err != nil {
+		return Result{}, err
+	}
+	var r Result
+	if err := json.Unmarshal(stdout.Bytes(), &r); err != nil {
+		t.Fatalf("decode result: %v\nstdout: %s", err, stdout.String())
+	}
+	return r, nil
+}
+
+func TestCreateStoresProvidedNotesAboveTheChangelog(t *testing.T) {
+	f := newCreateFixture(t)
+	f.create(t, "1.0.0")
+	f.commitAndPush(t, "b.cs", "Handle empty payloads")
+
+	r, err := f.createWithNotes(t, "1.0.1", "# Faster retries\r\n\r\nBackoff is now capped.\r\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := "# Faster retries\n\nBackoff is now capped.\n\n- Handle empty payloads\n"
+	if r.Manifest.Notes != want {
+		t.Errorf("notes = %q, want %q", r.Manifest.Notes, want)
+	}
+	if len(r.Manifest.Changes) != 1 {
+		t.Errorf("changes = %+v; provided notes must not replace the structured changelog", r.Manifest.Changes)
+	}
+
+	// The registry holds them, and the listing summary is the provided title.
+	got, err := Pull(context.Background(), f.reg, r.Ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Notes != want {
+		t.Errorf("published notes = %q, want %q", got.Notes, want)
+	}
+	art, _, err := f.reg.PullArtifact(context.Background(), r.Ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := art.Annotations[annotationDescription]; s != "Faster retries" {
+		t.Errorf("description annotation = %q, want the provided title", s)
+	}
+
+	// The tag message carries them too.
+	msg := gittest.Run(t, f.sourceDir, "tag", "-l", "--format=%(contents)", r.Tag)
+	if !strings.Contains(msg, "Backoff is now capped.") {
+		t.Errorf("tag message %q should carry the provided notes", msg)
+	}
+}
+
+func TestCreateRetryWithTheSameNotesIsOneRelease(t *testing.T) {
+	f := newCreateFixture(t)
+	first, err := f.createWithNotes(t, "1.0.0", "First managed release.\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Same text, different line endings: still the same release.
+	second, err := f.createWithNotes(t, "1.0.0", "First managed release.\r\n")
+	if err != nil {
+		t.Fatalf("a retry with the same notes was refused: %v", err)
+	}
+	if second.Created || second.Digest != first.Digest {
+		t.Errorf("retry republished: created=%v digest %s then %s", second.Created, first.Digest, second.Digest)
+	}
+}
+
+// The retry that forgets --notes is the likely mistake, and it must say what
+// differs rather than report two identical commits as different releases.
+func TestCreateRefusesARetryWithDifferentNotes(t *testing.T) {
+	f := newCreateFixture(t)
+	if _, err := f.createWithNotes(t, "1.0.0", "First managed release."); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := f.createWithNotes(t, "1.0.0", "")
+	if err == nil {
+		t.Fatal("a retry with different notes was accepted")
+	}
+	if !strings.Contains(err.Error(), "different notes") {
+		t.Errorf("error %q should say the notes differ", err)
+	}
+}
+
+func TestCreateRefusesOversizedNotes(t *testing.T) {
+	f := newCreateFixture(t)
+	_, err := f.createWithNotes(t, "1.0.0", strings.Repeat("x", MaxNotesBytes+1))
+	if err == nil || !strings.Contains(err.Error(), "limit") {
+		t.Fatalf("oversized notes: err = %v, want a size-limit error", err)
+	}
+}

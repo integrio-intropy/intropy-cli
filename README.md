@@ -1097,9 +1097,21 @@ For `intropy release create component-x --version 1.4.2`, the CLI:
    failure is a warning because the OCI manifest is the release; re-running can
    repair a missing tag.
 
+To write notes of your own, pass `--notes "<text>"` or `--notes-file <path>`
+(`-` reads stdin). Your text is stored above the generated commit list, in the
+manifest and in the tag message, and its first line (a markdown heading marker
+is dropped) is the summary `release list` shows. The structured `changes` list
+is recorded either way.
+
+```sh
+intropy release create component-x --version 1.4.2 --notes-file RELEASE_NOTES.md
+```
+
 Re-running for a version that already exists compares the intended manifest to
 the published one. An identical release is left in place and a missing Git tag
 is repaired; a different release is refused because versions are immutable.
+Notes are part of that comparison, so a retry must pass the same notes; line
+endings and surrounding whitespace do not count as a difference.
 
 Find out what has been released, newest first:
 
@@ -1133,7 +1145,7 @@ intropy release show component-x 1.4.2
 This command changes no source repository, GitOps remote, or environment. It
 refreshes the local GitOps cache to locate component metadata, then resolves
 that version's OCI manifest and prints its source commit, image digests,
-comparison basis, and generated notes. Use `-o json` to receive the manifest
+comparison basis, and notes. Use `-o json` to receive the manifest
 itself. It verifies that the requested OCI tag and the manifest's declared
 version agree.
 

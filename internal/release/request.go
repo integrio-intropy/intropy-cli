@@ -34,6 +34,10 @@ type Options struct {
 	// CLI flag.
 	Since string
 
+	// Notes is operator-supplied release notes. Create puts them ahead of the
+	// generated changelog; empty means the changelog alone.
+	Notes string
+
 	// GitopsRepo overrides the configured GitOps repository URL.
 	GitopsRepo string
 

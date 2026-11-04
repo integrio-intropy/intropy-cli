@@ -139,5 +139,13 @@ func ListVersions(ctx context.Context, reg Registry, releasesRepo string) ([]str
 
 func firstLine(s string) string {
 	line, _, _ := strings.Cut(strings.TrimSpace(s), "\n")
-	return strings.TrimPrefix(line, "- ")
+	line = strings.TrimPrefix(line, "- ")
+	// A markdown heading is the natural first line of written notes; the
+	// listing wants its text, not its syntax.
+	// Only "# Title" is a heading; "#123 fix" is a subject that happens to
+	// start with a hash.
+	if text := strings.TrimLeft(line, "#"); text != line && strings.HasPrefix(text, " ") {
+		return strings.TrimSpace(text)
+	}
+	return line
 }

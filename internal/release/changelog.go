@@ -118,6 +118,38 @@ func Changelog(ctx context.Context, g git.Client, from, to string, sourcePaths [
 	return changes, nil
 }
 
+// MaxNotesBytes caps operator-supplied notes. Notes live inside the release
+// manifest and the git tag message, so the cap is there to catch a wrong file
+// passed to --notes-file, not to ration prose.
+const MaxNotesBytes = 64 << 10
+
+// NormalizeNotes is the canonical form of operator-supplied notes: line endings
+// folded to \n and surrounding whitespace trimmed. Notes are part of what makes
+// a release identical on retry, so a file re-saved by a Windows editor or with
+// a trailing newline added must not read as a different release.
+func NormalizeNotes(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	return strings.TrimSpace(s)
+}
+
+// ComposeNotes combines operator-supplied notes with the generated changelog.
+// The supplied text comes first, so its first line is the summary release list
+// shows; the changelog follows so the commit history is never lost. With
+// nothing supplied the generated notes stand alone. The placeholder for an
+// initial release is dropped when the operator has said something themselves.
+func ComposeNotes(provided, generated string) string {
+	provided = NormalizeNotes(provided)
+	switch {
+	case provided == "":
+		return generated
+	case generated == "" || generated == InitialNotes:
+		return provided + "\n"
+	default:
+		return provided + "\n\n" + generated
+	}
+}
+
 // RenderNotes turns the changelog into the manifest's notes.
 func RenderNotes(changes []Change, basis ChangeBasis) string {
 	if basis.Kind == BasisInitial && len(changes) == 0 {
