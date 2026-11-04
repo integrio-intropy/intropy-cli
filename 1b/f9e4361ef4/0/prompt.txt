@@ -1,0 +1,264 @@
+Migrate my terminal setup to Rex, the terminal multiplexer this terminal runs in.
+Read nothing beyond this prompt: "Rex in brief" below has what the zellij section
+need. The other sections carry their bindings already translated and verified by Rex;
+write those lines as given and look nothing up for them.
+
+## Before reading anything, ask me about cmd+k
+Rex binds cmd+k to session.switch, the session picker. Terminal.app, iTerm2 and Ghostty
+use cmd+k to clear the terminal. Ask me which I want, and wait for my answer:
+1. Keep the session picker on cmd+k. Nothing changes.
+2. Clear the terminal on cmd+k. Bind cmd+k to the server action
+   com.superlogical.terminal.clear ("Clear Terminal"). The session picker then needs
+   another key: propose shift+cmd+k, which Rex binds nothing to, let me change it, and
+   bind session.switch there.
+If cmd+k changes, list it under "Replaced Rex defaults" in the report as "cmd+k: no
+longer opens the session picker (Rex default); now clears the terminal, by my decision;
+the picker is on <key>".
+
+## Read these files, and nothing else in my home directory
+
+- zellij:
+  - /Users/robinhultman/.config/zellij/config.kdl
+  Found: 170 bindings, modes locked, pane, tab, resize, move, scroll, search, session, shared_except, shared_among, entersearch, renametab, renamepane and tmux, defaults cleared, theme catppuccin-frappe.
+  Note: zellij modes become Rex key modes; the prompt explains how.
+- Ghostty:
+  - /Users/robinhultman/.config/ghostty/config
+  - /Users/robinhultman/Library/Application Support/com.mitchellh.ghostty/config
+  Found: 1 binding.
+
+## Write here
+/Users/robinhultman/.config/rex/init.lua
+The file does not exist yet. Create it, and its directory if needed.
+Every command below names this file with REX_CONFIG, so nothing in your shell's
+environment can point them at another file.
+
+
+## Rex in brief
+- A key is modifiers and one key joined with `+`: `ctrl+a`, `shift+cmd+d`. Rex spells
+  modifiers in the order ctrl, alt, shift, cmd; `super` and `command` mean cmd, `opt` and
+  `option` mean alt and `control` means ctrl.
+- Named keys: enter, esc, tab, space, backspace, delete, insert, home, end, pageup,
+  pagedown, left, right, up, down, f1 to f25. Any other key is its own character: `-`,
+  `=`, `,`, `[`, `` ` ``.
+- Keys are unshifted, as a US key cap reads, and a capital letter is `shift+` the letter:
+  `!` is `shift+1`, `"` is `shift+'`, `#` is `shift+3`, `$` is `shift+4`, `%` is
+  `shift+5`, `&` is `shift+7`, `(` is `shift+9`, `)` is `shift+0`, `*` is `shift+8`, `+`
+  is `shift+=`, `:` is `shift+;`, `<` is `shift+,`, `>` is `shift+.`, `?` is `shift+/`,
+  `@` is `shift+2`, `^` is `shift+6`, `_` is `shift+-`, `{` is `shift+[`, `|` is
+  `shift+\`, `}` is `shift+]`, `~` is `shift+``.
+- A mode is a named set of bindings that apply only while it is active. `rex.bind("resize/left",
+  "pane.resize", { direction = "left" })` binds left inside mode resize, which exists once a
+  key is bound in it. Enter it with `client.mode.enter` and `{ name = "resize" }` (`once = true`
+  leaves after one key), leave it with `client.mode.exit` or escape. `rex.mode("resize",
+  { exclusive = true })` makes every other key do nothing while the mode is active. A mode
+  binding must name an action, never a function. Keys that work all the time are bound
+  with no mode at all, as `rex.bind("ctrl+p", ...)`: a program's normal or default mode is
+  that, never a Rex mode named normal.
+- `rex.bind(key, action[, args])`: `rex.bind("cmd+d", "pane.split", { direction = "right" })`.
+  `rex.unbind(key[, action])` removes a key's bindings, Rex's own default included:
+  `rex.unbind("cmd+k")`. A later rex.bind of the same key replaces an earlier one.
+- For anything no action does: `rex.action{ name = "x", title = "X", args = { what = "string?" },
+  run = function(ctx, args) ... end }`, then bind "x". Inside run, `rex.exec{ "cmd", "arg" }`
+  runs a command and `rex.client.queue("pane.zoom", {})` performs an app action.
+
+The actions a key can be bound to, with their arguments (`?` marks an optional one). Only an
+action marked "also" has dotted names such as `pane.split.right`, which is `pane.split` with
+`{ direction = "right" }`; every other action is bound by its name with arguments.
+- client.window.new: New Window
+- client.window.close: Close Window
+- client.window.fullscreen.toggle: Toggle Full Screen
+- client.palette.toggle: Command Palette…
+- session.new: New Session
+- session.switch: Change Session…
+- session.next: Next Session
+- session.previous: Previous Session
+- session.rename: Rename Session
+- session.close: Close Session
+- session.refresh: Refresh Sessions
+- session.collapse { session_id? = string }: Collapse Session
+- session.expand { session_id? = string }: Expand Session
+- session.collapse_others { session_id? = string }: Collapse Other Sessions
+- client.tab.new: New Tab
+- client.tab.close: Close Tab
+- client.tab.rename: Rename Tab
+- client.tab.next: Show Next Tab
+- client.tab.previous: Show Previous Tab
+- client.tab.goto { index = integer }: Go to Tab
+- client.tab.move { direction = backward|forward }: Move Tab (also client.tab.move.backward, .forward)
+- client.tab.move_to_new_window: Move Tab to New Window
+- pane.split { direction = right|down|left|up|auto }: Split Pane (also pane.split.right, .down, .left, .up, .auto)
+- pane.focus { direction = left|right|up|down, wrap? = boolean }: Focus Pane (also pane.focus.left, .right, .up, .down)
+- pane.focus_next: Focus Next Pane
+- pane.focus_previous: Focus Previous Pane
+- pane.move { direction = left|right|up|down }: Move Pane (also pane.move.left, .right, .up, .down)
+- pane.float: Float Pane
+- pane.zoom: Zoom Pane
+- pane.close: Close Pane
+- pane.balance: Balance Splits
+- pane.resize { amount? = number, direction = left|right|up|down }: Resize Pane (no pane.resize.left: pass direction)
+- pane.move_to_new_tab: Move Pane to New Tab
+- pane.copy_id: Copy Pane ID
+- pane.send_key { key = string }: Send Key
+- client.prompt.previous: Jump to Previous Prompt
+- client.prompt.next: Jump to Next Prompt
+- client.mode.enter { name = string, once? = boolean }: Enter Mode
+- client.mode.exit: Exit Mode
+- client.mode.exit_all: Exit All Modes
+- client.find.open: Find…
+- client.find.next: Find Next
+- client.find.previous: Find Previous
+- client.font.increase: Increase Font Size
+- client.font.decrease: Decrease Font Size
+- client.font.reset: Reset Font Size
+- client.config.reload: Reload Config
+- com.superlogical.terminal.clear: Clear Terminal (a server action).
+Bind only these names or your own rex.action. For anything else,
+`'/Users/robinhultman/Library/Application Support/com.superlogical.rex/RexServer/Versions/1696/Rex Server.app/Contents/MacOS/rex' -S 'unix:///Users/robinhultman/Library/Application%20Support/rex/server.sock' actions --json` lists every action,
+and https://www.superlogical.com/rex/docs/llms.txt indexes the documentation, as a last resort.
+
+## Rules for keys
+- Keys are written unshifted, as the key cap reads on a US layout: `%` is `shift+5`,
+  `"` is `shift+'`, `|` is `shift+\`, `+` is `shift+=`, `_` is `shift+-`, `?` is `shift+/`.
+  The unshifted characters stay plain: `-` is `-`, `=` is `=`, `,` is `,`, `\` is `\`.
+- `C-a` means `ctrl+a`, `M-x` means `alt+x`, and `super` or `cmd` is `cmd`.
+- A capital letter in a source binding is shift and the letter: tmux's `bind H` is
+  `shift+h`, and it stays `shift+h` inside a mode, as `resize/shift+h`. Never drop the
+  shift to make a key look simpler.
+- A key either runs an action or starts a sequence, never both. A sequence such as
+  `ctrl+a>c` means ctrl+a alone no longer reaches the terminal. Add
+  `rex.bind("ctrl+a>ctrl+a", "pane.send_key", { key = "ctrl+a" })` so programs that use
+  the prefix key themselves still receive it, unless a line below already does.
+- A binding in init.lua replaces Rex's default on the same key. That is allowed, but a
+  line identical to a default is not written, and every default you replace goes in the
+  report as "<key>: no longer <what> (Rex default); now <what> from <file:line>". Rex's
+  defaults, each as the key and what it does: cmd+n opens a new window; shift+cmd+w closes the window; ctrl+cmd+f toggles full screen; cmd+w closes the pane; shift+cmd+p opens the command palette; cmd+, opens Settings; shift+cmd+, opens Diagnostics; shift+cmd+u installs a waiting update; alt+shift+cmd+u installs a waiting update once Rex is idle; shift+cmd+. dismisses a notice; shift+cmd+n creates a session; cmd+k opens the session picker; cmd+r refreshes the session list; cmd+t opens a new tab; alt+cmd+w closes the tab; ctrl+tab goes to the next tab; shift+cmd+] goes to the next tab; ctrl+shift+tab goes to the previous tab; shift+cmd+[ goes to the previous tab; cmd+[Digit1] goes to tab 1; cmd+[Digit2] goes to tab 2; cmd+[Digit3] goes to tab 3; cmd+[Digit4] goes to tab 4; cmd+[Digit5] goes to tab 5; cmd+[Digit6] goes to tab 6; cmd+[Digit7] goes to tab 7; cmd+[Digit8] goes to tab 8; cmd+[Digit9] goes to the last tab; ctrl+shift+pageup moves the tab left; ctrl+shift+pagedown moves the tab right; cmd+d splits the pane to the right; shift+cmd+right splits the pane to the right; shift+cmd+d splits the pane downward; shift+cmd+down splits the pane downward; shift+cmd+left splits the pane to the left; shift+cmd+up splits the pane upward; cmd+enter splits the pane along its longer side; alt+cmd+left focuses the pane to the left; alt+cmd+right focuses the pane to the right; alt+cmd+up focuses the pane above; alt+cmd+down focuses the pane below; alt+shift+cmd+left moves the pane left; alt+shift+cmd+right moves the pane right; alt+shift+cmd+up moves the pane up; alt+shift+cmd+down moves the pane down; cmd+] focuses the next pane; cmd+[ focuses the previous pane; shift+cmd+enter zooms the pane; alt+cmd+enter floats the pane over the layout; ctrl+cmd+i inserts a path; cmd+backspace clears the input line in the shell; cmd+left moves to the start of the line in the shell; cmd+right moves to the end of the line in the shell; alt+left moves a word left in the shell; alt+right moves a word right in the shell; cmd+up jumps to the previous shell prompt; cmd+down jumps to the next shell prompt; cmd+f opens find; cmd+g finds the next match; shift+cmd+g finds the previous match while find is open; shift+cmd+= increases the font size; cmd+= increases the font size; cmd+- decreases the font size; cmd+[Digit0] resets the font size; cmd+/ toggles the sidebar; cmd+. toggles the activity sidebar; shift+cmd+s toggles the tab style.
+- Never bind macOS system shortcuts: cmd+q, cmd+h, cmd+m, cmd+tab, cmd+space,
+  cmd+shift+3, cmd+shift+4, cmd+shift+5, and ctrl+cmd+q. A source line on one of them,
+  whatever it does, gets no rex.bind and goes under "Could not migrate" with the reason
+  "macOS uses this key itself". Check every key you are about to bind against this list,
+  in any modifier order (`shift+cmd+5` is cmd+shift+5), and after expanding a source's
+  own modifier name such as kitty_mod or a leader.
+- Where a source binding has no Rex action, do not approximate it with something
+  different. Leave it out and report it.
+
+## zellij
+- zellij's normal mode is Rex with no mode active: bind its keys plainly, as `ctrl+p`,
+  never as `normal/ctrl+p`, and never make a mode named normal. The other modes (locked,
+  pane, tab, resize, move, scroll, search, session) are Rex key modes. Bind the keys
+  that enter a mode with `client.mode.enter` and a `name`, and the keys inside it as
+  `mode/key`. zellij leaves most modes after one action only
+  when the binding says `SwitchToMode "Normal"`; a mode the user stays in becomes an
+  exclusive Rex mode (`rex.mode(name, { exclusive = true })`), and one that acts once
+  becomes `client.mode.enter` with `once = true`.
+- A binding that runs an action and then says `SwitchToMode "Normal"` leaves the mode
+  after the action. A Rex binding runs one action, so define one custom action for all
+  such bindings and pass the real action and its arguments to it. Use exactly this,
+  and never one wrapper per action:
+  ```lua
+  rex.action{
+    name  = "then_normal",
+    title = "Run an action and return to normal mode",
+    args  = { action = "string", args = "object?" },
+    run   = function(ctx, args)
+      rex.client.queue(args.action, args.args or {})
+      rex.client.queue("client.mode.exit_all")
+    end,
+  }
+  rex.bind("pane/d", "then_normal", { action = "pane.split", args = { direction = "down" } })
+  ```
+- `shared_except` and `shared_among` blocks apply to several modes: bind the same keys
+  in each Rex mode they apply to.
+- `clear-defaults=true` means only the file's bindings exist; without it, zellij's
+  default bindings are also in effect, and the agent should migrate the defaults the
+  user kept only if asked. Say in the report which case this is.
+- `Ctrl g` is `ctrl+g`; `Alt n` is `alt+n`; `Ctrl Shift x` is `ctrl+shift+x`.
+- zellij actions map as follows. NewTab: client.tab.new; CloseTab: client.tab.close;
+  GoToNextTab and GoToPreviousTab: client.tab.next and client.tab.previous; GoToTab N:
+  client.tab.goto with index N; NewPane "Right" and "Down": pane.split with that
+  direction; NewPane with no direction: pane.split.auto; MoveFocus "Left" and so on, and
+  MoveFocusOrTab "Left" and so on: pane.focus with the direction (Rex does not switch
+  tabs at the edge; say so in the report); MovePane: pane.move with the direction; Resize
+  "Increase Left" and so on: pane.resize with `{ direction = "left" }`, never
+  pane.resize.left, which does not exist; CloseFocus: pane.close;
+  ToggleFocusFullscreen: pane.zoom; ToggleFloatingPanes, TogglePaneEmbedOrFloating,
+  ScrollUp, ScrollDown, PageScrollUp, EditScrollback, SearchInput, Detach, Quit,
+  layouts and plugins: no counterpart. `Run` with a command: a `rex.action` using
+  `rex.exec` where it makes sense, otherwise report it.
+- Layout files (the layouts directory, if listed) are not migrated. Mention them in the
+  report.
+
+## Ghostty
+- `keybind = mods+key=action` becomes `rex.bind`. The table below has every keybind line
+  translated. Copy its lines; do not translate them again.
+- `keybind = clear` removes Ghostty's defaults; it has no effect on Rex and needs no line.
+- Do not migrate theme, font, colors, padding or window settings, and write nothing
+  about them in init.lua. The table gives each such line its reason; carry it into
+  your report.
+
+### Every Ghostty binding, line by line
+Rex read the files and translated and verified each line that binds a key. Write every
+`rex.bind` below exactly as given, each once, and nothing else for that line. A line
+marked "not written" or "already Rex's default" gets no line at all. Every line
+here goes in your report under the list its marking names (see Report).
+- ~/.config/ghostty/config:1 `macos-option-as-alt = false`
+  not written: The Ghostty setting macos-option-as-alt has no counterpart in Rex.
+- ~/Library/Application Support/com.mitchellh.ghostty/config:50 `keybind = alt+space=text:\x20`
+  not written: sends text to the terminal; migrate it as pane.send_key only when it is one key, otherwise report it
+- ~/Library/Application Support/com.mitchellh.ghostty/config:51 `macos-option-as-alt = right`
+  not written: The Ghostty setting macos-option-as-alt has no counterpart in Rex.
+
+## Conflicts between sources
+Rex compared only the sources with tables. After reading the zellij file,
+collect every key that more than one source binds, and ask me once per pair of sources, naming the keys, for example:
+"kitty and zellij both bind 2 keys (alt+t, alt+x). Keep kitty's for all, keep zellij's for
+all, or choose per key?" Ask per key only when I choose per key. Wait for my answers, and
+never decide a conflict yourself. If no key is shared, say so and ask nothing.
+A source is one program, with every file it loads: a tmux.conf and the file it sources, or
+a Ghostty config and its config-file includes, are one source, and inside one source the
+line the program loads last wins, as it does in the program itself. That is not a conflict
+and not a question. Write exactly one binding for each such key, never two lines that
+leave the last one to win. Rex's own defaults are not conflicts: a source binding on a
+default key replaces the default and is listed under "Replaced Rex defaults".
+
+## Check your work
+Run these commands exactly as written, paths and all: your shell may lack the Rex
+terminal's environment, and a bare `rex` could be another Rex.
+1. Run `REX_CONFIG='/Users/robinhultman/.config/rex/init.lua' '/Users/robinhultman/Library/Application Support/com.superlogical.rex/RexServer/Versions/1696/Rex Server.app/Contents/MacOS/rex' config check`. It must exit 0 and print no error or warning lines.
+   Fix the file and run it again until it does.
+2. Compare the file with the tables above, line by line: every `rex.bind` marked "write" is
+   in the file exactly as given, each once, and nothing is written for a line marked "not
+   written" or "already Rex's default". Fix the file until every binding is in place.
+3. Run `'/Users/robinhultman/Library/Application Support/com.superlogical.rex/RexServer/Versions/1696/Rex Server.app/Contents/MacOS/rex' -S 'unix:///Users/robinhultman/Library/Application%20Support/rex/server.sock' config reload` once. Do not ask me before reloading: this migration is
+   what I asked for, and nothing is active until the reload. If it fails with "operation
+   not permitted" or cannot connect, your sandbox blocked it: do not retry it and do not
+   work around it. If you can ask me to approve running a command outside your sandbox,
+   ask once, the way you normally do, and run it again on approval. Otherwise tell me in
+   one line: "Your agent's sandbox blocked reloading Rex. Choose Reload Config in Rex."
+   In the report's checks, say the reload is pending, not failed.
+4. After a reload that worked, run `'/Users/robinhultman/Library/Application Support/com.superlogical.rex/RexServer/Versions/1696/Rex Server.app/Contents/MacOS/rex' -S 'unix:///Users/robinhultman/Library/Application%20Support/rex/server.sock' keymap --json`. Its diagnostics list must be
+   empty; fix the file, reload and check again until it is. If this fails the way the
+   reload did, say so in one line and rely on the checks above.
+
+## Report
+Keep it short. Do not print the file, the diff, or any command output.
+Give the path of the file, then four lists in this order, one line per entry, then the
+result of each check in one line: config check, reload, keymap.
+For every line in the tables above, the table says which list it goes in: a line you
+wrote goes under "Migrated"; a line marked "already Rex's default" goes under
+"Migrated" with "(Rex default)"; a line marked "(replaces a Rex default)" also goes
+under "Replaced Rex defaults", in words; a line marked "loses to" goes under
+"Conflicts between sources"; and any other line marked "not written" goes under "Could
+not migrate" with the reason the table gives. Quote each source line as the table does,
+with its file and line number, and leave none out.
+- Migrated: each source line, the Rex key it became, and the action. A line that was
+  already Rex's default is listed here with "(Rex default)".
+- Replaced Rex defaults: one line per replaced default, in words: what the key no longer
+  does, and what it does now and the line that won. Nothing else goes here.
+- Conflicts between sources: each key more than one source bound, which source won, and
+  the losing line verbatim.
+- Could not migrate: each source binding or setting that has no counterpart, with the
+  original line and one sentence on why. Settings are lines too: list each theme, font,
+  color, opacity, import or include line on its own, quoted as written with its file and
+  line number, never summarised together as "fonts and colors".
+Never drop a binding silently. If it is not in the first list, it must be in the third or
+the fourth.
