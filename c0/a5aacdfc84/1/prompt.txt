@@ -1,0 +1,5 @@
+What is missing to be able to send in (and store release notes with the intropy release create command?
+
+---
+
+yes
