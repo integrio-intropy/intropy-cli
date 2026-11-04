@@ -3,7 +3,7 @@
   "checkpoint_id": "1bf9e4361ef4",
   "strategy": "manual-commit",
   "branch": "fix/registry-message-definitions",
-  "checkpoints_count": 7,
+  "checkpoints_count": 13,
   "files_touched": [
     "AGENTS.md",
     "cmd/intropy/int_create.go",
@@ -65,13 +65,20 @@
       "compact_transcript": "/1b/f9e4361ef4/2/transcript.jsonl",
       "content_hash": "/1b/f9e4361ef4/2/content_hash.txt",
       "prompt": "/1b/f9e4361ef4/2/prompt.txt"
+    },
+    {
+      "metadata": "/1b/f9e4361ef4/3/metadata.json",
+      "transcript": "/1b/f9e4361ef4/3/full.jsonl",
+      "compact_transcript": "/1b/f9e4361ef4/3/transcript.jsonl",
+      "content_hash": "/1b/f9e4361ef4/3/content_hash.txt",
+      "prompt": "/1b/f9e4361ef4/3/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 14536,
-    "cache_creation_tokens": 80499,
-    "cache_read_tokens": 1635356,
-    "output_tokens": 12387,
-    "api_call_count": 29
+    "input_tokens": 14854,
+    "cache_creation_tokens": 587300,
+    "cache_read_tokens": 28475531,
+    "output_tokens": 98833,
+    "api_call_count": 178
   }
 }
