@@ -34,6 +34,9 @@ func Create(ctx context.Context, opts Options) error {
 	if opts.Version == "" {
 		return errors.New("a version is required")
 	}
+	if n := len(NormalizeNotes(opts.Notes)); n > MaxNotesBytes {
+		return fmt.Errorf("release notes are %d bytes, over the %d-byte limit", n, MaxNotesBytes)
+	}
 	if err := command.RequireBinaries("git"); err != nil {
 		return err
 	}
@@ -144,7 +147,7 @@ func Create(ctx context.Context, opts Options) error {
 		Changes:       changes,
 		ChangeBasis:   basis,
 	}
-	m.Notes = RenderNotes(changes, basis)
+	m.Notes = ComposeNotes(opts.Notes, RenderNotes(changes, basis))
 
 	result := Result{
 		Component: m.Component,
@@ -172,6 +175,10 @@ func Create(ctx context.Context, opts Options) error {
 		}
 		result.Digest, result.Manifest = desc.Digest, existing
 		fmt.Fprintf(opts.Stderr, "%s already published; nothing to do\n", ref)
+
+	case existing.onlyNotesDiffer(m):
+		return fmt.Errorf("%s already exists with different notes\n"+
+			"notes are part of the immutable release: re-run with the notes it was published with, or pick a new version", ref)
 
 	default:
 		return fmt.Errorf("%s already exists and describes a different release (%s vs %s)\n"+

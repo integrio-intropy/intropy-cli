@@ -3,10 +3,13 @@ package main
 import (
 	"bytes"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/integrio-intropy/intropy-cli/internal/release"
+	"github.com/spf13/pflag"
 )
 
 // resetReleaseState restores the flag-backing globals between tests. These
@@ -17,6 +20,9 @@ func resetReleaseState(t *testing.T, stdout, stderr *bytes.Buffer) {
 	resetRootIO(t, stdout, stderr)
 	reset := func() {
 		releaseCreateOpts = releaseCreateFlags{output: release.OutputPlain}
+		// Cobra keeps a flag's Changed state across Execute calls, and the
+		// mutual-exclusion check reads it.
+		releaseCreateCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 		releaseShowOpts = releaseShowFlags{output: release.OutputPlain}
 		releaseListOpts = releaseListFlags{output: release.OutputPlain}
 	}
@@ -152,5 +158,55 @@ func TestReleaseIsRegistered(t *testing.T) {
 		if !found {
 			t.Errorf("release %s is not registered", name)
 		}
+	}
+}
+
+func TestReleaseCreateNotesFlagsAreMutuallyExclusive(t *testing.T) {
+	_, _, err := runRelease(t, "create", "order-extractor", "--version", "1.4.2", "--notes", "a", "--notes-file", "-")
+	if err == nil {
+		t.Fatal("--notes and --notes-file together should be refused")
+	}
+	if code := exitCode(err); code != 2 {
+		t.Errorf("exit code = %d, want 2 for a usage error", code)
+	}
+}
+
+func TestReadReleaseNotes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "NOTES.md")
+	if err := os.WriteFile(path, []byte("# From file\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name, inline, path, stdin, want string
+	}{
+		{"inline", "From flag", "", "", "From flag"},
+		{"file", "", path, "", "# From file\n"},
+		{"stdin", "", "-", "From stdin\n", "From stdin\n"},
+		{"none", "", "", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := readReleaseNotes(strings.NewReader(tc.stdin), tc.inline, tc.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tc.want {
+				t.Errorf("readReleaseNotes() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestReadReleaseNotesRefusesAnOversizedFile(t *testing.T) {
+	_, err := readReleaseNotes(strings.NewReader(strings.Repeat("x", release.MaxNotesBytes+1)), "", "-")
+	if err == nil || !strings.Contains(err.Error(), "limit") {
+		t.Fatalf("err = %v, want a size-limit error", err)
+	}
+}
+
+func TestReadReleaseNotesReportsAMissingFile(t *testing.T) {
+	_, err := readReleaseNotes(strings.NewReader(""), "", filepath.Join(t.TempDir(), "absent.md"))
+	if err == nil || !strings.Contains(err.Error(), "--notes-file") {
+		t.Fatalf("err = %v, want it to name --notes-file", err)
 	}
 }

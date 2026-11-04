@@ -189,6 +189,19 @@ func (m *Manifest) SameRelease(other *Manifest) bool {
 	return true
 }
 
+// onlyNotesDiffer reports whether other is the same release as m in every
+// respect but its notes. That is the retry that forgot --notes, or edited the
+// notes file in between, and it deserves a clearer refusal than "different
+// release" over two identical commits.
+func (m *Manifest) onlyNotesDiffer(other *Manifest) bool {
+	if m == nil || other == nil || m.Notes == other.Notes {
+		return false
+	}
+	same := *other
+	same.Notes = m.Notes
+	return m.SameRelease(&same)
+}
+
 func shortSHA(sha string) string {
 	if len(sha) >= 40 {
 		return sha[:7]
