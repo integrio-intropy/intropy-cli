@@ -1,0 +1,37 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "4b0c7522b095",
+  "strategy": "manual-commit",
+  "branch": "feat/release-from-non-head",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "cmd/intropy/deploy_pin.go",
+    "cmd/intropy/release_create.go",
+    "cmd/intropy/release_test.go",
+    "internal/deploy/resolve.go",
+    "internal/git/client.go",
+    "internal/git/client_test.go",
+    "internal/release/create.go",
+    "internal/release/create_test.go",
+    "internal/release/manifest.go",
+    "internal/release/request.go",
+    "internal/source/source.go",
+    "internal/source/source_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/4b/0c7522b095/0/metadata.json",
+      "transcript": "/4b/0c7522b095/0/full.jsonl",
+      "compact_transcript": "/4b/0c7522b095/0/transcript.jsonl",
+      "content_hash": "/4b/0c7522b095/0/content_hash.txt",
+      "prompt": "/4b/0c7522b095/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 48,
+    "cache_creation_tokens": 87217,
+    "cache_read_tokens": 1972668,
+    "output_tokens": 24186,
+    "api_call_count": 23
+  }
+}

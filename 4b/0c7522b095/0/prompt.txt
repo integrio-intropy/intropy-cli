@@ -1,0 +1,5 @@
+We have a design flaw in the release/deploy process. How do you suggest we release/deploy something that where the change is not HEAD (someone else have comitted something before we started the release/deploy process)
+
+---
+
+yes do that but do not commit anything yet
