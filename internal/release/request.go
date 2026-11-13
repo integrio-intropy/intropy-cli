@@ -25,8 +25,8 @@ type Options struct {
 	// positional argument instead.
 	Version string
 
-	// Ref is the source revision to release. Defaults to HEAD.
-	// Internal test seam — not exposed as a CLI flag.
+	// Ref is the source revision to release. Empty selects the newest commit
+	// on HEAD that touched the component's source paths.
 	Ref string
 
 	// Since names the starting point for the changelog when there is no
@@ -74,9 +74,6 @@ func (o *Options) applyDefaults() {
 	}
 	if o.SourceDir == "" {
 		o.SourceDir = "."
-	}
-	if o.Ref == "" {
-		o.Ref = "HEAD"
 	}
 	if o.OutputFormat == "" {
 		o.OutputFormat = OutputPlain

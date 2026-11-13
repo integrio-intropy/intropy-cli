@@ -9,11 +9,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// release create publishes an immutable release manifest for HEAD. Digest
+// release create publishes an immutable release manifest for a source commit. Digest
 // resolution, notes generation, the manifest push, and the git tag all live
 // in internal/release.Create; this file is flag plumbing.
 type releaseCreateFlags struct {
 	version    string
+	ref        string
 	domain     string
 	system     string
 	gitopsRepo string
@@ -29,11 +30,13 @@ var releaseCreateOpts = releaseCreateFlags{output: release.OutputPlain}
 var releaseCreateCmd = &cobra.Command{
 	Use:   "create <component>",
 	Short: "Publish an immutable release manifest",
-	Long: "Resolve the image digests CI published for HEAD and record them, with the commit and generated notes, " +
+	Long: "Resolve the image digests CI published for a source commit and record them, with the commit and generated notes, " +
 		"as an immutable release manifest in the registry. An annotated git tag is pushed alongside it.\n\n" +
 		"This changes no environment. Whatever each environment was running, it still is — and because the version " +
 		"resolves the same commit, it resolves the same digests.\n\n" +
-		"Run it inside the component's source repository. The commit comes from HEAD and must be pushed. Notes are " +
+		"Run it inside the component's source repository. The commit is the newest one on HEAD that touched the " +
+		"component's source paths, so later pushes to other components do not change it; --ref names one instead " +
+		"and skips the working-tree check. Either way it must be pushed. Notes are " +
 		"generated from the commits since the previous release that this one descends from. Text given with --notes " +
 		"or --notes-file (- reads stdin) is placed above them; its first line is what release list shows.\n\n" +
 		"If CI has not finished publishing the commit's images, the command fails — unless --watch is given, in " +
@@ -47,6 +50,11 @@ var releaseCreateCmd = &cobra.Command{
 		}
 		if releaseCreateOpts.version == "" {
 			return newUsageErrorf("--version is required")
+		}
+		// Ignoring a flag that cannot apply would leave the impression that a
+		// working-tree check was waived when none was ever run.
+		if releaseCreateOpts.ref != "" && releaseCreateOpts.allowDirty {
+			return newUsageErrorf("--allow-dirty has no meaning with --ref: a named commit is released as pushed, so no working tree is read")
 		}
 
 		notes, err := readReleaseNotes(cmd.InOrStdin(), releaseCreateOpts.notes, releaseCreateOpts.notesFile)
@@ -62,6 +70,7 @@ var releaseCreateCmd = &cobra.Command{
 			Domain:       releaseCreateOpts.domain,
 			System:       releaseCreateOpts.system,
 			Version:      releaseCreateOpts.version,
+			Ref:          releaseCreateOpts.ref,
 			Notes:        notes,
 			GitopsRepo:   releaseCreateOpts.gitopsRepo,
 			AllowDirty:   releaseCreateOpts.allowDirty,
@@ -77,6 +86,7 @@ var releaseCreateCmd = &cobra.Command{
 func init() {
 	f := releaseCreateCmd.Flags()
 	f.StringVar(&releaseCreateOpts.version, "version", "", "version to publish (required)")
+	f.StringVar(&releaseCreateOpts.ref, "ref", "", "source commit to release, as a sha, tag or branch (default: newest commit on HEAD under the component's source paths)")
 	f.StringVar(&releaseCreateOpts.domain, "domain", "", flagUsageDomain)
 	f.StringVar(&releaseCreateOpts.system, "system", "", flagUsageSystem)
 	f.StringVar(&releaseCreateOpts.gitopsRepo, "gitops-repo", "", flagUsageGitopsRepo)

@@ -95,6 +95,50 @@ func TestGitLastCommitIgnoresLaterUnrelatedCommits(t *testing.T) {
 	}
 }
 
+// CI builds the mainline, so with merge commits the merge is the commit that
+// has an image, not the feature-branch commit it brought in.
+func TestGitLastChangeFollowsTheMainline(t *testing.T) {
+	dir := gittest.NewRepo(t, "main")
+	g := testClient(dir)
+	ctx := context.Background()
+
+	gittest.Run(t, dir, "checkout", "--quiet", "-b", "feature")
+	gittest.Commit(t, dir, "component/app.cs", "// feature\n", "feature work")
+	gittest.Run(t, dir, "checkout", "--quiet", "main")
+	gittest.Run(t, dir, "merge", "--quiet", "--no-ff", "-m", "merge feature", "feature")
+	merge := gittest.HEAD(t, dir)
+	gittest.Commit(t, dir, "other/app.cs", "// other\n", "unrelated one")
+	gittest.Commit(t, dir, "other/app.cs", "// other again\n", "unrelated two")
+
+	got, found, err := g.LastChange(ctx, "HEAD", "component", "missing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found || got != merge {
+		t.Errorf("LastChange() = %q, %v; want the merge commit %q", got, found, merge)
+	}
+
+	n, err := g.CountFirstParent(ctx, "HEAD~3..HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 3 {
+		t.Errorf("CountFirstParent() = %d, want 3 with the merge counted once", n)
+	}
+}
+
+func TestGitLastChangeOfUntouchedPaths(t *testing.T) {
+	dir := gittest.NewRepo(t, "main")
+
+	got, found, err := testClient(dir).LastChange(context.Background(), "HEAD", "never")
+	if err != nil {
+		t.Fatalf("untouched paths should not be an error: %v", err)
+	}
+	if found || got != "" {
+		t.Errorf("LastChange() = %q, %v; want no commit", got, found)
+	}
+}
+
 // A component onboarded but never deployed: the overlay path has no history of
 // its own. Reporting that as "not found" rather than an error is what lets sync
 // say "there is nothing pending" instead of failing obscurely.

@@ -72,30 +72,17 @@ func Create(ctx context.Context, opts Options) error {
 
 	g := git.Client{Runner: opts.Runner, Dir: opts.SourceDir}
 
-	src, err := source.Inspect(ctx, g, comp.SourcePaths, opts.AllowDirty)
+	src, err := source.Inspect(ctx, g, comp.SourcePaths, opts.Ref, opts.AllowDirty)
 	if err != nil {
 		return err
 	}
 	if len(src.Dirty) > 0 {
 		fmt.Fprintf(opts.Stderr, "warning: releasing with %d uncommitted change(s) under the component's source paths\n", len(src.Dirty))
 	}
-
-	// Ref defaults to HEAD, which Inspect has already checked. A different ref
-	// is resolved here and checked for reachability the same way.
-	commit := src.Commit
-	if opts.Ref != "HEAD" {
-		commit, err = g.RevParse(ctx, opts.Ref)
-		if err != nil {
-			return fmt.Errorf("resolve ref %s: %w", opts.Ref, err)
-		}
-		pushed, err := g.IsAncestor(ctx, commit, gitops.RemoteName+"/"+src.Branch)
-		if err != nil {
-			return err
-		}
-		if !pushed {
-			return &source.UnpushedCommitError{Commit: commit, Branch: gitops.RemoteName + "/" + src.Branch}
-		}
+	if msg := src.Selection(); msg != "" {
+		fmt.Fprintln(opts.Stderr, msg)
 	}
+	commit := src.Commit
 
 	reg, err := NewRegistry(opts.UserAgent)
 	if err != nil {
@@ -142,7 +129,7 @@ func Create(ctx context.Context, opts Options) error {
 		Version:       opts.Version,
 		CreatedAt:     now().UTC().Truncate(time.Second),
 		CreatedBy:     committer(),
-		Source:        Source{Commit: commit, Ref: opts.Ref, Repo: repoURL},
+		Source:        Source{Commit: commit, Ref: recordedRef(opts.Ref), Repo: repoURL},
 		Images:        images(pins),
 		Changes:       changes,
 		ChangeBasis:   basis,
@@ -243,6 +230,15 @@ func resolveBasis(ctx context.Context, reg Registry, g git.Client, releasesRepo,
 		Version: prev.Version,
 		Commit:  prev.Source.Commit,
 	}, prev.Source.Commit, nil
+}
+
+// recordedRef is the manifest's record of what the operator named. HEAD when
+// they named nothing, which is where the commit was selected from.
+func recordedRef(ref string) string {
+	if ref == "" {
+		return "HEAD"
+	}
+	return ref
 }
 
 // TagName is the annotated tag for a release. Component-prefixed because these

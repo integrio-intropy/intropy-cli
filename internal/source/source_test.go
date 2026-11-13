@@ -37,7 +37,7 @@ func newSourceClone(t *testing.T) (clone, origin string) {
 func TestInspectCleanAndPushed(t *testing.T) {
 	clone, _ := newSourceClone(t)
 
-	st, err := Inspect(context.Background(), sourceGit(clone), []string{"component"}, false)
+	st, err := Inspect(context.Background(), sourceGit(clone), []string{"component"}, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestInspectRefusesDirtyComponent(t *testing.T) {
 	clone, _ := newSourceClone(t)
 	gittest.WriteFile(t, filepath.Join(clone, "component", "app.cs"), "// uncommitted\n")
 
-	_, err := Inspect(context.Background(), sourceGit(clone), []string{"component"}, false)
+	_, err := Inspect(context.Background(), sourceGit(clone), []string{"component"}, "", false)
 	if err == nil {
 		t.Fatal("expected a dirty-worktree error")
 	}
@@ -82,7 +82,7 @@ func TestInspectIgnoresDirtFilesOutsideSourcePaths(t *testing.T) {
 	gittest.WriteFile(t, filepath.Join(clone, "other-component", "app.cs"), "// someone else's work\n")
 	gittest.WriteFile(t, filepath.Join(clone, "scratch.txt"), "notes\n")
 
-	st, err := Inspect(context.Background(), sourceGit(clone), []string{"component"}, false)
+	st, err := Inspect(context.Background(), sourceGit(clone), []string{"component"}, "", false)
 	if err != nil {
 		t.Fatalf("dirt outside sourcePaths should not block a deploy: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestInspectAllowDirtyStillReports(t *testing.T) {
 	clone, _ := newSourceClone(t)
 	gittest.WriteFile(t, filepath.Join(clone, "component", "app.cs"), "// uncommitted\n")
 
-	st, err := Inspect(context.Background(), sourceGit(clone), []string{"component"}, true)
+	st, err := Inspect(context.Background(), sourceGit(clone), []string{"component"}, "", true)
 	if err != nil {
 		t.Fatalf("--allow-dirty should waive the check: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestInspectRefusesUnpushedCommit(t *testing.T) {
 	clone, _ := newSourceClone(t)
 	gittest.Commit(t, clone, "component/app.cs", "// local only\n", "local work")
 
-	_, err := Inspect(context.Background(), sourceGit(clone), []string{"component"}, false)
+	_, err := Inspect(context.Background(), sourceGit(clone), []string{"component"}, "", false)
 	if err == nil {
 		t.Fatal("expected an unpushed-commit error")
 	}
@@ -140,7 +140,7 @@ func TestInspectFetchesBeforeCheckingAncestry(t *testing.T) {
 	// since the push.
 	gittest.Run(t, clone, "update-ref", "refs/remotes/origin/main", stale)
 
-	st, err := Inspect(ctx, g, []string{"component"}, false)
+	st, err := Inspect(ctx, g, []string{"component"}, "", false)
 	if err != nil {
 		t.Fatalf("a stale origin/main must not report a pushed commit as unpushed: %v", err)
 	}
@@ -159,11 +159,120 @@ func TestInspectNoSourcePathsChecksWholeTree(t *testing.T) {
 	clone, _ := newSourceClone(t)
 	gittest.WriteFile(t, filepath.Join(clone, "anywhere.txt"), "dirty\n")
 
-	_, err := Inspect(context.Background(), sourceGit(clone), nil, false)
+	_, err := Inspect(context.Background(), sourceGit(clone), nil, "", false)
 	if err == nil {
 		t.Fatal("with no source paths the whole tree should be checked")
 	}
 	if !strings.Contains(err.Error(), "the working tree") {
 		t.Errorf("error %q should describe the scope as the whole working tree", err)
+	}
+}
+
+// pushedCommit commits path in clone and pushes it, returning the commit.
+func pushedCommit(t *testing.T, clone, path, subject string) string {
+	t.Helper()
+	gittest.Commit(t, clone, path, "// "+subject+"\n", subject)
+	gittest.Run(t, clone, "push", "--quiet", "origin", "main")
+	return gittest.HEAD(t, clone)
+}
+
+// The reason selection is path-based: a teammate's push to another component
+// between your push and your release must not change what you release.
+func TestInspectSkipsLaterCommitsOutsideSourcePaths(t *testing.T) {
+	clone, _ := newSourceClone(t)
+	mine := pushedCommit(t, clone, "component/app.cs", "my change")
+	pushedCommit(t, clone, "other-component/app.cs", "teammate change one")
+	theirs := pushedCommit(t, clone, "other-component/app.cs", "teammate change two")
+
+	st, err := Inspect(context.Background(), sourceGit(clone), []string{"component"}, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Commit != mine {
+		t.Errorf("Commit = %q, want the last commit under component %q", st.Commit, mine)
+	}
+	if st.Head != theirs {
+		t.Errorf("Head = %q, want %q", st.Head, theirs)
+	}
+	if st.Skipped != 2 {
+		t.Errorf("Skipped = %d, want 2", st.Skipped)
+	}
+	if sel := st.Selection(); !strings.Contains(sel, "2 commit(s) ahead") {
+		t.Errorf("Selection() = %q, should say how far HEAD is ahead", sel)
+	}
+}
+
+func TestInspectSelectionIsSilentWhenHeadIsTheCommit(t *testing.T) {
+	clone, _ := newSourceClone(t)
+	pushedCommit(t, clone, "component/app.cs", "my change")
+
+	st, err := Inspect(context.Background(), sourceGit(clone), []string{"component"}, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Commit != st.Head || st.Skipped != 0 || st.Selection() != "" {
+		t.Errorf("state = %+v, Selection() = %q; want HEAD with nothing to report", st, st.Selection())
+	}
+}
+
+// An unpushed commit elsewhere in the monorepo is not part of this component,
+// so it is no reason to refuse.
+func TestInspectIgnoresUnpushedCommitsOutsideSourcePaths(t *testing.T) {
+	clone, _ := newSourceClone(t)
+	mine := pushedCommit(t, clone, "component/app.cs", "my change")
+	gittest.Commit(t, clone, "other-component/app.cs", "// local only\n", "unrelated local work")
+
+	st, err := Inspect(context.Background(), sourceGit(clone), []string{"component"}, "", false)
+	if err != nil {
+		t.Fatalf("an unpushed commit outside sourcePaths should not block: %v", err)
+	}
+	if st.Commit != mine {
+		t.Errorf("Commit = %q, want %q", st.Commit, mine)
+	}
+}
+
+func TestInspectNamedRefIgnoresTheWorkingTree(t *testing.T) {
+	clone, _ := newSourceClone(t)
+	first := pushedCommit(t, clone, "component/app.cs", "first")
+	pushedCommit(t, clone, "component/app.cs", "second")
+	gittest.WriteFile(t, filepath.Join(clone, "component", "app.cs"), "// uncommitted\n")
+
+	st, err := Inspect(context.Background(), sourceGit(clone), []string{"component"}, first, false)
+	if err != nil {
+		t.Fatalf("a named ref should not read the working tree: %v", err)
+	}
+	if st.Commit != first {
+		t.Errorf("Commit = %q, want %q", st.Commit, first)
+	}
+	if len(st.Dirty) != 0 {
+		t.Errorf("Dirty = %v, want none: the working tree is not involved", st.Dirty)
+	}
+	if !strings.Contains(st.Selection(), first) {
+		t.Errorf("Selection() = %q, should name the ref", st.Selection())
+	}
+}
+
+func TestInspectNamedRefMustBePushed(t *testing.T) {
+	clone, _ := newSourceClone(t)
+	gittest.Commit(t, clone, "component/app.cs", "// local only\n", "local work")
+
+	_, err := Inspect(context.Background(), sourceGit(clone), []string{"component"}, "HEAD", false)
+	if _, ok := errors.AsType[*UnpushedCommitError](err); !ok {
+		t.Fatalf("error %v should be *UnpushedCommitError", err)
+	}
+}
+
+// Images are tagged with the commit, never with an annotated tag's object id.
+func TestInspectNamedAnnotatedTagResolvesToItsCommit(t *testing.T) {
+	clone, _ := newSourceClone(t)
+	commit := pushedCommit(t, clone, "component/app.cs", "tagged")
+	gittest.Run(t, clone, "tag", "-a", "-m", "a tag", "v1")
+
+	st, err := Inspect(context.Background(), sourceGit(clone), []string{"component"}, "v1", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Commit != commit {
+		t.Errorf("Commit = %q, want the tagged commit %q", st.Commit, commit)
 	}
 }

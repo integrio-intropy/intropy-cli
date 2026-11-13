@@ -48,6 +48,21 @@ func TestReleaseCreateRequiresComponent(t *testing.T) {
 	}
 }
 
+// --allow-dirty advertises a working-tree check, and a named ref reads no
+// working tree. Ignoring the flag would be worse than refusing it.
+func TestReleaseCreateRejectsAllowDirtyWithRef(t *testing.T) {
+	_, _, err := runRelease(t, "create", "order-extractor", "--version", "1.4.2", "--ref", "a1b2c3d", "--allow-dirty")
+	if err == nil {
+		t.Fatal("expected an error for --allow-dirty with --ref")
+	}
+	if !strings.Contains(err.Error(), "--allow-dirty") {
+		t.Errorf("error should name the flag: %v", err)
+	}
+	if code := exitCode(err); code != 2 {
+		t.Errorf("exit code = %d, want 2 for a usage error", code)
+	}
+}
+
 func TestReleaseCreateRequiresVersion(t *testing.T) {
 	_, _, err := runRelease(t, "create", "order-extractor")
 	if err == nil {

@@ -426,6 +426,76 @@ func TestCreateSinceRecordsAnExplicitBasis(t *testing.T) {
 	}
 }
 
+// A teammate pushing to another component between your push and your release
+// must not change what the release means. CI built no image of this component
+// for their commit, so releasing HEAD would fail or ship the wrong bits.
+func TestCreateIgnoresLaterCommitsToOtherComponents(t *testing.T) {
+	f := newCreateFixture(t)
+	f.commitAndPush(t, "b.cs", "Handle empty payloads")
+	mine := headOf(t, f.sourceDir)
+	gittest.Commit(t, f.sourceDir, filepath.Join("other-component", "app.cs"), "// theirs\n", "Teammate change")
+	gittest.Run(t, f.sourceDir, "push", "--quiet", "origin", "main")
+
+	r, stderr := f.create(t, "1.0.0")
+	if r.Manifest.Source.Commit != mine {
+		t.Errorf("source.commit = %q, want the last commit under the component %q", r.Manifest.Source.Commit, mine)
+	}
+	if r.Manifest.Source.Ref != "HEAD" {
+		t.Errorf("source.ref = %q, want HEAD", r.Manifest.Source.Ref)
+	}
+	if !strings.Contains(stderr, "1 commit(s) ahead") {
+		t.Errorf("stderr should say HEAD was not used:\n%s", stderr)
+	}
+}
+
+// When the commits since your change do touch the component, only naming the
+// commit releases it without them.
+func TestCreateReleasesTheNamedRef(t *testing.T) {
+	f := newCreateFixture(t)
+	f.commitAndPush(t, "b.cs", "Handle empty payloads")
+	mine := headOf(t, f.sourceDir)
+	f.commitAndPush(t, "c.cs", "Teammate change to the same component")
+
+	var stdout, stderr bytes.Buffer
+	opts := f.options("1.0.0", &stdout, &stderr)
+	opts.Ref = mine
+	if err := Create(context.Background(), opts); err != nil {
+		t.Fatalf("%v\nstderr: %s", err, stderr.String())
+	}
+	var r Result
+	if err := json.Unmarshal(stdout.Bytes(), &r); err != nil {
+		t.Fatal(err)
+	}
+	if r.Manifest.Source.Commit != mine || r.Manifest.Source.Ref != mine {
+		t.Errorf("source = %+v, want commit and ref %q", r.Manifest.Source, mine)
+	}
+	for _, c := range r.Manifest.Changes {
+		if c.Subject == "Teammate change to the same component" {
+			t.Errorf("changes = %+v, should stop at the named commit", r.Manifest.Changes)
+		}
+	}
+}
+
+// Naming the same commit a different way is a retry, not a different release.
+func TestCreateRetryNamingTheCommitBySHAIsOneRelease(t *testing.T) {
+	f := newCreateFixture(t)
+	first, _ := f.create(t, "1.0.0")
+
+	var stdout, stderr bytes.Buffer
+	opts := f.options("1.0.0", &stdout, &stderr)
+	opts.Ref = first.Manifest.Source.Commit
+	if err := Create(context.Background(), opts); err != nil {
+		t.Fatalf("a retry by sha should be recognised: %v\nstderr: %s", err, stderr.String())
+	}
+	var r Result
+	if err := json.Unmarshal(stdout.Bytes(), &r); err != nil {
+		t.Fatal(err)
+	}
+	if r.Created {
+		t.Error("created = true, want the existing release recognised")
+	}
+}
+
 // The whole point of the step: naming the bits moves nothing.
 func TestCreateChangesNoEnvironment(t *testing.T) {
 	f := newCreateFixture(t)
