@@ -25,8 +25,9 @@ var deployPinCmd = &cobra.Command{
 	Short: "Pin a component's image digest into an environment",
 	Long: "Pin the image digests for a component into one environment's kustomize overlay in the GitOps " +
 		"repository.\n\n" +
-		"Without a version the commit comes from HEAD in the current source repository, which must be clean " +
-		"and pushed — CI builds pushed commits, so an unpushed one has no image. If CI has not published the " +
+		"Without a version the commit is the newest one on HEAD in the current source repository that touched " +
+		"the component's source paths. It must be clean and pushed — CI builds pushed commits, so an unpushed " +
+		"one has no image. If CI has not published the " +
 		"digests yet the command fails unless --watch is given.\n\n" +
 		"With a version the digests come from that release's manifest instead, so no source repository is read " +
 		"and the command works from any directory. When the target environment declares promotesFrom, the plan " +

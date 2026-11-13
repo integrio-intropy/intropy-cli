@@ -42,8 +42,12 @@ type Manifest struct {
 // Source identifies the commit the release was built from.
 type Source struct {
 	Commit string `json:"commit"`
-	Ref    string `json:"ref"`
-	Repo   string `json:"repo,omitempty"`
+
+	// Ref is the revision the operator named, or HEAD when they named none.
+	// It records how Commit was chosen; Commit alone is what the release is.
+	Ref string `json:"ref"`
+
+	Repo string `json:"repo,omitempty"`
 }
 
 // Image is one image repository pinned to the digest CI published.
@@ -155,9 +159,10 @@ func (m *Manifest) Validate() error {
 //
 // CreatedAt and CreatedBy are excluded: re-running release create for a
 // version that already exists must recognise its own earlier work, and those
-// two fields differ on every run by construction. Everything else is what the
-// release actually claims, and any difference there means the version is being
-// reused for something else.
+// two fields differ on every run by construction. So is Source.Ref: a retry
+// that names the same commit by sha instead of by branch is the same release.
+// Everything else is what the release actually claims, and any difference
+// there means the version is being reused for something else.
 func (m *Manifest) SameRelease(other *Manifest) bool {
 	if m == nil || other == nil {
 		return false
@@ -165,7 +170,8 @@ func (m *Manifest) SameRelease(other *Manifest) bool {
 	if m.SchemaVersion != other.SchemaVersion ||
 		m.Component != other.Component ||
 		m.Version != other.Version ||
-		m.Source != other.Source ||
+		m.Source.Commit != other.Source.Commit ||
+		m.Source.Repo != other.Source.Repo ||
 		m.Notes != other.Notes ||
 		m.ChangeBasis != other.ChangeBasis {
 		return false

@@ -18,49 +18,83 @@ import (
 
 // State is what the source repository says about the commit being shipped.
 type State struct {
-	// Commit is the full sha of HEAD.
+	// Commit is the full sha of the commit being shipped.
 	Commit string
+
+	// Head is the full sha of HEAD. It differs from Commit when the commit was
+	// named explicitly, or when newer commits touch none of the source paths.
+	Head string
+
+	// Ref is the revision the caller named, empty when the commit was selected
+	// from HEAD.
+	Ref string
+
+	// Skipped counts the first-parent commits between Commit and HEAD that
+	// touch none of the source paths. Only set when Ref is empty.
+	Skipped int
 
 	// Branch is the source remote's default branch, the one CI builds.
 	Branch string
 
 	// Dirty lists uncommitted changes under the component's source paths. It
-	// is populated even when the check is waived, so callers can warn.
+	// is populated even when the check is waived, so callers can warn. Empty
+	// when Ref is set: a named commit does not involve the working tree.
 	Dirty []string
 }
 
 // ShortCommit abbreviates the commit for messages and commit subjects.
 func (s State) ShortCommit() string { return git.ShortSHA(s.Commit) }
 
-// Inspect reads the state of the source repository at dir and checks that its
-// HEAD is a safe thing to ship.
+// Selection describes, for a progress line, how Commit was chosen when that is
+// not simply HEAD. Empty when there is nothing to say.
+func (s State) Selection() string {
+	switch {
+	case s.Ref != "":
+		return fmt.Sprintf("using %s (%s)", s.ShortCommit(), s.Ref)
+	case s.Skipped > 0:
+		return fmt.Sprintf("using %s, the newest commit under the component's source paths; HEAD (%s) is %d commit(s) ahead and touches none of them",
+			s.ShortCommit(), git.ShortSHA(s.Head), s.Skipped)
+	default:
+		return ""
+	}
+}
+
+// Inspect decides which commit of the source repository at dir is being
+// shipped, and checks that it is a safe thing to ship.
 //
-// Two conditions are enforced. The working tree must be clean under the
-// component's source paths, because CI built the pushed commit and uncommitted
+// With ref set, that revision is shipped as named. With ref empty the commit is
+// the newest one on HEAD that touched sourcePaths, not HEAD itself: these are
+// monorepos, and a teammate's push to another component between your push and
+// your release must not change what your release means. CI may not have built
+// this component for that commit at all.
+//
+// The shipped commit must be an ancestor of the remote's default branch,
+// because an unpushed commit has no image in the registry. When ref is empty
+// the working tree must also be clean under sourcePaths, because uncommitted
 // changes mean the thing about to be shipped is not the thing that was just
-// tested. And HEAD must be an ancestor of the remote's default branch, because
-// an unpushed commit has no image in the registry at all.
+// tested; allowDirty waives that check but not the reporting. A named ref
+// skips it: the working tree plays no part in what it means.
 //
 // The cleanliness check is scoped to sourcePaths rather than applied to the
-// whole tree: these are monorepos holding many components, and an unrelated
-// dirty file elsewhere is no reason to refuse. allowDirty waives the check but
-// not the reporting.
-func Inspect(ctx context.Context, g git.Client, sourcePaths []string, allowDirty bool) (State, error) {
-	var st State
+// whole tree, so an unrelated dirty file elsewhere is no reason to refuse.
+func Inspect(ctx context.Context, g git.Client, sourcePaths []string, ref string, allowDirty bool) (State, error) {
+	st := State{Ref: ref}
 
-	commit, err := g.HEAD(ctx)
+	head, err := g.HEAD(ctx)
 	if err != nil {
 		return st, err
 	}
-	st.Commit = commit
+	st.Head = head
 
-	dirty, err := g.Status(ctx, sourcePaths...)
-	if err != nil {
-		return st, err
-	}
-	st.Dirty = dirty
-	if len(dirty) > 0 && !allowDirty {
-		return st, &DirtyWorktreeError{Paths: sourcePaths, Changes: dirty}
+	if ref == "" {
+		dirty, err := g.Status(ctx, sourcePaths...)
+		if err != nil {
+			return st, err
+		}
+		st.Dirty = dirty
+		if len(dirty) > 0 && !allowDirty {
+			return st, &DirtyWorktreeError{Paths: sourcePaths, Changes: dirty}
+		}
 	}
 
 	branch, err := g.DefaultBranch(ctx, gitops.RemoteName)
@@ -69,22 +103,52 @@ func Inspect(ctx context.Context, g git.Client, sourcePaths []string, allowDirty
 	}
 	st.Branch = branch
 
-	// Fetch before reasoning about ancestry. A stale remote-tracking ref makes
-	// a commit that was pushed yesterday look unpushed, which is the most
-	// confusing possible version of this error.
+	// Fetch before resolving or reasoning about ancestry. A stale
+	// remote-tracking ref makes a commit that was pushed yesterday look
+	// unpushed, which is the most confusing possible version of this error,
+	// and leaves a ref such as origin/main pointing at the wrong commit.
 	if err := g.Fetch(ctx, gitops.RemoteName, branch); err != nil {
 		return st, err
 	}
+
+	if ref != "" {
+		// ^{commit} so an annotated tag resolves to the commit it names, not
+		// to the tag object, which no image is tagged with.
+		if st.Commit, err = g.RevParse(ctx, ref+"^{commit}"); err != nil {
+			return st, err
+		}
+	} else if st.Commit, st.Skipped, err = lastSourceChange(ctx, g, head, sourcePaths); err != nil {
+		return st, err
+	}
+
 	remoteRef := gitops.RemoteName + "/" + branch
-	pushed, err := g.IsAncestor(ctx, commit, remoteRef)
+	pushed, err := g.IsAncestor(ctx, st.Commit, remoteRef)
 	if err != nil {
 		return st, err
 	}
 	if !pushed {
-		return st, &UnpushedCommitError{Commit: commit, Branch: remoteRef}
+		return st, &UnpushedCommitError{Commit: st.Commit, Branch: remoteRef}
 	}
 
 	return st, nil
+}
+
+// lastSourceChange returns the newest commit on head that touched sourcePaths
+// and how many commits head is ahead of it. With no source paths, or none that
+// any commit touched, it is head itself: there is nothing to narrow by.
+func lastSourceChange(ctx context.Context, g git.Client, head string, sourcePaths []string) (string, int, error) {
+	if len(sourcePaths) == 0 {
+		return head, 0, nil
+	}
+	commit, found, err := g.LastChange(ctx, head, sourcePaths...)
+	if err != nil || !found || commit == head {
+		return head, 0, err
+	}
+	skipped, err := g.CountFirstParent(ctx, commit+".."+head)
+	if err != nil {
+		return "", 0, err
+	}
+	return commit, skipped, nil
 }
 
 // DirtyWorktreeError reports uncommitted changes in the component's source.
@@ -108,12 +172,13 @@ func (e *DirtyWorktreeError) Error() string {
 	return b.String()
 }
 
-// UnpushedCommitError reports that HEAD has not reached the remote.
+// UnpushedCommitError reports that the commit being shipped has not reached
+// the remote.
 type UnpushedCommitError struct {
 	Commit string
 	Branch string
 }
 
 func (e *UnpushedCommitError) Error() string {
-	return fmt.Sprintf("HEAD (%s) is not an ancestor of %s, so it has not been pushed; there is no image built from it yet — push first", git.ShortSHA(e.Commit), e.Branch)
+	return fmt.Sprintf("%s is not an ancestor of %s, so it has not been pushed; there is no image built from it yet — push first", git.ShortSHA(e.Commit), e.Branch)
 }

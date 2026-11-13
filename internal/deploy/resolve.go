@@ -26,7 +26,7 @@ type origin struct {
 	Pins []source.Pin
 
 	// Release is the manifest the pins came from, nil when the digests were
-	// resolved from the source repository's HEAD.
+	// resolved from the source repository.
 	Release *release.Manifest
 }
 
@@ -40,8 +40,9 @@ func (o origin) ReleaseVersion() string {
 
 // resolveOrigin decides which digests are being deployed.
 //
-// Without a version this is the current commit: HEAD must be clean and pushed,
-// and the digests come from the tags CI published for it. With a version the
+// Without a version this is the newest commit on HEAD that touched the
+// component's source paths, which must be clean and pushed, and the digests
+// come from the tags CI published for it. With a version the
 // release manifest is authoritative — it already recorded the digests it was
 // created by resolving — so no source repository is consulted at all and the
 // command works from any directory.
@@ -52,15 +53,18 @@ func resolveOrigin(ctx context.Context, opts Options, coord gitops.Coordinate, c
 	return resolveFromHEAD(ctx, opts, comp)
 }
 
-// resolveFromHEAD reads the current commit and asks the registry what CI built
+// resolveFromHEAD selects a commit from HEAD and asks the registry what CI built
 // for it.
 func resolveFromHEAD(ctx context.Context, opts Options, comp *gitops.ComponentConfig) (origin, error) {
-	src, err := source.Inspect(ctx, git.Client{Runner: opts.Runner, Dir: opts.SourceDir}, comp.SourcePaths, opts.AllowDirty)
+	src, err := source.Inspect(ctx, git.Client{Runner: opts.Runner, Dir: opts.SourceDir}, comp.SourcePaths, "", opts.AllowDirty)
 	if err != nil {
 		return origin{}, err
 	}
 	if len(src.Dirty) > 0 {
 		fmt.Fprintf(opts.Stderr, "warning: deploying with %d uncommitted change(s) under the component's source paths\n", len(src.Dirty))
+	}
+	if msg := src.Selection(); msg != "" {
+		fmt.Fprintln(opts.Stderr, msg)
 	}
 
 	resolver, err := source.NewResolver(opts.UserAgent)

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -495,6 +496,36 @@ func (g Client) LastCommitAt(ctx context.Context, rev, path string) (string, tim
 		return "", time.Time{}, false, fmt.Errorf("read last commit for %s: parse commit date %q: %w", path, date, err)
 	}
 	return sha, at, true, nil
+}
+
+// LastChange returns the newest commit on rev's first-parent history that
+// changed any of paths, and whether there was one.
+//
+// First-parent because the answer has to be a commit CI built. With merge
+// commits, plain history simplification follows the merged branch and returns
+// a feature-branch commit; the mainline merge that brought it in is the one
+// with an image.
+func (g Client) LastChange(ctx context.Context, rev string, paths ...string) (string, bool, error) {
+	args := append([]string{"log", "-1", "--first-parent", "--format=%H", rev, "--"}, paths...)
+	out, err := g.run(ctx, args...)
+	if err != nil {
+		return "", false, fmt.Errorf("read last change under %s: %w", strings.Join(paths, ", "), err)
+	}
+	return out, out != "", nil
+}
+
+// CountFirstParent counts the first-parent commits in revRange, so a merge
+// counts as one commit rather than as everything it brought in.
+func (g Client) CountFirstParent(ctx context.Context, revRange string) (int, error) {
+	out, err := g.run(ctx, "rev-list", "--count", "--first-parent", revRange)
+	if err != nil {
+		return 0, fmt.Errorf("count commits in %s: %w", revRange, err)
+	}
+	n, err := strconv.Atoi(out)
+	if err != nil {
+		return 0, fmt.Errorf("count commits in %s: unexpected git rev-list output %q", revRange, out)
+	}
+	return n, nil
 }
 
 // Log lists the commits in revRange, most recent first, limited to paths when
