@@ -366,6 +366,122 @@ func TestLocalTemplatesGatewayRequiresEndpointAndChannelFacts(t *testing.T) {
 
 // Real-template renders use the current channel and Subscription contract;
 // the older minimal graph fixtures separately exercise backward-compatible decoding.
+// externalPortsTopologyRecord has an extractor that reads an external port
+// from a cursor and sweeps an SMB share, and a loader that writes to an
+// external port and an Azure Blob container.
+const externalPortsTopologyRecord = `{
+  "apiVersion":"topology.intropy.io/v1", "kind":"SystemTopology", "system":"distribution",
+  "components":[
+    {"name":"campaign-extractor","kind":"extractor",
+     "channel":{"pubsub":"distribution-pubsub","topic":"campaigns"},
+     "publishes":[{"pubsub":"distribution-pubsub","topic":"campaigns"}],
+     "ports":[{"port":"campaign-db","direction":"in"},{"port":"partner-share","direction":"in"}],
+     "cursorStore":"campaign-extractor-cursors"},
+    {"name":"campaign-loader","kind":"loader",
+     "channel":{"pubsub":"distribution-pubsub","topic":"campaigns"},
+     "subscribes":[{"pubsub":"distribution-pubsub","topic":"campaigns","resource":"campaign-loader-subscription","defaultPath":"/unhandled"}],
+     "ports":[{"port":"crm-db","direction":"out"},{"port":"exports","direction":"out"}]}
+  ],
+  "topics":[{"pubsub":"distribution-pubsub","topic":"campaigns","publishers":["campaign-extractor"],"subscribers":["campaign-loader"]}],
+  "ports":[
+    {"name":"campaign-db","kind":"external","directions":["in"],"usedBy":["campaign-extractor"]},
+    {"name":"crm-db","kind":"external","directions":["out"],"usedBy":["campaign-loader"]},
+    {"name":"partner-share","directions":["in"],"usedBy":["campaign-extractor"]},
+    {"name":"exports","directions":["out"],"usedBy":["campaign-loader"]}
+  ]
+}`
+
+func TestLocalTemplatesExternalPortsAndPluggableBindings(t *testing.T) {
+	requireKustomize(t)
+	f := newRealTemplatesInitFixture(t, localTemplatesRoot(t))
+	if err := os.WriteFile(f.topologyFile, []byte(externalPortsTopologyRecord), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	opts := f.options(t, &stdout, &stderr)
+	// The external ports take no binding: only the two binding ports are named.
+	opts.Bindings = []string{"partner-share=smb", "exports=azureblob"}
+	if err := runManifestPipeline(t.Context(), opts); err != nil {
+		t.Fatalf("render: %v\n%s", err, stderr.String())
+	}
+	work := f.clone(t, "manifests-create/sales-distribution-all")
+	base := filepath.Join(work, "domains", "sales", "distribution")
+	build := func(unit string) string {
+		t.Helper()
+		out, err := exec.Command("kustomize", "build", filepath.Join(base, unit, "overlays", "prod")).CombinedOutput()
+		if err != nil {
+			t.Fatalf("kustomize build %s: %v\n%s", unit, err, out)
+		}
+		return string(out)
+	}
+	assertContains := func(what, got string, wants ...string) {
+		t.Helper()
+		for _, want := range wants {
+			if !strings.Contains(got, want) {
+				t.Errorf("%s is missing %q\n%s", what, want, got)
+			}
+		}
+	}
+
+	shared := build(SharedDirName)
+	assertContains("shared", shared,
+		"type: bindings.smb", "name: partner-share", "dapr.io/component-container",
+		"type: bindings.azure.blobstorage", "name: exports")
+	for _, external := range []string{"name: campaign-db", "name: crm-db"} {
+		if strings.Contains(shared, external) {
+			t.Errorf("an external port got a binding (%s)\n%s", external, shared)
+		}
+	}
+
+	extractor := build("campaign-extractor")
+	assertContains("extractor", extractor,
+		// The cursor store and the port it serves.
+		"name: campaign-extractor-cursors", "type: state.",
+		"name: Ports__campaign-db__CursorStore", "value: campaign-extractor-cursors",
+		// The SMB port: the adapter kind, the injected binding, and a Job
+		// that restarts in place with its sidecar left running.
+		"name: Ports__partner-share__Kind", "value: Smb",
+		`dapr.io/inject-pluggable-components: "true"`, "name: smb-binding-runtime",
+		"name: INTROPY_JOB_SIDECAR_SHUTDOWN", "value: OnSuccess",
+		"restartPolicy: OnFailure", "backoffLimit: 5")
+	if strings.Contains(extractor, "Ports__campaign-db__Kind") {
+		t.Errorf("an external port got a file adapter kind\n%s", extractor)
+	}
+
+	loader := build("campaign-loader")
+	assertContains("loader", loader, "name: Ports__exports__Kind", "value: AzureBlob")
+	for _, unwanted := range []string{"cursors", "Ports__crm-db__", "inject-pluggable-components"} {
+		if strings.Contains(loader, unwanted) {
+			t.Errorf("the loader carries %q, which only a reader of an external port or a user of an smb port gets\n%s", unwanted, loader)
+		}
+	}
+}
+
+func TestLocalTemplatesExternalPortCursorStoreLocally(t *testing.T) {
+	requireKustomize(t)
+	f := newLocalFixtureWith(t, localTemplateEntries(t, localTemplatesRoot(t)))
+	if err := os.WriteFile(filepath.Join(f.sourceDir, "topology.json"), []byte(externalPortsTopologyRecord), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	opts := f.renderOptions(&stderr)
+	// Only the binding ports take a fixture.
+	opts.Bindings = []string{"partner-share=file", "exports=file"}
+	built, err := RenderManifests(t.Context(), opts)
+	if err != nil {
+		t.Fatalf("render: %v\n%s", err, stderr.String())
+	}
+	for _, want := range []string{
+		"name: campaign-extractor-cursors",
+		"postgres.fixtures.svc.cluster.local",
+		"name: Ports__campaign-db__CursorStore",
+	} {
+		if !strings.Contains(string(built), want) {
+			t.Errorf("local render is missing %q\n%s", want, built)
+		}
+	}
+}
+
 const runtimeTemplateTopologyRecord = `{
   "apiVersion":"topology.intropy.io/v1", "kind":"SystemTopology", "system":"distribution",
   "components":[

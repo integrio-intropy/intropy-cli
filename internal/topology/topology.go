@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 )
 
 const (
@@ -98,6 +99,10 @@ type Component struct {
 	// and INTROPY_TOPIC_NAME. Either is empty when the topology settles no
 	// single name for it; records that predate it leave Channel nil.
 	Channel *Channel `json:"channel,omitempty"`
+	// CursorStore is the Dapr state store the topology mints for a component
+	// that reads an external port: where the framework keeps the port's read
+	// cursor between runs. Empty for every other component.
+	CursorStore string `json:"cursorStore,omitempty"`
 	// Provides/Consumes are contract surfaces, parsed opaquely (see APIs).
 	Provides []json.RawMessage `json:"provides,omitempty"`
 	Consumes []json.RawMessage `json:"consumes,omitempty"`
@@ -215,12 +220,23 @@ type Contract struct {
 // environment-owned deployment configuration, never part of the record.
 // ExternalSystem is the system it fronts, Directions the directions it is
 // wired in, and UsedBy the components that use it.
+//
+// Kind is PortKindExternal for a port the component reaches through a client
+// of its own (a database, an HTTP API): it has no Dapr binding. Empty for a
+// binding port, which is every port of a record older than the field.
 type Port struct {
 	Name           string   `json:"name"`
+	Kind           string   `json:"kind,omitempty"`
 	ExternalSystem string   `json:"externalSystem,omitempty"`
 	Directions     []string `json:"directions,omitempty"`
 	UsedBy         []string `json:"usedBy,omitempty"`
 }
+
+// PortKindExternal is Port.Kind for a port with no Dapr binding.
+const PortKindExternal = "external"
+
+// External reports whether the port is reached without a Dapr binding.
+func (p Port) External() bool { return strings.EqualFold(p.Kind, PortKindExternal) }
 
 // Entry is one system's topology plus the workspace directory it belongs to,
 // flattened into one self-describing JSON document for the API.

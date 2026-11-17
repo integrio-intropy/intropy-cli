@@ -12,6 +12,18 @@ All three derive the same stable deployment model from the system topology and
 scaffold records. Extractors become CronJobs; other blocks become Deployments.
 The model also resolves app IDs, pub/sub scopes, topics, and ports.
 
+## External ports
+
+A port the topology marks `external` is one the component reaches through a
+client of its own (a database, an HTTP API) instead of a Dapr binding. It needs
+no binding in any environment: `render` and `create` never ask for one, and
+`--binding` naming it is an error. `inspect` marks it `external`.
+
+A component that reads an external port keeps a cursor between runs. The
+topology mints the Dapr state store for it (`<component>-cursors`), and the
+model carries the store and the ports it serves to the deployment templates,
+which render the store and pass its name as `Ports__<port>__CursorStore`.
+
 ## Inspect
 
 `manifests inspect` prints the derived model, topology ports, and the local

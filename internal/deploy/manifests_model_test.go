@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"context"
 	"encoding/json"
 	"path/filepath"
 	"reflect"
@@ -441,5 +442,97 @@ func TestManifestModelKeepsGatewayEndpoints(t *testing.T) {
 	original, _ := json.Marshal(topo)
 	if !strings.Contains(string(original), `"endpoints":[{"name":"orders-web"`) {
 		t.Fatalf("topology mutated: %s", original)
+	}
+}
+
+// externalPortTopology is a system whose extractor reads an external port from
+// a cursor and whose loader writes another: neither port has a binding, and
+// only the reader gets the cursor store the topology minted.
+const externalPortTopology = `{
+  "apiVersion": "topology.intropy.io/v1",
+  "kind": "SystemTopology",
+  "system": "campaign-sync",
+  "components": [
+    {
+      "name": "campaign-extractor",
+      "kind": "extractor",
+      "ports": [{"port": "campaign-db", "direction": "in"}, {"port": "drop", "direction": "in"}],
+      "cursorStore": "campaign-extractor-cursors"
+    },
+    {
+      "name": "campaign-loader",
+      "kind": "loader",
+      "ports": [{"port": "crm-db", "direction": "out"}]
+    }
+  ],
+  "ports": [
+    {"name": "campaign-db", "kind": "external", "directions": ["in"], "usedBy": ["campaign-extractor"]},
+    {"name": "crm-db", "kind": "external", "directions": ["out"], "usedBy": ["campaign-loader"]},
+    {"name": "drop", "directions": ["in"], "usedBy": ["campaign-extractor"]}
+  ]
+}`
+
+func TestManifestModelExternalPorts(t *testing.T) {
+	topo, err := topology.Decode(strings.NewReader(externalPortTopology))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	m := newManifestModel(topo, nil)
+
+	kinds := map[string]string{}
+	for _, p := range m.Ports {
+		kinds[p.Name] = p.Kind
+	}
+	if kinds["campaign-db"] != "external" || kinds["crm-db"] != "external" || kinds["drop"] != "" {
+		t.Errorf("port kinds = %v", kinds)
+	}
+	if got := m.bindingPorts(); len(got) != 1 || got[0].Name != "drop" {
+		t.Errorf("bindingPorts = %+v, want only drop", got)
+	}
+
+	extractor, loader := m.Components[0], m.Components[1]
+	if extractor.CursorStore != "campaign-extractor-cursors" {
+		t.Errorf("extractor cursor store = %q", extractor.CursorStore)
+	}
+	if got := strings.Join(extractor.CursorPorts, ","); got != "campaign-db" {
+		t.Errorf("extractor cursor ports = %q, want the external port it reads", got)
+	}
+	if loader.CursorStore != "" || len(loader.CursorPorts) != 0 {
+		t.Errorf("a writer got cursor wiring: %q %v", loader.CursorStore, loader.CursorPorts)
+	}
+
+	// Templates see the same facts under the keys they index.
+	asMap, err := m.asMap("dev", nil)
+	if err != nil {
+		t.Fatalf("asMap: %v", err)
+	}
+	component := asMap["components"].([]any)[0].(map[string]any)
+	if component["cursorStore"] != "campaign-extractor-cursors" {
+		t.Errorf("component map = %v", component)
+	}
+}
+
+func TestExternalPortsNeedNoBinding(t *testing.T) {
+	topo, err := topology.Decode(strings.NewReader(externalPortTopology))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	facts := manifestFacts{Model: newManifestModel(topo, nil)}
+	catalog := []string{"sftp", "file"}
+
+	// Only the binding port is asked for; the external ones are never missing.
+	choices, err := resolvePortBindingChoices(context.Background(),
+		manifestRunOptions{Bindings: []string{"drop=sftp"}}, facts, catalog, "GitOps", "kind")
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if len(choices) != 1 || choices["drop"] != "sftp" {
+		t.Errorf("choices = %v", choices)
+	}
+
+	_, err = resolvePortBindingChoices(context.Background(),
+		manifestRunOptions{Bindings: []string{"drop=sftp", "campaign-db=sftp"}}, facts, catalog, "GitOps", "kind")
+	if err == nil || !strings.Contains(err.Error(), "external port") {
+		t.Errorf("binding an external port: err = %v", err)
 	}
 }

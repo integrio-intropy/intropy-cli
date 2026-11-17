@@ -60,8 +60,12 @@ func resolvePortBindingChoices(ctx context.Context, opts manifestRunOptions, fac
 	}
 	for _, name := range slices.Sorted(maps.Keys(explicit)) {
 		binding := explicit[name]
-		if _, ok := ports[name]; !ok {
+		port, ok := ports[name]
+		if !ok {
 			return nil, fmt.Errorf("--binding names port %q, which the topology does not declare", name)
+		}
+		if port.External() {
+			return nil, fmt.Errorf("--binding names port %q, which is an external port: the component reaches it through its own client, so it has no binding", name)
 		}
 		if !slices.Contains(catalog, binding) {
 			return nil, fmt.Errorf("port %s uses unsupported %s %q; available %ss: %s", name, valueLabel, binding, valueLabel, strings.Join(catalog, ", "))
@@ -70,7 +74,7 @@ func resolvePortBindingChoices(ctx context.Context, opts manifestRunOptions, fac
 
 	choices := make(map[string]string, len(facts.Model.Ports))
 	var missing []string
-	for _, port := range facts.Model.Ports {
+	for _, port := range facts.Model.bindingPorts() {
 		binding := explicit[port.Name]
 		if binding == "" && opts.Selector != nil {
 			binding, err = selectPortBinding(ctx, opts.Selector, port, catalog, target)

@@ -299,7 +299,7 @@ func initGitOps(ctx context.Context, opts manifestRunOptions, found discoveredTo
 	}
 
 	bindings := map[string]map[string]string{}
-	if len(facts.Model.Ports) > 0 {
+	if len(facts.Model.bindingPorts()) > 0 {
 		bindings, err = resolveGitOpsPortBindings(ctx, opts, facts, lib)
 		if err != nil {
 			return err

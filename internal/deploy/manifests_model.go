@@ -97,6 +97,14 @@ type ManifestComponent struct {
 	// its own. Absent for a component that subscribes to nothing, and for a
 	// record too old to carry the rendered resource.
 	Subscription *ManifestSubscription `json:"subscription,omitempty"`
+
+	// CursorStore is the Dapr state store the topology minted for the
+	// component, and CursorPorts the external ports it reads: each is passed
+	// the store's name as Ports__<port>__CursorStore, where the framework
+	// keeps that port's read cursor. Both empty for a component that reads no
+	// external port.
+	CursorStore string   `json:"cursorStore,omitempty"`
+	CursorPorts []string `json:"cursorPorts,omitempty"`
 }
 
 // ManifestSubscription is one declarative Dapr Subscription, taken verbatim
@@ -155,9 +163,32 @@ type ManifestPort struct {
 	Directions     []string `json:"directions,omitempty"`
 	AppIDs         []string `json:"appIds,omitempty"`
 
+	// Kind is topology.PortKindExternal for a port the component reaches
+	// through a client of its own, and empty for a binding port. An external
+	// port has no Dapr binding, so it never carries a Binding.
+	Kind string `json:"kind,omitempty"`
+
 	// Binding is the selected local fixture or GitOps binding kind for the
 	// environment being rendered. Metadata remains GitOps-owned configuration.
-	Binding string `json:"binding,omitempty"`
+	// Always present, empty for an external port: skeletons render with
+	// missingkey=error, and one that reads .binding must not fail on a port
+	// that has none.
+	Binding string `json:"binding"`
+}
+
+// External reports whether the port is reached without a Dapr binding.
+func (p ManifestPort) External() bool { return p.Kind == topology.PortKindExternal }
+
+// bindingPorts are the ports that need a Dapr binding chosen for them: every
+// port but the external ones.
+func (m ManifestModel) bindingPorts() []ManifestPort {
+	out := make([]ManifestPort, 0, len(m.Ports))
+	for _, p := range m.Ports {
+		if !p.External() {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // newManifestModel derives the model from a decoded topology record and whatever
@@ -166,7 +197,7 @@ func newManifestModel(t *topology.Topology, scaffolds []template.ScaffoldEntry) 
 	appIDs, dirs := joinScaffolds(t.Components, matchScaffolds(t.Components, scaffolds))
 
 	m := ManifestModel{System: t.System}
-	m.Components = buildComponents(t.Components, appIDs, dirs)
+	m.Components = buildComponents(t.Components, externalPorts(t.Ports), appIDs, dirs)
 	m.Topics = buildTopics(t, appIDs)
 	m.PubSubs = buildPubSubs(t, appIDs)
 	m.Ports = buildPorts(t.Ports, appIDs)
@@ -267,7 +298,18 @@ func appIDOf(appIDs map[string]string, name string) string {
 	return name
 }
 
-func buildComponents(components []topology.Component, appIDs, dirs map[string]string) []ManifestComponent {
+// externalPorts names the topology's external ports.
+func externalPorts(ports []topology.Port) map[string]bool {
+	out := map[string]bool{}
+	for _, p := range ports {
+		if p.External() {
+			out[p.Name] = true
+		}
+	}
+	return out
+}
+
+func buildComponents(components []topology.Component, external map[string]bool, appIDs, dirs map[string]string) []ManifestComponent {
 	out := make([]ManifestComponent, 0, len(components))
 	for _, c := range components {
 		ic := ManifestComponent{
@@ -288,10 +330,20 @@ func buildComponents(components []topology.Component, appIDs, dirs map[string]st
 		ic.Topics = sortedKeys(topics)
 
 		ports := map[string]bool{}
+		cursorPorts := map[string]bool{}
 		for _, u := range c.Ports {
 			ports[u.Port] = true
+			if external[u.Port] && strings.EqualFold(u.Direction, "in") {
+				cursorPorts[u.Port] = true
+			}
 		}
 		ic.Ports = sortedKeys(ports)
+		// The store is the topology's to mint: a record that names none (a
+		// host older than external ports) gets no cursor wiring.
+		if c.CursorStore != "" {
+			ic.CursorStore = c.CursorStore
+			ic.CursorPorts = sortedKeys(cursorPorts)
+		}
 		ic.Endpoints = slices.Clone(c.Endpoints)
 		slices.SortFunc(ic.Endpoints, func(a, b topology.Endpoint) int { return strings.Compare(a.Name, b.Name) })
 		ic.Subscription = subscriptionFor(c)
@@ -434,8 +486,13 @@ func buildPubSubs(t *topology.Topology, appIDs map[string]string) []ManifestPubS
 func buildPorts(ports []topology.Port, appIDs map[string]string) []ManifestPort {
 	out := make([]ManifestPort, 0, len(ports))
 	for _, c := range ports {
+		kind := ""
+		if c.External() {
+			kind = topology.PortKindExternal
+		}
 		out = append(out, ManifestPort{
 			Name:           c.Name,
+			Kind:           kind,
 			ExternalSystem: c.ExternalSystem,
 			Directions:     slices.Sorted(slices.Values(c.Directions)),
 			AppIDs:         sortedAppIDs(appIDs, c.UsedBy),
