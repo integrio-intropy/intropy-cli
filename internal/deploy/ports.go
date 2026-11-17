@@ -54,9 +54,13 @@ func resolvePortBindingChoices(ctx context.Context, opts manifestRunOptions, fac
 	if err != nil {
 		return nil, err
 	}
-	ports := make(map[string]ManifestPort, len(facts.Model.Ports))
+	// A store takes a binding as a port does, so --binding may name one.
+	ports := make(map[string]ManifestPort, len(facts.Model.Ports)+len(facts.Model.Stores))
 	for _, port := range facts.Model.Ports {
 		ports[port.Name] = port
+	}
+	for _, target := range facts.Model.bindingTargets() {
+		ports[target.Name] = target
 	}
 	for _, name := range slices.Sorted(maps.Keys(explicit)) {
 		binding := explicit[name]
@@ -74,7 +78,7 @@ func resolvePortBindingChoices(ctx context.Context, opts manifestRunOptions, fac
 
 	choices := make(map[string]string, len(facts.Model.Ports))
 	var missing []string
-	for _, port := range facts.Model.bindingPorts() {
+	for _, port := range facts.Model.bindingTargets() {
 		binding := explicit[port.Name]
 		if binding == "" && opts.Selector != nil {
 			binding, err = selectPortBinding(ctx, opts.Selector, port, catalog, target)
@@ -144,6 +148,9 @@ func selectPortBinding(ctx context.Context, selector interactive.Selector, port 
 
 func portDescription(port ManifestPort) string {
 	var details []string
+	if port.storeRole != "" {
+		details = append(details, "the system's "+port.storeRole+" store")
+	}
 	if port.ExternalSystem != "" {
 		details = append(details, "external system "+port.ExternalSystem)
 	}

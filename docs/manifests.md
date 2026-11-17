@@ -24,6 +24,24 @@ topology mints the Dapr state store for it (`<component>-cursors`), and the
 model carries the store and the ports it serves to the deployment templates,
 which render the store and pass its name as `Ports__<port>__CursorStore`.
 
+## System stores
+
+A component can declare that it claim-checks or archives. The topology then
+mints a store for the system (`<system>-claim-store`, `<system>-archive-store`)
+and lists it under `stores`. A store is not a port, but it becomes one Dapr
+binding like a port, so it takes a binding the same way:
+
+```sh
+intropy manifests create --env prod \
+  --binding orders-claim-store=azureblob \
+  --binding orders-archive-store=azureblob
+```
+
+The deployment templates render the binding in the shared unit, scoped to the
+components that use the store, and pass each of them
+`ClaimStore__DaprBindingName` and `ClaimStore__Kind` (or the `ArchiveStore`
+pair). `inspect` lists the stores after the ports.
+
 ## Inspect
 
 `manifests inspect` prints the derived model, topology ports, and the local

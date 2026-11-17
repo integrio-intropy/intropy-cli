@@ -536,3 +536,83 @@ func TestExternalPortsNeedNoBinding(t *testing.T) {
 		t.Errorf("binding an external port: err = %v", err)
 	}
 }
+
+// storesTopology is a system whose two integrations share a claim store and
+// one of which also archives.
+const storesTopology = `{
+  "apiVersion": "topology.intropy.io/v1",
+  "kind": "SystemTopology",
+  "system": "orders",
+  "components": [
+    {"name": "order-sync", "kind": "transactional-integration",
+     "ports": [{"port": "erp", "direction": "in"}, {"port": "wms", "direction": "out"}],
+     "claimStore": "orders-claim-store", "archiveStore": "orders-archive-store"},
+    {"name": "stock-sync", "kind": "transactional-integration",
+     "ports": [{"port": "erp", "direction": "in"}, {"port": "wms", "direction": "out"}],
+     "claimStore": "orders-claim-store"}
+  ],
+  "ports": [
+    {"name": "erp", "directions": ["in"], "usedBy": ["order-sync", "stock-sync"]},
+    {"name": "wms", "directions": ["out"], "usedBy": ["order-sync", "stock-sync"]}
+  ],
+  "stores": [
+    {"name": "orders-claim-store", "role": "claim", "usedBy": ["order-sync", "stock-sync"]},
+    {"name": "orders-archive-store", "role": "archive", "usedBy": ["order-sync"]}
+  ]
+}`
+
+func TestManifestModelStores(t *testing.T) {
+	topo, err := topology.Decode(strings.NewReader(storesTopology))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	m := newManifestModel(topo, nil)
+
+	if len(m.Stores) != 2 || m.Stores[0].Name != "orders-archive-store" || m.Stores[1].Name != "orders-claim-store" {
+		t.Fatalf("stores = %+v, want both, sorted by name", m.Stores)
+	}
+	if got := strings.Join(m.Stores[1].AppIDs, ","); got != "order-sync,stock-sync" {
+		t.Errorf("claim store scopes = %q", got)
+	}
+	if c := m.Components[0]; c.ClaimStore != "orders-claim-store" || c.ArchiveStore != "orders-archive-store" {
+		t.Errorf("order-sync stores = %q, %q", c.ClaimStore, c.ArchiveStore)
+	}
+	if c := m.Components[1]; c.ArchiveStore != "" {
+		t.Errorf("stock-sync archives: %q", c.ArchiveStore)
+	}
+
+	// A store's binding is selected and rendered like a port's.
+	asMap, err := m.asMap("prod", map[string]map[string]string{"orders-claim-store": {"prod": "azureblob"}})
+	if err != nil {
+		t.Fatalf("asMap: %v", err)
+	}
+	claim := asMap["stores"].([]any)[1].(map[string]any)
+	if claim["binding"] != "azureblob" || claim["role"] != "claim" {
+		t.Errorf("claim store map = %v", claim)
+	}
+}
+
+func TestStoresNeedABinding(t *testing.T) {
+	topo, err := topology.Decode(strings.NewReader(storesTopology))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	facts := manifestFacts{Model: newManifestModel(topo, nil)}
+	catalog := []string{"sftp", "azureblob"}
+
+	_, err = resolvePortBindingChoices(context.Background(),
+		manifestRunOptions{Bindings: []string{"erp=sftp", "wms=sftp"}}, facts, catalog, "GitOps", "kind")
+	if err == nil || !strings.Contains(err.Error(), "orders-claim-store") || !strings.Contains(err.Error(), "orders-archive-store") {
+		t.Fatalf("missing store bindings: err = %v", err)
+	}
+
+	choices, err := resolvePortBindingChoices(context.Background(), manifestRunOptions{Bindings: []string{
+		"erp=sftp", "wms=sftp", "orders-claim-store=azureblob", "orders-archive-store=azureblob",
+	}}, facts, catalog, "GitOps", "kind")
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if choices["orders-claim-store"] != "azureblob" || len(choices) != 4 {
+		t.Errorf("choices = %v", choices)
+	}
+}

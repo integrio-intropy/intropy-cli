@@ -482,6 +482,123 @@ func TestLocalTemplatesExternalPortCursorStoreLocally(t *testing.T) {
 	}
 }
 
+// storesTopologyRecord has an extractor and a loader that share the system's
+// claim store; the loader also archives.
+const storesTopologyRecord = `{
+  "apiVersion":"topology.intropy.io/v1", "kind":"SystemTopology", "system":"distribution",
+  "components":[
+    {"name":"order-extractor","kind":"extractor",
+     "channel":{"pubsub":"distribution-pubsub","topic":"orders"},
+     "publishes":[{"pubsub":"distribution-pubsub","topic":"orders"}],
+     "ports":[{"port":"erp","direction":"in"}],
+     "claimStore":"distribution-claim-store"},
+    {"name":"order-loader","kind":"loader",
+     "channel":{"pubsub":"distribution-pubsub","topic":"orders"},
+     "subscribes":[{"pubsub":"distribution-pubsub","topic":"orders","resource":"order-loader-subscription","defaultPath":"/unhandled"}],
+     "ports":[{"port":"wms","direction":"out"}],
+     "claimStore":"distribution-claim-store","archiveStore":"distribution-archive-store"}
+  ],
+  "topics":[{"pubsub":"distribution-pubsub","topic":"orders","publishers":["order-extractor"],"subscribers":["order-loader"]}],
+  "ports":[
+    {"name":"erp","directions":["in"],"usedBy":["order-extractor"]},
+    {"name":"wms","directions":["out"],"usedBy":["order-loader"]}
+  ],
+  "stores":[
+    {"name":"distribution-claim-store","role":"claim","usedBy":["order-extractor","order-loader"]},
+    {"name":"distribution-archive-store","role":"archive","usedBy":["order-loader"]}
+  ]
+}`
+
+func TestLocalTemplatesSystemStores(t *testing.T) {
+	requireKustomize(t)
+	f := newRealTemplatesInitFixture(t, localTemplatesRoot(t))
+	if err := os.WriteFile(f.topologyFile, []byte(storesTopologyRecord), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	opts := f.options(t, &stdout, &stderr)
+	// A store takes a binding kind as a port does.
+	opts.Bindings = []string{
+		"erp=sftp", "wms=sftp",
+		"distribution-claim-store=azureblob", "distribution-archive-store=file",
+	}
+	if err := runManifestPipeline(t.Context(), opts); err != nil {
+		t.Fatalf("render: %v\n%s", err, stderr.String())
+	}
+	work := f.clone(t, "manifests-create/sales-distribution-all")
+	base := filepath.Join(work, "domains", "sales", "distribution")
+	build := func(unit string) string {
+		t.Helper()
+		out, err := exec.Command("kustomize", "build", filepath.Join(base, unit, "overlays", "prod")).CombinedOutput()
+		if err != nil {
+			t.Fatalf("kustomize build %s: %v\n%s", unit, err, out)
+		}
+		return string(out)
+	}
+	assertContains := func(what, got string, wants ...string) {
+		t.Helper()
+		for _, want := range wants {
+			if !strings.Contains(got, want) {
+				t.Errorf("%s is missing %q\n%s", what, want, got)
+			}
+		}
+	}
+
+	// The shared unit renders each store's binding with the adapter of its kind.
+	shared := build(SharedDirName)
+	assertContains("shared", shared,
+		"name: distribution-claim-store", "type: bindings.azure.blobstorage", "intropy.io/store: claim",
+		"name: distribution-archive-store", "type: bindings.localstorage", "intropy.io/store: archive",
+		"name: distribution-archive-store-file")
+
+	extractor := build("order-extractor")
+	assertContains("extractor", extractor,
+		"name: ClaimStore__DaprBindingName", "value: distribution-claim-store",
+		"name: ClaimStore__Kind", "value: AzureBlob")
+	if strings.Contains(extractor, "ArchiveStore__") {
+		t.Errorf("the extractor does not archive, but got the archive store\n%s", extractor)
+	}
+
+	loader := build("order-loader")
+	assertContains("loader", loader,
+		"name: ClaimStore__DaprBindingName",
+		"name: ArchiveStore__DaprBindingName", "value: distribution-archive-store",
+		"name: ArchiveStore__Kind", "value: Local",
+		// A file store is mounted into the sidecar like a file port.
+		"distribution-archive-store-file:/data/distribution-archive-store")
+	if strings.Contains(loader+extractor, "Ports__distribution-") {
+		t.Errorf("a store was treated as a port\n%s", loader)
+	}
+}
+
+func TestLocalTemplatesSystemStoresLocally(t *testing.T) {
+	requireKustomize(t)
+	f := newLocalFixtureWith(t, localTemplateEntries(t, localTemplatesRoot(t)))
+	if err := os.WriteFile(filepath.Join(f.sourceDir, "topology.json"), []byte(storesTopologyRecord), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	opts := f.renderOptions(&stderr)
+	opts.Bindings = []string{
+		"erp=file", "wms=file",
+		"distribution-claim-store=file", "distribution-archive-store=file",
+	}
+	built, err := RenderManifests(t.Context(), opts)
+	if err != nil {
+		t.Fatalf("render: %v\n%s", err, stderr.String())
+	}
+	for _, want := range []string{
+		"name: distribution-claim-store",
+		"rootPath\n    value: /data/distribution-claim-store",
+		"name: ClaimStore__Kind",
+		"name: ArchiveStore__DaprBindingName",
+	} {
+		if !strings.Contains(string(built), want) {
+			t.Errorf("local render is missing %q\n%s", want, built)
+		}
+	}
+}
+
 const runtimeTemplateTopologyRecord = `{
   "apiVersion":"topology.intropy.io/v1", "kind":"SystemTopology", "system":"distribution",
   "components":[

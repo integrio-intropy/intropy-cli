@@ -43,7 +43,10 @@ type Topology struct {
 	Components []Component `json:"components,omitempty"`
 	Topics     []Topic     `json:"topics,omitempty"`
 	Ports      []Port      `json:"ports,omitempty"`
-	Contracts  []Contract  `json:"contracts,omitempty"`
+	// Stores are the stores the system's components share (the claim store,
+	// the archive store), minted by the topology like the system's pub/sub.
+	Stores    []Store    `json:"stores,omitempty"`
+	Contracts []Contract `json:"contracts,omitempty"`
 	// APIs, each component's Provides/Consumes below, and MessageGroups
 	// are sections whose element shape is not yet finalized, so they are
 	// parsed opaquely: preserved for round-tripping to the frontend
@@ -103,6 +106,10 @@ type Component struct {
 	// that reads an external port: where the framework keeps the port's read
 	// cursor between runs. Empty for every other component.
 	CursorStore string `json:"cursorStore,omitempty"`
+	// ClaimStore and ArchiveStore name the system store the component uses
+	// for its claim check and its archive. Empty when it uses none.
+	ClaimStore   string `json:"claimStore,omitempty"`
+	ArchiveStore string `json:"archiveStore,omitempty"`
 	// Provides/Consumes are contract surfaces, parsed opaquely (see APIs).
 	Provides []json.RawMessage `json:"provides,omitempty"`
 	Consumes []json.RawMessage `json:"consumes,omitempty"`
@@ -231,6 +238,22 @@ type Port struct {
 	Directions     []string `json:"directions,omitempty"`
 	UsedBy         []string `json:"usedBy,omitempty"`
 }
+
+// Store is storage the system's own components share: Role is StoreRoleClaim
+// or StoreRoleArchive, UsedBy the components that declared using it. Like a
+// port it becomes one Dapr binding named after it, whose type is deployment
+// configuration; unlike a port, no external system touches it.
+type Store struct {
+	Name   string   `json:"name"`
+	Role   string   `json:"role"`
+	UsedBy []string `json:"usedBy,omitempty"`
+}
+
+// The values of Store.Role.
+const (
+	StoreRoleClaim   = "claim"
+	StoreRoleArchive = "archive"
+)
 
 // PortKindExternal is Port.Kind for a port with no Dapr binding.
 const PortKindExternal = "external"

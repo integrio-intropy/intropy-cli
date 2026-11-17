@@ -25,6 +25,7 @@ type ManifestInspection struct {
 	PubSubs       []ManifestPubSub    `json:"pubsubs"`
 	Topics        []ManifestTopic     `json:"topics"`
 	Ports         []InspectedPort     `json:"ports"`
+	Stores        []ManifestStore     `json:"stores,omitempty"`
 }
 
 // InspectedPort is one external edge derived from the topology.
@@ -144,6 +145,7 @@ func InspectManifests(ctx context.Context, opts InspectManifestOptions) error {
 		Components:    facts.Model.Components,
 		PubSubs:       facts.Model.PubSubs,
 		Topics:        facts.Model.Topics,
+		Stores:        facts.Model.Stores,
 	}
 	for _, conn := range facts.Model.Ports {
 		result.Ports = append(result.Ports, InspectedPort{
@@ -289,7 +291,6 @@ func reportManifestInspection(w io.Writer, result ManifestInspection) error {
 	fmt.Fprintln(w, "\nports")
 	if len(result.Ports) == 0 {
 		fmt.Fprintln(w, "  none")
-		return nil
 	}
 	for _, port := range result.Ports {
 		details := port.ExternalSystem
@@ -300,6 +301,13 @@ func reportManifestInspection(w io.Writer, result ManifestInspection) error {
 			details += "  (" + port.Kind + ": no binding)"
 		}
 		fmt.Fprintf(w, "  %s  %s\n", port.Name, details)
+	}
+
+	if len(result.Stores) > 0 {
+		fmt.Fprintln(w, "\nstores")
+		for _, store := range result.Stores {
+			fmt.Fprintf(w, "  %s  %s store, used by %s\n", store.Name, store.Role, strings.Join(store.AppIDs, ", "))
+		}
 	}
 	return nil
 }
