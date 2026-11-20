@@ -2,6 +2,7 @@ package system
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -147,6 +148,9 @@ func parseSinglePort(e template.ScaffoldEntry, c *Component) error {
 		}
 		c.Port = port
 		c.Ports = []string{port}
+		if err := readPortKind(e, c, template.KeyPortKind, port); err != nil {
+			return err
+		}
 	} else {
 		c.missingPort = true
 	}
@@ -166,7 +170,34 @@ func parseTransactional(e template.ScaffoldEntry, c *Component) error {
 		return err
 	}
 	c.Ports = []string{from, to}
-	return nil
+	if err := readPortKind(e, c, template.KeyFromPortKind, from); err != nil {
+		return err
+	}
+	return readPortKind(e, c, template.KeyToPortKind, to)
+}
+
+// readPortKind records the kind the scaffold record's key gives port. An
+// absent key means a binding port, which needs no entry; any value other
+// than binding or external is refused rather than rendered as a binding.
+func readPortKind(e template.ScaffoldEntry, c *Component, key, port string) error {
+	kind, err := template.RecordValueDefault(e, key, template.PortKindBinding)
+	if err != nil {
+		return err
+	}
+	switch kind {
+	case template.PortKindBinding:
+		return nil
+	case template.PortKindExternal:
+		if c.PortKinds == nil {
+			c.PortKinds = map[string]string{}
+		}
+		c.PortKinds[port] = kind
+		return nil
+	default:
+		return fmt.Errorf("%s: values.%s is %q; a port is %q or %q",
+			filepath.Join(e.Path, filepath.FromSlash(template.ScaffoldRelPath)), key, kind,
+			template.PortKindBinding, template.PortKindExternal)
+	}
 }
 
 // parseJob reads a job: nothing beyond its app id. A job wires no message,

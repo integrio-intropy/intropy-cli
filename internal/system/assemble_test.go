@@ -289,3 +289,83 @@ func TestAssembleGatewayErrors(t *testing.T) {
 		}
 	})
 }
+
+// An extractor that reads a database records portKind external: the assembled
+// port carries the kind, and a port without one stays a binding port.
+func TestAssembleCarriesAnExternalPortKind(t *testing.T) {
+	sql := extractor("campaign-extractor", "campaign-extractor", "campaign-changed")
+	sql.Values[template.KeyPortKind] = template.PortKindExternal
+	model, err := Assemble([]template.ScaffoldEntry{
+		sql,
+		loader("campaign-loader", "campaign-loader", "campaign-changed"),
+	}, discardWarnf)
+	if err != nil {
+		t.Fatalf("Assemble: %v", err)
+	}
+	want := []Port{
+		{Name: "campaign-extractor-source", Kind: template.PortKindExternal},
+		{Name: "campaign-loader-destination"},
+	}
+	if len(model.Ports) != len(want) {
+		t.Fatalf("ports = %#v, want %#v", model.Ports, want)
+	}
+	for i := range want {
+		if model.Ports[i] != want[i] {
+			t.Errorf("ports[%d] = %#v, want %#v", i, model.Ports[i], want[i])
+		}
+	}
+}
+
+func TestAssembleTakesAnExplicitBindingKindAsTheDefault(t *testing.T) {
+	file := extractor("order-extractor", "order-extractor", "order-created")
+	file.Values[template.KeyPortKind] = template.PortKindBinding
+	model, err := Assemble([]template.ScaffoldEntry{file}, discardWarnf)
+	if err != nil {
+		t.Fatalf("Assemble: %v", err)
+	}
+	if model.Ports[0].Kind != "" {
+		t.Errorf("kind = %q, want empty for a binding port", model.Ports[0].Kind)
+	}
+}
+
+func TestAssembleRefusesAnUnknownPortKind(t *testing.T) {
+	e := extractor("order-extractor", "order-extractor", "order-created")
+	e.Values[template.KeyPortKind] = "polled"
+	_, err := Assemble([]template.ScaffoldEntry{e}, discardWarnf)
+	if err == nil || !strings.Contains(err.Error(), "portKind") || !strings.Contains(err.Error(), "external") {
+		t.Fatalf("err = %v, want one naming portKind and the kinds a port can be", err)
+	}
+}
+
+// A transactional integration that polls a database records fromPortKind
+// external: its source port carries the kind and its destination, with no
+// toPortKind, stays a binding port.
+func TestAssembleCarriesATransactionalExternalSourceKind(t *testing.T) {
+	e := transactional("order-sync", "order-sync", "order-sync-source", "order-sync-destination")
+	e.Values[template.KeyFromPortKind] = template.PortKindExternal
+	model, err := Assemble([]template.ScaffoldEntry{e}, discardWarnf)
+	if err != nil {
+		t.Fatalf("Assemble: %v", err)
+	}
+	want := []Port{
+		{Name: "order-sync-destination"},
+		{Name: "order-sync-source", Kind: template.PortKindExternal},
+	}
+	if len(model.Ports) != len(want) {
+		t.Fatalf("ports = %#v, want %#v", model.Ports, want)
+	}
+	for i := range want {
+		if model.Ports[i] != want[i] {
+			t.Errorf("ports[%d] = %#v, want %#v", i, model.Ports[i], want[i])
+		}
+	}
+}
+
+func TestAssembleRefusesAnUnknownTransactionalPortKind(t *testing.T) {
+	e := transactional("order-sync", "order-sync", "order-sync-source", "order-sync-destination")
+	e.Values[template.KeyToPortKind] = "polled"
+	_, err := Assemble([]template.ScaffoldEntry{e}, discardWarnf)
+	if err == nil || !strings.Contains(err.Error(), "toPortKind") || !strings.Contains(err.Error(), "external") {
+		t.Fatalf("err = %v, want one naming toPortKind and the kinds a port can be", err)
+	}
+}

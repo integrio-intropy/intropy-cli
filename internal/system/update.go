@@ -461,7 +461,7 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 		topics = append(topics, t)
 	}
 
-	seenPorts := map[string]bool{}
+	seenPorts := map[string]int{}
 	storedPorts, _ := plan.baseline["ports"].([]any)
 	ports := make([]any, 0, len(storedPorts))
 	for _, p := range storedPorts {
@@ -470,7 +470,7 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 			return fmt.Errorf("%s: values.ports entry has type %T, expected object", recordPath, p)
 		}
 		name, _ := m[template.KeyName].(string)
-		seenPorts[name] = true
+		seenPorts[name] = len(ports)
 		ports = append(ports, p)
 	}
 
@@ -528,9 +528,14 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 			}
 		}
 		for _, p := range c.Ports {
-			if !seenPorts[p] {
-				seenPorts[p] = true
-				ports = append(ports, map[string]any{template.KeyName: p})
+			port := Port{Name: p, Kind: c.PortKinds[p]}
+			// A refreshed scaffold's port takes its kind, as its endpoint
+			// takes its path; the baseline keeps describing the last render.
+			if index, found := seenPorts[p]; found {
+				ports[index] = PortEntry(port)
+			} else {
+				seenPorts[p] = len(ports)
+				ports = append(ports, PortEntry(port))
 			}
 		}
 		if c.Endpoint != "" {

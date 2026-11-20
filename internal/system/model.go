@@ -53,6 +53,9 @@ type Component struct {
 	// additive-only.
 	Port  string   `json:"port,omitempty"`
 	Ports []string `json:"ports,omitempty"` // transactional blocks: exactly [from, to]
+	// PortKinds maps each of Ports the block reaches through a client of its
+	// own to template.PortKindExternal; a binding port has no entry.
+	PortKinds map[string]string `json:"portKinds,omitempty"`
 	// Endpoint is the HTTP port a gateway exposes and EndpointPath the path
 	// it accepts items on; both empty for every other kind. The endpoint
 	// shares the port namespace but is never a file port.
@@ -100,6 +103,10 @@ type MessageWiring struct {
 // gets in the generated Ports class is derived by the template, not the CLI.
 type Port struct {
 	Name string `json:"name"`
+	// Kind is template.PortKindExternal for a port reached without a Dapr
+	// binding, and empty for a binding port: the host declares it with
+	// PortRef.DefineExternal and resolves it to no folder.
+	Kind string `json:"kind,omitempty"`
 }
 
 // Endpoint is one assembled gateway endpoint: the port it is named by and the

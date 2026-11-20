@@ -4,10 +4,12 @@ package gitclone
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/integrio-intropy/intropy-cli/internal/command"
 	"github.com/integrio-intropy/intropy-cli/internal/git"
@@ -153,6 +155,29 @@ func TestLockIsExclusive(t *testing.T) {
 		t.Fatalf("lock after Unlock should succeed: %v", err)
 	}
 	third.Close()
+}
+
+// A holder that never lets go must not hang the waiter: the context ends the
+// wait with the same held-lock error Lock gives, after one wait notice.
+func TestLockWaitGivesUpWithContext(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "entry.lock")
+	held, err := Lock(path, "scaffold", "template cache")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer Unlock(held)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+	defer cancel()
+	notices := 0
+	_, err = LockWait(ctx, path, "scaffold", "template cache", func() { notices++ })
+	var heldErr *HeldError
+	if !errors.As(err, &heldErr) {
+		t.Fatalf("err = %v, want a *HeldError", err)
+	}
+	if notices != 1 {
+		t.Errorf("onWait ran %d times, want 1", notices)
+	}
 }
 
 func TestUnlockIsIdempotent(t *testing.T) {

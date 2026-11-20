@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -61,4 +63,30 @@ func TestSysCreateOutputValidation(t *testing.T) {
 			t.Errorf("exitCode = %d, want 2", exitCode(err))
 		}
 	})
+}
+
+// Without a terminal --force cannot ask, so it warns on stderr and proceeds;
+// scripts that pass --force keep working.
+func TestSysCreateForceWarnsWithoutTerminal(t *testing.T) {
+	sysCreateFlagValues = sysCreateFlags{}
+	t.Cleanup(func() { sysCreateFlagValues = sysCreateFlags{} })
+	var stdout, stderr bytes.Buffer
+	resetRootIO(t, &stdout, &stderr)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	if err := os.MkdirAll(filepath.Join(dir, "order-flow"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "order-flow", "Topics.cs"), []byte("// edits\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rootCmd.SetArgs([]string{"sys", "create", "-n", "OrderFlow", "--force"})
+	_ = rootCmd.Execute() // no scaffolds in the workspace: fails after the warning
+
+	for _, want := range []string{"warning: --force overwrites", "order-flow", "intropy sys update"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("stderr should mention %q: %q", want, stderr.String())
+		}
+	}
 }

@@ -265,3 +265,81 @@ func TestMergeWiringRefreshesGatewayPathWithoutMutatingBaseline(t *testing.T) {
 		t.Fatalf("endpoints = %#v", endpoints)
 	}
 }
+
+// A new component's external port reaches the stored list with its kind, and a
+// refreshed scaffold that now reads a database turns its stored port external.
+func TestMergeWiringRecordsAndRefreshesThePortKind(t *testing.T) {
+	plan := &updatePlan{
+		hostDir: "host",
+		baseline: map[string]any{
+			"components": []any{},
+			"topics":     []any{},
+			"ports":      []any{map[string]any{"name": "order-source"}},
+			"messages":   []any{},
+		},
+		orphans: []Component{{
+			AppID: "campaign-extractor", Kind: template.BlockKindExtractor,
+			Port: "campaign-source", Ports: []string{"campaign-source"},
+			PortKinds: map[string]string{"campaign-source": template.PortKindExternal},
+		}},
+		refreshed: []Component{{
+			AppID: "order-extractor", Kind: template.BlockKindExtractor,
+			Port: "order-source", Ports: []string{"order-source"},
+			PortKinds: map[string]string{"order-source": template.PortKindExternal},
+		}},
+	}
+	merged := map[string]any{}
+	if err := mergeWiring(plan, merged); err != nil {
+		t.Fatalf("mergeWiring: %v", err)
+	}
+	ports := merged["ports"].([]any)
+	if len(ports) != 2 {
+		t.Fatalf("ports = %#v, want the stored one and the new one", ports)
+	}
+	for _, p := range ports {
+		if p.(map[string]any)["kind"] != template.PortKindExternal {
+			t.Errorf("port = %#v, want kind external", p)
+		}
+	}
+	if _, ok := plan.baseline["ports"].([]any)[0].(map[string]any)["kind"]; ok {
+		t.Error("the baseline changed; it must keep describing the last render")
+	}
+}
+
+// sys update adds a transactional block's ports each with its own kind: the
+// external source and the binding destination are told apart.
+func TestMergeWiringRecordsTransactionalPortKinds(t *testing.T) {
+	plan := &updatePlan{
+		hostDir: "host",
+		baseline: map[string]any{
+			"components": []any{},
+			"topics":     []any{},
+			"ports":      []any{},
+			"messages":   []any{},
+		},
+		orphans: []Component{{
+			AppID: "order-sync", Kind: template.BlockKindTransactional,
+			Ports:     []string{"order-sync-source", "order-sync-destination"},
+			PortKinds: map[string]string{"order-sync-source": template.PortKindExternal},
+		}},
+	}
+	merged := map[string]any{}
+	if err := mergeWiring(plan, merged); err != nil {
+		t.Fatalf("mergeWiring: %v", err)
+	}
+	ports := merged["ports"].([]any)
+	if len(ports) != 2 {
+		t.Fatalf("ports = %#v, want source and destination", ports)
+	}
+	kinds := map[string]any{}
+	for _, p := range ports {
+		m := p.(map[string]any)
+		kinds[m["name"].(string)] = m["kind"]
+	}
+	if kinds["order-sync-source"] != template.PortKindExternal {
+		t.Errorf("source kind = %v, want external", kinds["order-sync-source"])
+	}
+	if kind, ok := kinds["order-sync-destination"]; ok && kind != nil {
+		t.Errorf("destination kind = %v, want none for a binding port", kind)
+	}
+}
