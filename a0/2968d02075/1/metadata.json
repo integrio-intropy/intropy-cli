@@ -1,0 +1,94 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "a02968d02075",
+  "session_id": "ad8d2a2e-404f-4f41-a611-dd8447207b85",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-20T12:14:30.049833Z",
+  "branch": "feat/external-port-scaffold",
+  "checkpoints_count": 2,
+  "save_step_count": 2,
+  "files_touched": [
+    "README.md",
+    "cmd/intropy/sys_create.go",
+    "cmd/intropy/sys_create_test.go",
+    "internal/gitclone/gitclone.go",
+    "internal/gitclone/gitclone_test.go",
+    "internal/system/assemble.go",
+    "internal/system/assemble_test.go",
+    "internal/system/blocks.go",
+    "internal/system/create.go",
+    "internal/system/create_test.go",
+    "internal/system/model.go",
+    "internal/system/update.go",
+    "internal/system/update_test.go",
+    "internal/template/source.go",
+    "internal/template/source_fetch_test.go",
+    "internal/template/wiring.go"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "00e3d3a6d3e5",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 62,
+    "cache_creation_tokens": 167039,
+    "cache_read_tokens": 2677874,
+    "output_tokens": 13735,
+    "api_call_count": 30
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-11-20T12:14:30.01683Z",
+    "agent_lines": 84,
+    "agent_removed": 34,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 38,
+    "total_committed": 84,
+    "total_lines_changed": 156,
+    "agent_percentage": 75.64102564102564,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 407,
+      "user_lines_removed": 38,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "cmd/intropy/sys_create.go": 35,
+        "cmd/intropy/sys_create_test.go": 28,
+        "internal/gitclone/gitclone.go": 41,
+        "internal/gitclone/gitclone_test.go": 25,
+        "internal/interactive/confirm.go": 57,
+        "internal/system/create.go": 30,
+        "internal/system/create_test.go": 60,
+        "internal/template/source.go": 22,
+        "internal/template/source_fetch_test.go": 49
+      },
+      "user_removed_per_file": {
+        "cmd/intropy/sys_create.go": 11,
+        "internal/gitclone/gitclone.go": 1,
+        "internal/system/create.go": 10,
+        "internal/template/source.go": 5,
+        "internal/template/source_fetch_test.go": 11
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 347,
+      "agent_lines_removed": 38,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    }
+  ]
+}

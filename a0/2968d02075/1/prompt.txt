@@ -1,0 +1,5 @@
+I have just released sql polling for the extractor and there was a few cli changes for that. Is there anything we need to change in the CLI to get it working with transactional integrations?
+
+---
+
+yes
