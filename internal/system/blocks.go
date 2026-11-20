@@ -2,6 +2,7 @@ package system
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -147,6 +148,19 @@ func parseSinglePort(e template.ScaffoldEntry, c *Component) error {
 		}
 		c.Port = port
 		c.Ports = []string{port}
+		kind, err := template.RecordValueDefault(e, template.KeyPortKind, template.PortKindBinding)
+		if err != nil {
+			return err
+		}
+		switch kind {
+		case template.PortKindBinding:
+		case template.PortKindExternal:
+			c.PortKind = kind
+		default:
+			return fmt.Errorf("%s: values.%s is %q; a port is %q or %q",
+				filepath.Join(e.Path, filepath.FromSlash(template.ScaffoldRelPath)), template.KeyPortKind, kind,
+				template.PortKindBinding, template.PortKindExternal)
+		}
 	} else {
 		c.missingPort = true
 	}

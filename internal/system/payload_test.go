@@ -281,3 +281,23 @@ func TestBuildPayloadGateway(t *testing.T) {
 		t.Errorf("gateway entry carries port: %#v", gw)
 	}
 }
+
+// Kind reaches the host only for an external port, so a binding-only payload
+// keeps its shape.
+func TestBuildPayloadMarksOnlyExternalPorts(t *testing.T) {
+	m := testModel()
+	m.Ports = []Port{{Name: "campaign-db", Kind: template.PortKindExternal}, {Name: "order-destination"}}
+
+	payload, err := buildPayload(m, "order-flow", "order-flow")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ports := payload["ports"].([]any)
+	external, binding := ports[0].(map[string]any), ports[1].(map[string]any)
+	if external["name"] != "campaign-db" || external["kind"] != template.PortKindExternal {
+		t.Errorf("external port = %#v", external)
+	}
+	if _, ok := binding["kind"]; ok || binding["name"] != "order-destination" {
+		t.Errorf("binding port = %#v, want a name and no kind", binding)
+	}
+}

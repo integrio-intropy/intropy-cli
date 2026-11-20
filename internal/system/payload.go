@@ -32,9 +32,7 @@ func buildPayload(m *Model, outputDir, kebab string) (map[string]any, error) {
 
 	ports := make([]any, len(m.Ports))
 	for i, c := range m.Ports {
-		ports[i] = map[string]any{
-			"name": c.Name,
-		}
+		ports[i] = PortEntry(c)
 	}
 
 	// A gateway's endpoint is listed apart from the ports: the host resolves
@@ -79,6 +77,17 @@ func buildPayload(m *Model, outputDir, kebab string) (map[string]any, error) {
 		}
 	}
 	return payload, nil
+}
+
+// PortEntry is one port as the system-host template consumes it, in the sys
+// create payload and in the port list sys update stores. Kind appears only for
+// an external port, so a binding-only system's payload is unchanged.
+func PortEntry(p Port) map[string]any {
+	e := map[string]any{template.KeyName: p.Name}
+	if p.Kind != "" {
+		e["kind"] = p.Kind
+	}
+	return e
 }
 
 // MessageEntry is one message as the system-host template consumes it, in

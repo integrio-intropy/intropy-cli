@@ -142,7 +142,12 @@ func Assemble(entries []template.ScaffoldEntry, warnf func(format string, args .
 	ports := make([]Port, 0, len(byPort))
 	for _, c := range components {
 		for _, name := range c.Ports {
-			ports = append(ports, Port{Name: name})
+			// Only a single-port block records a kind; it describes that port.
+			port := Port{Name: name}
+			if name == c.Port {
+				port.Kind = c.PortKind
+			}
+			ports = append(ports, port)
 		}
 	}
 	sort.Slice(ports, func(i, j int) bool { return ports[i].Name < ports[j].Name })

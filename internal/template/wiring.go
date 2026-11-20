@@ -13,6 +13,11 @@ const (
 	KeyContract = "contract"
 	KeyPubsub   = "pubsub"
 	KeyPort     = "port"
+	// KeyPortKind says how a single-port block reaches its port: PortKindBinding
+	// (the default, also when the key is absent) through a Dapr binding, or
+	// PortKindExternal through a client of its own (a database query, an HTTP
+	// API), with no binding and no local folder.
+	KeyPortKind = "portKind"
 	KeyFromPort = "fromPort"
 	KeyToPort   = "toPort"
 	// KeyEndpoint carries a gateway's port in the system-host payload. It is
@@ -45,6 +50,10 @@ const (
 	KeyWhen    = "when"
 	KeyDefault = "default"
 	KeyChannel = "channel"
+
+	// The values of KeyPortKind.
+	PortKindBinding  = "binding"
+	PortKindExternal = "external"
 
 	// The values of KeyDefault.
 	DefaultDeadLetter = "dead-letter"
