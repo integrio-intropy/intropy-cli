@@ -1,0 +1,10 @@
+I want to use the cli to publish topologies to Atrium: /Users/robinhultman/dev/intropy/integrio-intropy/intropy-atrium
+Can you analyze what we should do?
+
+---
+
+We will start with laptop only. We are finding our way and want to start as simple as possible
+
+---
+
+How do I create a token?
