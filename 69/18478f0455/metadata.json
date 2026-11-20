@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "6918478f0455",
+  "strategy": "manual-commit",
+  "branch": "feat/sys-publish-atrium",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "AGENTS.md",
+    "README.md",
+    "cmd/intropy/context_show.go",
+    "cmd/intropy/flagtext.go",
+    "internal/config/config.go",
+    "internal/config/config_test.go",
+    "internal/deploy/local_test.go",
+    "internal/deploy/manifests_engine.go",
+    "internal/deploy/selecthost_test.go",
+    "internal/git/client.go",
+    "internal/topology/graph.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/69/18478f0455/0/metadata.json",
+      "transcript": "/69/18478f0455/0/full.jsonl",
+      "compact_transcript": "/69/18478f0455/0/transcript.jsonl",
+      "content_hash": "/69/18478f0455/0/content_hash.txt",
+      "prompt": "/69/18478f0455/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 24,
+    "cache_creation_tokens": 43793,
+    "cache_read_tokens": 659981,
+    "output_tokens": 4031,
+    "api_call_count": 11
+  }
+}

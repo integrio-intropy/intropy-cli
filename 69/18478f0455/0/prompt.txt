@@ -1,0 +1,5 @@
+Does the CLI currently support subscribing to xregistry messages with the int create command?
+
+---
+
+What do you suggest you set --subscribes to? Is there an id in xregistry?

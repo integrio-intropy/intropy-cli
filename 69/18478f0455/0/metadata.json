@@ -1,0 +1,96 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "6918478f0455",
+  "session_id": "031e81c2-6c47-4a2e-a57a-23e15e94793f",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-20T05:19:59.045862Z",
+  "branch": "feat/sys-publish-atrium",
+  "checkpoints_count": 2,
+  "save_step_count": 2,
+  "files_touched": [
+    "AGENTS.md",
+    "README.md",
+    "cmd/intropy/context_show.go",
+    "cmd/intropy/flagtext.go",
+    "internal/config/config.go",
+    "internal/config/config_test.go",
+    "internal/deploy/local_test.go",
+    "internal/deploy/manifests_engine.go",
+    "internal/deploy/selecthost_test.go",
+    "internal/git/client.go",
+    "internal/topology/graph.go"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "7a93808357d9",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 24,
+    "cache_creation_tokens": 43793,
+    "cache_read_tokens": 659981,
+    "output_tokens": 4031,
+    "api_call_count": 11
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-11-20T05:19:59.023672Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 231,
+    "human_modified": 30,
+    "human_removed": 0,
+    "total_committed": 253,
+    "total_lines_changed": 261,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 740,
+      "user_lines_removed": 30,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59,
+        "AGENTS.md": 4,
+        "README.md": 24,
+        "cmd/intropy/context_show.go": 3,
+        "cmd/intropy/flagtext.go": 5,
+        "cmd/intropy/sys_publish.go": 55,
+        "internal/atrium/publish.go": 285,
+        "internal/atrium/publish_test.go": 194,
+        "internal/config/config.go": 30,
+        "internal/config/config_test.go": 32,
+        "internal/deploy/local_test.go": 1,
+        "internal/deploy/manifests_engine.go": 3,
+        "internal/deploy/selecthost_test.go": 9,
+        "internal/git/client.go": 9,
+        "internal/topology/graph.go": 26
+      },
+      "user_removed_per_file": {
+        "AGENTS.md": 3,
+        "README.md": 1,
+        "cmd/intropy/flagtext.go": 3,
+        "internal/deploy/local_test.go": 1,
+        "internal/deploy/manifests_engine.go": 3,
+        "internal/deploy/selecthost_test.go": 9,
+        "internal/topology/graph.go": 10
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 60,
+      "user_lines_removed": 0,
+      "agent_lines_added": 680,
+      "agent_lines_removed": 30,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 59
+      }
+    }
+  ]
+}
