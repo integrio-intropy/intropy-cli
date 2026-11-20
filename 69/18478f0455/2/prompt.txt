@@ -1,0 +1,12 @@
+<pasted_content id="6290">
+ intropy sys publish: send the commit time
+▎
+▎ Atrium now orders a system's topology snapshots by commit time, so a CI job that finishes late no longer rolls the portal back to an older commit. Please add committedAt to the POST /api/topologies body: the committer time of the published commit, in RFC 3339 format, from git show -s --format=%cI <commit>.
+▎
+▎ - The field is optional. Atrium orders snapshots without it by arrival, as before, so publishing keeps working until the CLI sends it.
+▎ - Atrium refuses a time more than an hour in the future (400).
+▎ - Responses now say "current": true/false. The CLI could print "stored, but a newer commit is shown" when it's false.
+▎ - Two new outcomes worth surfacing:
+▎   - 202 with "ignored": the ref isn't main, so nothing was stored.
+▎   - 409 Conflict: a component or message name clashes with another system's, and the body says which.
+</pasted_content id="6290">

@@ -3,7 +3,7 @@
   "checkpoint_id": "6918478f0455",
   "strategy": "manual-commit",
   "branch": "feat/sys-publish-atrium",
-  "checkpoints_count": 5,
+  "checkpoints_count": 6,
   "files_touched": [
     "AGENTS.md",
     "README.md",
@@ -34,13 +34,20 @@
       "compact_transcript": "/69/18478f0455/1/transcript.jsonl",
       "content_hash": "/69/18478f0455/1/content_hash.txt",
       "prompt": "/69/18478f0455/1/prompt.txt"
+    },
+    {
+      "metadata": "/69/18478f0455/2/metadata.json",
+      "transcript": "/69/18478f0455/2/full.jsonl",
+      "compact_transcript": "/69/18478f0455/2/transcript.jsonl",
+      "content_hash": "/69/18478f0455/2/content_hash.txt",
+      "prompt": "/69/18478f0455/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 128,
-    "cache_creation_tokens": 170996,
-    "cache_read_tokens": 6514693,
-    "output_tokens": 39029,
-    "api_call_count": 60
+    "input_tokens": 146,
+    "cache_creation_tokens": 218917,
+    "cache_read_tokens": 7098237,
+    "output_tokens": 46695,
+    "api_call_count": 69
   }
 }
