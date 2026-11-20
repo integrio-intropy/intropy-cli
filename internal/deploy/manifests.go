@@ -25,11 +25,14 @@ type ManifestInspection struct {
 	PubSubs       []ManifestPubSub    `json:"pubsubs"`
 	Topics        []ManifestTopic     `json:"topics"`
 	Ports         []InspectedPort     `json:"ports"`
+	Stores        []ManifestStore     `json:"stores,omitempty"`
 }
 
 // InspectedPort is one external edge derived from the topology.
 type InspectedPort struct {
-	Name           string   `json:"name"`
+	Name string `json:"name"`
+	// Kind is "external" for a port with no Dapr binding; empty otherwise.
+	Kind           string   `json:"kind,omitempty"`
 	ExternalSystem string   `json:"externalSystem,omitempty"`
 	Directions     []string `json:"directions,omitempty"`
 	AppIDs         []string `json:"appIds,omitempty"`
@@ -142,10 +145,12 @@ func InspectManifests(ctx context.Context, opts InspectManifestOptions) error {
 		Components:    facts.Model.Components,
 		PubSubs:       facts.Model.PubSubs,
 		Topics:        facts.Model.Topics,
+		Stores:        facts.Model.Stores,
 	}
 	for _, conn := range facts.Model.Ports {
 		result.Ports = append(result.Ports, InspectedPort{
 			Name:           conn.Name,
+			Kind:           conn.Kind,
 			ExternalSystem: conn.ExternalSystem,
 			Directions:     conn.Directions,
 			AppIDs:         conn.AppIDs,
@@ -286,14 +291,23 @@ func reportManifestInspection(w io.Writer, result ManifestInspection) error {
 	fmt.Fprintln(w, "\nports")
 	if len(result.Ports) == 0 {
 		fmt.Fprintln(w, "  none")
-		return nil
 	}
 	for _, port := range result.Ports {
 		details := port.ExternalSystem
 		if details == "" {
 			details = "external system not declared"
 		}
+		if port.Kind != "" {
+			details += "  (" + port.Kind + ": no binding)"
+		}
 		fmt.Fprintf(w, "  %s  %s\n", port.Name, details)
+	}
+
+	if len(result.Stores) > 0 {
+		fmt.Fprintln(w, "\nstores")
+		for _, store := range result.Stores {
+			fmt.Fprintf(w, "  %s  %s store, used by %s\n", store.Name, store.Role, strings.Join(store.AppIDs, ", "))
+		}
 	}
 	return nil
 }

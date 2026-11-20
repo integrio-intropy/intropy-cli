@@ -12,6 +12,36 @@ All three derive the same stable deployment model from the system topology and
 scaffold records. Extractors become CronJobs; other blocks become Deployments.
 The model also resolves app IDs, pub/sub scopes, topics, and ports.
 
+## External ports
+
+A port the topology marks `external` is one the component reaches through a
+client of its own (a database, an HTTP API) instead of a Dapr binding. It needs
+no binding in any environment: `render` and `create` never ask for one, and
+`--binding` naming it is an error. `inspect` marks it `external`.
+
+A component that reads an external port keeps a cursor between runs. The
+topology mints the Dapr state store for it (`<component>-cursors`), and the
+model carries the store and the ports it serves to the deployment templates,
+which render the store and pass its name as `Ports__<port>__CursorStore`.
+
+## System stores
+
+A component can declare that it claim-checks or archives. The topology then
+mints a store for the system (`<system>-claim-store`, `<system>-archive-store`)
+and lists it under `stores`. A store is not a port, but it becomes one Dapr
+binding like a port, so it takes a binding the same way:
+
+```sh
+intropy manifests create --env prod \
+  --binding orders-claim-store=azureblob \
+  --binding orders-archive-store=azureblob
+```
+
+The deployment templates render the binding in the shared unit, scoped to the
+components that use the store, and pass each of them
+`ClaimStore__DaprBindingName` and `ClaimStore__Kind` (or the `ArchiveStore`
+pair). `inspect` lists the stores after the ports.
+
 ## Inspect
 
 `manifests inspect` prints the derived model, topology ports, and the local

@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 )
 
 const (
@@ -42,7 +43,10 @@ type Topology struct {
 	Components []Component `json:"components,omitempty"`
 	Topics     []Topic     `json:"topics,omitempty"`
 	Ports      []Port      `json:"ports,omitempty"`
-	Contracts  []Contract  `json:"contracts,omitempty"`
+	// Stores are the stores the system's components share (the claim store,
+	// the archive store), minted by the topology like the system's pub/sub.
+	Stores    []Store    `json:"stores,omitempty"`
+	Contracts []Contract `json:"contracts,omitempty"`
 	// APIs, each component's Provides/Consumes below, and MessageGroups
 	// are sections whose element shape is not yet finalized, so they are
 	// parsed opaquely: preserved for round-tripping to the frontend
@@ -98,6 +102,14 @@ type Component struct {
 	// and INTROPY_TOPIC_NAME. Either is empty when the topology settles no
 	// single name for it; records that predate it leave Channel nil.
 	Channel *Channel `json:"channel,omitempty"`
+	// CursorStore is the Dapr state store the topology mints for a component
+	// that reads an external port: where the framework keeps the port's read
+	// cursor between runs. Empty for every other component.
+	CursorStore string `json:"cursorStore,omitempty"`
+	// ClaimStore and ArchiveStore name the system store the component uses
+	// for its claim check and its archive. Empty when it uses none.
+	ClaimStore   string `json:"claimStore,omitempty"`
+	ArchiveStore string `json:"archiveStore,omitempty"`
 	// Provides/Consumes are contract surfaces, parsed opaquely (see APIs).
 	Provides []json.RawMessage `json:"provides,omitempty"`
 	Consumes []json.RawMessage `json:"consumes,omitempty"`
@@ -215,12 +227,39 @@ type Contract struct {
 // environment-owned deployment configuration, never part of the record.
 // ExternalSystem is the system it fronts, Directions the directions it is
 // wired in, and UsedBy the components that use it.
+//
+// Kind is PortKindExternal for a port the component reaches through a client
+// of its own (a database, an HTTP API): it has no Dapr binding. Empty for a
+// binding port, which is every port of a record older than the field.
 type Port struct {
 	Name           string   `json:"name"`
+	Kind           string   `json:"kind,omitempty"`
 	ExternalSystem string   `json:"externalSystem,omitempty"`
 	Directions     []string `json:"directions,omitempty"`
 	UsedBy         []string `json:"usedBy,omitempty"`
 }
+
+// Store is storage the system's own components share: Role is StoreRoleClaim
+// or StoreRoleArchive, UsedBy the components that declared using it. Like a
+// port it becomes one Dapr binding named after it, whose type is deployment
+// configuration; unlike a port, no external system touches it.
+type Store struct {
+	Name   string   `json:"name"`
+	Role   string   `json:"role"`
+	UsedBy []string `json:"usedBy,omitempty"`
+}
+
+// The values of Store.Role.
+const (
+	StoreRoleClaim   = "claim"
+	StoreRoleArchive = "archive"
+)
+
+// PortKindExternal is Port.Kind for a port with no Dapr binding.
+const PortKindExternal = "external"
+
+// External reports whether the port is reached without a Dapr binding.
+func (p Port) External() bool { return strings.EqualFold(p.Kind, PortKindExternal) }
 
 // Entry is one system's topology plus the workspace directory it belongs to,
 // flattened into one self-describing JSON document for the API.
