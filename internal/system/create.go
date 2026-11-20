@@ -27,16 +27,19 @@ import (
 const hostTemplate = "system-host"
 
 type CreateOptions struct {
-	Name       string // system name as typed; PascalCase or kebab-case
-	StartDir   string // workspace scan root; default "."
-	OutputDir  string // default: the kebab-cased name
-	Version    string // template release tag; default: latest
-	Force      bool
-	OutputJSON string // path to write CreateResult JSON; "-" means stdout
-	Stdout     io.Writer
-	Stderr     io.Writer
-	HTTP       *http.Client
-	UserAgent  string
+	Name      string // system name as typed; PascalCase or kebab-case
+	StartDir  string // workspace scan root; default "."
+	OutputDir string // default: the kebab-cased name
+	Version   string // template release tag; default: latest
+	Force     bool
+	// ConfirmOverwrite runs when Force targets a non-empty OutputDir, before
+	// anything is written. Returning false aborts the create. Nil proceeds.
+	ConfirmOverwrite func(dir string) (bool, error)
+	OutputJSON       string // path to write CreateResult JSON; "-" means stdout
+	Stdout           io.Writer
+	Stderr           io.Writer
+	HTTP             *http.Client
+	UserAgent        string
 
 	// Owner and Repo select the template library; zero values target the
 	// official library. Source carries the fetch seams (GitHubBaseURL
@@ -104,6 +107,16 @@ func Create(ctx context.Context, opts CreateOptions) error {
 	kebab := xstrings.ToKebabCase(opts.Name)
 	if opts.OutputDir == "" {
 		opts.OutputDir = kebab
+	}
+
+	if opts.Force && opts.ConfirmOverwrite != nil && dirHasEntries(opts.OutputDir) {
+		ok, err := opts.ConfirmOverwrite(opts.OutputDir)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("sys create aborted; %s was not changed", opts.OutputDir)
+		}
 	}
 
 	entries, warnings := template.ListScaffolds(opts.StartDir)
@@ -234,4 +247,11 @@ func maybeWriteCreateResult(opts CreateOptions, record *template.Scaffold, model
 		return fmt.Errorf("write --output-json: %w", err)
 	}
 	return nil
+}
+
+// dirHasEntries reports whether dir exists and holds anything. A missing or
+// unreadable dir counts as empty: the render reports those itself.
+func dirHasEntries(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	return err == nil && len(entries) > 0
 }

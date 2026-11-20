@@ -53,9 +53,9 @@ type Component struct {
 	// additive-only.
 	Port  string   `json:"port,omitempty"`
 	Ports []string `json:"ports,omitempty"` // transactional blocks: exactly [from, to]
-	// PortKind is template.PortKindExternal when the block reaches Port
-	// through a client of its own, and empty for a binding port.
-	PortKind string `json:"portKind,omitempty"`
+	// PortKinds maps each of Ports the block reaches through a client of its
+	// own to template.PortKindExternal; a binding port has no entry.
+	PortKinds map[string]string `json:"portKinds,omitempty"`
 	// Endpoint is the HTTP port a gateway exposes and EndpointPath the path
 	// it accepts items on; both empty for every other kind. The endpoint
 	// shares the port namespace but is never a file port.

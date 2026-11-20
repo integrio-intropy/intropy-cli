@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/integrio-intropy/intropy-cli/internal/command"
 	"github.com/integrio-intropy/intropy-cli/internal/git"
@@ -247,15 +248,14 @@ func TestFetchSourceCloneFailureWithEmptyCache(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error for an unclonable tag with an empty cache")
 	}
-	for _, want := range []string{"v9.9.9", "--template-version"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error should mention %q: %v", want, err)
-		}
+	if !strings.Contains(err.Error(), "v9.9.9") {
+		t.Errorf("error should name the pinned tag: %v", err)
 	}
 }
 
-// A held lock means another run is mid-clone: wait rather than queue.
-func TestFetchSourceLockHeld(t *testing.T) {
+// A held lock means another run is cloning the same tag: wait for it, then
+// use what it cloned.
+func TestFetchSourceWaitsForLockHolder(t *testing.T) {
 	lib := newTestLibrary(t, "v1.0.0", fetchTestFiles)
 	cache := t.TempDir()
 	url := "file://" + lib.repo
@@ -267,16 +267,54 @@ func TestFetchSourceLockHeld(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer gitclone.Unlock(lock)
+	released := make(chan struct{})
+	go func() {
+		defer close(released)
+		time.Sleep(300 * time.Millisecond)
+		gitclone.Unlock(lock)
+	}()
 
+	var stderr bytes.Buffer
 	opts := lib.sourceOpts(cache, nil)
 	opts.Version = "v1.0.0"
-	_, err = FetchSource(context.Background(), opts)
-	if err == nil {
-		t.Fatal("expected a wait error while another run holds the lock")
+	opts.Stderr = &stderr
+	src, err := FetchSource(context.Background(), opts)
+	<-released
+	if err != nil {
+		t.Fatalf("should have waited for the holder: %v", err)
 	}
-	if !strings.Contains(err.Error(), "already using") {
-		t.Errorf("error should explain another run holds the cache: %v", err)
+	if src.Version != "v1.0.0" {
+		t.Errorf("Version = %q, want v1.0.0", src.Version)
+	}
+	if !strings.Contains(stderr.String(), "waiting for another intropy run") {
+		t.Errorf("stderr should say why it paused: %q", stderr.String())
+	}
+}
+
+// A pinned tag that cannot be checked out is an error even when the cache
+// holds another release: building that release would break the pin.
+func TestFetchSourcePinnedCloneFailureDoesNotFallBack(t *testing.T) {
+	lib := newTestLibrary(t, "v1.0.0", fetchTestFiles)
+	cache := t.TempDir()
+	opts := lib.sourceOpts(cache, nil)
+	opts.Version = "v1.0.0"
+	if _, err := FetchSource(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+
+	var stderr bytes.Buffer
+	broken := lib.sourceOpts(cache, failingRunner{err: errors.New("network unreachable")})
+	broken.Version = "v1.2.3"
+	broken.Stderr = &stderr
+	src, err := FetchSource(context.Background(), broken)
+	if err == nil {
+		t.Fatalf("expected an error, got a build from %s", src.Version)
+	}
+	if !strings.Contains(err.Error(), "v1.2.3") {
+		t.Errorf("error should name the pinned tag: %v", err)
+	}
+	if strings.Contains(stderr.String(), "using cached templates") {
+		t.Errorf("stderr should not announce a fallback: %q", stderr.String())
 	}
 }
 

@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/integrio-intropy/intropy-cli/internal/command"
 	"github.com/integrio-intropy/intropy-cli/internal/git"
@@ -61,11 +62,50 @@ func Lock(path, activity, kind string) (*os.File, error) {
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		f.Close()
 		if errors.Is(err, syscall.EWOULDBLOCK) {
-			return nil, fmt.Errorf("another intropy %s is already using the cached %s (%s); wait for it to finish", activity, kind, filepath.Dir(path))
+			return nil, &HeldError{Activity: activity, Kind: kind, Dir: filepath.Dir(path)}
 		}
 		return nil, fmt.Errorf("lock %s: %w", path, err)
 	}
 	return f, nil
+}
+
+// lockPollInterval is how often LockWait retries a held lock.
+const lockPollInterval = 100 * time.Millisecond
+
+// LockWait takes the same lock as Lock but waits for a holder to release it,
+// until ctx is done. It suits write-once entries, where the holder is doing
+// the very work the waiter needs and will leave nothing to redo. onWait, when
+// non-nil, runs once on the first retry so the caller can say why it paused.
+// Mutable checkouts should keep using Lock: queueing behind a stuck refresh
+// helps nobody.
+func LockWait(ctx context.Context, path, activity, kind string, onWait func()) (*os.File, error) {
+	for waited := false; ; waited = true {
+		f, err := Lock(path, activity, kind)
+		var held *HeldError
+		if err == nil || !errors.As(err, &held) {
+			return f, err
+		}
+		if !waited && onWait != nil {
+			onWait()
+		}
+		select {
+		case <-ctx.Done():
+			return nil, err
+		case <-time.After(lockPollInterval):
+		}
+	}
+}
+
+// HeldError is Lock's error for a lock another process holds, as opposed to
+// one that cannot be taken at all.
+type HeldError struct {
+	Activity string // what the user is doing, such as "scaffold"
+	Kind     string // what the lock guards, such as "template cache"
+	Dir      string // the cache directory the lock sits in
+}
+
+func (e *HeldError) Error() string {
+	return fmt.Sprintf("another intropy %s is already using the cached %s (%s); wait for it to finish", e.Activity, e.Kind, e.Dir)
 }
 
 // Unlock releases a lock taken by Lock. It is idempotent.

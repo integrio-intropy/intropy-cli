@@ -528,10 +528,7 @@ func mergeWiring(plan *updatePlan, merged map[string]any) error {
 			}
 		}
 		for _, p := range c.Ports {
-			port := Port{Name: p}
-			if p == c.Port {
-				port.Kind = c.PortKind
-			}
+			port := Port{Name: p, Kind: c.PortKinds[p]}
 			// A refreshed scaffold's port takes its kind, as its endpoint
 			// takes its path; the baseline keeps describing the last render.
 			if index, found := seenPorts[p]; found {

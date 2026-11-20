@@ -16,10 +16,13 @@ const (
 	// KeyPortKind says how a single-port block reaches its port: PortKindBinding
 	// (the default, also when the key is absent) through a Dapr binding, or
 	// PortKindExternal through a client of its own (a database query, an HTTP
-	// API), with no binding and no local folder.
-	KeyPortKind = "portKind"
-	KeyFromPort = "fromPort"
-	KeyToPort   = "toPort"
+	// API), with no binding and no local folder. A transactional block says the
+	// same of each of its ports with KeyFromPortKind and KeyToPortKind.
+	KeyPortKind     = "portKind"
+	KeyFromPort     = "fromPort"
+	KeyToPort       = "toPort"
+	KeyFromPortKind = "fromPortKind"
+	KeyToPortKind   = "toPortKind"
 	// KeyEndpoint carries a gateway's port in the system-host payload. It is
 	// kept apart from port because the host resolves every port to a file
 	// binding, and an endpoint is served over HTTP, not swept.

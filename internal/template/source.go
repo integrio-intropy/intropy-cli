@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/integrio-intropy/intropy-cli/internal/command"
@@ -74,8 +75,9 @@ func (s *Source) Root() string { return s.root }
 
 // FetchSource resolves the release tag and ensures a local checkout of the
 // library at that tag, cloning shallowly on first use and reusing the cache
-// after. When the network is unavailable it falls back to the newest cached
-// release, and says so on stderr.
+// after. When the network is unavailable and no version is pinned, it falls
+// back to the newest cached release and says so on stderr; a pinned version
+// never falls back.
 func FetchSource(ctx context.Context, opts SourceOptions) (*Source, error) {
 	opts.applyDefaults()
 	stderr := opts.Stderr
@@ -101,8 +103,13 @@ func FetchSource(ctx context.Context, opts SourceOptions) (*Source, error) {
 		return cachedFallback(stderr, cacheRoot, url, opts.Owner, opts.Repo, "resolve the latest release", err)
 	}
 
-	root, hit, err := ensureCheckout(ctx, opts, cacheRoot, url, tag)
+	root, hit, err := ensureCheckout(ctx, opts, stderr, cacheRoot, url, tag)
 	if err != nil {
+		// The same promise as above: a pinned tag that cannot be checked out
+		// is an error, never a quiet build from another release.
+		if opts.Version != "" {
+			return nil, err
+		}
 		fallback := newestCachedTag(cacheRoot, url)
 		if fallback == "" {
 			return nil, fmt.Errorf("%w\npin a cached release with --template-version (cache: %s)", err, gitclone.CheckoutDir(cacheRoot, url))
@@ -164,11 +171,15 @@ func checkoutDir(cacheRoot, url, tag string) string {
 	return filepath.Join(gitclone.CheckoutDir(cacheRoot, url), tag)
 }
 
+// lockWaitTimeout bounds the wait for another run's clone of the same tag. A
+// shallow tag clone takes seconds; a holder past this is stuck, not slow.
+const lockWaitTimeout = 2 * time.Minute
+
 // ensureCheckout returns the cache entry for tag, cloning shallowly on a miss.
 // The clone lands in a dot-prefixed temp sibling and is renamed into place, so
 // an interrupted clone can never be observed as a complete entry — and never
 // elected by newestCachedTag, which skips dot-prefixed names.
-func ensureCheckout(ctx context.Context, opts SourceOptions, cacheRoot, url, tag string) (root string, cached bool, err error) {
+func ensureCheckout(ctx context.Context, opts SourceOptions, stderr io.Writer, cacheRoot, url, tag string) (root string, cached bool, err error) {
 	dir := checkoutDir(cacheRoot, url, tag)
 	if info, statErr := os.Stat(dir); statErr == nil && info.IsDir() {
 		return dir, true, nil
@@ -177,7 +188,13 @@ func ensureCheckout(ctx context.Context, opts SourceOptions, cacheRoot, url, tag
 		return "", false, fmt.Errorf("create cache directory: %w", err)
 	}
 
-	lock, err := gitclone.Lock(dir+".lock", "scaffold", "template cache")
+	// Wait rather than fail: the holder is cloning this same immutable tag,
+	// so once it finishes the re-check below is a hit.
+	waitCtx, cancel := context.WithTimeout(ctx, lockWaitTimeout)
+	defer cancel()
+	lock, err := gitclone.LockWait(waitCtx, dir+".lock", "scaffold", "template cache", func() {
+		fmt.Fprintf(stderr, "waiting for another intropy run to finish fetching %s/%s@%s\n", opts.Owner, opts.Repo, tag)
+	})
 	if err != nil {
 		return "", false, err
 	}

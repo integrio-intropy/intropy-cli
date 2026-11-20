@@ -354,7 +354,9 @@ kinds. The assembled kinds:
 
 - **extractor / loader** — topic blocks. Their records carry `topic`,
   `contract`, and one optional `port`; a record without a `port` value
-  keeps its component but gets no `From`/`To`.
+  keeps its component but gets no `From`/`To`. `portKind: external` marks a
+  port the block reaches through a client of its own (a SQL source): the host
+  declares it with `PortRef.DefineExternal` and gives it no folder.
 - **gateway** — a topic block that publishes like an extractor, but whose
   items are pushed to it over HTTP. Its record carries `publishes`, a
   required `port` (the endpoint it exposes) and `endpointPath` (the path callers
@@ -364,8 +366,9 @@ kinds. The assembled kinds:
   a file binding. A gateway deploys as a Deployment.
 - **transactional-integration** — a port-to-port block with no topic. Its
   record carries `fromPort` and `toPort`; both are required, and a missing
-  one fails the assembly. The generated system class wires it as
-  `.From(Ports.X).To(Ports.Y)`.
+  one fails the assembly. `fromPortKind` and `toPortKind` mark either port
+  external, as `portKind` does for a topic block. The generated system class
+  wires it as `.From(Ports.X).To(Ports.Y)`.
 - **job** — scheduled work with no topic, port or endpoint. Its record
   carries only its `appId`; the generated system class wires it as
   `builder.AddJob("<app-id>")`, and it deploys as a CronJob. Message flags

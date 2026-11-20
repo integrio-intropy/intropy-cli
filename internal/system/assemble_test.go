@@ -336,3 +336,36 @@ func TestAssembleRefusesAnUnknownPortKind(t *testing.T) {
 		t.Fatalf("err = %v, want one naming portKind and the kinds a port can be", err)
 	}
 }
+
+// A transactional integration that polls a database records fromPortKind
+// external: its source port carries the kind and its destination, with no
+// toPortKind, stays a binding port.
+func TestAssembleCarriesATransactionalExternalSourceKind(t *testing.T) {
+	e := transactional("order-sync", "order-sync", "order-sync-source", "order-sync-destination")
+	e.Values[template.KeyFromPortKind] = template.PortKindExternal
+	model, err := Assemble([]template.ScaffoldEntry{e}, discardWarnf)
+	if err != nil {
+		t.Fatalf("Assemble: %v", err)
+	}
+	want := []Port{
+		{Name: "order-sync-destination"},
+		{Name: "order-sync-source", Kind: template.PortKindExternal},
+	}
+	if len(model.Ports) != len(want) {
+		t.Fatalf("ports = %#v, want %#v", model.Ports, want)
+	}
+	for i := range want {
+		if model.Ports[i] != want[i] {
+			t.Errorf("ports[%d] = %#v, want %#v", i, model.Ports[i], want[i])
+		}
+	}
+}
+
+func TestAssembleRefusesAnUnknownTransactionalPortKind(t *testing.T) {
+	e := transactional("order-sync", "order-sync", "order-sync-source", "order-sync-destination")
+	e.Values[template.KeyToPortKind] = "polled"
+	_, err := Assemble([]template.ScaffoldEntry{e}, discardWarnf)
+	if err == nil || !strings.Contains(err.Error(), "toPortKind") || !strings.Contains(err.Error(), "external") {
+		t.Fatalf("err = %v, want one naming toPortKind and the kinds a port can be", err)
+	}
+}
