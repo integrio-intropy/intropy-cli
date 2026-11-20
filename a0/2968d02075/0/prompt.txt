@@ -1,0 +1,19 @@
+Can you have a look at these cli bugs?
+
+
+
+<pasted_content id="cd83">
+
+CLI
+1. A pinned --template-version can silently use a different release. If another run is holding the template cache lock, the checkout fails. FetchSource then falls back to the newest cached tag even though a version was pinned (internal/template/source.go, around lines 90–117). In the quick start it printed using cached templates v2.4.0, scaffolded from v2.4.0, and still exited 0. The tag lookup just before that already refuses this fallback for a pinned version; the checkout path should do the same, and could also wait for the lock instead of failing at once. Running the tutorials in parallel is what triggered it here.
+2. Your config file breaks this build. config.go:167 rejects unknown fields, so atriumUrl in your ~/.config/intropy/config.yaml stops every command. That field was added on the "Add sys publish to Atrium" branch, which this build doesn't include. A new reader won't hit this, but anyone going back to an older CLI will; warning on unknown fields would avoid it. All four runs got past it by pointing the CLI at an empty or edited config.
+3. sys create --force silently drops hand-written routing. Re-running it does pick up a new loader, but it also deletes the routing you added by hand in distribution chapter 3: the OrderCancelled message and its Publishes/AlsoHandles lines. It gives no warning. No page tells readers to re-run it, so this is a design limitation to keep in mind rather than a docs fault.
+</pasted_content id="cd83">
+
+---
+
+2. I can fix myself
+
+---
+
+Maybe force should behave as it already does and just prompt the user with this will destroy..are you sure?

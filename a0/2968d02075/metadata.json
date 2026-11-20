@@ -1,0 +1,34 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "a02968d02075",
+  "strategy": "manual-commit",
+  "branch": "feat/external-port-scaffold",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "cmd/intropy/sys_create.go",
+    "cmd/intropy/sys_create_test.go",
+    "internal/gitclone/gitclone.go",
+    "internal/gitclone/gitclone_test.go",
+    "internal/interactive/confirm.go",
+    "internal/system/create.go",
+    "internal/system/create_test.go",
+    "internal/template/source.go",
+    "internal/template/source_fetch_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/a0/2968d02075/0/metadata.json",
+      "transcript": "/a0/2968d02075/0/full.jsonl",
+      "compact_transcript": "/a0/2968d02075/0/transcript.jsonl",
+      "content_hash": "/a0/2968d02075/0/content_hash.txt",
+      "prompt": "/a0/2968d02075/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 60,
+    "cache_creation_tokens": 74328,
+    "cache_read_tokens": 2245605,
+    "output_tokens": 18170,
+    "api_call_count": 28
+  }
+}
